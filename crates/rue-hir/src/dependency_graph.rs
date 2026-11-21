@@ -1175,9 +1175,10 @@ fn visit_repeated(db: &Database, graph: &mut DependencyGraph, repeat: Repeat, hi
 }
 
 /// How many steps into a value that's only referenced once the tail of a struct update can be
-/// before the value is bound instead of being used in place, when the value is one that the
-/// compiler binds for the update, such as a call. Each step in place is an operation around the
-/// value, and a binding that nothing else shares costs about as much as four of them.
+/// before the value is bound instead of being used in place, when the value is one that's bound
+/// on its own, such as a call that the compiler binds for the update. Each step in place is an
+/// operation around the value, and a binding that nothing else shares costs about as much as
+/// four of them.
 const UNNAMED_TAIL_STEPS: usize = 3;
 
 /// The value that the tail of a struct update is a part of.
@@ -1185,9 +1186,10 @@ struct TailBase {
     symbol: SymbolId,
     /// How many steps into the symbol's value the tail is.
     steps: usize,
-    /// Whether the symbol is what the compiler binds a value that isn't a path to for the update,
-    /// rather than a binding that's written.
-    bound_for_update: bool,
+    /// Whether the symbol is bound on its own, rather than next to the other bindings of a
+    /// block: what the compiler binds a value that isn't a path to for the update, or the result
+    /// of a fold for the rest of the list.
+    bound_alone: bool,
 }
 
 /// The symbol that the tail of a struct update is read from, through the inline bindings and
@@ -1215,14 +1217,15 @@ fn tail_base(db: &Database, tail: HirId) -> Option<TailBase> {
                 return Some(TailBase {
                     symbol,
                     steps,
-                    bound_for_update: binding.name.is_none() && !substituted,
+                    bound_alone: (binding.name.is_none() && !substituted)
+                        || db.is_loop_rest_call(binding.value.hir),
                 });
             }
             _ => {
                 return Some(TailBase {
                     symbol,
                     steps,
-                    bound_for_update: false,
+                    bound_alone: false,
                 });
             }
         };
@@ -1289,7 +1292,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 // reads. A value that the compiler binds for the update is bound on its own,
                 // which costs more than a binding next to others, so it's used in place further
                 // in.
-                let limit = if base.bound_for_update {
+                let limit = if base.bound_alone {
                     UNNAMED_TAIL_STEPS
                 } else {
                     1

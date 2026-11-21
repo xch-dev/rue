@@ -43,10 +43,12 @@ enum ForKind {
 ///   front of the list for the rest of the items.
 /// - With a fold, such as `fold sum = 0`, the body gives the result from the item and the result
 ///   for the rest of the list, which is what the fold's binding is. At the end of the list, the
-///   result is the fold's value. The binding is evaluated where the body refers to it, if that's
-///   in one place that's evaluated at most once for the item (see [`is_lazy`]), so a body that
-///   doesn't get to it stops there, as `x == item || found` does once an item matches. Otherwise
-///   it's evaluated once, before the body.
+///   result is the fold's value. The binding is evaluated once, before the body, so a fold goes
+///   through the whole list, and fails if any item does. It's evaluated where the body refers to
+///   it instead, if that's in one place that's evaluated at most once for the item (see
+///   [`is_single_use`]) and it can't keep the rest of the list from failing, as for any binding
+///   that's referred to once. A body that doesn't get to it stops there then, as
+///   `x == item || found` does once an item matches.
 /// - With a filter, such as `if x > 0`, the items that don't pass it are left out of the list, or
 ///   skipped by the fold.
 /// - Without a fold, if the body has no value, or the expression is a statement, whose value
@@ -261,10 +263,9 @@ pub fn compile_for_expr(
     };
 
     if let Some(accumulator) = &accumulator
-        && is_lazy(ctx, accumulator.symbol, body.hir, first_hir)
-        && let Symbol::Binding(binding) = ctx.symbol_mut(accumulator.symbol)
+        && is_single_use(ctx, accumulator.symbol, body.hir, first_hir)
     {
-        binding.inline = true;
+        ctx.set_single_use_loop_rest(accumulator.symbol);
     }
 
     if accumulator.is_some() {
@@ -398,35 +399,21 @@ fn declare(
     symbol
 }
 
-/// Whether the binding for the result of the rest of the list is evaluated where the body refers
-/// to it, rather than once before the body. That's only if the body refers to it in one place,
-/// which is evaluated at most once for the item. So it's not in a lambda or another `for`, which
-/// can be evaluated any number of times, nor in a type guard that uses its value more than once.
-/// It's not in the value of a `let` or an argument of a call either, since a function that's
-/// inlined evaluates its argument wherever it refers to its parameter, and a `let` can be
-/// substituted into one. Otherwise each of those would go through the rest of the list again, for
-/// every item. A binding that isn't evaluated there is never substituted (see
-/// `Database::is_loop_rest_call`).
-fn is_lazy(ctx: &Compiler, symbol: SymbolId, body: HirId, first_hir: HirId) -> bool {
+/// Whether the body refers to the binding for the result of the rest of the list in one place,
+/// which is evaluated at most once for the item, so that the binding can be evaluated there
+/// rather than once before the body (see `Database::is_single_use_loop_rest`). So it's not in a
+/// lambda or another `for`, which can be evaluated any number of times, nor in a type guard that
+/// uses its value more than once. It's not in the value of a `let` or an argument of a call
+/// either, since a function that's inlined evaluates its argument wherever it refers to its
+/// parameter, and a `let` can be substituted into one. Otherwise each of those would go through
+/// the rest of the list again, for every item.
+fn is_single_use(ctx: &Compiler, symbol: SymbolId, body: HirId, first_hir: HirId) -> bool {
     let references = ctx
         .hirs_between(first_hir, ctx.next_hir_id())
         .filter(|hir| matches!(hir, Hir::Reference(reference) if *reference == symbol))
         .count();
 
-    // A struct that's updated from the binding reuses the rest of it with one reference, where a
-    // struct that's rebuilt refers to it for each field, and so evaluates it before the body.
-    // The update does the same, so that whether the rest of the list is gone through when a
-    // branch doesn't use the binding doesn't depend on which of the two is written
-    let copied = ctx
-        .hirs_between(first_hir, ctx.next_hir_id())
-        .any(|hir| match hir {
-            Hir::Struct(initializer) => initializer
-                .tail
-                .is_some_and(|tail| tail.reads > 1 && ctx.path_symbol(tail.value) == Some(symbol)),
-            _ => false,
-        });
-
-    references <= 1 && !copied && direct_uses(ctx, symbol, body, 1) == references
+    references <= 1 && direct_uses(ctx, symbol, body, 1) == references
 }
 
 /// How many times the function that the node is in evaluates a reference to the symbol in the
