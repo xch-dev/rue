@@ -141,12 +141,11 @@ pub fn render(doc: &Doc, options: &FormatOptions) -> String {
             Doc::GroupWithTail { group, tail } => {
                 // The tail is measured as it's laid out on its own, which is up to its first
                 // line break
-                let tail_command = Command {
+                commands.push(Command {
                     indent: command.indent,
                     mode: Mode::Broken,
                     doc: tail,
-                };
-                commands.push(tail_command);
+                });
                 let broken = has_forced_line(group)
                     || !fits(
                         options.max_width.saturating_sub(column),
@@ -155,24 +154,15 @@ pub fn render(doc: &Doc, options: &FormatOptions) -> String {
                         &commands,
                         Mode::Flat,
                     );
-                commands.pop();
+                let tail_command = commands.last_mut().expect("the tail was pushed");
 
                 if broken {
                     // A tail that's a group doesn't get to decide for itself
-                    commands.push(Command {
-                        indent: command.indent,
-                        mode: Mode::Broken,
-                        doc: match &**tail {
-                            Doc::Group(doc) => doc,
-                            _ => tail,
-                        },
-                    });
+                    if let Doc::Group(doc) = &**tail {
+                        tail_command.doc = doc;
+                    }
                 } else {
-                    commands.push(Command {
-                        indent: command.indent,
-                        mode: command.mode,
-                        doc: tail,
-                    });
+                    tail_command.mode = command.mode;
                 }
 
                 commands.push(Command {
@@ -427,6 +417,38 @@ mod tests {
         assert_eq!(
             group_with_tail("head", "more", "tail", 10),
             "head\n    more\n{\n    tail\n};\n"
+        );
+    }
+
+    #[test]
+    fn group_with_tail_breaks_the_group_around_it_if_its_tail_has_a_forced_line() {
+        let inner = Doc::group_with_tail(
+            Doc::concat([Doc::text("head"), Doc::space()]),
+            Doc::concat([
+                Doc::text("{"),
+                Doc::concat([Doc::hard_line(), Doc::text("tail")]).indent(),
+                Doc::hard_line(),
+                Doc::text("}"),
+            ]),
+        );
+        let doc = Doc::concat([
+            Doc::text("["),
+            Doc::concat([Doc::soft_line(), inner]).indent(),
+            Doc::soft_line(),
+            Doc::text("]"),
+        ])
+        .group();
+
+        assert_eq!(
+            render(
+                &doc,
+                &FormatOptions {
+                    max_width: 80,
+                    indent_width: 4,
+                    single_quote: false,
+                },
+            ),
+            "[\n    head {\n        tail\n    }\n]\n"
         );
     }
 

@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use rue_ast::{
     AstDocument, AstExpr, AstForExpr, AstMatchArm, AstMatchExpr, AstModuleItem, AstNode,
     AstNodeKind,
@@ -64,7 +62,7 @@ pub struct TokenFacts {
     pub group_end: Option<TokenId>,
     pub continuation_operators: Vec<ContinuationOperator>,
     /// The header that the `for` token starts, if it has parts that can go on lines of their own.
-    pub for_header: Option<Rc<ForHeader>>,
+    pub for_header: Option<ForHeader>,
     flags: TokenFlags,
 }
 
@@ -134,9 +132,9 @@ impl TokenFacts {
         self.flags.contains(TokenFlags::MESSAGE_COMMA)
     }
 
-    /// Whether the token is a comma in the header of a `for`, which is between the item and what's
-    /// left of its list (`for x, rest in xs`) or between two lists (`for a in xs, b in ys`). It's
-    /// followed by a space, since it isn't in a list that's broken at its commas.
+    /// Whether the token is the comma between the item of a `for` and what's left of its list
+    /// (`for x, rest in xs`). It's followed by a space, since it isn't in a list that's broken at
+    /// its commas. The comma between two lists is where a long header breaks (see [`ForHeader`]).
     pub fn is_header_comma(&self) -> bool {
         self.flags.contains(TokenFlags::HEADER_COMMA)
     }
@@ -427,20 +425,21 @@ fn analyze_nodes(
             | AstNodeKind::StructFieldBinding
             | AstNodeKind::ForFilter
             | AstNodeKind::ForFold => {}
-            AstNodeKind::ForExpr | AstNodeKind::ForClause => {
-                for comma in node
-                    .children_with_tokens()
-                    .filter_map(rowan::NodeOrToken::into_token)
-                    .filter(|token| token.kind() == T![,])
-                {
-                    let id = token_id(&comma, stream)?;
-                    facts[id.index()].flags.insert(TokenFlags::HEADER_COMMA);
-                }
-
+            AstNodeKind::ForExpr => {
                 if let Some(expr) = AstForExpr::cast(node.clone())
                     && let Some((keyword, header)) = for_header(&expr, stream)?
                 {
-                    facts[keyword.index()].for_header = Some(Rc::new(header));
+                    facts[keyword.index()].for_header = Some(header);
+                }
+            }
+            AstNodeKind::ForClause => {
+                if let Some(comma) = node
+                    .children_with_tokens()
+                    .filter_map(rowan::NodeOrToken::into_token)
+                    .find(|token| token.kind() == T![,])
+                {
+                    let id = token_id(&comma, stream)?;
+                    facts[id.index()].flags.insert(TokenFlags::HEADER_COMMA);
                 }
             }
             AstNodeKind::AssertStmt => {
@@ -525,14 +524,6 @@ fn for_header(
             .map(|token| token_id(&token, stream))
             .transpose()
     };
-    let direct_token = |node: &SyntaxNode, kind: SyntaxKind| {
-        node.children_with_tokens()
-            .filter_map(rowan::NodeOrToken::into_token)
-            .find(|token| token.kind() == kind)
-            .map(|token| token_id(&token, stream))
-            .transpose()
-    };
-
     let mut parts = Vec::new();
 
     for clause in expr.clauses().skip(1) {
@@ -553,13 +544,13 @@ fn for_header(
         return Ok(None);
     }
 
-    let Some(keyword) = direct_token(expr.syntax(), T![for])? else {
+    let Some(keyword) = direct_or_descendant_token(expr.syntax(), T![for], stream)? else {
         return Ok(None);
     };
 
     let Some(body) = expr
         .body()
-        .map(|body| direct_token(body.syntax(), T!['{']))
+        .map(|body| direct_or_descendant_token(body.syntax(), T!['{'], stream))
         .transpose()?
         .flatten()
     else {
