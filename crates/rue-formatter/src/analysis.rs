@@ -1,5 +1,8 @@
+use std::rc::Rc;
+
 use rue_ast::{
-    AstDocument, AstExpr, AstMatchArm, AstMatchExpr, AstModuleItem, AstNode, AstNodeKind,
+    AstDocument, AstExpr, AstForExpr, AstMatchArm, AstMatchExpr, AstModuleItem, AstNode,
+    AstNodeKind,
 };
 use rue_parser::{SyntaxKind, SyntaxNode, T};
 
@@ -41,6 +44,18 @@ pub struct ContinuationOperator {
     pub depth: usize,
 }
 
+/// The parts of the header of a `for` that go on lines of their own if it doesn't fit on one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForHeader {
+    /// The first token of each part after the first list: the item of each further list, then
+    /// the `if` of the filter and the `fold`, if they're there.
+    pub parts: Vec<TokenId>,
+    /// How many of the parts are further lists.
+    pub lists: usize,
+    /// The `{` of the body.
+    pub body: TokenId,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct TokenFacts {
     pub pair: Option<TokenId>,
@@ -48,6 +63,8 @@ pub struct TokenFacts {
     pub item_boundary: Option<ItemBoundary>,
     pub group_end: Option<TokenId>,
     pub continuation_operators: Vec<ContinuationOperator>,
+    /// The header that the `for` token starts, if it has parts that can go on lines of their own.
+    pub for_header: Option<Rc<ForHeader>>,
     flags: TokenFlags,
 }
 
@@ -419,6 +436,12 @@ fn analyze_nodes(
                     let id = token_id(&comma, stream)?;
                     facts[id.index()].flags.insert(TokenFlags::HEADER_COMMA);
                 }
+
+                if let Some(expr) = AstForExpr::cast(node.clone())
+                    && let Some((keyword, header)) = for_header(&expr, stream)?
+                {
+                    facts[keyword.index()].for_header = Some(Rc::new(header));
+                }
             }
             AstNodeKind::AssertStmt => {
                 // An `assert` with a message is a group from `assert` to the end of the message,
@@ -488,6 +511,62 @@ fn analyze_nodes(
         }
     }
     Ok(())
+}
+
+/// The `for` token of the expression and the parts of its header that can go on lines of their
+/// own, if there are any after the first list: further lists, a filter or a fold.
+fn for_header(
+    expr: &AstForExpr,
+    stream: &TokenStream,
+) -> Result<Option<(TokenId, ForHeader)>, FormatError> {
+    let first_token = |node: &SyntaxNode| {
+        significant_tokens(node)
+            .next()
+            .map(|token| token_id(&token, stream))
+            .transpose()
+    };
+    let direct_token = |node: &SyntaxNode, kind: SyntaxKind| {
+        node.children_with_tokens()
+            .filter_map(rowan::NodeOrToken::into_token)
+            .find(|token| token.kind() == kind)
+            .map(|token| token_id(&token, stream))
+            .transpose()
+    };
+
+    let mut parts = Vec::new();
+
+    for clause in expr.clauses().skip(1) {
+        parts.extend(first_token(clause.syntax())?);
+    }
+
+    let lists = parts.len();
+
+    if let Some(filter) = expr.filter() {
+        parts.extend(first_token(filter.syntax())?);
+    }
+
+    if let Some(fold) = expr.fold() {
+        parts.extend(first_token(fold.syntax())?);
+    }
+
+    if parts.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(keyword) = direct_token(expr.syntax(), T![for])? else {
+        return Ok(None);
+    };
+
+    let Some(body) = expr
+        .body()
+        .map(|body| direct_token(body.syntax(), T!['{']))
+        .transpose()?
+        .flatten()
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some((keyword, ForHeader { parts, lists, body })))
 }
 
 fn single_argument_layout(call: &SyntaxNode) -> Option<SingleArgumentLayout> {

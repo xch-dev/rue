@@ -324,11 +324,11 @@ test fn two_lists_with_a_fold_as_a_lambda_argument() -> Int {
 }
 
 test fn two_lists_with_a_fold_spread_into_a_list() -> List<(Int, Int)> {
-    for x, rest in runtime([1, 2, 3]), y in runtime([
-        10,
-        20,
-        30,
-    ]) fold pairs: List<(Int, Int)> = nil { [...for z in rest { (x + y, z) }, ...pairs] }
+    for x, rest in runtime([1, 2, 3]), y in runtime([10, 20, 30])
+        fold pairs: List<(Int, Int)> = nil
+    {
+        [...for z in rest { (x + y, z) }, ...pairs]
+    }
 }
 
 // A fold fails for a list that has run out however its body uses the item of that list, or

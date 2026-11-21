@@ -2052,9 +2052,11 @@ fn for_expressions() {
                 let wrapped = for coin in conditions if coin is CreateCoin {
                     CreateCoin { puzzle_hash: coin.puzzle_hash, amount: coin.amount, memos: coin.memos }
                 };
-                let payments_to_target = for c in conditions if c is CreateCoin
-                    && c.puzzle_hash == target_puzzle_hash
-                    && c.amount > 0 { c.amount + 100000 };
+                let payments_to_target = for c in conditions
+                    if c is CreateCoin && c.puzzle_hash == target_puzzle_hash && c.amount > 0
+                {
+                    c.amount + 100000
+                };
                 let typed = for x in xs fold rest: List<Int> = nil { [x, ...rest] };
                 for x in xs {
                     assert x > 0;
@@ -2095,6 +2097,361 @@ fn for_headers() {
             }
         "#]],
     );
+}
+
+/// A header that doesn't fit on one line with the `{` of the body has its filter and its fold
+/// on lines of their own, and the `{` on a line of its own. The lists stay on the line of the
+/// `for` if they fit on it together.
+#[test]
+fn long_for_headers() {
+    check(
+        r"fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int, expected: Bytes32) -> Int {
+    let fits = for coin in coins if coin.amount > minimum fold total = 0 { total + coin.amount };
+    let body_breaks = for coin in coins, amount in amounts if coin.amount > minimum fold total = 0 { let doubled = amount * 2; total + doubled };
+    let filter_and_fold = for coin in coins if coin.amount > minimum && coin.puzzle_hash == expected fold total = 0 { total + coin.amount };
+    let filter = for coin in coins if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount < 1000 { coin.amount + 100000 };
+    let long_filter = for coin in coins if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount < 1000000000 && coin.parent_coin_info != expected fold total = 0 { total + coin.amount };
+    let fold = for coin in coins fold total: Int = some_function_with_a_long_name(coins, minimum, expected, amounts) { total + coin.amount };
+    let long_fold = for coin in coins if coin.amount > minimum fold total = coin.amount + minimum + expected + coin.amount + minimum + expected + coin.amount { total + coin.amount };
+    let lists = for coin in coins, amount in amounts if coin.amount > minimum && coin.puzzle_hash == expected fold total = 0 { total + amount };
+    let only_lists = for coin in coins, amount in amounts, other_amount in amounts, third_amount_in_the_list in amounts { coin.amount + amount };
+    let long_lists = for coin, rest_of_the_coins in some_function_with_a_long_name(coins, minimum), amount, rest_of_the_amounts in another_function_with_a_long_name(amounts) if coin.amount > amount fold total = 0 { total + coin.amount };
+    let empty = for coin in coins if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount < 1000000000 {};
+    fits + body_breaks
+}
+",
+        expect![[r#"
+            fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int, expected: Bytes32) -> Int {
+                let fits = for coin in coins if coin.amount > minimum fold total = 0 { total + coin.amount };
+                let body_breaks = for coin in coins, amount in amounts if coin.amount > minimum fold total = 0 {
+                    let doubled = amount * 2;
+                    total + doubled
+                };
+                let filter_and_fold = for coin in coins
+                    if coin.amount > minimum && coin.puzzle_hash == expected
+                    fold total = 0
+                {
+                    total + coin.amount
+                };
+                let filter = for coin in coins
+                    if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount < 1000
+                {
+                    coin.amount + 100000
+                };
+                let long_filter = for coin in coins
+                    if coin.amount > minimum
+                        && coin.puzzle_hash == expected
+                        && coin.amount < 1000000000
+                        && coin.parent_coin_info != expected
+                    fold total = 0
+                {
+                    total + coin.amount
+                };
+                let fold = for coin in coins
+                    fold total: Int = some_function_with_a_long_name(coins, minimum, expected, amounts)
+                {
+                    total + coin.amount
+                };
+                let long_fold = for coin in coins
+                    if coin.amount > minimum
+                    fold total = coin.amount
+                        + minimum
+                        + expected
+                        + coin.amount
+                        + minimum
+                        + expected
+                        + coin.amount
+                {
+                    total + coin.amount
+                };
+                let lists = for coin in coins, amount in amounts
+                    if coin.amount > minimum && coin.puzzle_hash == expected
+                    fold total = 0
+                {
+                    total + amount
+                };
+                let only_lists = for coin in coins,
+                    amount in amounts,
+                    other_amount in amounts,
+                    third_amount_in_the_list in amounts
+                {
+                    coin.amount + amount
+                };
+                let long_lists = for coin, rest_of_the_coins in some_function_with_a_long_name(coins, minimum),
+                    amount, rest_of_the_amounts in another_function_with_a_long_name(amounts)
+                    if coin.amount > amount
+                    fold total = 0
+                {
+                    total + coin.amount
+                };
+                let empty = for coin in coins
+                    if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount < 1000000000
+                {};
+                fits + body_breaks
+            }
+        "#]],
+    );
+}
+
+/// The same for a `for` that's a statement, an item of a list, an argument, and the value of
+/// another `for`, each indented from where it starts.
+#[test]
+fn long_for_headers_in_other_expressions() {
+    check(
+        r"fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int, expected: Bytes32) -> Int {
+    for coin in coins, amount in amounts if coin.amount > minimum && coin.puzzle_hash == expected && amount > 0 { assert coin.amount == amount; }
+    #[allow(unused_value)]
+    for coin in coins, amount in amounts if coin.amount > minimum && coin.puzzle_hash == expected fold total = 0 { total + amount }
+    let list = [1, ...for coin in coins, amount in amounts if coin.amount > minimum && coin.puzzle_hash == expected { coin.amount + amount }, 2];
+    let argument = length(for coin in coins, amount in amounts if coin.amount > minimum && coin.puzzle_hash == expected { coin.amount + amount });
+    let nested = for coin in coins if coin.amount > minimum { for amount in amounts if coin.amount > minimum && coin.puzzle_hash == expected && amount > 0 { amount } };
+    let in_the_header = for coin in coins fold total = (for amount in amounts if amount > minimum && amount < 1000000 fold sum = 0 { sum + amount }) { total + coin.amount };
+    let sum = 1 + (for coin in coins if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount > 0 fold total = 0 { total + coin.amount });
+    if (for coin in coins if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount > 0 fold total = 0 { total + coin.amount }) > 0 { return 1; }
+    0
+}
+",
+        expect![[r#"
+            fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int, expected: Bytes32) -> Int {
+                for coin in coins, amount in amounts
+                    if coin.amount > minimum && coin.puzzle_hash == expected && amount > 0
+                {
+                    assert coin.amount == amount;
+                }
+                #[allow(unused_value)]
+                for coin in coins, amount in amounts
+                    if coin.amount > minimum && coin.puzzle_hash == expected
+                    fold total = 0
+                {
+                    total + amount
+                }
+                let list = [
+                    1,
+                    ...for coin in coins, amount in amounts
+                        if coin.amount > minimum && coin.puzzle_hash == expected
+                    {
+                        coin.amount + amount
+                    },
+                    2,
+                ];
+                let argument = length(
+                    for coin in coins, amount in amounts
+                        if coin.amount > minimum && coin.puzzle_hash == expected
+                    {
+                        coin.amount + amount
+                    },
+                );
+                let nested = for coin in coins if coin.amount > minimum {
+                    for amount in amounts
+                        if coin.amount > minimum && coin.puzzle_hash == expected && amount > 0
+                    {
+                        amount
+                    }
+                };
+                let in_the_header = for coin in coins
+                    fold total = (
+                        for amount in amounts if amount > minimum && amount < 1000000 fold sum = 0 {
+                            sum + amount
+                        }
+                    )
+                {
+                    total + coin.amount
+                };
+                let sum = 1
+                    + (
+                        for coin in coins
+                            if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount > 0
+                            fold total = 0
+                        {
+                            total + coin.amount
+                        }
+                    );
+                if (
+                    for coin in coins
+                        if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount > 0
+                        fold total = 0
+                    {
+                        total + coin.amount
+                    }
+                ) > 0
+                {
+                    return 1;
+                }
+                0
+            }
+        "#]],
+    );
+}
+
+/// A header with one list and nothing after it has no parts to put on lines of their own, so
+/// it's formatted as before: its list breaks where it can.
+#[test]
+fn for_header_with_one_list() {
+    check(
+        r"fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int, expected: Bytes32) -> Int {
+    let call = for coin, rest in some_function_with_a_long_name(coins, minimum, expected, amounts, coins, minimum, expected) { coin.amount };
+    for coin in coins.first + coins.rest + coins.first + coins.rest + coins.first + coins.rest + coins.first + coins.rest + coins.rest { assert coin.amount > 0; }
+    for coin in coins.first + coins.rest { assert coin.amount > 0; }
+    0
+}
+",
+        expect![[r#"
+            fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int, expected: Bytes32) -> Int {
+                let call = for coin, rest in some_function_with_a_long_name(
+                    coins,
+                    minimum,
+                    expected,
+                    amounts,
+                    coins,
+                    minimum,
+                    expected,
+                ) { coin.amount };
+                for coin in coins.first
+                    + coins.rest
+                    + coins.first
+                    + coins.rest
+                    + coins.first
+                    + coins.rest
+                    + coins.first
+                    + coins.rest
+                    + coins.rest
+                {
+                    assert coin.amount > 0;
+                }
+                for coin in coins.first + coins.rest {
+                    assert coin.amount > 0;
+                }
+                0
+            }
+        "#]],
+    );
+}
+
+/// Comments in a header keep their places. A comment that ends its line breaks the header, and
+/// the lines after it are indented. Blank lines in a header aren't kept.
+#[test]
+fn for_header_comments() {
+    check(
+        r"fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int) -> Int {
+    let a = for coin in coins // the coins
+    if coin.amount > minimum // only large ones
+    fold total = 0 // from nothing
+    { total + coin.amount };
+    let b = for coin in coins, // the coins
+    amount in amounts
+    // only large ones
+    if coin.amount > minimum
+    // before the body
+    { amount };
+    let c = for /* item */ coin /* in */ in coins /* list */ , /* next */ amount in amounts /* filter */ if amount > 0 /* fold */ fold total = 0 /* body */ { total };
+    let d = for coin, // rest
+    rest in coins, amount in amounts { amount };
+    let e = for coin in coins
+
+    if coin.amount > minimum
+
+    fold total = 0
+
+    { total + coin.amount };
+    let f = for coin in coins if coin.amount > minimum fold total = 0 /* before the body of a header that is too long */ { total + coin.amount };
+    a + b
+}
+",
+        expect![[r#"
+            fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int) -> Int {
+                let a = for coin in coins // the coins
+                    if coin.amount > minimum // only large ones
+                    fold total = 0 // from nothing
+                {
+                    total + coin.amount
+                };
+                let b = for coin in coins, // the coins
+                    amount in amounts
+                    // only large ones
+                    if coin.amount > minimum
+                    // before the body
+                {
+                    amount
+                };
+                let c = for /* item */ coin /* in */ in coins /* list */ , /* next */
+                    amount in amounts /* filter */
+                    if amount > 0 /* fold */
+                    fold total = 0 /* body */
+                {
+                    total
+                };
+                let d = for coin, // rest
+                    rest in coins,
+                    amount in amounts
+                {
+                    amount
+                };
+                let e = for coin in coins if coin.amount > minimum fold total = 0 { total + coin.amount };
+                let f = for coin in coins
+                    if coin.amount > minimum
+                    fold total = 0 /* before the body of a header that is too long */
+                {
+                    total + coin.amount
+                };
+                a + b
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn long_for_headers_at_a_narrow_width() {
+    let options = FormatOptions {
+        max_width: 40,
+        ..FormatOptions::default()
+    };
+    let output = format_source(
+        "fn main(){let a=for coin in coins if coin.amount>minimum fold total=0{total+coin.amount};\
+         let b=for coin in coins,amount in amounts{coin.amount+amount};\
+         let c=for first_coin in first_coins,second_coin in second_coins{first_coin.amount};\
+         let d=for coin in coins if coin.amount>minimum&&coin.puzzle_hash==expected{coin};\
+         for coin in function_with_a_long_name(coins,minimum),amount in amounts if amount>0{assert amount>coin.amount;}}",
+        &options,
+    )
+    .unwrap();
+    expect![[r#"
+        fn main() {
+            let a = for coin in coins
+                if coin.amount > minimum
+                fold total = 0
+            {
+                total + coin.amount
+            };
+            let b = for coin in coins,
+                amount in amounts
+            {
+                coin.amount + amount
+            };
+            let c = for first_coin in first_coins,
+                second_coin in second_coins
+            {
+                first_coin.amount
+            };
+            let d = for coin in coins
+                if coin.amount > minimum
+                    && coin.puzzle_hash
+                        == expected
+            {
+                coin
+            };
+            for coin in function_with_a_long_name(
+                    coins,
+                    minimum,
+                ),
+                amount in amounts
+                if amount > 0
+            {
+                assert amount > coin.amount;
+            }
+        }
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(format_source(&output, &options).unwrap(), output);
 }
 
 #[test]
