@@ -919,3 +919,96 @@ fn main() -> Point {
         "#]],
     );
 }
+
+#[test]
+fn test_definition_field_in_struct_update() {
+    let source = r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(point: Point, y: Int) -> Point {
+    let moved = Point { ...point, y };
+    Point { ...moved, x: 1 }
+}
+"#;
+
+    // A field that's written with a value, and one in shorthand, which is also the binding
+    check_definitions(
+        &[("main.rue", &source.replacen("x: 1", "$0x: 1", 1))],
+        expect![[r#"
+            main.rue:2:4-2:5
+        "#]],
+    );
+    check_definitions(
+        &[(
+            "main.rue",
+            &source.replacen("...point, y", "...point, $0y", 1),
+        )],
+        expect![[r#"
+            main.rue:6:22-6:23
+        "#]],
+    );
+
+    // The spread value is the parameter or binding it names
+    check_definitions(
+        &[("main.rue", &source.replacen("...moved", "...mo$0ved", 1))],
+        expect![[r#"
+            main.rue:7:8-7:13
+        "#]],
+    );
+}
+
+#[test]
+fn test_references_field_in_struct_update() {
+    // The fields that are copied from the spread value aren't references to them
+    let source = r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(point: Point, y: Int) -> Int {
+    let moved = Point { ...point, y };
+    let other = Point { ...moved, y: 2 };
+    moved.y + other.y + other.x
+}
+"#;
+
+    check_references(
+        &[("main.rue", &source.replacen("y: Int,", "$0y: Int,", 1))],
+        expect![[r#"
+            main.rue:3:4-3:5
+            main.rue:7:34-7:35
+            main.rue:8:34-8:35
+            main.rue:9:10-9:11
+            main.rue:9:20-9:21
+        "#]],
+    );
+    check_references(
+        &[(
+            "main.rue",
+            &source.replacen("...moved, y", "...moved, $0y", 1),
+        )],
+        expect![[r#"
+            main.rue:3:4-3:5
+            main.rue:7:34-7:35
+            main.rue:8:34-8:35
+            main.rue:9:10-9:11
+            main.rue:9:20-9:21
+        "#]],
+    );
+
+    // The spread value's references include the spread
+    check_references(
+        &[(
+            "main.rue",
+            &source.replacen("main(point", "main($0point", 1),
+        )],
+        expect![[r#"
+            main.rue:6:8-6:13
+            main.rue:7:27-7:32
+        "#]],
+    );
+}

@@ -673,3 +673,45 @@ fn test_only_garbage() {
     "#]],
     );
 }
+
+#[test]
+fn test_unfinished_struct_update() {
+    // The spread value is still found while the fields after it are being typed
+    check(
+        &format!("{POINT}fn main(point: Point) -> Point {{\n    Point {{ ...po$0int, \n}}\n"),
+        expect![[r#"
+            hover:
+            point: Point
+            definitions:
+            main.rue:5:8-5:13
+            references:
+            main.rue:5:8-5:13
+            main.rue:6:15-6:20
+            completions:
+            point [Variable] Point
+            Point [Struct]
+            modpow [Function] fn(base: Int, exponent: Int, modulus: Int) -> Int
+            project [Module]
+            ...
+        "#]],
+    );
+
+    // And expressions are offered for a spread without a value
+    check(
+        &format!("{POINT}fn main(point: Point) -> Point {{\n    Point {{ ...$0 }}\n}}\n"),
+        expect![[r#"
+            hover:
+            <none>
+            definitions:
+            <none>
+            references:
+            <none>
+            completions:
+            super [Module]
+            project [Module]
+            point [Variable] Point
+            main [Function] fn(point: Point) -> Point
+            ...
+        "#]],
+    );
+}
