@@ -24,6 +24,11 @@ fn point(r: Int) -> Point {
     }
 }
 
+fn cube_first(whole: (Int, Int)) -> Int {
+    let (a, _) = whole;
+    a * a * a
+}
+
 inline fn cube(a: Int) -> Int {
     a * a * a
 }
@@ -176,6 +181,12 @@ test fn inline_argument_part(r: Int) -> Int {
 test fn unused_inline_argument(r: Int) -> Int {
     let checked = check(r);
     ignore(checked, r)
+}
+
+// A function that's called once is inlined, and its parameter is read as often as the part is, so
+// the argument is bound rather than substituted for it
+test fn auto_inlined_parameter_part(r: Int) -> Int {
+    cube_first(pair(r))
 }
 
 // The arguments after the fixed parameters are all passed for the last one

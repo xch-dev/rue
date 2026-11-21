@@ -121,12 +121,20 @@ tests:
   total_cost: 1218544
 - name: unused_inline_argument
   program: (a (q . 5) (c (a (i (> 2 (q . 100)) (q 8) (q . 2)) 1) 1))
-  debug_program: (a (q 2 (q . 11) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at inline_reads.rue:65:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q . 11) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at inline_reads.rue:70:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (7)
   output: "7"
   runtime_cost: 1086
   byte_cost: 516000
   total_cost: 517086
+- name: auto_inlined_parameter_part
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 6 (a 4 5)) (c (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c 1 1))) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
 - name: spread_argument
   program: (a (q 16 (* 4 4 4) (q . 1)) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
   debug_program: (a (q 2 (q 16 (q . 1) (* (* (f 2) (f 2)) (f 2))) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
@@ -169,7 +177,7 @@ tests:
   total_cost: 1606932
 - name: binding_of_inline_block
   program: (a (q 16 (r (a 2 5)) (f (a 2 5)) (f (a (i (> (f (a 2 (+ 5 (q . 1)))) ()) (q 2 2 5) (q 8)) 1))) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
-  debug_program: (a (q 2 (q 2 (q 16 (+ (r (a (q . 2) (c (a 11 23) 1))) (f (a (q . 2) (c (a 11 23) 1)))) (f 2)) (c (a (i (> (f 2) ()) (q 2 (q . 2) (c (a 5 11) 1)) (q 8 (q . "assertion failed at inline_reads.rue:230:9"))) 1) 1)) (c (a 2 (+ 5 (q . 1))) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (r (a (q . 2) (c (a 11 23) 1))) (f (a (q . 2) (c (a 11 23) 1)))) (f 2)) (c (a (i (> (f 2) ()) (q 2 (q . 2) (c (a 5 11) 1)) (q 8 (q . "assertion failed at inline_reads.rue:241:9"))) 1) 1)) (c (a 2 (+ 5 (q . 1))) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
   solution: (7)
   output: "28"
   runtime_cost: 11463
@@ -177,7 +185,7 @@ tests:
   total_cost: 1847463
 - name: binding_of_inline_block_read_first
   program: (a (q 16 (f (a (i (> (f (a 2 (+ 5 (q . 1)))) ()) (q 2 2 5) (q 8)) 1)) (r (a 2 5)) (f (a 2 5))) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
-  debug_program: (a (q 2 (q 2 (q 16 (+ (f 2) (r (a (q . 2) (c (a 11 23) 1)))) (f (a (q . 2) (c (a 11 23) 1)))) (c (a (i (> (f 2) ()) (q 2 (q . 2) (c (a 5 11) 1)) (q 8 (q . "assertion failed at inline_reads.rue:243:9"))) 1) 1)) (c (a 2 (+ 5 (q . 1))) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (f 2) (r (a (q . 2) (c (a 11 23) 1)))) (f (a (q . 2) (c (a 11 23) 1)))) (c (a (i (> (f 2) ()) (q 2 (q . 2) (c (a 5 11) 1)) (q 8 (q . "assertion failed at inline_reads.rue:254:9"))) 1) 1)) (c (a 2 (+ 5 (q . 1))) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
   solution: (7)
   output: "28"
   runtime_cost: 11463
@@ -185,7 +193,7 @@ tests:
   total_cost: 1847463
 - name: guard_in_inline_binding
   program: (a (q 2 (q 2 (i (any (q . 1) (a 5 4)) (q 3 (any (q . 1) (a 5 4)) (q . 1) (q . 2)) (q 1 . 3)) 1) (c (a (i (> 5 (q . 5)) (q 4 5 (* 5 (q . 2))) (q 4 (* 5 (q . 3)) 5)) 1) 1)) (c (q 2 (i (> 1 (q . 100)) (q 8) (q . 1)) 1) 1))
-  debug_program: (a (q 2 (q 2 (i (i () (a 9 (f 2)) (q . 1)) (q 2 (i (i () (a 9 (f 2)) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (q 1 . 3)) 1) (c (a 6 5) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at inline_reads.rue:65:9") (q . "too big")) (q . 1)) 1) (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1)) 1))
+  debug_program: (a (q 2 (q 2 (i (i () (a 9 (f 2)) (q . 1)) (q 2 (i (i () (a 9 (f 2)) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (q 1 . 3)) 1) (c (a 6 5) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at inline_reads.rue:70:9") (q . "too big")) (q . 1)) 1) (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1)) 1))
   solution: (7)
   output: "1"
   runtime_cost: 6346
@@ -193,7 +201,7 @@ tests:
   total_cost: 2082346
 - name: guard_in_inline_argument
   program: (a (q 2 (q 18 (i (any (q . 1) (a 5 4)) (q . 2) (q . 3)) (i (any (q . 1) (a 5 4)) (q . 2) (q . 3)) (i (any (q . 1) (a 5 4)) (q . 2) (q . 3))) (c (a (i (> 5 (q . 5)) (q 4 5 (* 5 (q . 2))) (q 4 (* 5 (q . 3)) 5)) 1) 1)) (c (q 2 (i (> 1 (q . 100)) (q 8) (q . 1)) 1) 1))
-  debug_program: (a (q 2 (q 18 (* (a (i (i () (a 9 (f 2)) (q . 1)) (q 1 . 2) (q 1 . 3)) 1) (a (i (i () (a 9 (f 2)) (q . 1)) (q 1 . 2) (q 1 . 3)) 1)) (a (i (i () (a 9 (f 2)) (q . 1)) (q 1 . 2) (q 1 . 3)) 1)) (c (a 6 5) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at inline_reads.rue:65:9") (q . "too big")) (q . 1)) 1) (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1)) 1))
+  debug_program: (a (q 2 (q 18 (* (a (i (i () (a 9 (f 2)) (q . 1)) (q 1 . 2) (q 1 . 3)) 1) (a (i (i () (a 9 (f 2)) (q . 1)) (q 1 . 2) (q 1 . 3)) 1)) (a (i (i () (a 9 (f 2)) (q . 1)) (q 1 . 2) (q 1 . 3)) 1)) (c (a 6 5) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at inline_reads.rue:70:9") (q . "too big")) (q . 1)) 1) (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1)) 1))
   solution: (7)
   output: "8"
   runtime_cost: 10018
@@ -321,16 +329,16 @@ tests:
   total_cost: 1226750
 diagnostics:
 - |-
-  This operand of `&&` is the same as an earlier one, so it has no effect at inline_reads.rue:48:10
-    note: The same condition is checked here first at inline_reads.rue:48:5
+  This operand of `&&` is the same as an earlier one, so it has no effect at inline_reads.rue:53:10
+    note: The same condition is checked here first at inline_reads.rue:53:5
 - |-
-  This `if` statement only raises, so it can be written as an `assert` at inline_reads.rue:64:5
+  This `if` statement only raises, so it can be written as an `assert` at inline_reads.rue:69:5
     help: Replace it with an `assert`
 - |-
-  Binding `whole` is returned directly after it's declared at inline_reads.rue:225:9
+  Binding `whole` is returned directly after it's declared at inline_reads.rue:236:9
     help: Return the value directly
 - |-
-  Binding `whole` is returned directly after it's declared at inline_reads.rue:238:9
+  Binding `whole` is returned directly after it's declared at inline_reads.rue:249:9
     help: Return the value directly
-- Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:252:24
-- Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:267:12
+- Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:263:24
+- Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:278:12
