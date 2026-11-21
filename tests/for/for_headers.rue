@@ -1,0 +1,297 @@
+// A `for` can go through several lists together, and name what's left of a list after the item.
+// Each list goes through `runtime`, which the compiler can't fold, so the loops are run.
+
+fn runtime<T>(value: T) -> T {
+    assert value is (Any, Any) || value is nil;
+    value
+}
+
+fn has(list: List<Int>, value: Int) -> Bool {
+    for x in list fold found = false { x == value || found }
+}
+
+fn ints(value: List<Int>) -> List<Int> {
+    runtime(value)
+}
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+// Several lists are gone through together, with an item from each
+test fn two_lists() -> List<Int> {
+    for a in runtime([1, 2, 3]), b in runtime([10, 20, 30]) { a + b }
+}
+
+test fn three_lists() -> List<Int> {
+    for a in runtime([1, 2]), b in runtime([10, 20]), c in runtime([100, 200]) { a + b + c }
+}
+
+test fn empty_lists() -> List<Int> {
+    for a in runtime([] as List<Int>), b in runtime([] as List<Int>) { a + b }
+}
+
+// The loop ends when the first list does, whatever is left of the others
+test fn first_list_is_shorter() -> List<Int> {
+    for a in runtime([1, 2]), b in runtime([10, 20, 30, 40]) { a + b }
+}
+
+test fn first_list_is_empty() -> List<Int> {
+    for a in runtime([] as List<Int>), b in runtime([10, 20]) { a + b }
+}
+
+// It fails if another list runs out before the first one does
+test fn second_list_is_shorter() -> List<Int> {
+    for a in runtime([1, 2, 3]), b in runtime([10, 20]) { a + b }
+}
+
+test fn second_list_is_empty() -> List<Int> {
+    for a in runtime([1]), b in runtime([] as List<Int>) { a + b }
+}
+
+test fn third_list_is_shorter() -> List<Int> {
+    for a in runtime([1, 2]), b in runtime([10, 20]), c in runtime([100]) { a + b + c }
+}
+
+// So it does if the body doesn't use the item of the list that runs out
+test fn shorter_list_with_an_unused_item() -> List<Int> {
+    for a in runtime([1, 2, 3]), _ in runtime([10, 20]) { a }
+}
+
+// And if the filter skips the item
+test fn shorter_list_with_a_filter() -> List<Int> {
+    for a in runtime([1, 2, 3]), b in runtime([10, 20]) if a < 2 { a + b }
+}
+
+// And in a loop, whose body has no value
+test fn shorter_list_in_a_loop() -> Int {
+    for a in runtime([1, 2, 3]), b in runtime([10, 20]) {
+        assert a < b;
+    }
+    5
+}
+
+// The lists can have items of different types, which can be destructured
+test fn lists_of_different_types() -> List<Int> {
+    let points = runtime([Point { x: 1, y: 2 }, Point { x: 3, y: 4 }]);
+    let pairs: List<(Int, Bytes)> = runtime([(10, "a"), (20, "bc")]);
+    for { x, y } in points, (amount, name) in pairs { x + y + amount + name.length }
+}
+
+// A filter sees the items of every list
+test fn two_lists_with_a_filter() -> List<Int> {
+    for a in runtime([1, 5, 2, 7]), b in runtime([3, 3, 3, 3]) if a > b { a - b }
+}
+
+// The filter narrows the items for the body
+test fn two_lists_with_a_filter_that_narrows() -> List<Int> {
+    let values: List<Int | (Int, Int)> = runtime([1, (2, 3), 4]);
+    let others: List<Int | nil> = runtime([10, 20, nil]);
+    for value in values, other in others if value is Int && !(other is nil) { value + other }
+}
+
+// A fold over several lists
+test fn two_lists_with_a_fold() -> Int {
+    for a in runtime([1, 2, 3]), b in runtime([10, 20, 30]) fold sum = 0 { sum + a * b }
+}
+
+test fn two_lists_with_a_filter_and_a_fold() -> Int {
+    for a in runtime([1, 2, 3]), b in runtime([10, 20, 30]) if a != 2 fold sum = 0 { sum + a * b }
+}
+
+// A fold that doesn't get to the result for the rest of the lists stops there, so it doesn't
+// fail for a list that runs out after that
+test fn fold_stops_before_a_list_runs_out() -> Bool {
+    for a in runtime([1, 2, 3]), b in runtime([1]) fold found = false { a == b || found }
+}
+
+test fn fold_fails_when_a_list_runs_out() -> Bool {
+    for a in runtime([1, 2, 3]), b in runtime([5]) fold found = false { a == b || found }
+}
+
+// A loop over several lists
+test fn two_lists_in_a_loop() -> Int {
+    for a in runtime([1, 2, 3]), b in runtime([10, 20, 30]) {
+        assert a < b;
+    }
+    5
+}
+
+test fn two_lists_in_a_loop_that_fails() -> Int {
+    for a in runtime([1, 2, 30]), b in runtime([10, 20, 30]) {
+        assert a < b;
+    }
+    5
+}
+
+// The same list can be gone through more than once
+test fn same_list_twice() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    for a in xs, b in xs { a * b }
+}
+
+// A list is evaluated outside of the scope of the items, so it refers to the names around the
+// `for`, which the items shadow in the filter and the body
+test fn lists_refer_to_outer_names() -> List<Int> {
+    let a = runtime([1, 2]);
+    let b = runtime([10, 20]);
+    for a in a, b in b if a < b { a + b }
+}
+
+// Values from outside of the body are captured
+test fn two_lists_with_captures() -> List<Int> {
+    let k = runtime([7]);
+    let xs = runtime([1, 2]);
+    for a in xs, b in runtime([10, 20]) { a + b + length(k) + length(xs) }
+}
+
+// Spread before other items of a list, and as an argument
+test fn two_lists_spread() -> List<Int> {
+    [0, ...for a in runtime([1, 2]), b in runtime([10, 20]) { a + b }, 99]
+}
+
+test fn two_lists_as_an_argument() -> Int {
+    length(for a in runtime([1, 2]), b in runtime([10, 20]) { a + b })
+}
+
+// In another `for`, whose item a list is made from
+test fn two_lists_nested() -> List<List<Int>> {
+    let rows = runtime([[1, 2], [3, 4]]);
+    for row in rows { for a in row, b in runtime([10, 20]) { a + b } }
+}
+
+// In a lambda, and with a lambda in the body
+test fn two_lists_in_a_lambda() -> List<Int> {
+    let add = fn(xs: List<Int>, ys: List<Int>) => for a in xs, b in ys { a + b };
+    add(runtime([1, 2]), runtime([10, 20]))
+}
+
+test fn lambda_in_the_body_of_two_lists() -> Int {
+    let adders = for a in runtime([1, 2]), b in runtime([10, 20]) { fn(n: Int) => n + a + b };
+    for add in adders fold total = 0 { add(total) }
+}
+
+// In a function that's inlined for each of its calls
+inline fn add_lists(xs: List<Int>, ys: List<Int>) -> List<Int> {
+    for a in xs, b in ys { a + b }
+}
+
+test fn two_lists_in_an_inline_function() -> (List<Int>, List<Int>) {
+    (add_lists(runtime([1, 2]), [10, 20]), add_lists([3, 4], runtime([30, 40])))
+}
+
+// With list literals, which the compiler knows the items of
+test fn two_static_lists() -> List<Int> {
+    for a in [1, 2, 3], b in [10, 20, 30] { a + b }
+}
+
+// What's left of the list after the item has a name after the item's
+test fn rest() -> List<Int> {
+    for x, rest in runtime([1, 2, 3]) { x + length(rest) }
+}
+
+// It's nil for the last item
+test fn rest_of_the_last_item() -> List<Bool> {
+    for _, rest in runtime([1, 2, 3]) { rest is nil }
+}
+
+// In a fold, the body can look ahead without the result for the rest of the list
+test fn rest_in_a_fold() -> Bool {
+    for x, rest in ints([1, 2, 3, 2]) fold found = false { has(rest, x) || found }
+}
+
+// Each item with the ones after it
+test fn pairs_of_items() -> List<(Int, Int)> {
+    for x, rest in runtime([1, 2, 3]) fold pairs: List<(Int, Int)> = nil {
+        [...for y in rest { (x, y) }, ...pairs]
+    }
+}
+
+// In a loop
+test fn rest_in_a_loop() -> Int {
+    for x, rest in ints([1, 2, 3]) {
+        assert !has(rest, x);
+    }
+    5
+}
+
+test fn rest_in_a_loop_that_fails() -> Int {
+    for x, rest in ints([1, 2, 1]) {
+        assert !has(rest, x);
+    }
+    5
+}
+
+// In the filter, which can narrow it for the body
+test fn rest_in_a_filter() -> List<Int> {
+    for x, rest in runtime([1, 2, 3]) if rest is (Int, List<Int>) { x + rest.first }
+}
+
+// It can be destructured, like any binding
+test fn rest_with_a_pattern() -> List<Int> {
+    for x, [...others] in runtime([1, 2, 3]) { x + length(others) }
+}
+
+// It's a list of the items' type, whatever the type of the list is
+test fn rest_of_a_list_literal() -> List<Int> {
+    for x, rest in [1, 2, 3] { x + length(rest) }
+}
+
+// It can be returned, or captured by a lambda
+test fn rest_as_the_value() -> List<List<Int>> {
+    for _, rest in runtime([1, 2, 3]) { rest }
+}
+
+test fn rest_in_a_lambda() -> Int {
+    let counts = for x, rest in runtime([1, 2, 3]) { fn() => x + length(rest) };
+    for count in counts fold total = 0 { total + count() }
+}
+
+// The rest of each of several lists
+test fn rest_of_two_lists() -> List<Int> {
+    for a, left in runtime([1, 2, 3]), b, right in runtime([10, 20, 30, 40]) {
+        a + b + length(left) * 100 + length(right) * 1000
+    }
+}
+
+test fn rest_of_the_second_list() -> List<Int> {
+    for a in runtime([1, 2]), b, right in runtime([10, 20, 30]) { a + b + length(right) }
+}
+
+// `in` and `fold` are still only keywords where the header expects them
+test fn names() -> Int {
+    let in = runtime([1, 2]);
+    let fold = runtime([10, 20]);
+    for in, fold in in, rest in fold fold sum = 0 { sum + in + rest + length(fold) }
+}
+
+// A fold whose result is referred to more than once is evaluated before the body, with every
+// list's rest
+test fn two_lists_with_two_references() -> Int {
+    for a in runtime([1, 2, 3]), b in runtime([10, 20, 30]) fold sum = 0 {
+        if sum > 15 {
+            sum + a
+        } else {
+            sum + b
+        }
+    }
+}
+
+// A constant can be a `for` over several lists
+const SUMS: List<Int> = for a in [1, 2], b in [10, 20] { a + b };
+
+test fn in_a_constant() -> Int {
+    for x in SUMS fold sum = 0 { sum + x }
+}
+
+// A statement loop with a loop at the end of its body
+test fn loops_in_a_loop() -> Int {
+    for a, rest in runtime([1, 2, 3]), b in runtime([10, 20, 30]) {
+        assert a < b;
+        for c in rest {
+            assert a < c;
+        }
+    }
+    5
+}

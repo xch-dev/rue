@@ -151,7 +151,7 @@ impl Database {
         self.single_use_loop_rests.contains(&symbol)
     }
 
-    /// Whether the node is the call of a loop to itself with the rest of its list (see
+    /// Whether the node is the call of a loop to itself with the rest of its lists (see
     /// `FunctionKind::Loop`), which is the result of a `for` expression's fold for the rest of the
     /// list. A binding for it is evaluated once before the body, unless it can be evaluated where
     /// the body refers to it instead (see [`Self::is_single_use_loop_rest`]).
@@ -168,17 +168,16 @@ impl Database {
             return false;
         };
 
+        // Each argument is the rest of the parameter for its list
         function.kind == FunctionKind::Loop
-            && matches!(
-                call.args.as_slice(),
-                [arg] if matches!(
+            && call.args.len() == function.parameters.len()
+            && call.args.iter().zip(&function.parameters).all(|(arg, parameter)| {
+                matches!(
                     self.hir(*arg),
-                    Hir::Unary(UnaryOp::Rest, list) if matches!(
-                        self.hir(*list),
-                        Hir::Reference(parameter) if function.parameters.first() == Some(parameter)
-                    )
+                    Hir::Unary(UnaryOp::Rest, list)
+                        if matches!(self.hir(*list), Hir::Reference(reference) if reference == parameter)
                 )
-            )
+            })
     }
 
     /// The value inside of any casts, which is what's evaluated at runtime.

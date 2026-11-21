@@ -65,6 +65,7 @@ impl TokenFlags {
     const OMITTED_COMMA: u16 = 1 << 7;
     const OMIT_TRAILING_COMMA: u16 = 1 << 8;
     const MESSAGE_COMMA: u16 = 1 << 9;
+    const HEADER_COMMA: u16 = 1 << 10;
 
     fn insert(&mut self, flag: u16) {
         self.0 |= flag;
@@ -114,6 +115,13 @@ impl TokenFacts {
     /// its own, indented, if the statement doesn't fit on one line.
     pub fn is_message_comma(&self) -> bool {
         self.flags.contains(TokenFlags::MESSAGE_COMMA)
+    }
+
+    /// Whether the token is a comma in the header of a `for`, which is between the item and what's
+    /// left of its list (`for x, rest in xs`) or between two lists (`for a in xs, b in ys`). It's
+    /// followed by a space, since it isn't in a list that's broken at its commas.
+    pub fn is_header_comma(&self) -> bool {
+        self.flags.contains(TokenFlags::HEADER_COMMA)
     }
 
     /// Whether the list doesn't end in a comma, even when it's broken over several lines.
@@ -400,9 +408,18 @@ fn analyze_nodes(
             | AstNodeKind::NamedBinding
             | AstNodeKind::ListBindingItem
             | AstNodeKind::StructFieldBinding
-            | AstNodeKind::ForExpr
             | AstNodeKind::ForFilter
             | AstNodeKind::ForFold => {}
+            AstNodeKind::ForExpr | AstNodeKind::ForClause => {
+                for comma in node
+                    .children_with_tokens()
+                    .filter_map(rowan::NodeOrToken::into_token)
+                    .filter(|token| token.kind() == T![,])
+                {
+                    let id = token_id(&comma, stream)?;
+                    facts[id.index()].flags.insert(TokenFlags::HEADER_COMMA);
+                }
+            }
             AstNodeKind::AssertStmt => {
                 // An `assert` with a message is a group from `assert` to the end of the message,
                 // so that the message is only moved to its own line if they don't fit on one

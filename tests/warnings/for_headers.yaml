@@ -1,0 +1,27 @@
+program: (a (q 2 8 (c 8 (c (a 126 (c 126 5)) (a 8 (c 8 (c (a 94 (c 94 (c 5 11))) (c (a 46 (c 46 (c 5 11))) (a 8 (c 8 (c (a 28 (c 12 (c 5 11))) (a 8 (c 8 (c (a 54 (c 54 (c 5 11))) (a 8 (c 8 (c (a 38 (c 38 5)) (a 8 (c 8 (c (a 58 (c (c 20 58) (c 5 11))) (a 8 (c 8 (c (a 42 (c (c 20 42) (c 5 (c 47 (c 23 ()))))) (a 8 (c 8 (c (a 50 (c 50 (c 5 11))) (a 34 (c 34 (c 5 11)))))))))))))))))))))))))))) (c (c (c (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1) (q 2 (i 5 (q 2 (i (> 11 (a 4 (c 4 13))) (q 4 9 (a 6 (c 2 (c 13 15)))) (q 2 6 (c 2 (c 13 15)))) 1) ()) 1))) (c (c (c (q 2 (i 5 (q 4 (+ 9 11) (a 2 (c 2 (c 13 15)))) ()) 1) (q 2 (i 5 (q 4 (+ 9 11) (a 2 (c 2 (c 13 15)))) ()) 1)) (c (q 2 (i 5 (q 4 (+ 9 11 (a 4 (c 4 13))) (a 6 (c 2 (c 13 15)))) ()) 1) (q 2 (i 5 (q 4 (+ 9 11 (a 4 (c 4 13))) (a 6 (c 2 (c 13 15)))) ()) 1))) (c (c (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1) (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 15)))) ()) 1)) (c (q 2 (i 5 (q 16 (a 2 (c 2 (c 13 15))) 9 11) ()) 1) (c (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 15)))) ()) 1) (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1)))))) 1))
+debug_program: (a (q 2 (q 2 17 (c 17 (c 16 (a 17 (c 17 (c 24 (c 20 (a 17 (c 17 (c 44 (a 17 (c 17 (c 60 (a 17 (c 17 (c 18 (a 17 (c 17 (c 26 (a 17 (c 17 (c 22 (a 17 (c 17 (c 46 62))))))))))))))))))))))))) (c (c (c (c (a 126 (c 126 5)) (a 94 (c 94 (c 5 11)))) (c (a 46 (c 46 (c 5 11))) (c (a 28 (c (c 20 28) (c 5 11))) (a 54 (c 54 (c 5 11)))))) (c (c (a 38 (c 38 5)) (a 58 (c (c 20 58) (c 5 11)))) (c (a 42 (c (c 20 42) (c 5 (c 47 (c 23 ()))))) (c (a 50 (c 50 (c 5 11))) (a 34 (c 34 (c 5 (f (c 11 ()))))))))) 1)) (c (c (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1) (q 2 (i 5 (q 2 (i (> (f 7) (a 4 (c 4 (r 5)))) (q 4 (f 5) (a 6 (c (c 4 6) (c (r 5) (r 7))))) (q 2 6 (c (c 4 6) (c (r 5) (r 7))))) 1) ()) 1))) (c (c (c (q 2 (i 5 (q 4 (+ (f 5) (f 7)) (a 2 (c 2 (c (r 5) (r 7))))) ()) 1) (q 2 (i 5 (q 4 (+ (f 5) (f 7)) (a 2 (c 2 (c (r 5) (r 7))))) ()) 1)) (c (q 2 (i 5 (q 4 (+ (+ (f 5) (f 7)) (a 4 (c 4 (r 5)))) (a 6 (c (c 4 6) (c (r 5) (r 7))))) ()) 1) (q 2 (i 5 (q 4 (+ (+ (f 5) (f 7)) (a 4 (c 4 (r 5)))) (a 6 (c (c 4 6) (c (r 5) (r 7))))) ()) 1))) (c (c (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1) (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) (r 7))))) ()) 1)) (c (q 2 (i 5 (q 16 (+ (a 2 (c 2 (c (r 5) (r 7)))) (f 5)) (f 7)) ()) 1) (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) (r 7))))) ()) 1) (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1)))))) 1))
+byte_cost: 12252000
+clvm_error: path into atom
+diagnostics:
+- Unused binding `others` at for_headers.rue:13:20
+- Unused binding `other` at for_headers.rue:14:26
+- Unused binding `others` at for_headers.rue:15:20
+- Unused binding `more` at for_headers.rue:15:41
+- |-
+  Binding `restOfList` should be named in snake_case at for_headers.rue:25:20
+    note: Consider renaming it to `rest_of_list`
+- |-
+  Binding `otherItem` should be named in snake_case at for_headers.rue:25:38
+    note: Consider renaming it to `other_item`
+- |-
+  `rest` shadows an earlier binding with the same name at for_headers.rue:28:20
+    note: The earlier binding is declared here at for_headers.rue:11:39
+- |-
+  `y` shadows an earlier binding with the same name at for_headers.rue:28:32
+    note: The earlier binding is declared here at for_headers.rue:11:50
+- |-
+  Unnecessary parentheses at for_headers.rue:31:22
+    help: Remove the parentheses
+- |-
+  Unnecessary parentheses at for_headers.rue:31:37
+    help: Remove the parentheses

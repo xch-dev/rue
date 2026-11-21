@@ -396,6 +396,9 @@ pub enum SyntaxKind {
     #[display("for expression")]
     ForExpr,
 
+    #[display("for clause")]
+    ForClause,
+
     #[display("for filter")]
     ForFilter,
 
@@ -714,6 +717,7 @@ impl SyntaxKind {
             SyntaxKind::FunctionCallExpr => &[SyntaxKind::FunctionCallExpr],
             SyntaxKind::IfExpr => &[SyntaxKind::IfExpr],
             SyntaxKind::ForExpr => &[SyntaxKind::ForExpr],
+            SyntaxKind::ForClause => &[SyntaxKind::ForClause],
             SyntaxKind::ForFilter => &[SyntaxKind::ForFilter],
             SyntaxKind::ForFold => &[SyntaxKind::ForFold],
             SyntaxKind::MatchExpr => &[SyntaxKind::MatchExpr],

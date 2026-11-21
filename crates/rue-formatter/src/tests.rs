@@ -2066,6 +2066,39 @@ fn for_expressions() {
     );
 }
 
+/// The `,` between the lists of a `for`, and between the item and what's left of its list, is
+/// followed by a space, and the comments around it are kept.
+#[test]
+fn for_headers() {
+    check(
+        r"fn main(xs: List<Int>, ys: List<Int>) -> Any {
+    let a = for a in xs,b in ys {a+b};
+    let b = for   x ,  rest in xs { x + length(rest) };
+    let c = for (a,b) , [...rest] in pairs  ,  { x, y },more in points if a>x fold sum:Int=0 { sum+a+b+x+y };
+    for a,r in xs,b in ys { assert a > b; }
+    let d = for a /* item */ , /* rest */ r in xs /* first */ , // second
+    b in ys { a + b };
+    [...for a in xs, b in ys { a + b }, 1]
+}
+",
+        expect![[r#"
+            fn main(xs: List<Int>, ys: List<Int>) -> Any {
+                let a = for a in xs, b in ys { a + b };
+                let b = for x, rest in xs { x + length(rest) };
+                let c = for (a, b), [...rest] in pairs, { x, y }, more in points if a > x fold sum: Int = 0 {
+                    sum + a + b + x + y
+                };
+                for a, r in xs, b in ys {
+                    assert a > b;
+                }
+                let d = for a /* item */ , /* rest */ r in xs /* first */ , // second
+                b in ys { a + b };
+                [...for a in xs, b in ys { a + b }, 1]
+            }
+        "#]],
+    );
+}
+
 #[test]
 fn match_arm_bindings() {
     check(

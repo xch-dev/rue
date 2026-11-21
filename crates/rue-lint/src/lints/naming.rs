@@ -1,5 +1,5 @@
 use rue_ast::{
-    AstBinding, AstConstantItem, AstEnumItem, AstEnumVariant, AstForExpr, AstForFold,
+    AstBinding, AstConstantItem, AstEnumItem, AstEnumVariant, AstForClause, AstForFold,
     AstFunctionItem, AstFunctionParameter, AstGenericParameters, AstLetStmt, AstMatchArm,
     AstModuleItem, AstNode, AstStructField, AstStructItem, AstTypeAliasItem,
 };
@@ -164,12 +164,17 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                 {
                     check_name(cx, source, Some(name), Case::Snake, "Binding");
                 }
-            } else if let Some(binding) = AstForExpr::cast(node.clone())
-                .and_then(|expr| expr.binding())
-                .or_else(|| AstForFold::cast(node.clone()).and_then(|fold| fold.binding()))
+            } else if let Some(bindings) = AstForClause::cast(node.clone())
+                .map(|clause| clause.bindings().collect::<Vec<_>>())
+                .or_else(|| {
+                    AstForFold::cast(node.clone()).map(|fold| fold.binding().into_iter().collect())
+                })
             {
-                // The item of a `for` and the result of its fold
-                for name in binding_names(&binding, false) {
+                // The item of a `for`, what's left of its list, and the result of its fold
+                for name in bindings
+                    .iter()
+                    .flat_map(|binding| binding_names(binding, false))
+                {
                     check_name(cx, source, Some(name), Case::Snake, "Binding");
                 }
             }

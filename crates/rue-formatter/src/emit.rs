@@ -687,7 +687,11 @@ impl<'a> Formatter<'a> {
             return Separator::Hard;
         }
         if left.kind == T![,] {
-            return Separator::Soft;
+            return if self.layout.facts(previous).is_header_comma() {
+                Separator::Space
+            } else {
+                Separator::Soft
+            };
         }
         if right.kind == T![::]
             && self.layout.facts(next).is_absolute_path_start()

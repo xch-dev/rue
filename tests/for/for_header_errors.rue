@@ -1,0 +1,44 @@
+// What a `for` over several lists, or with a name for what's left of a list, rejects
+
+fn main(xs: List<Int>, ys: List<Bytes>, pair: (Int, Int), value: Int) -> Int {
+    // Every list must be a list
+    let a = for x in xs, y in value { x + y };
+    let b = for x in pair, y in xs { x + y };
+
+    // The items are those of their own lists
+    let c = for x in xs, y in ys { x + y };
+
+    // A list is evaluated before the items are in scope, so it can't refer to another's item
+    let d = for x in xs, y in [x] { x + y };
+
+    // Nor to what's left of a list
+    let e = for x, rest in xs, y in rest { x + y };
+
+    // Each name in the header is declared once
+    let f = for x in xs, x in xs { x };
+    let g = for x, x in xs { x };
+    let h = for x, rest in xs, y, rest in xs { x + y + length(rest) };
+
+    // What's left of the list is a list, not an item
+    let i = for x, rest in xs { x + rest };
+
+    // It can't be destructured as a pair, since it's nil after the last item
+    let j = for x, (next, _) in xs { x + next };
+
+    // It's only in scope where the item is: not in the fold's value, nor after the `for`
+    let k = for x, rest in xs fold sum = length(rest) { sum + x };
+    let l = for x, rest in xs { x + length(rest) } + rest;
+
+    length(a)
+        + length(b)
+        + length(c)
+        + length(d)
+        + length(e)
+        + length(f)
+        + length(g)
+        + length(h)
+        + length(i)
+        + length(j)
+        + k
+        + l
+}

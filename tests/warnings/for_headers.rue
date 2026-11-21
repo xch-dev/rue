@@ -1,0 +1,35 @@
+#![warn(shadowed_binding)]
+#![warn(naming_convention)]
+#![warn(unnecessary_parens)]
+
+// The lints see every list in the header of a `for`, and each of its bindings
+
+struct Wrapper {
+    list: List<Int>,
+}
+
+fn main(xs: List<Int>, ys: List<Int>, rest: Int, y: Int) -> List<Int> {
+    // An item, and what's left of a list, that the filter and the body don't use
+    let a = for x, others in xs { x };
+    let b = for x in xs, other in ys { x };
+    let c = for x, others in xs, other, more in ys fold sum = 0 { sum + x + other };
+
+    // They're used if only the filter refers to them
+    let d = for x, others in xs, other in ys if other > length(others) { x };
+
+    // A name that starts with `_` isn't reported, and `_` doesn't bind anything
+    let e = for x, _others in xs, _ in ys { x };
+    let f = for x, _ in xs { x };
+
+    // The names of what's left of a list and of another list's item
+    let g = for x, restOfList in xs, otherItem in ys { x + otherItem + length(restOfList) };
+
+    // They shadow the names around the `for`, but not in the lists, which are outside of them
+    let h = for x, rest in xs, y in [y, rest] { x + y + length(rest) };
+
+    // Parentheses around a list, which a struct initializer needs
+    let i = for x in (xs), other in (ys) { x + other };
+    let j = for x in xs, other in (Wrapper { list: ys }).list { x + other };
+
+    [...a, ...b, c, ...d, ...e, ...f, ...g, ...h, ...i, ...j]
+}

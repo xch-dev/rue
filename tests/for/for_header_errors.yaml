@@ -1,0 +1,18 @@
+diagnostics:
+- Cannot assign `Int` to `List<Any>` without a type guard, since the value isn't always a valid `List<Any>` at for_header_errors.rue:5:31
+- Cannot assign `(Int, Int)` to `List<Any>` without a type guard, since the value isn't always a valid `List<Any>` at for_header_errors.rue:6:22
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at for_header_errors.rue:9:38
+- Undeclared symbol `x` at for_header_errors.rue:12:32
+- Unused binding `rest` at for_header_errors.rue:15:20
+- Undeclared symbol `rest` at for_header_errors.rue:15:37
+- Duplicate symbol `x` found in scope at for_header_errors.rue:18:26
+- Duplicate symbol `x` found in scope at for_header_errors.rue:19:20
+- Duplicate symbol `rest` found in scope at for_header_errors.rue:20:35
+- Cannot assign `List<Int>` to `Int` without a type guard, since the value isn't always a valid `Int` at for_header_errors.rue:23:35
+- Cannot destructure type `List<Int>` into a pair at for_header_errors.rue:26:20
+- Unused binding `rest` at for_header_errors.rue:29:20
+- Undeclared symbol `rest` at for_header_errors.rue:29:49
+- Undeclared symbol `rest` at for_header_errors.rue:30:54
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_header_errors.rue:35:11
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_header_errors.rue:36:11
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_header_errors.rue:41:11

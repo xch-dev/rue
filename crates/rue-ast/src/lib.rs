@@ -146,6 +146,7 @@ ast_nodes!(
     FunctionCallExpr,
     IfExpr,
     ForExpr,
+    ForClause,
     ForFilter,
     ForFold,
     MatchExpr,
@@ -909,17 +910,10 @@ impl AstExpr {
 }
 
 impl AstForExpr {
-    /// The pattern each item of the list is bound to.
-    pub fn binding(&self) -> Option<AstBinding> {
-        self.syntax().children().find_map(AstBinding::cast)
-    }
-
-    /// The list whose items are gone through. The body is an expression too, since it's a block,
-    /// so the list is only there if there's another expression before it.
-    pub fn list(&self) -> Option<AstExpr> {
-        let mut exprs = self.syntax().children().filter_map(AstExpr::cast);
-        let first = exprs.next()?;
-        exprs.next().map(|_| first)
+    /// The lists that are gone through together, each with what its item is bound to. There's
+    /// more than one in `for a in xs, b in ys`.
+    pub fn clauses(&self) -> impl Iterator<Item = AstForClause> + use<> {
+        self.syntax().children().filter_map(AstForClause::cast)
     }
 
     pub fn filter(&self) -> Option<AstForFilter> {
@@ -933,6 +927,46 @@ impl AstForExpr {
     /// The body, which is the last block, since the list can be a block too.
     pub fn body(&self) -> Option<AstBlock> {
         self.syntax().children().filter_map(AstBlock::cast).last()
+    }
+}
+
+impl AstForClause {
+    /// The pattern each item of the list is bound to, which is before the `,` if there is one.
+    pub fn binding(&self) -> Option<AstBinding> {
+        self.syntax()
+            .children_with_tokens()
+            .take_while(|element| element.kind() != T![,])
+            .filter_map(SyntaxElement::into_node)
+            .find_map(AstBinding::cast)
+    }
+
+    /// The pattern that what's left of the list after the item is bound to, which is after the
+    /// `,` in `for x, rest in xs`.
+    pub fn rest(&self) -> Option<AstBinding> {
+        self.syntax()
+            .children_with_tokens()
+            .skip_while(|element| element.kind() != T![,])
+            .filter_map(SyntaxElement::into_node)
+            .find_map(AstBinding::cast)
+    }
+
+    /// The patterns of the item and of what's left of the list after it, if it's named.
+    pub fn bindings(&self) -> impl Iterator<Item = AstBinding> + use<> {
+        self.syntax().children().filter_map(AstBinding::cast)
+    }
+
+    /// The `in` before the list, which is an identifier anywhere else. The names before it are
+    /// inside of the bindings.
+    pub fn in_token(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    /// The list whose items are gone through.
+    pub fn list(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 

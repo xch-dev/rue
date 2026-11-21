@@ -1667,4 +1667,51 @@ fn main(line: Line) -> Point {
             end [Field] Point
         "#]],
     );
+
+/// The lists of a `for` are all outside of the scope of its items, and of what's left of each
+/// list, which are in scope in the filter and the body.
+#[test]
+fn test_complete_in_for_with_several_lists() {
+    let names = ["item", "others", "second", "items"];
+
+    let first =
+        "fn main(items: List<Int>) -> Int { for item, others in $0, second in items { item } }";
+    assert_eq!(offered(first, &names), "items sha256");
+
+    let last =
+        "fn main(items: List<Int>) -> Int { for item, others in items, second in $0 { item } }";
+    assert_eq!(offered(last, &names), "items sha256");
+
+    // Before the second list is written
+    let no_list = "fn main(items: List<Int>) -> Int { for item, others in items, second in $0 }";
+    assert_eq!(offered(no_list, &names), "items sha256");
+
+    let filter =
+        "fn main(items: List<Int>) -> Int { for item, others in items, second in items if $0 { item } }";
+    assert_eq!(offered(filter, &names), "item others second items sha256");
+
+    let body =
+        "fn main(items: List<Int>) -> Int { for item, others in items, second in items { $0 } }";
+    assert_eq!(offered(body, &names), "item others second items sha256");
+}
+
+/// The names in the header of a `for` are new, so nothing is offered for them.
+#[test]
+fn test_complete_nothing_for_for_binding_names() {
+    for source in [
+        "fn main(items: List<Int>) -> Int {\n    for i$0 in items { 1 }\n}\n",
+        "fn main(items: List<Int>) -> Int {\n    for $0\n}\n",
+        "fn main(items: List<Int>) -> Int {\n    for item, r$0 in items { 1 }\n}\n",
+        "fn main(items: List<Int>) -> Int {\n    for item, $0 in items { 1 }\n}\n",
+        "fn main(items: List<Int>) -> Int {\n    for item, $0\n}\n",
+        "fn main(items: List<Int>) -> Int {\n    for item in items, s$0 in items { 1 }\n}\n",
+        "fn main(items: List<Int>) -> Int {\n    for item in items, $0 in items { 1 }\n}\n",
+        "fn main(items: List<Int>) -> Int {\n    for item in items, $0\n}\n",
+        "fn main(items: List<Int>) -> Int {\n    for (first, s$0) in items { 1 }\n}\n",
+        "fn main(items: List<Int>) -> Int {\n    for item in items fold t$0 = 0 { 1 }\n}\n",
+        "fn main(items: List<Int>) -> Int {\n    for item in items fold $0\n}\n",
+    ] {
+        let project = TestProject::new(&[("main.rue", source)]);
+        assert_eq!(project.completions(), "<none>\n", "{source}");
+    }
 }
