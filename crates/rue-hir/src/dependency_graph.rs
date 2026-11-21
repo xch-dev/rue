@@ -10,17 +10,13 @@ use crate::{
     BindingSymbol, Block, ConstantSymbol, Database, FailureAnalysis, FieldAccess, FieldKind,
     FunctionKind, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
     analysis::{Callee, Effect, resolve_callee},
+    lower::MAX_REPEATED_STATIC_SIZE,
 };
 
 /// The most reads that are counted for a symbol. Each inline binding that reads another one more
 /// than once multiplies the reads of what's below it, so a chain of them would overflow otherwise.
 /// Nothing tells counts this high apart, and they're added up when captures are put in a tree.
 const MAX_READS: usize = 1 << 16;
-
-/// The most bytes of atoms that the value of a binding or constant can have for its reads not to
-/// be multiplied (see [`DependencyGraph::count_reads`]). This is the size that the lowerer
-/// repeats a static argument up to, rather than binding it.
-const MAX_REPEATED_STATIC_SIZE: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct DependencyGraph {
@@ -227,6 +223,11 @@ impl DependencyGraph {
                 return Some(repeat);
             }
 
+            // A binding with a let statement is defined there, whatever its value refers to
+            if self.lets.contains_key(&symbol) {
+                return None;
+            }
+
             let Symbol::Binding(binding) = db.symbol(symbol) else {
                 return None;
             };
@@ -276,6 +277,7 @@ impl DependencyGraph {
             sites,
             counts: HashMap::new(),
             counting: HashSet::new(),
+            static_sizes: HashMap::new(),
         };
 
         for symbol in symbols {
@@ -725,6 +727,9 @@ struct ReadCounter<'a> {
     /// doesn't count forever. That can't happen today, since a binding or constant can't refer
     /// to itself, and neither can an `inline fn`.
     counting: HashSet<SymbolId>,
+    /// The size of the value of each binding and constant that's small and static, or `None` if
+    /// it isn't, or while it's being found.
+    static_sizes: HashMap<SymbolId, Option<usize>>,
 }
 
 impl ReadCounter<'_> {
@@ -739,7 +744,7 @@ impl ReadCounter<'_> {
 
         // Each symbol is only counted once
         let sites = self.sites.remove(&symbol).unwrap_or_default();
-        let multiplied = !self.is_small_static(symbol);
+        let multiplied = self.static_size(symbol).is_none();
         let definition = self.graph.definition(self.db, symbol);
 
         // A chain of inline bindings is as deep as it's long
@@ -775,8 +780,7 @@ impl ReadCounter<'_> {
         let (repeat, outer) = self.graph.repeats[id];
 
         let times = match repeat {
-            Repeat::Value(value) => self.reads(value),
-            Repeat::Argument(parameter) => self.reads(parameter),
+            Repeat::Value(symbol) | Repeat::Argument(symbol) => self.reads(symbol),
             Repeat::Lambda(_) => 1,
         };
 
@@ -790,94 +794,83 @@ impl ReadCounter<'_> {
             .min(MAX_READS)
     }
 
-    /// Whether the symbol is a binding or constant whose value is static and small, so that
-    /// repeating it doesn't evaluate anything again, or take more bytes than binding it.
-    fn is_small_static(&self, symbol: SymbolId) -> bool {
-        let Some(value) = symbol_value(self.db, symbol) else {
-            return false;
+    /// The size of the atoms of the symbol's value, if it's a binding or constant whose value is
+    /// static and small (see [`MAX_REPEATED_STATIC_SIZE`]), so that repeating it doesn't evaluate
+    /// anything again, or take more bytes than binding it.
+    fn static_size(&mut self, symbol: SymbolId) -> Option<usize> {
+        if let Some(&size) = self.static_sizes.get(&symbol) {
+            return size;
+        }
+
+        let value = match self.db.symbol(symbol) {
+            Symbol::Binding(BindingSymbol { value, .. })
+            | Symbol::Constant(ConstantSymbol { value, .. }) => value.hir,
+            Symbol::Unresolved
+            | Symbol::Module(_)
+            | Symbol::Function(_)
+            | Symbol::Parameter(_)
+            | Symbol::Builtin(_) => return None,
         };
 
+        // A value isn't static if it's followed back into itself
+        self.static_sizes.insert(symbol, None);
+
         let mut budget = MAX_REPEATED_STATIC_SIZE;
-        is_small_static(self.db, value, &mut budget, &mut HashSet::new())
+
+        // A chain of constants is as deep as it's long
+        let size = rue_types::grow_stack(|| self.is_small_static(value, &mut budget))
+            .then(|| MAX_REPEATED_STATIC_SIZE - budget);
+
+        self.static_sizes.insert(symbol, size);
+        size
     }
-}
 
-/// The value of a binding or constant.
-fn symbol_value(db: &Database, symbol: SymbolId) -> Option<HirId> {
-    match db.symbol(symbol) {
-        Symbol::Binding(BindingSymbol { value, .. })
-        | Symbol::Constant(ConstantSymbol { value, .. }) => Some(value.hir),
-        Symbol::Unresolved
-        | Symbol::Module(_)
-        | Symbol::Function(_)
-        | Symbol::Parameter(_)
-        | Symbol::Builtin(_) => None,
-    }
-}
-
-/// Whether the value is static and its atoms take up no more than the budget, which is reduced by
-/// their size. This follows references to bindings and constants, which are kept in `path` so
-/// that a value is never followed back into itself. It's what the lowerer checks for an argument
-/// (see `Lowerer::is_small_static`), without the values that depend on what's being inlined.
-fn is_small_static(
-    db: &Database,
-    hir: HirId,
-    budget: &mut usize,
-    path: &mut HashSet<SymbolId>,
-) -> bool {
-    let mut take = |size: usize| match budget.checked_sub(size) {
-        Some(rest) => {
-            *budget = rest;
-            true
-        }
-        None => false,
-    };
-
-    match db.hir(hir) {
-        Hir::Nil | Hir::Bool(_) => take(1),
-        Hir::Int(value) => take(value.bits().div_ceil(8) as usize + 1),
-        Hir::Bytes(bytes) => take(bytes.len() + 1),
-        Hir::String(string) => take(string.len() + 1),
-        Hir::Pair(first, rest) => {
-            is_small_static(db, *first, budget, path) && is_small_static(db, *rest, budget, path)
-        }
-        Hir::List(list) => list
-            .items
-            .iter()
-            .all(|&item| is_small_static(db, item, budget, path)),
-        Hir::Struct(initializer) => initializer
-            .fields
-            .iter()
-            .all(|field| is_small_static(db, field.value, budget, path)),
-        Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => is_small_static(db, *hir, budget, path),
-        // A field of a static value is folded, and is no larger than the value
-        Hir::FieldAccess(FieldAccess {
-            value,
-            kind: FieldKind::Path(_),
-            ..
-        }) => is_small_static(db, *value, budget, path),
-        Hir::Const(expr) => expr
-            .result
-            .is_some_and(|result| is_small_static(db, result, budget, path)),
-        Hir::Block(Block {
-            statements,
-            body: Some(body),
-        }) if statements.is_empty() => is_small_static(db, *body, budget, path),
-        Hir::Reference(symbol) => {
-            let Some(value) = symbol_value(db, *symbol) else {
-                return false;
-            };
-
-            if !path.insert(*symbol) {
-                return false;
+    /// Whether the value is static and its atoms take up no more than the budget, which is
+    /// reduced by their size. This follows references to bindings and constants. It's what the
+    /// lowerer checks for an argument (see `Lowerer::is_small_static`), without the values that
+    /// depend on what's being inlined.
+    fn is_small_static(&mut self, hir: HirId, budget: &mut usize) -> bool {
+        let mut take = |size: usize| match budget.checked_sub(size) {
+            Some(rest) => {
+                *budget = rest;
+                true
             }
+            None => false,
+        };
 
-            // A chain of constants is as deep as it's long
-            let small = rue_types::grow_stack(|| is_small_static(db, value, budget, path));
-            path.remove(symbol);
-            small
+        match self.db.hir(hir) {
+            Hir::Nil | Hir::Bool(_) => take(1),
+            Hir::Int(value) => take(value.bits().div_ceil(8) as usize + 1),
+            Hir::Bytes(bytes) => take(bytes.len() + 1),
+            Hir::String(string) => take(string.len() + 1),
+            Hir::Pair(first, rest) => {
+                self.is_small_static(*first, budget) && self.is_small_static(*rest, budget)
+            }
+            Hir::List(list) => list
+                .items
+                .iter()
+                .all(|&item| self.is_small_static(item, budget)),
+            Hir::Struct(initializer) => initializer
+                .fields
+                .iter()
+                .all(|field| self.is_small_static(field.value, budget)),
+            Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_small_static(*hir, budget),
+            // A field of a static value is folded, and is no larger than the value
+            Hir::FieldAccess(FieldAccess {
+                value,
+                kind: FieldKind::Path(_),
+                ..
+            }) => self.is_small_static(*value, budget),
+            Hir::Const(expr) => expr
+                .result
+                .is_some_and(|result| self.is_small_static(result, budget)),
+            Hir::Block(Block {
+                statements,
+                body: Some(body),
+            }) if statements.is_empty() => self.is_small_static(*body, budget),
+            Hir::Reference(symbol) => self.static_size(*symbol).is_some_and(take),
+            _ => false,
         }
-        _ => false,
     }
 }
 
@@ -1110,15 +1103,14 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     // Its value or body is lowered as often as the place it's defined in
     graph.repeat = graph.definition(db, symbol);
 
-    // The value of an inline binding or constant is lowered where it's referenced
-    if let Some(value) = db.symbol(symbol).inline_value() {
-        visit_repeated(db, graph, Repeat::Value(symbol), value);
-        graph.current = None;
-        graph.repeat = None;
-        return;
-    }
-
     match db.symbol(symbol) {
+        // The value of an inline binding or constant is lowered where it's referenced
+        Symbol::Constant(ConstantSymbol { value, inline, .. })
+        | Symbol::Binding(BindingSymbol { value, inline, .. })
+            if *inline =>
+        {
+            visit_repeated(db, graph, Repeat::Value(symbol), value.hir);
+        }
         Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {}
         Symbol::Function(function) => {
             for &parameter in &function.parameters {

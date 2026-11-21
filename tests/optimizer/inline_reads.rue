@@ -40,6 +40,18 @@ inline fn double(a: Int) -> Int {
     a + a
 }
 
+inline fn twice(a: Bytes) -> Bytes {
+    a + a
+}
+
+inline fn both(a: Bool) -> Bool {
+    a && a
+}
+
+inline fn text_twice(a: String) -> String {
+    a + a
+}
+
 inline fn rest_cube(a: Int, ...rest: Int) -> Int {
     a + rest * rest * rest
 }
@@ -61,6 +73,13 @@ struct Config {
 }
 
 const FEE: Int = 100;
+const CONFIG_FEE: Int = CONFIG.fee;
+const LIMITS: (Int, Int) = (3, 4);
+const SHORT: Bytes = 0x010203;
+const LONG: Bytes = 0x0102030405060708090a0b0c;
+const TEXT: String = "abc";
+const FLAG: Bool = true;
+const CAST: Int = 5 as Int;
 const CONFIG: Config = Config { fee: 100, _limit: 7 };
 const WHOLE: (Int, Int) = pair(7);
 inline const PART: Int = WHOLE.first;
@@ -152,10 +171,11 @@ test fn inline_argument_part(r: Int) -> Int {
     cube(a + 1)
 }
 
-// An argument that's never lowered doesn't make its binding any less referenced
+// An argument that's never lowered doesn't make its binding any less referenced, so it isn't
+// taken for one that's evaluated for its effect
 test fn unused_inline_argument(r: Int) -> Int {
-    let whole = pair(r);
-    ignore(whole.first, r)
+    let checked = check(r);
+    ignore(checked, r)
 }
 
 // The arguments after the fixed parameters are all passed for the last one
@@ -178,6 +198,52 @@ test fn block_in_argument(r: Int) -> Int {
         let a = whole.first + 1;
         a * a
     })
+}
+
+// A part is defined where the let statement of what it's destructured from is, so it's read as
+// often in each copy of the block
+test fn part_in_argument(r: Int) -> Int {
+    cube({
+        let (a, _) = pair(r);
+        a + 1
+    })
+}
+
+test fn part_in_lambda_in_argument(r: Int) -> Int {
+    cube((
+        fn() => {
+            let (a, _) = pair(r);
+            a + 1
+        }
+    )())
+}
+
+// A binding with a let statement is defined there, although its value is an inline binding whose
+// own value has a let statement, so what it reads is only read once
+test fn binding_of_inline_block(r: Int) -> Int {
+    inline let inner = {
+        let whole = pair(r);
+        whole
+    };
+    let other = pair(r + 1);
+    let outer = {
+        assert other.first > 0;
+        inner
+    };
+    inner.rest + inner.first + outer.first
+}
+
+test fn binding_of_inline_block_read_first(r: Int) -> Int {
+    inline let inner = {
+        let whole = pair(r);
+        whole
+    };
+    let other = pair(r + 1);
+    let outer = {
+        assert other.first > 0;
+        inner
+    };
+    outer.first + inner.rest + inner.first
 }
 
 // The value of a guard that's only evaluated for its effect is lowered with the guard
@@ -243,6 +309,41 @@ test fn static_binding_argument(r: Int) -> Int {
 test fn static_constant_part(r: Int) -> Int {
     let { fee } = CONFIG;
     fee * fee + r
+}
+
+test fn static_field_constant(r: Int) -> Int {
+    double(CONFIG_FEE) + r
+}
+
+test fn static_field_binding(r: Int) -> Int {
+    let fee = CONFIG.fee;
+    cube(fee) + r
+}
+
+test fn static_pair_part(r: Int) -> Int {
+    let (a, _) = LIMITS;
+    a * a + r
+}
+
+test fn static_bytes(r: Bytes) -> Bytes {
+    twice(SHORT) + r
+}
+
+test fn static_string(r: String) -> String {
+    text_twice(TEXT) + r
+}
+
+test fn static_bool(r: Bool) -> Bool {
+    both(FLAG) && r
+}
+
+test fn static_cast(r: Int) -> Int {
+    double(CAST) + r
+}
+
+// A static value that's too large to repeat is read as often as it's lowered, and bound
+test fn large_static_bytes(r: Bytes) -> Bytes {
+    twice(LONG) + r
 }
 
 // More parts than are measured in one run of let statements are still read as paths

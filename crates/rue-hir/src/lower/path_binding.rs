@@ -104,10 +104,9 @@ impl Lowerer<'_, '_, '_> {
                     continue;
                 };
 
-                if binding.inline
-                    || self.graph.references(symbol) <= 1
-                    || !self.is_path(binding.value.hir)
-                {
+                let references = self.graph.references(symbol);
+
+                if binding.inline || references <= 1 || !self.is_path(binding.value.hir) {
                     continue;
                 }
 
@@ -115,7 +114,6 @@ impl Lowerer<'_, '_, '_> {
                 let key = (symbol, size);
 
                 if !measured_depth {
-                    let references = self.graph.references(symbol);
                     decided.push((symbol, is_small_path(references, size)));
                     continue;
                 }
@@ -125,7 +123,6 @@ impl Lowerer<'_, '_, '_> {
                     None if undecided.len() < MAX_PATH_CANDIDATES => undecided.push(key),
                     // The rest are decided by the size of the path alone
                     None => {
-                        let references = self.graph.references(symbol);
                         let is_path = is_small_path(references, size);
                         self.path_choices.insert(key, is_path);
                         decided.push((symbol, is_path));

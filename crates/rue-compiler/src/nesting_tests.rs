@@ -343,13 +343,16 @@ fn long_chains_of_constants_are_followed() {
 
 /// The reads of a constant are counted through the whole chain of inline constants that read it.
 /// The first constant has the lowest symbol, so it's counted first, before anything it's read
-/// through.
+/// through. Only the graph is built, so the chain can be long enough to overflow a 2 MiB stack if
+/// the count recursed without growing it, which it didn't at a quarter of this length.
 #[test]
 fn long_chains_of_inline_constants_are_counted() {
+    const LINKS: usize = 20_000;
+
     on_stack(2, || {
         let source = format!(
-            "fn main(a: Int) -> Int {{ C{LONG_CHAIN} + a }}\nfn one() -> Int {{ 1 }}\nconst C0: Int = one();\n{}",
-            links(LONG_CHAIN, |i| format!(
+            "fn main(a: Int) -> Int {{ C{LINKS} + a }}\nfn one() -> Int {{ 1 }}\nconst C0: Int = one();\n{}",
+            links(LINKS, |i| format!(
                 "inline const C{}: Int = C{i} + 1;\n",
                 i + 1
             ))
@@ -365,6 +368,32 @@ fn long_chains_of_inline_constants_are_counted() {
 
         let graph = DependencyGraph::build(&ctx, main, *ctx.options());
         assert_eq!(graph.references(first), 1);
+    });
+}
+
+/// Whether a constant is static is found through the whole chain of constants that are each the
+/// one before, once for the chain rather than once for each link.
+#[test]
+fn long_chains_of_static_constants_are_counted() {
+    const LINKS: usize = 20_000;
+
+    on_stack(2, || {
+        let source = format!(
+            "inline fn double(a: Int) -> Int {{ a + a }}\nfn main(a: Int) -> Int {{ double(C{LINKS}) + a }}\nconst C0: Int = 1;\n{}",
+            links(LINKS, |i| format!("const C{}: Int = C{i};\n", i + 1))
+        );
+
+        let (mut ctx, tree, kind) = compile_tree(&source);
+        let diagnostics = ctx.take_diagnostics();
+        assert!(errors(&diagnostics).is_empty(), "{diagnostics:?}");
+
+        let scope = ctx.module(tree.find(&kind).unwrap().module).scope;
+        let main = ctx.scope(scope).symbol("main").unwrap();
+        let last = ctx.scope(scope).symbol(&format!("C{LINKS}")).unwrap();
+
+        // It's lowered twice, but its value is small and static
+        let graph = DependencyGraph::build(&ctx, main, *ctx.options());
+        assert_eq!(graph.references(last), 1);
     });
 }
 

@@ -169,8 +169,9 @@ pub const MAX_LOWERING_DEPTH: usize = 512;
 
 /// The most bytes of atoms that a static argument can have and still be substituted for each
 /// reference to its parameter, rather than bound (see [`Lowerer::is_trivial_argument`]). Binding a
-/// value costs about this much more than quoting it again.
-const MAX_REPEATED_STATIC_SIZE: usize = 8;
+/// value costs about this much more than quoting it again. The reads of a binding or constant
+/// whose value is no larger aren't multiplied either (see `DependencyGraph::count_reads`).
+pub(crate) const MAX_REPEATED_STATIC_SIZE: usize = 8;
 
 impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     pub fn new(
