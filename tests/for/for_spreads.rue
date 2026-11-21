@@ -1,0 +1,354 @@
+// A `for` that's spread in a list before other items builds its list in front of them, rather
+// than building it and copying it there. Each list goes through `runtime`, which the compiler
+// can't fold, so the loops are run.
+
+fn runtime<T>(value: T) -> T {
+    assert value is (Any, Any) || value is nil;
+    value
+}
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+fn small(value: Int) -> Int {
+    assert value < 100;
+    value
+}
+
+// The items after the `for` are the end of its list
+test fn before_the_last_item() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    [...for x in xs { x * 2 }, 10]
+}
+
+test fn of_an_empty_list() -> List<Int> {
+    let xs: List<Int> = runtime(nil);
+    [...for x in xs { x * 2 }, 10]
+}
+
+test fn between_items() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    [0, ...for x in xs { x * 2 }, 10, 11]
+}
+
+test fn with_a_filter() -> List<Int> {
+    let xs = runtime([1, 5, 2, 7]);
+    [0, ...for x in xs if x > 2 { x }, 10]
+}
+
+test fn with_a_pattern() -> List<Int> {
+    let pairs = runtime([(1, 2), (3, 4)]);
+    [...for (a, b) in pairs { a + b }, 10]
+}
+
+#[allow(unnecessary_parens)]
+test fn in_parentheses() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    [...(for x in xs { x * 2 }), 10]
+}
+
+// The items of a list of another type are in the list's type
+test fn with_items_of_another_type() -> List<Int | String> {
+    let xs = runtime([1, 2, 3]);
+    [...for x in xs { x * 2 }, "end"]
+}
+
+// A list that's spread after the `for` is the end of its list, which isn't copied
+test fn before_a_spread_list() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let ys = runtime([7, 8]);
+    [...for x in xs { x * 2 }, ...ys]
+}
+
+// A `for` after another one is the end of the first one's list
+test fn before_another_for() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let ys = runtime([7, 8]);
+    [...for x in xs { x * 2 }, ...for y in ys { y + 1 }, 10]
+}
+
+test fn after_a_spread_list() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let ys = runtime([7, 8]);
+    [...ys, 0, ...for x in xs { x * 2 }, 10]
+}
+
+test fn between_spread_lists() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let ys = runtime([7, 8]);
+    [...ys, ...for x in xs if x != 2 { x * 2 }, ...for y in ys { y }, ...ys, 10, ...xs]
+}
+
+// A `for` that a block or an `if` ends with is still copied in front of the rest
+test fn in_a_block() -> List<Int> {
+    let xs: List<Int> = runtime([1, 2, 3]);
+    [
+        ...{ for x in xs { x * 2 } },
+        ...if xs is nil {
+            for x in xs { x }
+        } else {
+            for x in xs { x + 1 }
+        },
+        10,
+    ]
+}
+
+// A fold that's spread is its result, which is copied too
+test fn fold_before_the_last_item() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    [...for x in xs fold rest: List<Int> = nil { [x * 2, ...rest] }, 10]
+}
+
+// A failure in the body or in an item after the `for` fails the list
+test fn body_fails() -> List<Int> {
+    let xs = runtime([1, 0, 3]);
+    [...for x in xs { positive(x) }, 10]
+}
+
+test fn item_after_fails() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    [...for x in xs { positive(x) }, small(xs.first + 100)]
+}
+
+test fn item_after_an_empty_list_fails() -> List<Int> {
+    let xs: List<Int> = runtime(nil);
+    [...for x in xs { positive(x) }, small(100)]
+}
+
+test fn spread_list_after_fails() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    [...for x in xs { positive(x) }, ...runtime([small(xs.first + 100)])]
+}
+
+test fn second_for_fails() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let ys = runtime([200]);
+    [...for x in xs { positive(x) }, ...for y in ys { small(y) }, 10]
+}
+
+// Where more than one of them fails, the one that's raised is the one that's evaluated first. A
+// list is built from its end, so that's the items after the `for` before its body, and the body
+// before the items in front of the `for`, as when the `for` is copied in front of the rest
+test fn item_after_fails_before_the_body() -> List<Int> {
+    let xs = runtime([1, 0, 3]);
+    [...for x in xs { positive(x) }, small(xs.first + 100)]
+}
+
+test fn body_fails_before_the_item_before() -> List<Int> {
+    let xs = runtime([1, 0, 3]);
+    [small(xs.first + 100), ...for x in xs { positive(x) }, 10]
+}
+
+test fn second_for_fails_before_the_first() -> List<Int> {
+    let xs = runtime([1, 0, 3]);
+    let ys = runtime([200]);
+    [...for x in xs { positive(x) }, ...for y in ys { small(y) }, 10]
+}
+
+// The items after the `for` are evaluated where its list ends, which is after the list it goes
+// through and the filter are evaluated, so their failure is the one that's raised. It's the
+// only difference from copying the `for` in front of the rest, which evaluates the rest first
+fn checked(xs: List<Int>, first: Int) -> List<Int> {
+    assert first > 0;
+    xs
+}
+
+test fn filter_fails_before_the_item_after() -> List<Int> {
+    let xs = runtime([1, 0, 3]);
+    [...for x in xs if positive(x) > 0 { x }, small(xs.first + 100)]
+}
+
+test fn list_fails_before_the_item_after() -> List<Int> {
+    let xs = runtime([0, 1]);
+    [...for x in checked(xs, xs.first) { x }, small(xs.first + 100)]
+}
+
+// Copied in front of the rest, as a `for` in a block is, the rest fails first
+test fn item_after_fails_before_a_copied_filter() -> List<Int> {
+    let xs = runtime([1, 0, 3]);
+    [...{ for x in xs if positive(x) > 0 { x } }, small(xs.first + 100)]
+}
+
+// The items after the `for` are only evaluated once, whatever they refer to: a binding that's
+// used once or more than once, a parameter, a constant, and a call
+const LIMIT: Int = 50;
+
+fn weight(x: Int, k: Int) -> Int {
+    if x > k {
+        weight(x - k, k) + 1
+    } else {
+        0
+    }
+}
+
+fn with_values(xs: List<Int>, k: Int) -> List<Int> {
+    let once = weight(k + 20, 3);
+    let twice = weight(k + 30, 4);
+    [twice, ...for x in xs { x * k + twice }, once, k, LIMIT, weight(LIMIT, k)]
+}
+
+test fn values_from_outside() -> List<Int> {
+    with_values(runtime([1, 2, 3]), 2)
+}
+
+// A binding in an item after the `for`, a lambda, and another `for` are evaluated at the end too
+test fn expressions_after() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let add = fn(a: Int) => a + xs.first;
+    [
+        ...for x in xs { x * 2 },
+        {
+            let y = positive(xs.first);
+            y + y
+        },
+        add(10),
+        for x in xs fold sum = 0 { sum + x },
+        ...for x in xs { add(x) },
+    ]
+}
+
+// An `inline` binding that's the rest is evaluated at the end of the list, and the same list in
+// an `inline fn` is built for each of its calls with that call's arguments
+inline fn doubled_before(xs: List<Int>, last: Int) -> List<Int> {
+    [...for x in xs { x * 2 }, last, last + 1]
+}
+
+test fn in_an_inline_function() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    inline let end = xs.first + 40;
+    let first = doubled_before(xs, 10);
+    let second = doubled_before(runtime([4]), xs.first);
+    [...for x in first { x }, end, ...second]
+}
+
+// A generic function, and one that calls itself with the list it builds
+fn before<T>(xs: List<T>, last: T) -> List<T> {
+    [...for x in xs { x }, last]
+}
+
+fn grow(xs: List<Int>, depth: Int) -> List<Int> {
+    if depth == 0 {
+        return xs;
+    }
+
+    grow([depth, ...for x in xs { x + depth }, depth], depth - 1)
+}
+
+test fn generic_and_recursive() -> Any {
+    [before(runtime([1, 2]), 3), before(runtime(["a"]), "b"), grow(runtime([0]), 3)]
+}
+
+// The default value of a struct's field, which each initializer that leaves it out has
+const BASE: List<Int> = [1, 2];
+
+struct Padded {
+    first: Int,
+    padded: List<Int> = [0, ...for v in runtime(BASE) { v + 1 }, LIMIT],
+}
+
+test fn in_a_default_value() -> List<Int> {
+    let a = Padded { first: 1 };
+    let b = Padded { first: 2 };
+    [a.first, ...a.padded, b.first, ...b.padded]
+}
+
+// In the body of a loop, the items after the inner `for` can be the outer item, and in a fold,
+// its result for the rest of the list: this puts the items of every list in one
+fn flatten(lists: List<List<Int>>, k: Int) -> List<Int> {
+    for xs in lists fold rest: List<Int> = nil { [...for x in xs { x + k }, ...rest] }
+}
+
+fn with_lengths(lists: List<List<Int>>) -> List<List<Int>> {
+    for xs in lists { [...for x in xs { x }, for _x in xs fold count = 0 { count + 1 }] }
+}
+
+test fn in_a_loop() -> (List<Int>, List<List<Int>>) {
+    let lists = runtime([[1, 2, 3], [], [4, 5]]);
+    (flatten(lists, 10), with_lengths(lists))
+}
+
+test fn in_a_loop_fails() -> List<Int> {
+    let lists = runtime([[1, 2, 3], [], [4, 100]]);
+    for xs in lists fold rest: List<Int> = nil { [...for x in xs { small(x) }, ...rest] }
+}
+
+// Three loops deep, where each one ends with the result of the one around it
+fn flatten_groups(groups: List<List<List<Int>>>, k: Int) -> List<Int> {
+    for lists in groups fold outer: List<Int> = nil {
+        for xs in lists fold rest: List<Int> = outer { [k, ...for x in xs { x + k }, ...rest] }
+    }
+}
+
+test fn three_loops_deep() -> List<Int> {
+    flatten_groups(runtime([[[1, 2], [3]], [], [[4], [], [5, 6]]]), 10)
+}
+
+// A `for` in the body of another one, each spread before an item
+test fn in_the_body_of_a_spread_for() -> List<Int> {
+    let lists = runtime([[1, 2], [3]]);
+    [
+        ...for xs in lists {
+            let doubled = [...for x in xs { x * 2 }, 0];
+            for x in doubled fold sum = 0 { sum + x }
+        },
+        100,
+    ]
+}
+
+// A list with a `for` in it that's evaluated more than once builds it each time, with the items
+// after it evaluated once each time
+test fn evaluated_more_than_once() -> List<List<Int>> {
+    let xs = runtime([1, 2]);
+    let make = fn(last: Int) => [...for x in xs { x + last }, positive(last)];
+    [make(1), make(2), ...for y in xs { make(y * 10) }]
+}
+
+// The settlement payments puzzle's shape: each payment's coins in front of the rest
+struct Payment {
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+struct Notarized {
+    nonce: Bytes32,
+    payments: List<Payment>,
+}
+
+fn settle(notarized_payments: List<Notarized>) -> List<Condition> {
+    for notarized in notarized_payments fold rest: List<Condition> = nil {
+        [
+            CreatePuzzleAnnouncement { message: tree_hash(notarized) },
+            ...for payment in notarized.payments {
+                assert payment.amount > 0;
+                CreateCoin { puzzle_hash: payment.puzzle_hash, amount: payment.amount, memos: nil }
+            },
+            ...rest,
+        ]
+    }
+}
+
+test fn settles_payments() -> List<Condition> {
+    settle(runtime([
+        Notarized {
+            nonce: sha256("first"),
+            payments: [
+                Payment { puzzle_hash: sha256("alice"), amount: 100 },
+                Payment { puzzle_hash: sha256("bob"), amount: 50 },
+            ],
+        },
+        Notarized { nonce: sha256("second"), payments: nil },
+        Notarized {
+            nonce: sha256("third"),
+            payments: [Payment { puzzle_hash: sha256("carol"), amount: 1 }],
+        },
+    ]))
+}
+
+test fn settles_payments_fails() -> List<Condition> {
+    settle(runtime([Notarized {
+        nonce: sha256("first"),
+        payments: [Payment { puzzle_hash: sha256("alice"), amount: 0 }],
+    }]))
+}

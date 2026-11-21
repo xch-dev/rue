@@ -35,12 +35,12 @@ tests:
   byte_cost: 1380000
   total_cost: 1385123
 - name: patterns
-  program: (a (q 2 14 (c 14 (c (a 10 (c 10 (q (q 2) (i 4)))) (a 4 (c 4 (q (q . 2) (i . 4))))))) (c (c (q 2 (i 3 (q 4 (* 9 13) (a 2 (c 2 7))) ()) 1) (c (q 2 (i 3 (q 4 (+ 9 21) (a 2 (c 2 7))) ()) 1) (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1))) ()))
-  debug_program: (a (q 2 (q 2 29 (c 29 (c (a 21 (c 21 4)) (a 25 (c 25 6))))) (c (c (a 8 (c (c (q . 1) (c (q . 2) ())) (c (c (q . 3) (c (q . 4) ())) ()))) (a 8 (c (c (q . 1) (q . 2)) (c (c (q . 3) (q . 4)) ())))) 1)) (c (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (q 2 (i 3 (q 4 (* (f (f 3)) (r (f 3))) (a 2 (c 2 (r 3)))) ()) 1)) (c (q 2 (i 3 (q 4 (+ (f (f 3)) (f (r (f 3)))) (a 2 (c 2 (r 3)))) ()) 1) (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1))) ()))
+  program: (a (q 2 (q 2 9 (c (c 9 (c 13 2)) (q (q 2) (i 4)))) (c (q (q . 2) (i . 4)) 1)) (c (c (q 2 (i 3 (q 4 (+ 9 21) (a 4 (c 2 7))) (q 2 10 6)) 1) (q 2 (i 3 (q 4 (* 9 13) (a 2 (c 2 7))) ()) 1)) ()))
+  debug_program: (a (q 2 (q 2 21 (c (c 21 (c 29 6)) 4)) (c (c (a 4 (c (c (q . 1) (c (q . 2) ())) (c (c (q . 3) (c (q . 4) ())) ()))) (a 4 (c (c (q . 1) (q . 2)) (c (c (q . 3) (q . 4)) ())))) 1)) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (c (q 2 (i 3 (q 4 (+ (f (f 3)) (f (r (f 3)))) (a 4 (c (c 4 (c 10 14)) (r 3)))) (q 2 10 (c 10 14))) 1) (q 2 (i 3 (q 4 (* (f (f 3)) (r (f 3))) (a 2 (c 2 (r 3)))) ()) 1))) ()))
   output: (3 7 2 12)
-  runtime_cost: 10162
-  byte_cost: 2652000
-  total_cost: 2662162
+  runtime_cost: 8200
+  byte_cost: 2100000
+  total_cost: 2108200
 - name: fold
   program: (a (q 2 2 (c 2 (q 1 2 3 4))) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) 5) ()) 1) ()))
   debug_program: (a (q 2 4 (c 4 (a 6 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))))) (c (c (q 2 (i 3 (q 2 (q 16 2 (f 7)) (c (a 2 (c 2 (r 3))) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1)) ()))

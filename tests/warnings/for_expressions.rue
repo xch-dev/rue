@@ -143,6 +143,20 @@ fn main(xs: List<Int>, flag: Bool, x: Int) -> List<Int> {
         }
     };
 
+    // The items after a `for` that's spread before them are where its list ends, and the lints
+    // see them there as they do anywhere else
+    let l = [
+        ...for y in xs { y },
+        +x,
+        (x),
+        x == x,
+        ...if flag {
+            xs
+        } else {
+            xs
+        },
+    ];
+
     [
         ...a,
         ...b,
@@ -163,5 +177,12 @@ fn main(xs: List<Int>, flag: Bool, x: Int) -> List<Int> {
         },
         ...for list in j { length(list) },
         ...k,
+        ...for y in l {
+            if y is Bool {
+                0
+            } else {
+                y
+            }
+        },
     ]
 }

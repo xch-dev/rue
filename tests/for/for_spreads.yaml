@@ -1,0 +1,240 @@
+tests:
+- name: before_the_last_item
+  program: (a (q 2 2 (c 2 (q 1 2 3))) (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 2 (c 2 7))) (q 1 10)) 1) ()))
+  debug_program: (a (q 2 (q 2 9 (c 9 2)) (c (a 6 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 2 (c 2 (r 3)))) (q 4 (q . 10) ())) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1)) ()))
+  output: (2 4 6 10)
+  runtime_cost: 5771
+  byte_cost: 1020000
+  total_cost: 1025771
+- name: of_an_empty_list
+  program: (a (q 2 2 (c 2 ())) (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 2 (c 2 7))) (q 1 10)) 1) ()))
+  debug_program: (a (q 2 (q 2 9 (c 9 2)) (c (a 6 ()) 1)) (c (c (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 2 (c 2 (r 3)))) (q 4 (q . 10) ())) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1)) ()))
+  output: (10)
+  runtime_cost: 785
+  byte_cost: 924000
+  total_cost: 924785
+- name: between_items
+  program: (a (q 4 () (a 2 (c 2 (q 1 2 3)))) (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 2 (c 2 7))) (q 1 10 11)) 1) ()))
+  debug_program: (a (q 2 (q 4 () (a 9 (c 9 2))) (c (a 6 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 2 (c 2 (r 3)))) (q 4 (q . 10) (c (q . 11) ()))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1)) ()))
+  output: (() 2 4 6 10 11)
+  runtime_cost: 5866
+  byte_cost: 1116000
+  total_cost: 1121866
+- name: with_a_filter
+  program: (a (q 4 () (a 2 (c 2 (q 1 5 2 7)))) (c (q 2 (i 3 (q 2 (i (> 5 (q . 2)) (q 4 5 (a 2 (c 2 7))) (q 2 2 (c 2 7))) 1) (q 1 10)) 1) ()))
+  debug_program: (a (q 2 (q 4 () (a 9 (c 9 2))) (c (a 6 (c (q . 1) (c (q . 5) (c (q . 2) (c (q . 7) ()))))) 1)) (c (c (q 2 (i 3 (q 2 (i (> (f 3) (q . 2)) (q 4 (f 3) (a 2 (c 2 (r 3)))) (q 2 2 (c 2 (r 3)))) 1) (q 4 (q . 10) ())) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1)) ()))
+  output: (() 5 7 10)
+  runtime_cost: 6386
+  byte_cost: 1476000
+  total_cost: 1482386
+- name: with_a_pattern
+  program: (a (q 2 2 (c 2 (q (q . 2) (i . 4)))) (c (q 2 (i 3 (q 4 (+ 9 13) (a 2 (c 2 7))) (q 1 10)) 1) ()))
+  debug_program: (a (q 2 (q 2 9 (c 9 2)) (c (a 6 (c (c (q . 1) (q . 2)) (c (c (q . 3) (q . 4)) ()))) 1)) (c (c (q 2 (i 3 (q 4 (+ (f (f 3)) (r (f 3))) (a 2 (c 2 (r 3)))) (q 4 (q . 10) ())) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1)) ()))
+  output: (3 7 10)
+  runtime_cost: 3693
+  byte_cost: 1020000
+  total_cost: 1023693
+- name: in_parentheses
+  program: (a (q 2 2 (c 2 (q 1 2 3))) (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 2 (c 2 7))) (q 1 10)) 1) ()))
+  debug_program: (a (q 2 (q 2 9 (c 9 2)) (c (a 6 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 2 (c 2 (r 3)))) (q 4 (q . 10) ())) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1)) ()))
+  output: (2 4 6 10)
+  runtime_cost: 5771
+  byte_cost: 1020000
+  total_cost: 1025771
+- name: with_items_of_another_type
+  program: (a (q 2 2 (c 2 (q 1 2 3))) (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 2 (c 2 7))) (q 1 "end")) 1) ()))
+  debug_program: (a (q 2 (q 2 9 (c 9 2)) (c (a 6 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 2 (c 2 (r 3)))) (q 4 (q . "end") ())) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1)) ()))
+  output: (2 4 6 "end")
+  runtime_cost: 5771
+  byte_cost: 1056000
+  total_cost: 1061771
+- name: before_a_spread_list
+  program: (a (q 2 (q 2 5 (c (c 5 2) (q 1 2 3))) (c (q 7 8) 1)) (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 4 (c 2 7))) (q . 6)) 1) ()))
+  debug_program: (a (q 2 (q 2 13 (c (c 13 6) 4)) (c (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 4 (c (q . 7) (c (q . 8) ())))) 1)) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 4 (c (c 4 6) (r 3)))) (q . 6)) 1)) ()))
+  output: (2 4 6 7 8)
+  runtime_cost: 6148
+  byte_cost: 1284000
+  total_cost: 1290148
+- name: before_another_for
+  program: (a (q 2 (q 2 9 (c (c 9 (c 13 2)) (q 1 2 3))) (c (q 7 8) 1)) (c (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 4 (c 2 7))) (q 2 10 6)) 1) (q 2 (i 3 (q 4 (+ 5 (q . 1)) (a 2 (c 2 7))) (q 1 10)) 1)) ()))
+  debug_program: (a (q 2 (q 2 21 (c (c 21 (c 29 6)) 4)) (c (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 4 (c (q . 7) (c (q . 8) ())))) 1)) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (c (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 4 (c (c 4 (c 10 14)) (r 3)))) (q 2 10 (c 10 14))) 1) (q 2 (i 3 (q 4 (+ (f 3) (q . 1)) (a 2 (c 2 (r 3)))) (q 4 (q . 10) ())) 1))) ()))
+  output: (2 4 6 8 9 10)
+  runtime_cost: 9610
+  byte_cost: 2100000
+  total_cost: 2109610
+- name: after_a_spread_list
+  program: (a (q 2 6 (c 6 (c (q 7 8) (c () (a 4 (c 4 (q 1 2 3))))))) (c (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 2 (c 2 7))) (q 1 10)) 1) (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1)) ()))
+  debug_program: (a (q 2 (q 2 29 (c 29 (c 6 (c () (a 21 (c 21 4)))))) (c (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 4 (c (q . 7) (c (q . 8) ())))) 1)) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (c (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 2 (c 2 (r 3)))) (q 4 (q . 10) ())) 1) (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1))) ()))
+  output: (7 8 () 2 4 6 10)
+  runtime_cost: 8105
+  byte_cost: 1980000
+  total_cost: 1988105
+- name: between_spread_lists
+  program: (a (q 2 (q 2 21 (c 21 (c 4 (a 9 (c (c (c 9 4) (c 21 (c 29 6))) 6))))) (c (q (l 8) 1 2 3) 1)) (c (c (q 2 (i 3 (q 2 (i (= 5 (q . 2)) (q 2 8 (c 2 7)) (q 4 (* 5 (q . 2)) (a 8 (c 2 7)))) 1) (q 2 22 (c (c (c 10 12) 14) 12))) 1) (c (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1) (q 2 (i 3 (q 4 5 (a 10 (c 2 7))) (q 2 8 (c 8 (c 12 (c (q . 10) 14))))) 1))) ()))
+  debug_program: (a (q 2 (q 2 25 (c 25 (c 4 (a 17 (c (c (c 17 4) (c 25 (c 29 6))) 6))))) (c (c (a 10 (c (q . 7) (c (q . 8) ()))) (a 10 (c (q . 1) (c (q . 2) (c (q . 3) ()))))) 1)) (c (c (c (q 2 (i 3 (q 2 (i (not (= (f 3) (q . 2))) (q 4 (* (f 3) (q . 2)) (a 8 (c (c (c 8 12) (c 10 (c 22 30))) (r 3)))) (q 2 8 (c (c (c 8 12) (c 10 (c 22 30))) (r 3)))) 1) (q 2 22 (c (c (c 10 12) (c 22 30)) 12))) 1) (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1)) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 (i 3 (q 4 (f 3) (a 10 (c (c (c 8 12) (c 10 14)) (r 3)))) (q 2 8 (c 8 (c 12 (c (q . 10) 14))))) 1))) ()))
+  output: (7 8 2 6 7 8 7 8 10 1 2 3)
+  runtime_cost: 13339
+  byte_cost: 3900000
+  total_cost: 3913339
+- name: in_a_block
+  program: (a (q 2 (q 2 17 (c 17 (c (a 29 (c 29 2)) (a 17 (c 17 (c (a (i 2 (q 2 25 (c 25 2)) (q 2 21 (c 21 2))) 1) (q 10))))))) (c (q 1 2 3) 1)) (c (c (c (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1) (q 2 (i 3 (q 4 (+ 5 (q . 1)) (a 2 (c 2 7))) ()) 1)) (c (q 2 (i 3 (q 4 5 (a 2 (c 2 7))) ()) 1) (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 2 (c 2 7))) ()) 1))) ()))
+  debug_program: (a (q 2 (q 2 17 (c 17 (c (a 45 (c 45 2)) (a 17 (c 17 (c (a (i (not 2) (q 2 21 (c 21 2)) (q 2 25 (c 25 2))) 1) (c (q . 10) ()))))))) (c (a 30 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (q 2 (i 3 (q 4 (+ (f 3) (q . 1)) (a 2 (c 2 (r 3)))) ()) 1)) (c (q 2 (i 3 (q 4 (f 3) (a 2 (c 2 (r 3)))) ()) 1) (c (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 2 (c 2 (r 3)))) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1)))) ()))
+  output: (2 4 6 2 3 4 10)
+  runtime_cost: 17486
+  byte_cost: 3804000
+  total_cost: 3821486
+- name: fold_before_the_last_item
+  program: (a (q 2 6 (c 6 (c (a 4 (c 4 (q 1 2 3))) (q 10)))) (c (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 2 (c 2 7))) ()) 1) (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1)) ()))
+  debug_program: (a (q 2 (q 2 21 (c 21 (c (a 9 (c 9 2)) (c (q . 10) ())))) (c (a 14 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 2 (c 2 (r 3)))) ()) 1) (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1))) ()))
+  output: (2 4 6 10)
+  runtime_cost: 8895
+  byte_cost: 1812000
+  total_cost: 1820895
+- name: body_fails
+  program: (a (q 2 4 (c 2 (q 1 () 3))) (c (c (q 2 (i 3 (q 4 (a 6 5) (a 4 (c 2 7))) (q 1 10)) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 (q 2 9 (c (c 9 29) 2)) (c (a 10 (c (q . 1) (c () (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 4 (a 6 (f 3)) (a 4 (c (c 4 6) (r 3)))) (q 4 (q . 10) ())) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:11:5"))) 1))) ()))
+  byte_cost: 1404000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:11:5"
+- name: item_after_fails
+  program: (a (q 2 (q 2 5 (c (c 5 2) 2)) (c (q 1 2 3) 1)) (c (q 2 (i 3 (q 4 (a (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (c 5 1)) (a 4 (c 2 7))) (q 4 (a (q 2 (i (> (q . 100) 2) (q . 2) (q 8)) 1) (c (+ 10 (q . 100)) 1)) ())) 1) ()))
+  debug_program: (a (q 2 (q 2 9 (c (c 9 (c 2 (c 61 45))) 2)) (c (a 10 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 4 (a 22 (f 3)) (a 4 (c (c 4 (c 10 (c 22 30))) (r 3)))) (q 4 (a 30 (+ (f 10) (q . 100))) ())) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (c (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:16:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:11:5"))) 1)))) ()))
+  byte_cost: 2268000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:16:5"
+- name: item_after_an_empty_list_fails
+  program: (a (q 2 4 (c 2 ())) (c (c (q 2 (i 3 (q 4 (a 6 5) (a 4 (c 2 7))) (q 4 (x) ())) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 (q 2 9 (c (c 9 (c 61 45)) 2)) (c (a 10 ()) 1)) (c (c (q 2 (i 3 (q 4 (a 10 (f 3)) (a 4 (c (c 4 (c 10 14)) (r 3)))) (q 4 (a 14 (q . 100)) ())) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (c (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:16:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:11:5"))) 1)))) ()))
+  byte_cost: 1356000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:16:5"
+- name: spread_list_after_fails
+  program: (a (q 2 (q 2 5 (c (c 5 2) 2)) (c (q 1 2 3) 1)) (c (q 2 (i 3 (q 4 (a (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (c 5 1)) (a 4 (c 2 7))) (q 2 (q 2 (i (l 2) (q . 2) (q 2 (i 2 (q 8) (q . 2)) 1)) 1) (c (c (a (q 2 (i (> (q . 100) 2) (q . 2) (q 8)) 1) (c (+ 10 (q . 100)) 1)) ()) 1))) 1) ()))
+  debug_program: (a (q 2 (q 2 21 (c (c (c 21 9) (c 2 (c 61 45))) 2)) (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (c (q 2 (i 3 (q 4 (a 22 (f 3)) (a 8 (c (c (c 8 12) (c 10 (c 22 30))) (r 3)))) (q 2 12 (c (a 30 (+ (f 10) (q . 100))) ()))) 1) (c (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:16:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:11:5"))) 1)))) ()))
+  byte_cost: 2940000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:16:5"
+- name: second_for_fails
+  program: (a (q 2 (q 2 9 (c (c 9 (c 13 2)) (q 1 2 3))) (c (q 200) 1)) (c (c (q 2 (i 3 (q 4 (a (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (c 5 1)) (a 4 (c 2 7))) (q 2 10 6)) 1) (q 2 (i 3 (q 4 (a (q 2 (i (> (q . 100) 2) (q . 2) (q 8)) 1) (c 5 1)) (a 2 (c 2 7))) (q 1 10)) 1)) ()))
+  debug_program: (a (q 2 (q 2 25 (c (c (c 25 21) (c 61 (c 6 45))) 4)) (c (c (a 8 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 8 (c (q . 200) ()))) 1)) (c (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 (i 3 (q 4 (a 10 (f 3)) (a 8 (c (c (c 8 12) (c 10 (c 22 30))) (r 3)))) (q 2 12 (c (c 12 30) 22))) 1)) (c (q 2 (i 3 (q 4 (a 6 (f 3)) (a 4 (c (c 4 6) (r 3)))) (q 4 (q . 10) ())) 1) (c (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:16:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:11:5"))) 1)))) ()))
+  byte_cost: 2892000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:16:5"
+- name: item_after_fails_before_the_body
+  program: (a (q 2 (q 2 5 (c (c 5 2) 2)) (c (q 1 () 3) 1)) (c (q 2 (i 3 (q 4 (a (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (c 5 1)) (a 4 (c 2 7))) (q 4 (a (q 2 (i (> (q . 100) 2) (q . 2) (q 8)) 1) (c (+ 10 (q . 100)) 1)) ())) 1) ()))
+  debug_program: (a (q 2 (q 2 9 (c (c 9 (c 2 (c 61 45))) 2)) (c (a 10 (c (q . 1) (c () (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 4 (a 22 (f 3)) (a 4 (c (c 4 (c 10 (c 22 30))) (r 3)))) (q 4 (a 30 (+ (f 10) (q . 100))) ())) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (c (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:16:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:11:5"))) 1)))) ()))
+  byte_cost: 2268000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:16:5"
+- name: body_fails_before_the_item_before
+  program: (a (q 2 (q 4 (a 13 (+ 4 (q . 100))) (a 9 (c 9 2))) (c (q 1 () 3) 1)) (c (c (q 2 (i 3 (q 4 (a (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (c 5 1)) (a 2 (c 2 7))) (q 1 10)) 1) (q 2 (i (> (q . 100) 1) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 (q 4 (a 61 (+ (f 2) (q . 100))) (a 9 (c (c 9 21) 2))) (c (a 22 (c (q . 1) (c () (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 4 (a 6 (f 3)) (a 4 (c (c 4 6) (r 3)))) (q 4 (q . 10) ())) 1) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:11:5"))) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:16:5"))) 1)))) ()))
+  byte_cost: 2244000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:11:5"
+- name: second_for_fails_before_the_first
+  program: (a (q 2 (q 2 9 (c (c 9 (c 13 2)) (q 1 () 3))) (c (q 200) 1)) (c (c (q 2 (i 3 (q 4 (a (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (c 5 1)) (a 4 (c 2 7))) (q 2 10 6)) 1) (q 2 (i 3 (q 4 (a (q 2 (i (> (q . 100) 2) (q . 2) (q 8)) 1) (c 5 1)) (a 2 (c 2 7))) (q 1 10)) 1)) ()))
+  debug_program: (a (q 2 (q 2 25 (c (c (c 25 21) (c 61 (c 6 45))) 4)) (c (c (a 8 (c (q . 1) (c () (c (q . 3) ())))) (a 8 (c (q . 200) ()))) 1)) (c (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 (i 3 (q 4 (a 10 (f 3)) (a 8 (c (c (c 8 12) (c 10 (c 22 30))) (r 3)))) (q 2 12 (c (c 12 30) 22))) 1)) (c (q 2 (i 3 (q 4 (a 6 (f 3)) (a 4 (c (c 4 6) (r 3)))) (q 4 (q . 10) ())) 1) (c (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:16:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:11:5"))) 1)))) ()))
+  byte_cost: 2892000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:16:5"
+- name: filter_fails_before_the_item_after
+  program: (a (q 2 (q 2 5 (c (c 5 2) 2)) (c (q 1 () 3) 1)) (c (q 2 (i 3 (q 2 (i (> (a (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (c 5 1)) ()) (q 4 5 (a 4 (c 2 7))) (q 2 4 (c 2 7))) 1) (q 4 (a (q 2 (i (> (q . 100) 2) (q . 2) (q 8)) 1) (c (+ 10 (q . 100)) 1)) ())) 1) ()))
+  debug_program: (a (q 2 (q 2 9 (c (c 9 (c 2 (c 61 45))) 2)) (c (a 10 (c (q . 1) (c () (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 2 (i (> (a 22 (f 3)) ()) (q 4 (f 3) (a 4 (c (c 4 (c 10 (c 22 30))) (r 3)))) (q 2 4 (c (c 4 (c 10 (c 22 30))) (r 3)))) 1) (q 4 (a 30 (+ (f 10) (q . 100))) ())) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (c (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:16:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:11:5"))) 1)))) ()))
+  byte_cost: 2700000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:11:5"
+- name: list_fails_before_the_item_after
+  program: (a (q 2 (q 2 9 (c (c 2 5) (a (i (> 4 ()) (q . 2) (q 8)) 1))) (c (q () 1) 1)) (c (c (q 2 (i 3 (q 4 5 (a 10 (c 2 7))) (q 4 (a 14 (+ 8 (q . 100))) ())) 1) (q 2 (i (> (q . 100) 1) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 (q 2 9 (c (c 2 (c 9 61)) (a 45 (c 2 (f 2))))) (c (a 10 (c () (c (q . 1) ()))) 1)) (c (c (q 2 (i 3 (q 4 (f 3) (a 10 (c (c 4 (c 10 14)) (r 3)))) (q 4 (a 14 (+ (f 4) (q . 100))) ())) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (c (q 2 (i (> 3 ()) (q . 2) (q 8 (q . "assertion failed at for_spreads.rue:154:5"))) 1) (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:16:5"))) 1)))) ()))
+  byte_cost: 2076000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:154:5"
+- name: item_after_fails_before_a_copied_filter
+  program: (a (q 2 (q 2 21 (c 21 (c (a 9 (c 9 2)) (c (a 29 (+ 4 (q . 100))) ())))) (c (q 1 () 3) 1)) (c (c (q 2 (i 3 (q 2 (i (> (a (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (c 5 1)) ()) (q 4 5 (a 2 (c 2 7))) (q 2 2 (c 2 7))) 1) ()) 1) (c (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1) (q 2 (i (> (q . 100) 1) (q . 1) (q 8)) 1))) ()))
+  debug_program: (a (q 2 (q 2 21 (c 21 (c (a 9 (c (c 9 125) 2)) (c (a 45 (+ (f 2) (q . 100))) ())))) (c (a 46 (c (q . 1) (c () (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 2 (i (> (a 6 (f 3)) ()) (q 4 (f 3) (a 4 (c (c 4 6) (r 3)))) (q 2 4 (c (c 4 6) (r 3)))) 1) ()) 1) (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (c (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:16:5"))) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:11:5"))) 1))))) ()))
+  byte_cost: 3420000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:16:5"
+- name: values_from_outside
+  program: (a (q 2 (q 4 4 (a 21 (c (c (c (q . 2) 9) (c (c 4 21) (c 29 6))) (q 1 2 3)))) (c (c (a 4 (c 4 (q 4 . 32))) (a 4 (c 4 (q 3 . 22)))) 1)) (c (c (q 2 (i (> 7 5) (q 16 (a 2 (c 2 (c 5 (- 7 5)))) (q . 1)) ()) 1) (c (q 2 (i 3 (q 4 (+ (* 5 8) 18) (a 26 (c 2 7))) (q 4 30 (c 8 (c 22 (c (a 12 (c 12 (c 8 22))) ()))))) 1) (q . 50))) ()))
+  debug_program: (a (q 2 62 (c (c 4 (c 10 22)) (c (q . 2) (a 46 (c (q . 1) (c (q . 2) (c (q . 3) ()))))))) (c (c (q 2 (i (> 7 5) (q 16 (a 2 (c 2 (c 5 (- 7 5)))) (q . 1)) ()) 1) (c (q 2 (i 3 (q 4 (+ (* (f 3) 8) 18) (a 26 (c (c (c 8 12) (c (c 18 26) (c 22 30))) (r 3)))) (q 4 30 (c 8 (c 22 (c (a 12 (c 12 (c 8 22))) ()))))) 1) (c (q . 50) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 (q 4 4 (a 21 (c (c (c 11 9) (c (c 4 21) (c 29 6))) 15))) (c (c (a 4 (c 4 (c (q . 4) (+ 5 (q . 30))))) (a 4 (c 4 (c (q . 3) (+ 5 (q . 20)))))) 1)))))) ()))
+  output: (7 9 11 13 7 2 50 24)
+  runtime_cost: 120430
+  byte_cost: 3444000
+  total_cost: 3564430
+- name: expressions_after
+  program: (a (q 2 (q 2 (q 2 19 (c (c (c 5 19) (c 2 (c 59 43))) 5)) (c (c (q . 2) (c (q 1 16 5 4) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) 1)) (c (q 1 2 3) 1)) (c (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 12 (c 2 7))) (q 4 (a (q 16 2 2) (c (a (i (> 16 ()) (q . 16) (q 8)) 1) 1)) (c (a 10 (q 10)) (c (a 22 (c 22 8)) (a 30 (c (c 10 30) 8)))))) 1) (c (q 2 (i 3 (q 4 (a 4 (c 5 ())) (a 6 (c 2 7))) ()) 1) (q 2 (i 3 (q 16 (a 2 (c 2 7)) 5) ()) 1))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 35 (c (c (c 5 35) (c (c 2 43) (c 51 123))) 5)) (c (c (q . 2) (c (c (q . 1) (q 16 11 (f 2))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 45) (c (q . 1) ()))) ()))) ()))) 1)) (c (a 22 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (c (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 12 (c (c (c 8 12) (c (c 18 26) (c 22 30))) (r 3)))) (q 4 (a (q 16 2 2) (c (a 30 (f 8)) 1)) (c (a 18 (c (q . 10) ())) (c (a 26 (c 26 8)) (a 22 (c (c 18 22) 8)))))) 1) (q 2 (i 3 (q 4 (a 4 (c (f 3) ())) (a 6 (c (c 4 6) (r 3)))) ()) 1)) (c (q 2 (i 3 (q 16 (a 2 (c 2 (r 3))) (f 3)) ()) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:11:5"))) 1)))) ()))
+  output: (2 4 6 2 11 6 2 3 4)
+  runtime_cost: 22206
+  byte_cost: 4668000
+  total_cost: 4690206
+- name: in_an_inline_function
+  program: (a (q 2 (q 2 (q 2 27 (c (c 5 (c 27 2)) (a 19 (c (c 19 (q . 10)) 5)))) (c (a 9 (c (c 9 4) (q 4))) 1)) (c (q 1 2 3) 1)) (c (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 4 (c 2 7))) (q 4 6 (c (+ 6 (q . 1)) ()))) 1) (q 2 (i 3 (q 4 5 (a 10 (c 2 7))) (q 4 (+ 8 (q . 40)) 14)) 1)) ()))
+  debug_program: (a (q 2 (q 2 (q 2 59 (c (c 5 (c 59 6)) 4)) (c (c (a 21 (c (c 21 (q . 10)) 2)) (a 21 (c (c 21 (f 2)) (a 9 (c (q . 4) ()))))) 1)) (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (c (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 4 (c (c 4 6) (r 3)))) (q 4 6 (c (+ 6 (q . 1)) ()))) 1) (q 2 (i 3 (q 4 (f 3) (a 10 (c (c 4 (c 10 14)) (r 3)))) (q 4 (+ (f 4) (q . 40)) 14)) 1))) ()))
+  output: (2 4 6 10 11 41 8 1 2)
+  runtime_cost: 15703
+  byte_cost: 2892000
+  total_cost: 2907703
+- name: generic_and_recursive
+  program: (a (q 4 (a 14 (c (c 14 (q . 3)) (q 1 2))) (c (a 14 (c (c 14 (q . 98)) (q 97))) (c (a 4 (c (c 10 4) (q 3 ()))) ()))) (c (c (q 2 (i 5 (q 2 6 (c 2 (c (- 5 (q . 1)) (c 5 (a 4 (c (c 5 4) 7)))))) (q . 7)) 1) (c (q 2 (i 3 (q 4 (+ 5 4) (a 6 (c 2 7))) (q 4 4 ())) 1) (q 2 (i 3 (q 4 5 (a 4 (c 2 7))) (q 4 6 ())) 1))) ()))
+  debug_program: (a (q 4 (a 22 (c 30 (c (a 8 (c (q . 1) (c (q . 2) ()))) (q . 3)))) (c (a 22 (c 30 (c (a 8 (c (q . 97) ())) (q . 98)))) (c (a 12 (c (c 10 12) (c (q . 3) (a 8 (c () ()))))) ()))) (c (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 (i (= 5 ()) (q . 7) (q 2 6 (c (c 4 6) (c (- 5 (q . 1)) (c 5 (a 4 (c (c 5 4) 7))))))) 1)) (c (q 2 (i 3 (q 4 (+ (f 3) 4) (a 6 (c (c 4 6) (r 3)))) (q 4 4 ())) 1) (c (q 2 2 (c (c 2 7) 5)) (q 2 (i 3 (q 4 (f 3) (a 4 (c (c 4 6) (r 3)))) (q 4 6 ())) 1)))) ()))
+  output: ((1 2 3) (97 98) (1 3 6 6 6 3 1))
+  runtime_cost: 24726
+  byte_cost: 3396000
+  total_cost: 3420726
+- name: in_a_default_value
+  program: (a (q 2 (q 4 8 (a 13 (c 13 (c 20 (c 10 22))))) (c (c (c (q . 1) (c (c () (a 4 (c 4 (q 1 2)))) ())) (c (q . 2) (c (c () (a 4 (c 4 (q 1 2)))) ()))) 1)) (c (c (q 2 (i 3 (q 4 (+ 5 (q . 1)) (a 2 (c 2 7))) (q 1 50)) 1) (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1)) ()))
+  debug_program: (a (q 2 (q 4 (f 4) (a 21 (c 21 (c (f (r 4)) (c (f 6) (f (r 6))))))) (c (c (c (q . 1) (c (c () (a 8 (c (c 8 30) (a 12 22)))) ())) (c (q . 2) (c (c () (a 8 (c (c 8 30) (a 12 22)))) ()))) 1)) (c (c (c (q 2 (i 3 (q 4 (+ (f 3) (q . 1)) (a 4 (c (c 4 6) (r 3)))) (q 4 6 ())) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1)) (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (c (c (q . 1) (c (q . 2) ())) (q . 50)))) ()))
+  output: (1 () 2 3 50 2 () 2 3 50)
+  runtime_cost: 11878
+  byte_cost: 2892000
+  total_cost: 2903878
+- name: in_a_loop
+  program: (a (q 2 (q 4 (a 21 (c (c 45 (c 21 (q . 10))) 2)) (a 17 (c (c 41 (c 17 57)) 2))) (c (a 30 (q (q 2 3) () (c 5))) 1)) (c (c (c (q 2 (i 3 (q 4 (a 4 (c (c 3 (c 4 14)) 5)) (a 10 (c 2 7))) ()) 1) (c (q 2 (i 3 (q 4 5 (a 10 (c 2 7))) (q 4 (a 14 (c 14 8)) ())) 1) (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1))) (c (q 2 (i 3 (q 2 (q 2 9 (c (c 9 (c 29 2)) 11)) (c (a 10 (c 2 7)) 1)) ()) 1) (c (q 2 (i 3 (q 4 (+ 5 10) (a 4 (c 2 7))) (q . 14)) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1)))) ()))
+  debug_program: (a (q 2 (q 4 (a 125 (c (c 37 53) (c 2 (q . 10)))) (a 45 (c (c 17 (c 41 57)) 2))) (c (a 46 (c (c (q . 1) (c (q . 2) (c (q . 3) ()))) (c () (c (c (q . 4) (c (q . 5) ())) ())))) 1)) (c (c (c (q 2 (i 3 (q 4 (a 4 (c (c 3 (c 4 14)) (f 3))) (a 10 (c (c 4 (c 10 14)) (r 3)))) ()) 1) (c (q 2 (i 3 (q 4 (f 3) (a 10 (c (c 4 (c 10 14)) (r 3)))) (q 4 (a 14 (c 14 (f 4))) ())) 1) (q 2 (i 3 (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1))) (c (c (q 2 (i 3 (q 2 (q 2 9 (c (c 9 (c 29 2)) (f 7))) (c (a 10 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1) (q 2 (i 3 (q 4 (+ (f 3) 10) (a 4 (c (c 4 (c 10 14)) (r 3)))) (q . 14)) 1)) (c (q 2 4 (c (c 10 (c 4 14)) 3)) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 4 (c (c 6 (c 4 7)) 5)))))) ()))
+  output: ((11 12 13 14 15) (1 2 3 3) (()) (4 5 2))
+  runtime_cost: 31578
+  byte_cost: 5388000
+  total_cost: 5419578
+- name: in_a_loop_fails
+  program: (a (q 2 4 (c (c 10 4) (a 14 (q (q 2 3) () (c 100))))) (c (c (q 2 (i 3 (q 2 (q 2 9 (c (c 9 2) 11)) (c (a 6 (c 2 7)) 1)) ()) 1) (c (q 2 (i 3 (q 4 (a (q 2 (i (> (q . 100) 2) (q . 2) (q 8)) 1) (c 5 1)) (a 4 (c 2 7))) (q . 6)) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1))) ()))
+  debug_program: (a (q 2 (q 2 9 (c (c 21 (c 9 61)) 2)) (c (a 22 (c (c (q . 1) (c (q . 2) (c (q . 3) ()))) (c () (c (c (q . 4) (c (q . 100) ())) ())))) 1)) (c (c (q 2 (i 3 (q 2 (q 2 9 (c (c 9 (c 29 2)) (f 7))) (c (a 10 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1) (c (q 2 (i 3 (q 4 (a 10 (f 3)) (a 4 (c (c 4 (c 10 14)) (r 3)))) (q . 14)) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:16:5"))) 1)))) ()))
+  byte_cost: 3060000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:16:5"
+- name: three_loops_deep
+  program: (a (q 2 8 (c (c (c 12 (q . 10)) (c 10 8)) (a 14 (q ((q 2) (i)) () ((c) () (f 6)))))) (c (c (c (q 2 (i 3 (q 2 (q 2 17 (c (c (c 25 21) (c 17 2)) 11)) (c (a 14 (c 2 7)) 1)) ()) 1) (q 2 (i 3 (q 2 (q 4 17 (a 25 (c (c 17 (c 25 2)) 11))) (c (a 10 (c 2 7)) 1)) (q . 14)) 1)) (c (q 2 (i 3 (q 4 (+ 5 4) (a 10 (c 2 7))) (q . 14)) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1))) ()))
+  debug_program: (a (q 2 30 (c (c 8 (c 12 10)) (c (q . 10) (a 22 (c (c (c (q . 1) (c (q . 2) ())) (c (c (q . 3) ()) ())) (c () (c (c (c (q . 4) ()) (c () (c (c (q . 5) (c (q . 6) ())) ()))) ()))))))) (c (c (c (q 2 (i 3 (q 2 (q 2 17 (c (c (c 25 21) (c 17 2)) (f 7))) (c (a 14 (c (c (c 8 12) (c 10 14)) (r 3))) 1)) ()) 1) (q 2 (i 3 (q 2 (q 4 17 (a 25 (c (c 17 (c 25 2)) (f 7)))) (c (a 10 (c (c (c 8 12) (c 10 14)) (r 3))) 1)) (q . 14)) 1)) (c (q 2 (i 3 (q 4 (+ (f 3) 4) (a 10 (c (c 4 (c 10 14)) (r 3)))) (q . 14)) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 4 (c (c (c 10 5) (c 14 4)) 7))))) ()))
+  output: (10 11 12 10 13 10 14 10 10 15 16)
+  runtime_cost: 24359
+  byte_cost: 4068000
+  total_cost: 4092359
+- name: in_the_body_of_a_spread_for
+  program: (a (q 2 4 (c (c 14 (c 4 10)) (q (q 2) (i)))) (c (c (q 2 (i 3 (q 4 (a 4 (c 4 (a 14 (c 14 5)))) (a 10 (c 2 7))) (q 1 100)) 1) (c (q 2 (i 3 (q 4 (* 5 (q . 2)) (a 2 (c 2 7))) (q 1 ())) 1) (q 2 (i 3 (q 16 (a 2 (c 2 7)) 5) ()) 1))) ()))
+  debug_program: (a (q 2 (q 2 17 (c (c 21 (c 17 25)) 2)) (c (a 14 (c (c (q . 1) (c (q . 2) ())) (c (c (q . 3) ()) ()))) 1)) (c (c (c (q 2 (i 3 (q 4 (a (q 2 9 (c 9 2)) (c (a 14 (c 14 (f 3))) 1)) (a 10 (c (c 4 (c 10 14)) (r 3)))) (q 4 (q . 100) ())) 1) (q 2 (i 3 (q 4 (* (f 3) (q . 2)) (a 2 (c 2 (r 3)))) (q 4 () ())) 1)) (c (q 2 (i 3 (q 16 (a 2 (c 2 (r 3))) (f 3)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1))) ()))
+  output: (6 6 100)
+  runtime_cost: 16512
+  byte_cost: 2580000
+  total_cost: 2596512
+- name: evaluated_more_than_once
+  program: (a (q 2 (q 2 (q 4 (a 2 (q 1)) (c (a 2 (q 2)) (a 19 (c (c 2 19) 5)))) (c (c (q . 2) (c (q 1 2 5 (c (c 11 5) 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 13) (q 1))) ()))) ()))) 1)) (c (q 1 2) 1)) (c (c (q 2 (i 3 (q 4 (a 4 (c (* 5 (q . 10)) ())) (a 6 (c 2 7))) ()) 1) (q 2 (i 3 (q 4 (+ 5 4) (a 6 (c 2 7))) (q 4 (a (i (> 4 ()) (q . 4) (q 8)) 1) ())) 1)) ()))
+  debug_program: (a (q 2 (q 2 (q 4 (a 2 (c (q . 1) ())) (c (a 2 (c (q . 2) ())) (a 19 (c (c 2 19) 5)))) (c (c (q . 2) (c (c (q . 1) (q 2 11 (c (c 47 (c 11 23)) 2))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 45) (c (c (q . 4) (c (c (q . 1) 21) (c (c (q . 4) (c (c (q . 1) 61) (c (q . 1) ()))) ()))) ()))) ()))) ()))) 1)) (c (a 22 (c (q . 1) (c (q . 2) ()))) 1)) (c (c (q 2 (i 3 (q 4 (a 4 (c (* (f 3) (q . 10)) ())) (a 6 (c (c 4 6) (r 3)))) ()) 1) (c (q 2 (i 3 (q 4 (+ (f 3) 4) (a 10 (c (c 4 (c 10 14)) (r 3)))) (q 4 (a 14 4) ())) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:11:5"))) 1)))) ()))
+  output: ((2 3 1) (3 4 2) (11 12 10) (21 22 20))
+  runtime_cost: 25929
+  byte_cost: 3996000
+  total_cost: 4021929
+- name: settles_payments
+  program: (a (q 2 10 (c (c 4 (c 22 10)) (a 30 (c (c (sha256 (q . "first")) (c (c (c (sha256 (q . "alice")) (q 100)) (c (c (sha256 (q . "bob")) (q 50)) ())) ())) (c (c (sha256 (q . "second")) (q ())) (c (c (sha256 (q . "third")) (c (c (c (sha256 (q . "carol")) (q 1)) ()) ())) ())))))) (c (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) (c (q 2 (i 3 (q 2 (q 4 (c (q . 62) (c (a 9 (c 9 11)) ())) (a 21 (c (c 21 2) 43))) (c (a 14 (c 2 7)) 1)) ()) 1) (c (q 2 (i 3 (q 4 (a (i (> 21 ()) (q 4 (q . 51) (c 9 (c 21 ()))) (q 8)) 1) (a 4 (c 2 7))) (q . 6)) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1)))) ()))
+  debug_program: (a (q 2 30 (c (c 8 (c 12 10)) (a 22 (c (c (sha256 (q . "first")) (c (c (c (sha256 (q . "alice")) (c (q . 100) ())) (c (c (sha256 (q . "bob")) (c (q . 50) ())) ())) ())) (c (c (sha256 (q . "second")) (c () ())) (c (c (sha256 (q . "third")) (c (c (c (sha256 (q . "carol")) (c (q . 1) ())) ()) ())) ())))))) (c (c (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) (q 2 (i 3 (q 2 (q 4 (c (q . 62) (c (a 9 (c 9 (f 7))) ())) (a 21 (c (c 21 2) (f (r (f 7)))))) (c (a 14 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1)) (c (q 2 (i 3 (q 4 (a (i (> (f (r (f 3))) ()) (q 4 (q . 51) (c (f (f 3)) (c (f (r (f 3))) ()))) (q 8 (q . "assertion failed at for_spreads.rue:324:17"))) 1) (a 4 (c (c 4 6) (r 3)))) (q . 6)) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 10 (c (c 4 (c 14 10)) 3))))) ()))
+  output: ((62 0x8a5e62e75acb693f21e88e3a578551f5975d53a478b874b04d144ec6c122f69e) (51 0x2bd806c97f0e00af1a1fc3328fa763a9269723c8db8fac4f93af71db186d6e90 100) (51 0x81b637d8fcd2c6da6359e6963113a1170de795e4b725b84d1e0b4cfd9ec58ce9 50) (62 0xe415ce71e12ccd90476df0182d166ca450cfc79ae720ccad8f8cb6557c69946e) (62 0x0cec11123d5f62b5bd2f190e1d81f95926582facbd497c7748ac16076d504b49) (51 0x4c26d9074c27d89ede59270c0ac14b71e071b15239519f75474b2f3ba63481f5 1))
+  runtime_cost: 63588
+  byte_cost: 6192000
+  total_cost: 6255588
+- name: settles_payments_fails
+  program: (a (q 2 10 (c (c 4 (c 22 10)) (a 30 (c (c (sha256 (q . "first")) (c (c (c (sha256 (q . "alice")) (q ())) ()) ())) ())))) (c (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) (c (q 2 (i 3 (q 2 (q 4 (c (q . 62) (c (a 9 (c 9 11)) ())) (a 21 (c (c 21 2) 43))) (c (a 14 (c 2 7)) 1)) ()) 1) (c (q 2 (i 3 (q 4 (a (i (> 21 ()) (q 4 (q . 51) (c 9 (c 21 ()))) (q 8)) 1) (a 4 (c 2 7))) (q . 6)) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1)))) ()))
+  debug_program: (a (q 2 30 (c (c 8 (c 12 10)) (a 22 (c (c (sha256 (q . "first")) (c (c (c (sha256 (q . "alice")) (c () ())) ()) ())) ())))) (c (c (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) (q 2 (i 3 (q 2 (q 4 (c (q . 62) (c (a 9 (c 9 (f 7))) ())) (a 21 (c (c 21 2) (f (r (f 7)))))) (c (a 14 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1)) (c (q 2 (i 3 (q 4 (a (i (> (f (r (f 3))) ()) (q 4 (q . 51) (c (f (f 3)) (c (f (r (f 3))) ()))) (q 8 (q . "assertion failed at for_spreads.rue:324:17"))) 1) (a 4 (c (c 4 6) (r 3)))) (q . 6)) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_spreads.rue:6:5"))) 1) (q 2 10 (c (c 4 (c 14 10)) 3))))) ()))
+  byte_cost: 4884000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_spreads.rue:324:17"

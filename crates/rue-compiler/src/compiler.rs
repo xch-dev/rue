@@ -128,6 +128,10 @@ pub struct Compiler {
     /// call's generics are solved, if there is one (see `Compiler::with_argument_requirement`).
     argument_requirement: Option<(TextRange, TypeId)>,
     lint_sites: LintSites,
+    /// The function of each `for` expression that makes a list, by the node of its call, so that
+    /// a list it's spread in can have it end with the items after it (see
+    /// `end_list_loop_with`).
+    list_loops: HashMap<HirId, SymbolId>,
     ambiguous_imports: HashSet<(ImportId, Declaration)>,
     /// Every type a path has named, in the order they were compiled, so that what's compiled between
     /// two points can be told to name a type (see `LambdaBody::names_types`).
@@ -343,6 +347,7 @@ impl Compiler {
             expected: ExpectedTypeUse::default(),
             argument_requirement: None,
             lint_sites: LintSites::default(),
+            list_loops: HashMap::new(),
             ambiguous_imports: HashSet::new(),
             named_types: Vec::new(),
             overridden_symbols: HashSet::new(),
@@ -1492,6 +1497,17 @@ impl Compiler {
         self.db.set_hir_scope(value.hir, self.last_scope_id());
 
         value
+    }
+
+    /// Records the function that a `for` expression which makes a list is compiled to, by the
+    /// node of its call.
+    pub(crate) fn record_list_loop(&mut self, call: HirId, function: SymbolId) {
+        self.list_loops.insert(call, function);
+    }
+
+    /// The function of the `for` expression that the node is the call of, if it makes a list.
+    pub(crate) fn list_loop(&self, call: HirId) -> Option<SymbolId> {
+        self.list_loops.get(&call).copied()
     }
 
     /// The sites recorded for lints while compiling, which are checked by [`rue_lint`] once

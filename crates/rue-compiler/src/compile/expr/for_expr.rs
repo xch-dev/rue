@@ -501,7 +501,58 @@ pub fn compile_for_expr(
         nil_terminated: true,
     }));
 
+    if kind == ForKind::List {
+        ctx.record_list_loop(hir, function);
+    }
+
     Value::new(hir, return_type)
+}
+
+/// Makes the list of a `for` expression end with the rest of the list that it's spread in,
+/// rather than nil, as in `[...for x in xs { x * 2 }, last]`. The function it's compiled to (see
+/// [`compile_for_expr`]) then builds its items in front of the rest directly, so they aren't
+/// copied there afterward:
+///
+/// ```text
+/// if list { (body, self(rest(list))) } else { rest }
+/// ```
+///
+/// The rest is evaluated where the function gets to the end of its list, which is once for each
+/// time the `for` is evaluated, as when it's built before the items are copied in front of it.
+/// It's still evaluated before the body is for any item, since the body's value is put in front
+/// of the result for the rest of the list, which is evaluated first. Only the list that's gone
+/// through and the filter are evaluated before it now, where it was evaluated before them, so
+/// if one of them fails and the rest does too, it's their failure that's raised rather than the
+/// rest's. What the rest refers to is captured by the function, as with what the body refers to,
+/// so a binding that's only used there is evaluated before the list is gone through.
+pub(crate) fn end_list_loop_with(
+    ctx: &mut Compiler,
+    function: SymbolId,
+    rest: HirId,
+    return_type: TypeId,
+) {
+    let Symbol::Function(symbol) = ctx.symbol(function) else {
+        unreachable!("a `for` expression is compiled to a function");
+    };
+
+    let Hir::If(condition, step, _, inline) = ctx.hir(symbol.body).clone() else {
+        unreachable!("the function of a `for` expression is whether there's an item");
+    };
+
+    let Type::Function(mut ty) = ctx.ty(symbol.ty).clone() else {
+        unreachable!("the function of a `for` expression has a function type");
+    };
+
+    let body = ctx.alloc_hir(Hir::If(condition, step, rest, inline));
+
+    ty.ret = return_type;
+    let ty = ctx.alloc_type(Type::Function(ty));
+
+    if let Symbol::Function(symbol) = ctx.symbol_mut(function) {
+        symbol.body = body;
+        symbol.return_type = return_type;
+        symbol.ty = ty;
+    }
 }
 
 /// The note for a body that isn't the type of the fold's result, if that's only nil because the

@@ -8,6 +8,7 @@ use super::call_inference::{
     compile_refined_element, holds_other_pairs, list_of, pair_parts, record_element,
     references_call_generics,
 };
+use super::for_expr::end_list_loop_with;
 use crate::Compiler;
 
 /// Compiles a list. Its type has a pair for each item, with the type of the last item as the rest
@@ -190,7 +191,8 @@ fn record_bracketed_for(
 /// The part of a list from the first item that's spread before the last one. Each such spread is
 /// a call to the builtin function that puts a list's items in front of the rest of the list (see
 /// `Builtins::spread_list`), unless what's spread is a list literal, whose items are put in the
-/// list directly.
+/// list directly, or a `for` expression, which builds its list in front of the rest itself (see
+/// [`end_list_loop_with`]).
 struct Tail {
     /// The type this part of the list is expected to be, which each spread is compiled against.
     expected: Option<TypeId>,
@@ -262,6 +264,9 @@ impl Tail {
         };
         let mut pending: Vec<HirId> = Vec::new();
 
+        let item_type = union_of(ctx, self.item_types);
+        let ty = list_of(ctx, item_type);
+
         for (hir, spread) in self.items.into_iter().rev() {
             if !spread {
                 pending.push(hir);
@@ -277,6 +282,13 @@ impl Tail {
 
             rest = prepend(ctx, &mut pending, rest);
 
+            // A `for` builds its list in front of the rest itself, by ending with it
+            if let Some(function) = ctx.list_loop(hir) {
+                end_list_loop_with(ctx, function, rest, ty);
+                rest = hir;
+                continue;
+            }
+
             let spread_list = ctx.builtins().spread_list;
             let function = ctx.alloc_hir(Hir::Reference(spread_list));
             rest = ctx.alloc_hir(Hir::FunctionCall(FunctionCall {
@@ -287,9 +299,6 @@ impl Tail {
         }
 
         let hir = prepend(ctx, &mut pending, rest);
-
-        let item_type = union_of(ctx, self.item_types);
-        let ty = list_of(ctx, item_type);
 
         Value::new(hir, ty)
     }

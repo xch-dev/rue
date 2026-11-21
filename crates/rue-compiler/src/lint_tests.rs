@@ -3643,3 +3643,30 @@ fn main(xs: List<Int>) -> Int {
     assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
 }
+
+#[test]
+fn suggestions_fix_the_items_after_a_spread_for() {
+    // The items after the `for` are compiled into the end of its loop, and their suggestions are
+    // for the code where it's written
+    let source = "\
+fn main(xs: List<Int>, ys: List<Int>, last: Int) -> List<Int> {
+    [...for x in xs { +x }, +last, (last), ...(ys)]
+}
+";
+
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+fn main(xs: List<Int>, ys: List<Int>, last: Int) -> List<Int> {
+    [...for x in xs { x }, last, last, ...ys]
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}
