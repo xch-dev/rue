@@ -91,8 +91,9 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// lowered (see [`Self::lower_path_bindings`]).
     path_bindings: RefCell<HashMap<SymbolId, bool>>,
     /// Whether evaluating each such binding where it's referenced was found to be no larger than
-    /// binding it, which is only measured the first time its let statement is lowered.
-    path_choices: HashMap<SymbolId, bool>,
+    /// binding it, by the size of the path it's lowered to, which is only measured the first
+    /// time its let statement is lowered with a path of that size.
+    path_choices: HashMap<(SymbolId, usize), bool>,
     /// Whether calling each function may fail, which is shared between checks.
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
     /// Whether the value of each constant may fail, for the ones that can't (see
@@ -1328,7 +1329,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .filter(|&symbol| self.is_lowered_effect(symbol))
             .collect();
 
-        let expr = self.lower_path_bindings(&symbols, |this| {
+        let expr = self.lower_path_bindings(env, &symbols, |this| {
             this.lower_let_run(env, &symbols, &effects, stmts.clone(), body.clone())
         });
 

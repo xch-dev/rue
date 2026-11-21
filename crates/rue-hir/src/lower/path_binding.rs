@@ -18,9 +18,9 @@
 //! moved.
 
 use indexmap::IndexSet;
-use rue_lir::LirId;
+use rue_lir::{LirId, first_path, path_to_atom, rest_path};
 
-use crate::{FieldAccess, FieldKind, Hir, HirId, Symbol, SymbolId};
+use crate::{Environment, FieldAccess, FieldKind, Hir, HirId, Symbol, SymbolId, TypePath};
 
 use super::Lowerer;
 
@@ -51,13 +51,16 @@ impl Lowerer<'_, '_, '_> {
     ///
     /// The decision is remembered, so that the run isn't measured again when it's lowered again,
     /// which it is when an enclosing run is measured, or the function it's in is inlined
-    /// somewhere else. It's only applied if the value is still a path there, since the
-    /// arguments of an inlined call can differ.
+    /// somewhere else. It's remembered for the size of the path where the run is lowered, since
+    /// the same binding can be a longer path somewhere else, such as in another call of an
+    /// `inline fn`, or once a binding of an enclosing run is bound, and it's measured again
+    /// there. It's only applied if the value is still a path there at all.
     ///
     /// Each measurement lowers the rest of the block again, so no more than
     /// [`MAX_PATH_CANDIDATES`] bindings of a run are measured, and the rest are bound.
     pub(super) fn lower_path_bindings(
         &mut self,
+        env: &Environment,
         symbols: &IndexSet<SymbolId>,
         mut lower: impl FnMut(&mut Self) -> LirId,
     ) -> LirId {
@@ -76,13 +79,18 @@ impl Lowerer<'_, '_, '_> {
                     continue;
                 }
 
-                let is_path = match self.path_choices.get(&symbol) {
+                let key = (symbol, self.path_size(env, binding.value.hir));
+
+                let is_path = match self.path_choices.get(&key) {
                     Some(&is_path) => is_path,
                     None if undecided.len() < MAX_PATH_CANDIDATES => {
-                        undecided.push(symbol);
+                        undecided.push(key);
                         true
                     }
-                    None => false,
+                    None => {
+                        self.path_choices.insert(key, false);
+                        false
+                    }
                 };
 
                 self.path_bindings.borrow_mut().insert(symbol, is_path);
@@ -93,32 +101,42 @@ impl Lowerer<'_, '_, '_> {
             return lower(self);
         }
 
+        let symbols: Vec<SymbolId> = undecided.iter().map(|&(symbol, _)| symbol).collect();
         let mut best = self.trial(&mut lower);
         let mut are_paths = true;
 
-        if undecided.len() > 1 {
-            self.set_path_bindings(&undecided, false);
+        if symbols.len() > 1 {
+            self.set_path_bindings(&symbols, false);
             let bound = self.trial(&mut lower);
 
             if bound.size < best.size {
                 best = bound;
                 are_paths = false;
             } else {
-                self.set_path_bindings(&undecided, true);
+                self.set_path_bindings(&symbols, true);
             }
         }
 
-        for &symbol in &undecided {
+        let mut choices = Vec::with_capacity(undecided.len());
+
+        for &(symbol, size) in &undecided {
             self.set_path_bindings(&[symbol], !are_paths);
             let switched = self.trial(&mut lower);
 
             if switched.size < best.size {
                 best = switched;
-                self.path_choices.insert(symbol, !are_paths);
+                choices.push(((symbol, size), !are_paths));
             } else {
                 self.set_path_bindings(&[symbol], are_paths);
-                self.path_choices.insert(symbol, are_paths);
+                choices.push(((symbol, size), are_paths));
             }
+        }
+
+        // If every way of lowering the run went too deep, nothing was measured, which can be
+        // because of what an enclosing run is trying. The bindings are measured again the next
+        // time the run is lowered.
+        if best.size != usize::MAX {
+            self.path_choices.extend(choices);
         }
 
         self.keep(best)
@@ -132,25 +150,62 @@ impl Lowerer<'_, '_, '_> {
         }
     }
 
-    /// Whether the value is only a path: fields of a value that's read from the environment,
-    /// through any casts, and through the bindings, constants and arguments that are substituted
-    /// where they're referenced.
+    /// Whether the value is only a path (see [`Self::path_read`]).
     fn is_path(&self, hir: HirId) -> bool {
-        // This follows the values that are substituted, which can go as deep as a chain of them
-        rue_types::grow_stack(|| self.is_path_inner(hir))
+        self.path_read(hir).is_some()
     }
 
-    fn is_path_inner(&self, hir: HirId) -> bool {
+    /// How many bytes the path that the value is lowered to takes up in the program, where the
+    /// run of let statements it's in is lowered, or zero if what it's read from isn't in the environment
+    /// yet, which is the case for a binding of the same run.
+    fn path_size(&self, env: &Environment, hir: HirId) -> usize {
+        let Some((symbol, steps)) = self.path_read(hir) else {
+            return 0;
+        };
+
+        let Ok(mut path) = env.path(symbol) else {
+            return 0;
+        };
+
+        for step in steps {
+            path = match step {
+                TypePath::First => first_path(&path),
+                TypePath::Rest => rest_path(&path),
+            };
+        }
+
+        // An atom of one byte below 0x80 is serialized as it is, and a longer one after its
+        // length
+        match path_to_atom(&path).as_slice() {
+            [byte] if *byte < 0x80 => 1,
+            atom => atom.len() + 1,
+        }
+    }
+
+    /// The symbol that the value is read from, and the path to the field of it that's read, if
+    /// the value is only a path: fields of a value that's read from the environment, through any
+    /// casts, and through the bindings, constants and arguments that are substituted where
+    /// they're referenced.
+    pub(super) fn path_read(&self, hir: HirId) -> Option<(SymbolId, Vec<TypePath>)> {
+        // This follows the values that are substituted, which can go as deep as a chain of them
+        rue_types::grow_stack(|| self.path_read_inner(hir))
+    }
+
+    fn path_read_inner(&self, hir: HirId) -> Option<(SymbolId, Vec<TypePath>)> {
         match self.db.hir(hir) {
-            Hir::Cast(value)
-            | Hir::FieldAccess(FieldAccess {
+            Hir::Cast(value) => self.path_read(*value),
+            Hir::FieldAccess(FieldAccess {
                 value,
-                kind: FieldKind::Path(_),
+                kind: FieldKind::Path(steps),
                 ..
-            }) => self.is_path(*value),
+            }) => {
+                let (symbol, mut path) = self.path_read(*value)?;
+                path.extend(steps.iter().copied());
+                Some((symbol, path))
+            }
             Hir::Reference(symbol) => {
                 if let Some(value) = self.substituted_value(*symbol) {
-                    return self.is_path(value);
+                    return self.path_read(value);
                 }
 
                 // A function that's referenced as a value is a closure
@@ -158,8 +213,9 @@ impl Lowerer<'_, '_, '_> {
                     self.db.symbol(*symbol),
                     Symbol::Parameter(_) | Symbol::Binding(_) | Symbol::Constant(_)
                 )
+                .then(|| (*symbol, Vec::new()))
             }
-            _ => false,
+            _ => None,
         }
     }
 }

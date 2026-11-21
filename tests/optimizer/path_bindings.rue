@@ -203,3 +203,155 @@ test fn call_that_fails_is_bound(f: fn() -> Point) -> Int {
     let z = point.z;
     z * z + point.x
 }
+
+struct Six {
+    _a: Int,
+    _b: Int,
+    _c: Int,
+    _d: Int,
+    e: Int,
+}
+
+// The inner binding is a longer path once the outer one is bound, so it's measured again there,
+// and both end up bound
+test fn path_that_is_longer_under_a_bound_binding(six: Six, wide: Wide, flag: Bool) -> Int {
+    let a = wide.i;
+
+    if flag {
+        let b = six.e;
+        b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+    } else {
+        a + a + a + a + a + a + a + a + a + a
+    }
+}
+
+struct Holder {
+    _a: Int,
+    _b: Int,
+    _c: Int,
+    _d: Int,
+    _e: Int,
+    _f: Int,
+    _g: Int,
+    _h: Int,
+    pair: (Int, Int),
+}
+
+inline fn sum_of_first(pair: (Int, Int)) -> Int {
+    let first = pair.first;
+    first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+        + first
+}
+
+// The binding is a short path in the first call and a long one in the second, where it's bound
+test fn shallow_then_deep_argument(pair: (Int, Int), holder: Holder) -> Int {
+    sum_of_first(pair) * sum_of_first(holder.pair)
+}
+
+inline fn scaled_length(pair: (Bytes, Int), scale: Int) -> Int {
+    let length = pair.rest;
+    length * scale + length
+}
+
+// A call inside the argument of another call to the same `inline fn` decides the binding for
+// itself, and the outer call's decision is back in place after it
+test fn path_inside_a_call(pair: (Bytes, Int), password: Bytes) -> Int {
+    scaled_length(pair, scaled_length(check_password(password), 1))
+}
+
+test fn call_inside_a_path(pair: (Bytes, Int), password: Bytes) -> Int {
+    scaled_length(check_password(password), scaled_length(pair, 1))
+}
+
+test fn call_inside_a_path_that_fails(pair: (Bytes, Int), password: Bytes) -> Int {
+    scaled_length(check_password(password), scaled_length(pair, 1))
+}
+
+struct Many {
+    a: Int,
+    b: Int,
+    c: Int,
+    d: Int,
+    e: Int,
+    f: Int,
+    g: Int,
+    h: Int,
+    i: Int,
+    j: Int,
+}
+
+// Only eight bindings of a run are measured, and the rest are bound
+test fn more_bindings_than_are_measured(many: Many) -> Int {
+    let a = many.a;
+    let b = many.b;
+    let c = many.c;
+    let d = many.d;
+    let e = many.e;
+    let f = many.f;
+    let g = many.g;
+    let h = many.h;
+    let i = many.i;
+    let j = many.j;
+    a * a + b * b + c * c + d * d + e * e + f * f + g * g + h * h + i * i + j * j
+}

@@ -398,6 +398,42 @@ fn long_chains_of_calls_compile() {
     });
 }
 
+/// Reading a binding that's only a path where it's referenced nests deeper than binding it does,
+/// so measuring whether the program is smaller that way can go past the lowering limit when the
+/// program itself doesn't. That way of lowering it isn't kept, and nothing is decided from it for
+/// the bindings inside of it, rather than failing to compile.
+#[test]
+fn path_bindings_that_nest_too_deeply_are_bound() {
+    on_stack(2, || {
+        let pair = (0..8).fold("Int".to_string(), |ty, _| format!("({ty}, Int)"));
+        let first = ".first".repeat(8);
+
+        for (asserts, inner) in [(505, false), (499, true), (495, true)] {
+            let (binding, body) = if inner {
+                (
+                    "assert n > 0;\nlet i = wide.i;\n",
+                    "v * v + i * i + i * i + i * i + i * i + i * i + i * i",
+                )
+            } else {
+                ("", "v * v")
+            };
+
+            let source = format!(
+                "struct Wide {{ _a: Int, _b: Int, _c: Int, _d: Int, _e: Int, _f: Int, _g: Int, \
+                 _h: Int, i: Int }}\n\nfn main(p: {pair}, wide: Wide, n: Int) -> Int {{\n\
+                 let v = p{first};\n{binding}{}{body}\n}}",
+                "assert n > 0;\n".repeat(asserts)
+            );
+
+            let (diagnostics, result) = compile(&source);
+            assert!(
+                result.is_ok(),
+                "{asserts} {inner}: {result:?} {diagnostics:?}"
+            );
+        }
+    });
+}
+
 /// The search for unconditional recursion follows the whole chain of bindings. It used little stack
 /// for each binding when it recursed, so the chain is longer than the others.
 #[test]
