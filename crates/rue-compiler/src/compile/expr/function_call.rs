@@ -303,9 +303,9 @@ pub(crate) fn generalized_call(
 ///
 /// - A generic that no parameter's type references, such as `T` in `fn empty<T>() -> List<T>`,
 ///   which is the caller's to pick.
-/// - A generic that's a lambda argument's parameter, which was compiled against the generic
-///   itself, or a parameter of a function that's returned, such as `A` in
-///   `fn make<A>(list: List<A>) -> fn(a: A) -> A`, where no type is the most useful one.
+/// - A generic that's a lambda argument's parameter, or anywhere else in what an argument was
+///   compiled as, which would still name it, or a parameter of a function that's returned, such as
+///   `A` in `fn make<A>(list: List<A>) -> fn(a: A) -> A`, where no type is the most useful one.
 /// - A generic that the call would have no value with, such as `T` in `first(nil)` with
 ///   `fn first<T>(list: List<T>) -> T`: the code after the call would be unreachable.
 /// - A generic that an argument which failed to compile would have given a type.
@@ -330,6 +330,13 @@ fn unconstrained_as_never(
     let params: Vec<TypeId> = function.param_types().collect();
     let mut with_never = mappings.clone();
 
+    // What the arguments were compiled as, and what the other generics were inferred as from them
+    let compiled: Vec<TypeId> = checks
+        .iter()
+        .map(|&(_, ty, _)| ty)
+        .chain(mappings.values().copied())
+        .collect();
+
     for generic in unmapped {
         let in_params = params
             .iter()
@@ -340,9 +347,20 @@ fn unconstrained_as_never(
             .chain([&function.ret])
             .any(|&ty| occurs_contravariantly(ctx, ty, generic));
 
-        if in_params && !flows_in && !from_unresolved_argument(ctx, checks, generic) {
-            with_never.insert(generic, never);
+        if !in_params || flows_in || from_unresolved_argument(ctx, checks, generic) {
+            continue;
         }
+
+        // An argument that was compiled against the generic itself still names it, which would
+        // leak out of the call
+        if compiled
+            .iter()
+            .any(|&ty| contains_generic(ctx.types_mut(), ty, generic))
+        {
+            return None;
+        }
+
+        with_never.insert(generic, never);
     }
 
     if with_never.len() == mappings.len() {

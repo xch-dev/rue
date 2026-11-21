@@ -76,6 +76,13 @@ tests:
   runtime_cost: 833
   byte_cost: 756000
   total_cost: 756833
+- name: returned_function_that_never_returns
+  program: (q . 1)
+  debug_program: (a (q 2 (q 2 (i () (q 2 2 ()) (q 1 . 1)) 1) (c (a 2 ()) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 2 (i (not (not 2)) (q 5 2) (q 8 (q . "assertion failed at generic_inference_unconstrained_arguments.rue:118:9"))) 1)) (c (c (q . 4) (c (c (q . 1) 1) (c () ()))) ()))) ()))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: written_out
   program: (a (q 2 2 (c 2 ())) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1) ()))
   debug_program: (a (q 2 2 (c 2 ())) (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1) ()))
@@ -97,3 +104,5 @@ tests:
   runtime_cost: 4860
   byte_cost: 1068000
   total_cost: 1072860
+diagnostics:
+- Condition always evaluates to `false` at generic_inference_unconstrained_arguments.rue:127:8

@@ -57,6 +57,12 @@ fn witness<T>(value: Any, _like: List<T>) -> List<T> {
     unchecked_cast(value)
 }
 
+type Callback<T> = (fn(item: T) -> nil) | Any;
+
+fn with_callback<T, U>(_list: List<T>, function: fn(callback: Callback<T>) -> U) -> U {
+    function(fn(_item: T) => nil)
+}
+
 fn main(value: Any) -> Int {
     // No parameter's type references the generic
     let _no_arguments = empty();
@@ -85,6 +91,11 @@ fn main(value: Any) -> Int {
     // The lambda's parameter is the generic
     let _lambda_parameter = each(nil, fn(item) => nil);
     let _lambda_result = map(nil, fn(item) => item);
+
+    // The lambda was compiled with the generic in its parameter's type, where values of it flow
+    // out of the argument, so the call's type would name it
+    let _named_in_the_lambda = with_callback(nil, fn(callback) => callback);
+    let _only_in_the_parameter = with_callback(nil, fn(_callback) => 1);
 
     // Values of the generic flow into the function that's returned
     let _both_ways = same(nil);

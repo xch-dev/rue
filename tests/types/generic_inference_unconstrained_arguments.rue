@@ -113,6 +113,24 @@ test fn returned_function() -> Int {
     sum(produce())
 }
 
+fn lazy_first<T>(list: List<T>) -> fn() -> T {
+    fn() => {
+        assert list is (T, List<T>);
+        list.first
+    }
+}
+
+test fn returned_function_that_never_returns() -> Int {
+    // The function is a value, although calling it only raises
+    let first: fn() -> Int = lazy_first(nil);
+    let _same: fn() -> Bytes = lazy_first(nil);
+    if false {
+        first()
+    } else {
+        1
+    }
+}
+
 // These compiled before, and are as they were
 
 test fn written_out() -> Int {
