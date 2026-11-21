@@ -77,7 +77,8 @@ fn to_list<T>(value: Opt<T>) -> List<T> {
 }
 
 test fn through_an_alias() -> Int {
-    sum(to_list(nil))
+    let list = to_list(nil);
+    length(list)
 }
 
 fn keep<T, U>(list: List<T>, other: U) -> (List<T>, U) {
@@ -90,16 +91,26 @@ test fn beside_an_inferred_generic() -> Int {
     sum(pair.first) + pair.rest
 }
 
-fn again<T>(list: List<T>, times: Int) -> Int {
-    if times == 0 {
-        length(list)
-    } else {
-        again(nil, times - 1)
-    }
+fn count<T>(list: List<T>, extra: Int) -> Int {
+    length(list) + extra
 }
 
-test fn recursive_call() -> Int {
-    again([1, 2, 3], 2)
+fn inside<T>(_list: List<T>, extra: Int) -> Int {
+    // The caller's own `T` isn't what the callee's is
+    count(nil, extra)
+}
+
+test fn inside_a_generic_function() -> Int {
+    inside([1], 2)
+}
+
+fn producer<T>(_list: List<T>) -> fn() -> List<T> {
+    fn() => nil
+}
+
+test fn returned_function() -> Int {
+    let produce: fn() -> List<Int> = producer(nil);
+    sum(produce())
 }
 
 // These compiled before, and are as they were

@@ -39,6 +39,24 @@ fn taker<A>(_list: List<A>) -> fn(a: A) -> nil {
     fn(_a: A) => nil
 }
 
+fn either<A, B>(_first: List<A>, _second: List<B>) -> (A, nil) | (B, nil) {
+    unchecked_cast(nil)
+}
+
+struct Box<T> {
+    value: T,
+}
+
+fn boxed<T>(list: List<T>) -> Box<T> {
+    unchecked_cast(first(list))
+}
+
+// A function that casts can return values of a generic that its arguments hold none of, as it can
+// with the generic written out
+fn witness<T>(value: Any, _like: List<T>) -> List<T> {
+    unchecked_cast(value)
+}
+
 fn main(value: Any) -> Int {
     // No parameter's type references the generic
     let _no_arguments = empty();
@@ -51,6 +69,19 @@ fn main(value: Any) -> Int {
     let _whole_return = first(nil);
     let _part_of_a_pair = first_with(nil);
 
+    let _in_a_struct = boxed(nil);
+
+    // Each generic alone leaves the call a value, but both as `Never` leave it none
+    let _together = either(nil, nil);
+
+    // An argument that holds something else leaves the generic as it was
+    let _not_a_list = length(5);
+    let _one_of_two = merge_list(nil, 5);
+
+    // As does an argument that failed to compile, or is missing
+    let _unresolved: Int = reverse(undeclared);
+    let _too_few = merge_list([]);
+
     // The lambda's parameter is the generic
     let _lambda_parameter = each(nil, fn(item) => nil);
     let _lambda_result = map(nil, fn(item) => item);
@@ -58,6 +89,9 @@ fn main(value: Any) -> Int {
     // Values of the generic flow into the function that's returned
     let _both_ways = same(nil);
     let _only_taken = taker(nil);
+
+    // The list is typed as holding nothing, so the guard is reported as unnecessary
+    let _cast = witness(value, nil) is List<Int>;
 
     // What the generic is inferred as is shown as `Never`
     let shown: Int = reverse([]);

@@ -156,8 +156,8 @@ pub fn compile_function_call_expr(
 
         let mut uninferred = HashMap::new();
 
-        for (generic, never) in unconstrained_as_never(ctx, function, &checks, &mappings) {
-            mappings.insert(generic, never);
+        if let Some(with_never) = unconstrained_as_never(ctx, function, &checks, &mappings) {
+            mappings = with_never;
         }
 
         for &generic in &function.generics {
@@ -175,11 +175,7 @@ pub fn compile_function_call_expr(
             }
 
             // An argument that it would have been inferred from has already failed to compile
-            let from_unresolved_argument = checks.iter().any(|&(_, ty, param)| {
-                ctx.is_unresolved(ty) && contains_generic(ctx.types_mut(), param, generic)
-            });
-
-            if !from_unresolved_argument {
+            if !from_unresolved_argument(ctx, &checks, generic) {
                 let generic_name = ctx.type_name(generic);
                 let function_name = callee_name(call);
 
@@ -294,76 +290,88 @@ pub(crate) fn generalized_call(
     (mappings, ty)
 }
 
-/// The callee's generics that nothing gives a type, which are `Never` where the call has no
-/// values of them to return: those that a parameter's type references, only where values flow out
-/// of the argument, when every argument is assignable to its parameter with them as `Never`. The
-/// arguments then hold no value of the generic, as `nil` doesn't for `List<T>` in `length(nil)`
-/// and `reverse([])`, whose `List<Never>` is assignable to a list of anything. They're each paired
-/// with `Never`.
+/// Gives the callee's generics that nothing gives a type `Never`, where the arguments hold no
+/// value of them: `nil` holds no `T` for `List<T>`, so `length(nil)` and `reverse([])` don't need
+/// `T` written out, and `reverse([])` is a `List<Never>`, which is a list of anything. It returns
+/// the mappings with those generics added, or `None` if there are none.
 ///
-/// These are left out, so they're reported as they were:
+/// The generics are the ones that a parameter's type references, and that neither a parameter's
+/// type nor the return type references where values of them flow in (see
+/// `occurs_contravariantly`). They're `Never` together or not at all: only if every argument is
+/// assignable to its parameter with them as that, and the call still has a value. So these are
+/// reported as they were:
 ///
-/// - A generic that no parameter's type references, such as `T` in `fn empty<T>() -> List<T>` or
-///   in `fn decode<T>(value: Any) -> List<T>`. What it is is up to the caller, and a function can
-///   return values of it that it didn't get from its arguments, by casting them, which a guard on
-///   the call's value would then never check (see `tests/guards/inferred_operand_errors.rue`).
-/// - A generic that's referenced where values flow into the argument, or into what's returned, such
-///   as a lambda's parameter, which was compiled against the generic itself, or `A` in
+/// - A generic that no parameter's type references, such as `T` in `fn empty<T>() -> List<T>`,
+///   which is the caller's to pick.
+/// - A generic that's a lambda argument's parameter, which was compiled against the generic
+///   itself, or a parameter of a function that's returned, such as `A` in
 ///   `fn make<A>(list: List<A>) -> fn(a: A) -> A`, where no type is the most useful one.
 /// - A generic that the call would have no value with, such as `T` in `first(nil)` with
 ///   `fn first<T>(list: List<T>) -> T`: the code after the call would be unreachable.
+/// - A generic that an argument which failed to compile would have given a type.
 fn unconstrained_as_never(
     ctx: &mut Compiler,
     function: &FunctionType,
     checks: &[(AstExpr, TypeId, TypeId)],
     mappings: &HashMap<TypeId, TypeId>,
-) -> HashMap<TypeId, TypeId> {
-    let never = ctx.builtins().types.never;
-    let params: Vec<TypeId> = function.param_types().collect();
-
-    let unconstrained: HashMap<TypeId, TypeId> = function
+) -> Option<HashMap<TypeId, TypeId>> {
+    let unmapped: Vec<TypeId> = function
         .generics
         .iter()
+        .copied()
         .filter(|generic| !mappings.contains_key(generic))
-        .filter(|&&generic| {
-            let in_params = params
-                .iter()
-                .any(|&ty| contains_generic(ctx.types_mut(), ty, generic));
-
-            if !in_params
-                || params
-                    .iter()
-                    .chain([&function.ret])
-                    .any(|&ty| occurs_contravariantly(ctx, ty, generic))
-            {
-                return false;
-            }
-
-            let mut with_never = mappings.clone();
-            with_never.insert(generic, never);
-            let ret = substitute_with_mappings(ctx.types_mut(), function.ret, &with_never);
-            !rue_types::is_uninhabited(ctx.types_mut(), ret)
-        })
-        .map(|&generic| (generic, never))
         .collect();
 
-    if unconstrained.is_empty() {
-        return unconstrained;
+    if unmapped.is_empty() {
+        return None;
     }
 
+    let never = ctx.builtins().types.never;
+    let params: Vec<TypeId> = function.param_types().collect();
     let mut with_never = mappings.clone();
-    with_never.extend(&unconstrained);
+
+    for generic in unmapped {
+        let in_params = params
+            .iter()
+            .any(|&ty| contains_generic(ctx.types_mut(), ty, generic));
+
+        let flows_in = params
+            .iter()
+            .chain([&function.ret])
+            .any(|&ty| occurs_contravariantly(ctx, ty, generic));
+
+        if in_params && !flows_in && !from_unresolved_argument(ctx, checks, generic) {
+            with_never.insert(generic, never);
+        }
+    }
+
+    if with_never.len() == mappings.len() {
+        return None;
+    }
+
+    let ret = substitute_with_mappings(ctx.types_mut(), function.ret, &with_never);
+
+    if rue_types::is_uninhabited(ctx.types_mut(), ret) {
+        return None;
+    }
 
     let assignable = checks.iter().all(|&(_, ty, param)| {
         let param = substitute_with_mappings(ctx.types_mut(), param, &with_never);
-        !ctx.is_unresolved(ty) && ctx.is_assignable(ty, param)
+        ctx.is_unresolved(ty) || ctx.is_assignable(ty, param)
     });
 
-    if assignable {
-        unconstrained
-    } else {
-        HashMap::new()
-    }
+    assignable.then_some(with_never)
+}
+
+/// Whether an argument that the generic would have been inferred from has failed to compile.
+fn from_unresolved_argument(
+    ctx: &mut Compiler,
+    checks: &[(AstExpr, TypeId, TypeId)],
+    generic: TypeId,
+) -> bool {
+    checks.iter().any(|&(_, ty, param)| {
+        ctx.is_unresolved(ty) && contains_generic(ctx.types_mut(), param, generic)
+    })
 }
 
 /// The name of the function being called, without any generic arguments.

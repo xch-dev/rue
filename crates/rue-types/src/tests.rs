@@ -3847,6 +3847,29 @@ mod substitution {
         assert!(!is_uninhabited(&mut db.arena, pair));
         let chain = db.apply(alias, &[(t, never)]);
         assert!(!is_uninhabited(&mut db.arena, chain));
+
+        // A struct has the values of what it's made of
+        let empty = db.strukt("Empty", never);
+        assert!(is_uninhabited(&mut db.arena, empty));
+        let full = db.strukt("Full", int);
+        assert!(!is_uninhabited(&mut db.arena, full));
+
+        // type Even<T> = (T, Odd<T>); and type Odd<T> = (T, Even<T>) | nil;
+        let even = db.declare_alias("Even", &[t]);
+        let odd = db.declare_alias("Odd", &[t]);
+        let odd_t = db.apply(odd, &[(t, t)]);
+        let even_t = db.apply(even, &[(t, t)]);
+        let pair = db.pair(t, odd_t);
+        db.define(even, pair);
+        let pair = db.pair(t, even_t);
+        let union = db.union(&[pair, nil]);
+        db.define(odd, union);
+        let even_int = db.apply(even, &[(t, int)]);
+        assert!(!is_uninhabited(&mut db.arena, even_int));
+        let even_never = db.apply(even, &[(t, never)]);
+        assert!(is_uninhabited(&mut db.arena, even_never));
+        let odd_never = db.apply(odd, &[(t, never)]);
+        assert!(!is_uninhabited(&mut db.arena, odd_never));
     }
 
     #[test]
