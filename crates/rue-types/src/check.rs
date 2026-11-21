@@ -204,7 +204,9 @@ pub enum CheckError {
     #[error("Cannot check if value is of recursive type at runtime")]
     RecursiveType,
 
-    #[error("Cannot check if value is of function type at runtime")]
+    #[error(
+        "Cannot check a function value at runtime, since its representation depends on how it is compiled"
+    )]
     FunctionType,
 
     #[error("Cannot check if value is of generic type at runtime")]
@@ -621,13 +623,16 @@ fn variants_of_inner(
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => variants_of_impl(arena, builtins, id, seen),
-        Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) => {
+        // A function is kept as is, rather than as the atom or pair that it's compiled to, so that
+        // a check which has to look at it is an error. How a function is represented depends on
+        // how it's compiled, so the result would differ between debug and release builds.
+        Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) | Type::Function(_) => {
             vec![id]
         }
         Type::Never => vec![],
         Type::Alias(alias) => variants_of_impl(arena, builtins, alias.inner, seen),
         Type::Struct(ty) => variants_of_impl(arena, builtins, ty.inner, seen),
-        Type::Function(_) | Type::Any => vec![builtins.atom, builtins.recursive_any_pair],
+        Type::Any => vec![builtins.atom, builtins.recursive_any_pair],
         Type::Union(ty) => {
             let mut variants = Vec::new();
 

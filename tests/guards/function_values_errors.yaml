@@ -1,0 +1,8 @@
+diagnostics:
+- Cannot check a function value at runtime, since its representation depends on how it is compiled at function_values_errors.rue:5:5
+- Cannot check a function value at runtime, since its representation depends on how it is compiled at function_values_errors.rue:9:7
+- Cannot check a function value at runtime, since its representation depends on how it is compiled at function_values_errors.rue:13:5
+- Cannot check a function value at runtime, since its representation depends on how it is compiled at function_values_errors.rue:19:5
+- Cannot check a function value at runtime, since its representation depends on how it is compiled at function_values_errors.rue:23:5
+- Cannot check a function value at runtime, since its representation depends on how it is compiled at function_values_errors.rue:27:5
+- Cannot check a function value at runtime, since its representation depends on how it is compiled at function_values_errors.rue:32:9

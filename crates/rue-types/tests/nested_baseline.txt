@@ -18,7 +18,7 @@
 2.2: fn(p0: fn<{generic 0}, {generic 1}>(p0: Int, p1: {generic 0}, p2: {generic 1}) -> {generic 0}, p1: fn(p0: T1<nil, Bytes32, true>, p1: T0<nil, nil>) -> T0<nil, Int>, p2: Int) -> true | false to fn<{generic 2}, {generic 3}>(p0: {generic 3}, p1: nil | T1<{generic 2}, Int, Bytes>, p2: {generic 3}) -> {generic 2}, target {generic 4} | fn<{generic 2}, {generic 3}>(p0: {generic 3}, p1: nil | T1<{generic 2}, Int, Bytes>, p2: {generic 3}) -> {generic 2}
     Invalid Invalid Assign [["fn(p0: fn<{generic 5}, {generic 6}>(p0: Int, p1: {generic 5}, p2: {generic 6}) -> {generic 5}, p1: fn(p0: T1<nil, Bytes32, true>, p1: T0<nil, nil>) -> T0<nil, Int>, p2: Int) -> true | false"], [], []] Err(FunctionType) fn<{generic 7}, {generic 8}>(p0: {generic 8}, p1: nil | T1<{generic 7}, Int, Bytes>, p2: {generic 8}) -> {generic 7}
 2.3: fn<{generic 0}, {generic 1}>(p0: T1<true, Bytes32, {generic 0}>, p1: T1<true, true, true>) -> {generic 1} to T0<nil, Int>, target ({generic 2}, T0<nil, Int>)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(And([IsPair { can_be_truthy: true }, Pair(IsAtom { can_be_truthy: true }, And([IsAtom { can_be_truthy: true }, Atom(Value([]))]))])) (Int, nil)
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) (Int, nil)
 3: type T0<{generic 0}> = true
 3.0: ((Bytes32, T0<nil>), T0<true | false>) to (T0<Bytes>, T0<nil>), target ({generic 0}, (T0<Bytes>, T0<nil>))
     Invalid Invalid Invalid [["(Bytes32, T0<nil>)"], [], []] Ok(Impossible) Never
@@ -62,7 +62,7 @@
 9.2: T1<Bytes32, true> to T0<Bytes, true> | T0<true | false, true | false> | Bytes | Any | nil | T0<true, nil>, target {generic 0} | T0<Bytes, true> | T0<true | false, true | false> | Bytes | Any | nil | T0<true, nil>
     Assign Invalid Assign [[], [], ["fn<{generic 1}>(p0: T1<Bytes32, Bytes32> | Bytes32 | {generic 1}, p1: T0<true, Bytes32>) -> {generic 1}"]] Ok(None) T1<Bytes32, true>
 9.3: fn(p0: T0<true | false, Bytes32>, p1: fn<{generic 0}>(p0: {generic 0}) -> nil) -> (Bytes32, T1<true, Bytes>) to T0<Bytes32, Int>, target {generic 1} | T0<Bytes32, Int>
-    Invalid Invalid Assign [["fn(p0: T0<true | false, Bytes32>, p1: fn<{generic 2}>(p0: {generic 2}) -> nil) -> (Bytes32, T1<true, Bytes>)"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Atom(Value([1]))])) true
+    Invalid Invalid Assign [["fn(p0: T0<true | false, Bytes32>, p1: fn<{generic 2}>(p0: {generic 2}) -> nil) -> (Bytes32, T1<true, Bytes>)"], [], []] Err(FunctionType) true
 10: type T0<{generic 0}, {generic 1}> = ((T1<Bytes32> | true | false | nil, ({generic 0}, {generic 1})), fn<{generic 2}, {generic 3}>(p0: (true | false, Bytes32), p1: {generic 2}) -> {generic 3})
 10: type T1<{generic 0}> = fn<{generic 1}, {generic 2}>(p0: {generic 1}, p1: {generic 2}) -> fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}) -> {generic 3}
 10.0: T0<Bytes, Bytes32> to T1<Bytes32>, target ({generic 0}, T1<Bytes32>)
@@ -70,7 +70,7 @@
 10.1: T0<Bytes32, Bytes32> to fn(p0: fn(p0: T0<Bytes, true>, p1: Bytes32) -> T0<Bytes, Int>, p1: (T1<Bytes>, true)) -> Bytes | Int, target ({generic 0}, fn(p0: fn(p0: T0<Bytes, true>, p1: Bytes32) -> T0<Bytes, Int>, p1: (T1<Bytes>, true)) -> Bytes | Int)
     Invalid Invalid Invalid [["(T1<Bytes32> | true | false | nil, (Bytes32, Bytes32))"], [], []] Err(FunctionType) fn(p0: fn(p0: T0<Bytes, true>, p1: Bytes32) -> T0<Bytes, Int>, p1: (T1<Bytes>, true)) -> Bytes | Int
 10.2: T1<Bytes32> to T1<nil>, target {generic 0} | T1<nil>
-    Assign Assign Assign [["fn<{generic 1}, {generic 2}>(p0: {generic 1}, p1: {generic 2}) -> fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}) -> {generic 3}"], [], []] Err(FunctionType) T1<Bytes32>
+    Assign Assign Assign [["fn<{generic 1}, {generic 2}>(p0: {generic 1}, p1: {generic 2}) -> fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}) -> {generic 3}"], [], []] Ok(None) T1<Bytes32>
 10.3: Any to T1<Int>, target ({generic 0}, T1<Int>)
     Invalid Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T1<Int>
 11: type T0<{generic 0}> = fn<{generic 1}, {generic 2}>(p0: {generic 1} | {generic 0} | (T0<{generic 1}>, {generic 0}), p1: (({generic 0}, T0<Int>), true | T0<{generic 1}> | {generic 1}), p2: {generic 1}) -> fn<{generic 3}>(p0: {generic 0}, p1: true | false, p2: {generic 3}) -> {generic 3}
@@ -102,7 +102,7 @@
 16.1: T2<true | false, Bytes> to fn<{generic 0}, {generic 1}>(p0: T1, p1: fn<{generic 2}>(p0: {generic 0}, p1: {generic 2}, p2: T2<{generic 0}, Bytes32>) -> Int, p2: {generic 1}) -> {generic 1}, target {generic 3} | fn<{generic 0}, {generic 1}>(p0: T1, p1: fn<{generic 2}>(p0: {generic 0}, p1: {generic 2}, p2: T2<{generic 0}, Bytes32>) -> Int, p2: {generic 1}) -> {generic 1}
     Invalid Invalid Assign [["nil"], [], []] Err(FunctionType) fn<{generic 4}, {generic 5}>(p0: T1, p1: fn<{generic 6}>(p0: {generic 4}, p1: {generic 6}, p2: T2<{generic 4}, Bytes32>) -> Int, p2: {generic 5}) -> {generic 5}
 16.2: fn<{generic 0}, {generic 1}>(p0: ({generic 2}, true)) -> Any | Int | T2<true, true> | T2<nil, true | false> to T2<Bytes, Bytes>, target {generic 3} | T2<Bytes, Bytes>
-    Invalid Assign Assign [["fn<{generic 4}, {generic 5}>(p0: ({generic 6}, true)) -> Any", "Int"], [], ["nil", "nil"]] Ok(And([IsAtom { can_be_truthy: true }, Atom(Value([]))])) T2<Bytes, Bytes>
+    Invalid Assign Assign [["fn<{generic 4}, {generic 5}>(p0: ({generic 6}, true)) -> Any", "Int"], [], ["nil", "nil"]] Err(FunctionType) T2<Bytes, Bytes>
 16.3: Any to T0<true | false, Bytes, true | false>, target {generic 0} | T0<true | false, Bytes, true | false>
     Invalid Assign Assign [["Atom", "0 @ (Atom | <0>, Atom | <0>)"], [], []] Err(FunctionType) T0<true | false, Bytes, true | false>
 17: type T0<{generic 0}> = fn(p0: T0<Int>, p1: T0<true>) -> {generic 0}
@@ -119,20 +119,20 @@
 18.0: T0 to T1<true | false, true>, target {generic 0} | T1<true | false, true>
     Invalid Invalid Assign [["Int"], [], []] Ok(Impossible) Never
 18.1: fn<{generic 0}, {generic 1}>(p0: {generic 1}) -> {generic 1} | Any to T0, target {generic 2} | T0
-    Invalid Assign Assign [["fn<{generic 3}, {generic 4}>(p0: {generic 4}) -> {generic 4}", "Atom", "0 @ (Atom | <0>, Atom | <0>)"], [], []] Ok(IsAtom { can_be_truthy: true }) T0
+    Invalid Assign Assign [["fn<{generic 3}, {generic 4}>(p0: {generic 4}) -> {generic 4}", "Atom", "0 @ (Atom | <0>, Atom | <0>)"], [], []] Err(FunctionType) T0
 18.2: T0 to T1<Int, true>, target {generic 0} | T1<Int, true>
     Invalid Invalid Assign [["Int"], [], []] Ok(Impossible) Never
 18.3: T1<Int, true> | T0 | T1<Int, Int> | T0 to T1<true | false, nil>, target {generic 0} | T1<true | false, nil>
     Invalid Invalid Assign [["(T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: Int) -> Bytes)", "(T1<Int, Int>, Int)", "Int", "(T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: Int) -> Bytes)", "(T1<Int, Int>, Int)", "Int"], [], []] Err(FunctionType) (T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | ((T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | (T1<Int, Bytes>, true | false) | (T1<Int, Int>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | ((T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | (T1<Int, Bytes>, true | false) | (T1<Int, Int>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | (T1<Int, Int>, 1 | 0), 1 | 0), true | false) | (T1<Int, Int>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | ((T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | ((T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | (T1<Int, Bytes>, true | false) | (T1<Int, Int>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | ((T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: Int) -> Bytes) | (T1<Int, Int>, Int), 1 | 0), true | false) | (T1<Int, Int>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | ((T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: Int) -> Bytes) | (T1<Int, Int>, Int), 1 | 0), 1 | 0) | (T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | ((T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | (T1<Int, Bytes>, true | false) | (T1<Int, Int>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | ((T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | (T1<Int, Bytes>, true | false) | (T1<Int, Int>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | (T1<Int, Int>, 1 | 0), 1 | 0), true | false) | ((T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | ((T1<Int, Bytes>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | (T1<Int, Bytes>, true | false) | (T1<Int, Int>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | (T1<Int, Int>, 1 | 0), true | false) | (T1<Int, Int>, fn<{generic 1}>(p0: {generic 1}, p1: true | false) -> Bytes) | (T1<Int, Int>, 1 | 0), 1 | 0)
 19: type T0<{generic 0}, {generic 1}> = fn<{generic 2}>(p0: {generic 2}) -> {generic 2}
 19.0: T0<true, true> to T0<true | false, nil>, target {generic 0} | T0<true | false, nil>
-    Assign Assign Assign [["fn<{generic 1}>(p0: {generic 1}) -> {generic 1}"], [], []] Err(FunctionType) T0<true, true>
+    Assign Assign Assign [["fn<{generic 1}>(p0: {generic 1}) -> {generic 1}"], [], []] Ok(None) T0<true, true>
 19.1: (fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}) -> true | false, (T0<nil, Bytes>, T0<true | false, Bytes>)) to nil, target ({generic 1}, nil)
     Invalid Invalid Invalid [["fn<{generic 2}>(p0: {generic 2}, p1: {generic 2}) -> true | false"], [], []] Ok(Impossible) Never
 19.2: fn<{generic 0}>(p0: {generic 0}) -> {generic 0} to T0<Bytes32, Int>, target {generic 1} | T0<Bytes32, Int>
     Invalid Cast Assign [["fn<{generic 2}>(p0: {generic 2}) -> {generic 2}"], [], []] Err(FunctionType) fn<{generic 3}>(p0: {generic 3}) -> {generic 3}
 19.3: T0<Int, Int> to T0<Bytes32, Bytes>, target {generic 0} | T0<Bytes32, Bytes>
-    Assign Assign Assign [["fn<{generic 1}>(p0: {generic 1}) -> {generic 1}"], [], []] Err(FunctionType) T0<Int, Int>
+    Assign Assign Assign [["fn<{generic 1}>(p0: {generic 1}) -> {generic 1}"], [], []] Ok(None) T0<Int, Int>
 20: type T0<{generic 0}> = (fn<{generic 1}>(p0: fn<{generic 2}>(p0: {generic 2}) -> {generic 2}, p1: Int, p2: Any) -> T0<true | false>, {generic 0} | ({generic 0}, T0<{generic 0}>))
 20.0: (Any, (true | false, T0<true>)) to T0<Int>, target {generic 0} | T0<Int>
     Invalid Invalid Assign [["(Any, (true | false, T0<true>))"], [], []] Err(FunctionType) (fn<{generic 1}>(p0: fn<{generic 2}>(p0: {generic 2}) -> {generic 2}, p1: Int, p2: Any) -> T0<true | false>, (true | false, (fn<{generic 1}>(p0: fn<{generic 2}>(p0: {generic 2}) -> {generic 2}, p1: Int, p2: Any) -> T0<true | false>, true | (true, T0<true>))))
@@ -180,7 +180,7 @@
 26.1: T0<true | false, true | false, true> to T0<Int, Int, Bytes32>, target {generic 0} | T0<Int, Int, Bytes32>
     Cast Invalid Assign [["((T1, true | false), true | false)"], [], []] Ok(None) ((T1, true | false), true | false)
 26.2: fn<{generic 0}>(p0: ({generic 0}, Int), p1: Int | {generic 0}, p2: (Bytes, {generic 0})) -> {generic 0} to nil, target {generic 1} | nil
-    Invalid Invalid Assign [["fn<{generic 2}>(p0: ({generic 2}, Int), p1: Int | {generic 2}, p2: (Bytes, {generic 2})) -> {generic 2}"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Atom(Value([]))])) nil
+    Invalid Invalid Assign [["fn<{generic 2}>(p0: ({generic 2}, Int), p1: Int | {generic 2}, p2: (Bytes, {generic 2})) -> {generic 2}"], [], []] Err(FunctionType) nil
 26.3: T1 to T0<true, true | false, nil>, target ({generic 0}, T0<true, true | false, nil>)
     Invalid Assign Invalid [["(T1, true | false)"], [], []] Ok(Pair(Pair(None, Atom(Value([1]))), None)) T0<true, true | false, nil>
 27: type T0<{generic 0}, {generic 1}> = {generic 0}
@@ -200,7 +200,7 @@
 29.0: T0<Bytes32, Bytes> to fn(p0: true | false | Int, p1: T1<Int, Bytes, true> | T1<true, Bytes, true>) -> T0<true | false, true | false> | Bytes | T2, target {generic 0} | fn(p0: true | false | Int, p1: T1<Int, Bytes, true> | T1<true, Bytes, true>) -> T0<true | false, true | false> | Bytes | T2
     Invalid Invalid Assign [["(T0<Bytes32, Bytes32>, (T1<Bytes32, Bytes, Bytes32>, T1<Bytes32, Bytes32, Bytes>))", "(T2, (T2, Bytes32))", "fn<{generic 1}, {generic 2}>(p0: Bytes32, p1: Int) -> true"], [], []] Err(FunctionType) fn(p0: true | false | Int, p1: T1<Int, Bytes, true> | T1<true, Bytes, true>) -> T0<true | false, true | false> | Bytes | T2
 29.1: fn<{generic 0}>(p0: (true | false, true | false)) -> {generic 0} to T1<nil, true | false, true>, target {generic 1} | T1<nil, true | false, true>
-    Invalid Invalid Assign [["fn<{generic 2}>(p0: (true | false, true | false)) -> {generic 2}"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Atom(Value([]))])) nil
+    Invalid Invalid Assign [["fn<{generic 2}>(p0: (true | false, true | false)) -> {generic 2}"], [], []] Err(FunctionType) nil
 29.2: T2 to fn<{generic 0}>(p0: (T2, T0<Bytes, Bytes>)) -> T2, target ({generic 1}, fn<{generic 0}>(p0: (T2, T0<Bytes, Bytes>)) -> T2)
     Invalid Invalid Invalid [["T2 | nil | T1<true, Bytes32, Bytes32>"], [], []] Err(FunctionType) fn<{generic 2}>(p0: (T2, T0<Bytes, Bytes>)) -> T2
 29.3: T1<Bytes, true | false, Int> to T0<true, nil>, target {generic 0} | T0<true, nil>
@@ -212,7 +212,7 @@
 32.0: T0 to T0, target {generic 0} | T0
     Assign Assign Assign [[], [], ["(Any, Any | (true | false, true))"]] Ok(None) T0
 32.1: T1<Int> to T1<true | false>, target {generic 0} | T1<true | false>
-    Assign Assign Assign [["fn(p0: true) -> nil"], [], []] Err(FunctionType) T1<Int>
+    Assign Assign Assign [["fn(p0: true) -> nil"], [], []] Ok(None) T1<Int>
 32.2: (T0, Any) to true | false, target {generic 0} | true | false
     Invalid Invalid Assign [["(T0, Any)"], [], []] Ok(Impossible) Never
 32.3: T1<Bytes> to T1<true> | Any | T1<nil>, target ({generic 0}, T1<true> | Any | T1<nil>)
@@ -232,7 +232,7 @@
 34.0: T2<T1<true>, true | false, Bytes> to T1<Bytes>, target {generic 0} | T1<Bytes>
     Assign Invalid Assign [["fn(p0: Bytes) -> true | false"], [], []] Ok(None) T2<T1<true>, true | false, Bytes>
 34.1: T0<Int> to T0<nil>, target {generic 0} | T0<nil>
-    Assign Assign Assign [["fn(p0: T0<Int>) -> T0<Int>"], [], []] Err(FunctionType) T0<Int>
+    Assign Assign Assign [["fn(p0: T0<Int>) -> T0<Int>"], [], []] Ok(None) T0<Int>
 34.2: T2<nil, true, true> to T0<nil>, target {generic 0} | T0<nil>
     Invalid Invalid Assign [["fn(p0: true) -> true | false"], [], []] Err(FunctionType) fn(p0: T0<nil>) -> T0<nil>
 34.3: T1<true | false> to T0<true | false>, target ({generic 0}, T0<true | false>)
@@ -252,7 +252,7 @@
 36.0: T0<Int> to T2, target ({generic 0}, T2)
     Invalid Invalid Invalid [["fn<{generic 1}, {generic 2}>(p0: fn<{generic 3}, {generic 4}>(p0: {generic 4}) -> T0<Bytes32>, p1: {generic 2}) -> {generic 1}"], [], []] Err(FunctionType) fn<{generic 5}, {generic 6}>(p0: {generic 6}) -> (T0<{generic 5}>, T1<{generic 5}>)
 36.1: T1<nil> to T1<Bytes>, target ({generic 0}, T1<Bytes>)
-    Assign Invalid Invalid [["0 @ (Atom | (<0>, <0>))", "fn<{generic 1}, {generic 2}>(p0: {generic 1}, p1: Int, p2: {generic 2}) -> T1<nil>", "0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T1<nil>
+    Assign Invalid Invalid [["0 @ (Atom | (<0>, <0>))", "fn<{generic 1}, {generic 2}>(p0: {generic 1}, p1: Int, p2: {generic 2}) -> T1<nil>", "0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T1<nil>
 36.2: (T0<true> | T0<Int> | Bytes32, T1<Int>) to T1<true | false>, target ({generic 0}, T1<true | false>)
     Invalid Invalid Invalid [["T0<true> | T0<Int> | Bytes32"], [], []] Err(FunctionType) fn(p0: (T0<true | false>, T2)) -> (T1<true | false>, true | false) | (fn<{generic 1}, {generic 2}>(p0: {generic 1}, p1: Int, p2: {generic 2}) -> T1<true | false>, Bytes | true | false) | fn(p0: nil, p1: fn<{generic 3}, {generic 4}>(p0: {generic 3}, p1: {generic 4}) -> {generic 3}) -> fn<{generic 5}, {generic 6}>(p0: {generic 5}, p1: Bytes) -> {generic 6}
 36.3: T0<true> to T0<nil>, target {generic 0} | T0<nil>
@@ -260,13 +260,13 @@
 37: skipped
 38: type T0<{generic 0}, {generic 1}> = fn<{generic 2}, {generic 3}>(p0: {generic 3}, p1: {generic 2}, p2: T0<{generic 0}, {generic 2}>) -> Any
 38.0: T0<true, Int> to T0<Bytes, true | false>, target {generic 0} | T0<Bytes, true | false>
-    Assign Assign Assign [["fn<{generic 1}, {generic 2}>(p0: {generic 2}, p1: {generic 1}, p2: T0<true, {generic 1}>) -> Any"], [], []] Err(FunctionType) T0<true, Int>
+    Assign Assign Assign [["fn<{generic 1}, {generic 2}>(p0: {generic 2}, p1: {generic 1}, p2: T0<true, {generic 1}>) -> Any"], [], []] Ok(None) T0<true, Int>
 38.1: T0<true, Bytes32> to T0<true, nil> | (T0<Int, Bytes32>, true | false) | fn(p0: Bytes, p1: T0<Int, nil>, p2: T0<true | false, nil>) -> Bytes, target ({generic 0}, T0<true, nil> | (T0<Int, Bytes32>, true | false) | fn(p0: Bytes, p1: T0<Int, nil>, p2: T0<true | false, nil>) -> Bytes)
-    Assign Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T0<true, Bytes32>
+    Assign Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T0<true, Bytes32>
 38.2: T0<Bytes32, true> to T0<Int, T0<Bytes32, true>>, target {generic 0} | T0<Int, T0<Bytes32, true>>
-    Assign Assign Assign [["fn<{generic 1}, {generic 2}>(p0: {generic 2}, p1: {generic 1}, p2: T0<Bytes32, {generic 1}>) -> Any"], [], []] Err(FunctionType) T0<Bytes32, true>
+    Assign Assign Assign [["fn<{generic 1}, {generic 2}>(p0: {generic 2}, p1: {generic 1}, p2: T0<Bytes32, {generic 1}>) -> Any"], [], []] Ok(None) T0<Bytes32, true>
 38.3: T0<true | false, true | false> to T0<Bytes32, Int>, target ({generic 0}, T0<Bytes32, Int>)
-    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T0<true | false, true | false>
+    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T0<true | false, true | false>
 39: skipped
 40: skipped
 41: type T0 = true
@@ -372,18 +372,18 @@
 54.0: (Any, fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}, p2: {generic 0}) -> {generic 0}) to T0<nil, nil>, target {generic 1} | T0<nil, nil>
     Invalid Invalid Assign [["(Any, fn<{generic 2}>(p0: {generic 2}, p1: {generic 2}, p2: {generic 2}) -> {generic 2})"], [], []] Err(RecursiveType) (((T0<nil, nil>, nil), (nil, nil)), (fn<{generic 3}, {generic 4}>(p0: T0<{generic 4}, {generic 4}>, p1: Int, p2: T0<nil, nil>) -> T0<nil, nil>, T0<nil, true>))
 54.1: fn<{generic 0}>(p0: {generic 0}, p1: fn<{generic 1}, {generic 2}>(p0: {generic 1}) -> Int, p2: {generic 0}) -> (Bytes, T0<Bytes, true>) to T0<Bytes, true>, target ({generic 3}, T0<Bytes, true>)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(RecursiveType) (((T0<true, true>, Bytes), (Bytes, true)), (fn<{generic 4}, {generic 5}>(p0: T0<{generic 5}, {generic 5}>, p1: Int, p2: T0<true, true>) -> T0<true, Bytes>, T0<Bytes, true>))
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) (((T0<true, true>, Bytes), (Bytes, true)), (fn<{generic 4}, {generic 5}>(p0: T0<{generic 5}, {generic 5}>, p1: Int, p2: T0<true, true>) -> T0<true, Bytes>, T0<Bytes, true>))
 54.2: (Bytes32, T0<Bytes32, true>) | true | false to T0<Bytes32, Bytes>, target ({generic 0}, T0<Bytes32, Bytes>)
     gave up
 54.3: fn<{generic 0}>(p0: Bytes32, p1: {generic 0}) -> T0<Bytes, Bytes32> to T0<true | false, true | false>, target ({generic 1}, T0<true | false, true | false>)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(RecursiveType) (((T0<true | false, true | false>, true | false), (true | false, true | false)), (fn<{generic 2}, {generic 3}>(p0: T0<{generic 3}, {generic 3}>, p1: Int, p2: T0<true | false, true | false>) -> T0<true | false, true | false>, T0<true | false, true>))
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) (((T0<true | false, true | false>, true | false), (true | false, true | false)), (fn<{generic 2}, {generic 3}>(p0: T0<{generic 3}, {generic 3}>, p1: Int, p2: T0<true | false, true | false>) -> T0<true | false, true | false>, T0<true | false, true>))
 55: type T0<{generic 0}> = {generic 0} | (T0<{generic 0}>, T0<{generic 0}>)
 55.0: T0<true> to T0<Int>, target ({generic 0}, T0<Int>)
     Cast Invalid Invalid [["T0<true>"], [], []] Ok(None) true | (T0<true>, T0<true>)
 55.1: fn(p0: T0<Int>, p1: true) -> T0<nil> | T0<Bytes> | (T0<true>, true | false) to fn<{generic 0}>(p0: T0<nil> | Int, p1: {generic 0}) -> {generic 0}, target {generic 1} | fn<{generic 0}>(p0: T0<nil> | Int, p1: {generic 0}) -> {generic 0}
     Invalid Cast Assign [["fn(p0: T0<Int>, p1: true) -> T0<nil>", "Bytes", "(T0<Bytes>, T0<Bytes>)", "(T0<true>, true | false)"], [], []] Err(FunctionType) fn<{generic 2}>(p0: T0<nil> | Int, p1: {generic 2}) -> {generic 2}
 55.2: fn<{generic 0}, {generic 1}>(p0: Bytes32 | nil | true | false, p1: {generic 0}, p2: {generic 0}) -> {generic 0} to T0<Bytes32>, target {generic 2} | T0<Bytes32>
-    Invalid Invalid Assign [["fn<{generic 3}, {generic 4}>(p0: Bytes32 | nil | true | false, p1: {generic 3}, p2: {generic 3}) -> {generic 3}"], [], []] Err(RecursiveType) Bytes32 | (T0<Bytes32>, T0<Bytes32>)
+    Invalid Invalid Assign [["fn<{generic 3}, {generic 4}>(p0: Bytes32 | nil | true | false, p1: {generic 3}, p2: {generic 3}) -> {generic 3}"], [], []] Err(FunctionType) Bytes32 | (T0<Bytes32>, T0<Bytes32>)
 55.3: T0<Bytes32> to T0<Bytes>, target ({generic 0}, T0<Bytes>)
     Assign Invalid Invalid [["T0<Bytes32>"], [], []] Ok(None) T0<Bytes32>
 56: type T0<{generic 0}> = fn(p0: Any) -> Any
@@ -424,7 +424,7 @@
 59.1: T0 to Bytes, target {generic 0} | Bytes
     Assign Assign Assign [[], [], ["Bytes"]] Ok(None) T0
 59.2: fn(p0: fn<{generic 0}, {generic 1}>(p0: true | false) -> Bytes32, p1: T0 | T0 | T0, p2: fn(p0: Int) -> T0) -> Int to T0, target ({generic 2}, T0)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(IsAtom { can_be_truthy: true }) Bytes
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) Bytes
 59.3: fn(p0: (T0, T0), p1: (Int, Bytes), p2: T0) -> (T0, T0) to Any, target {generic 0} | Any
     Assign Invalid Assign [["fn(p0: (T0, T0), p1: (Int, Bytes), p2: T0) -> (T0, T0)"], [], []] Ok(None) fn(p0: (T0, T0), p1: (Int, Bytes), p2: T0) -> (T0, T0)
 60: type T0<{generic 0}, {generic 1}, {generic 2}> = fn(p0: fn(p0: (Bytes, T0<{generic 2}, Bytes32, nil>), p1: Bytes32) -> ({generic 0}, {generic 0}), p1: {generic 1}, p2: (T0<{generic 1}, {generic 2}, {generic 2}>, nil) | fn<{generic 3}>(p0: nil) -> {generic 2}) -> nil | (T0<true, {generic 2}, true | false>, T0<{generic 1}, {generic 0}, {generic 1}>)
@@ -442,7 +442,7 @@
 61.0: T2 to T1<true, true, Bytes>, target ({generic 0}, T1<true, true, Bytes>)
     Invalid Invalid Invalid [[], [], []] Ok(Impossible) Never
 61.1: fn<{generic 0}, {generic 1}>(p0: T0<{generic 0}, nil, true | false>, p1: {generic 1}) -> (T0<true, true | false, Int>, T2) to (T2, T2), target {generic 2} | (T2, T2)
-    Invalid Invalid Assign [["fn<{generic 3}, {generic 4}>(p0: T0<{generic 3}, nil, true | false>, p1: {generic 4}) -> (T0<true, true | false, Int>, T2)"], [], []] Ok(And([IsPair { can_be_truthy: true }, Pair(And([IsAtom { can_be_truthy: true }, Or([Atom(Value([1])), Atom(Value([]))])]), And([IsAtom { can_be_truthy: true }, Or([Atom(Value([1])), Atom(Value([]))])]))])) (T2, T2)
+    Invalid Invalid Assign [["fn<{generic 3}, {generic 4}>(p0: T0<{generic 3}, nil, true | false>, p1: {generic 4}) -> (T0<true, true | false, Int>, T2)"], [], []] Err(FunctionType) (T2, T2)
 61.2: (T0<Bytes32, Bytes, nil>, Bytes) | fn<{generic 0}, {generic 1}>(p0: {generic 0}, p1: T1<Bytes32, Bytes, nil>) -> T0<{generic 0}, {generic 1}, nil> | T0<true | false, Bytes32, Bytes> | T2 | T1<Bytes, true | false, nil> to fn<{generic 2}, {generic 3}>(p0: {generic 3}, p1: {generic 2}, p2: T1<{generic 3}, {generic 2}, {generic 3}> | {generic 2} | T2) -> true | false, target {generic 4} | fn<{generic 2}, {generic 3}>(p0: {generic 3}, p1: {generic 2}, p2: T1<{generic 3}, {generic 2}, {generic 3}> | {generic 2} | T2) -> true | false
     Invalid Invalid Assign [["(T0<Bytes32, Bytes, nil>, Bytes)", "fn<{generic 5}, {generic 6}>(p0: {generic 5}, p1: T1<Bytes32, Bytes, nil>) -> T0<{generic 5}, {generic 6}, nil>", "(T0<true | false, true | false, Int>, (fn(p0: T1<Bytes32, true | false, true | false>, p1: T1<true | false, true | false, Bytes32>) -> true | false, Bytes))", "true", "false", "(Any, fn(p0: nil) -> nil)"], [], []] Err(FunctionType) fn<{generic 7}, {generic 8}>(p0: {generic 8}, p1: {generic 7}, p2: T1<{generic 8}, {generic 7}, {generic 8}> | {generic 7} | T2) -> true | false
 61.3: ((Int, Bytes32), true) to T1<nil, nil, true>, target {generic 0} | T1<nil, nil, true>
@@ -491,29 +491,29 @@
     Invalid Invalid Assign [["true"], [], []] Err(FunctionType) fn<{generic 1}>(p0: fn<{generic 2}, {generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: fn<{generic 4}>(p0: {generic 4}) -> Bytes32) -> {generic 2}, p1: {generic 1}) -> (fn<{generic 5}, {generic 6}>(p0: {generic 6}, p1: {generic 5}, p2: {generic 5}) -> Bytes32, true | false)
 69: type T0<{generic 0}> = fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> {generic 0}
 69.0: T0<nil> to T0<Bytes>, target {generic 0} | T0<Bytes>
-    Assign Invalid Assign [["fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> nil"], [], []] Err(FunctionType) T0<nil>
+    Assign Invalid Assign [["fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> nil"], [], []] Ok(None) T0<nil>
 69.1: (fn(p0: T0<Bytes32>) -> T0<Bytes32>, (T0<true>, nil)) to T0<Bytes32>, target {generic 0} | T0<Bytes32>
     Invalid Invalid Assign [["(fn(p0: T0<Bytes32>) -> T0<Bytes32>, (T0<true>, nil))"], [], []] Err(FunctionType) fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> Bytes32
 69.2: T0<true | false> to T0<true | false>, target {generic 0} | T0<true | false>
-    Assign Assign Assign [["fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> true | false"], [], []] Err(FunctionType) T0<true | false>
+    Assign Assign Assign [["fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> true | false"], [], []] Ok(None) T0<true | false>
 69.3: T0<nil> to T0<Int>, target {generic 0} | T0<Int>
-    Cast Invalid Assign [["fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> nil"], [], []] Err(FunctionType) fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> Int
+    Cast Invalid Assign [["fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> nil"], [], []] Ok(None) fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> Int
 70: type T0 = fn(p0: fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}, p2: nil) -> T0 | (Int, T0) | T0, p1: fn<{generic 1}, {generic 2}>(p0: Int, p1: ({generic 1}, T0), p2: (T0, Bytes32)) -> {generic 2}, p2: T0) -> fn<{generic 3}, {generic 4}>(p0: {generic 4}, p1: {generic 4}, p2: {generic 4}) -> T0 | T0 | true | T0 | nil
 70.0: T0 to T0, target {generic 0} | T0
-    Assign Assign Assign [["fn(p0: fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}, p2: nil) -> T0 | (Int, T0) | T0, p1: fn<{generic 2}, {generic 3}>(p0: Int, p1: ({generic 2}, T0), p2: (T0, Bytes32)) -> {generic 3}, p2: T0) -> fn<{generic 4}, {generic 5}>(p0: {generic 5}, p1: {generic 5}, p2: {generic 5}) -> T0 | T0 | true | T0 | nil"], [], []] Err(FunctionType) T0
+    Assign Assign Assign [["fn(p0: fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}, p2: nil) -> T0 | (Int, T0) | T0, p1: fn<{generic 2}, {generic 3}>(p0: Int, p1: ({generic 2}, T0), p2: (T0, Bytes32)) -> {generic 3}, p2: T0) -> fn<{generic 4}, {generic 5}>(p0: {generic 5}, p1: {generic 5}, p2: {generic 5}) -> T0 | T0 | true | T0 | nil"], [], []] Ok(None) T0
 70.1: T0 to T0, target ({generic 0}, T0)
-    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T0
+    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T0
 70.2: T0 to T0, target ({generic 0}, T0)
-    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T0
+    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T0
 70.3: T0 to nil, target {generic 0} | nil
-    Invalid Invalid Assign [["fn(p0: fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}, p2: nil) -> T0 | (Int, T0) | T0, p1: fn<{generic 2}, {generic 3}>(p0: Int, p1: ({generic 2}, T0), p2: (T0, Bytes32)) -> {generic 3}, p2: T0) -> fn<{generic 4}, {generic 5}>(p0: {generic 5}, p1: {generic 5}, p2: {generic 5}) -> T0 | T0 | true | T0 | nil"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Atom(Value([]))])) nil
+    Invalid Invalid Assign [["fn(p0: fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}, p2: nil) -> T0 | (Int, T0) | T0, p1: fn<{generic 2}, {generic 3}>(p0: Int, p1: ({generic 2}, T0), p2: (T0, Bytes32)) -> {generic 3}, p2: T0) -> fn<{generic 4}, {generic 5}>(p0: {generic 5}, p1: {generic 5}, p2: {generic 5}) -> T0 | T0 | true | T0 | nil"], [], []] Err(FunctionType) nil
 71: type T0<{generic 0}, {generic 1}> = fn<{generic 2}>(p0: {generic 2}, p1: fn<{generic 3}>(p0: fn<{generic 4}>(p0: {generic 4}, p1: {generic 4}, p2: T0<{generic 2}, {generic 4}>) -> Int, p1: {generic 3}, p2: {generic 3}) -> Int) -> {generic 1}
 71.0: T0<Int, Bytes32> to T0<true, Bytes32>, target ({generic 0}, T0<true, Bytes32>)
-    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T0<Int, Bytes32>
+    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T0<Int, Bytes32>
 71.1: T0<Int, true | false> to T0<nil, nil>, target {generic 0} | T0<nil, nil>
     Invalid Cast Assign [["fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> true | false"], [], []] Err(FunctionType) fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> nil
 71.2: T0<Bytes32, true> to T0<Int, Int>, target {generic 0} | T0<Int, Int>
-    Cast Invalid Assign [["fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> true"], [], []] Err(FunctionType) fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> Int
+    Cast Invalid Assign [["fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> true"], [], []] Ok(None) fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> Int
 71.3: T0<Bytes, true | false> | Any to T0<true, Bytes>, target {generic 0} | T0<true, Bytes>
     Invalid Assign Assign [["fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> true | false", "Atom", "0 @ (Atom | <0>, Atom | <0>)"], [], []] Err(FunctionType) T0<true, Bytes>
 72: type T0 = (T0, (Bytes32, T0))
@@ -546,28 +546,28 @@
     Assign Invalid Assign [[], [], ["(true, ((T0, true | false), fn(p0: true | false) -> true | false))"]] Ok(None) T0
 75: type T0<{generic 0}, {generic 1}> = fn<{generic 2}>(p0: {generic 2}) -> {generic 2}
 75.0: T0<nil, nil> to T0<nil, Bytes32> | T0<Bytes32, nil>, target {generic 0} | T0<nil, Bytes32> | T0<Bytes32, nil>
-    Assign Cast Assign [["fn<{generic 1}>(p0: {generic 1}) -> {generic 1}"], [], []] Err(FunctionType) T0<nil, nil>
+    Assign Cast Assign [["fn<{generic 1}>(p0: {generic 1}) -> {generic 1}"], [], []] Ok(None) T0<nil, nil>
 75.1: fn<{generic 0}>(p0: Bytes32, p1: {generic 0}) -> {generic 0} to T0<Bytes, true>, target ({generic 1}, T0<Bytes, true>)
     Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) fn<{generic 2}>(p0: {generic 2}) -> {generic 2}
 75.2: T0<Int, Int> to T0<true | false, nil> | Int | true | false | fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}, p2: nil) -> {generic 0}, target ({generic 1}, T0<true | false, nil> | Int | true | false | fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}, p2: nil) -> {generic 0})
-    Assign Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T0<Int, Int>
+    Assign Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T0<Int, Int>
 75.3: fn<{generic 0}, {generic 1}>(p0: T0<Bytes, {generic 1}>) -> {generic 1} | fn<{generic 2}>(p0: T0<Int, true>, p1: {generic 2}, p2: true) -> {generic 2} to T0<nil, Bytes>, target ({generic 3}, T0<nil, Bytes>)
     Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))", "0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) fn<{generic 4}>(p0: {generic 4}) -> {generic 4}
 76: type T0 = fn<{generic 0}, {generic 1}>(p0: (T1<Bytes, Bytes32> | Int, fn<{generic 2}>(p0: true | false, p1: {generic 2}, p2: Bytes32) -> {generic 2})) -> Int | true | Any
 76: type T1<{generic 0}, {generic 1}> = {generic 0}
 76.0: T0 to T0, target {generic 0} | T0
-    Assign Assign Assign [["fn<{generic 1}, {generic 2}>(p0: (T1<Bytes, Bytes32> | Int, fn<{generic 3}>(p0: true | false, p1: {generic 3}, p2: Bytes32) -> {generic 3})) -> Int | true | Any"], [], []] Err(FunctionType) T0
+    Assign Assign Assign [["fn<{generic 1}, {generic 2}>(p0: (T1<Bytes, Bytes32> | Int, fn<{generic 3}>(p0: true | false, p1: {generic 3}, p2: Bytes32) -> {generic 3})) -> Int | true | Any"], [], []] Ok(None) T0
 76.1: ((T1<Bytes32, true | false>, true | false), (nil, T0)) to fn<{generic 0}>(p0: {generic 0}, p1: T0, p2: {generic 0}) -> (T1<true | false, Bytes>, true | false), target ({generic 1}, fn<{generic 0}>(p0: {generic 0}, p1: T0, p2: {generic 0}) -> (T1<true | false, Bytes>, true | false))
     Invalid Invalid Invalid [["(T1<Bytes32, true | false>, true | false)"], [], []] Err(FunctionType) fn<{generic 2}>(p0: {generic 2}, p1: T0, p2: {generic 2}) -> (T1<true | false, Bytes>, true | false)
 76.2: fn<{generic 0}, {generic 1}>(p0: {generic 1}, p1: {generic 0}) -> {generic 1} to T1<true, Int>, target {generic 2} | T1<true, Int>
-    Invalid Invalid Assign [["fn<{generic 3}, {generic 4}>(p0: {generic 4}, p1: {generic 3}) -> {generic 4}"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Atom(Value([1]))])) true
+    Invalid Invalid Assign [["fn<{generic 3}, {generic 4}>(p0: {generic 4}, p1: {generic 3}) -> {generic 4}"], [], []] Err(FunctionType) true
 76.3: T1<true, Bytes32> to T1<Bytes32, Bytes>, target ({generic 0}, T1<Bytes32, Bytes>)
     Invalid Invalid Invalid [[], [], []] Ok(Impossible) Never
 77: type T0 = fn<{generic 0}, {generic 1}>(p0: {generic 0}) -> fn(p0: (T0, T0), p1: T0, p2: (Bytes32, nil)) -> T0 | T0
 77.0: T0 to fn<{generic 0}, {generic 1}>(p0: (T0, Bytes32)) -> nil, target {generic 2} | fn<{generic 0}, {generic 1}>(p0: (T0, Bytes32)) -> nil
     Invalid Invalid Assign [["fn<{generic 3}, {generic 4}>(p0: {generic 3}) -> fn(p0: (T0, T0), p1: T0, p2: (Bytes32, nil)) -> T0 | T0"], [], []] Err(FunctionType) fn<{generic 5}, {generic 6}>(p0: (T0, Bytes32)) -> nil
 77.1: T0 to true, target ({generic 0}, true)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Atom(Value([1]))])) true
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) true
 77.2: Any to T0, target {generic 0} | T0
     Invalid Assign Assign [["Atom", "0 @ (Atom | <0>, Atom | <0>)"], [], []] Err(FunctionType) T0
 77.3: Bytes to T0, target {generic 0} | T0
@@ -588,18 +588,18 @@
 79.0: T2 to T2, target {generic 0} | T2
     Assign Assign Assign [[], [], ["Int"]] Ok(None) T2
 79.1: T1<true | false, Bytes, Bytes32> to T2, target ({generic 0}, T2)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(IsAtom { can_be_truthy: true }) Int
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) Int
 79.2: (Int, T2) | true | fn<{generic 0}>(p0: T2, p1: {generic 0}, p2: {generic 0}) -> true to (T2 | T0 | true | false, T0), target ({generic 1}, (T2 | T0 | true | false, T0))
     Invalid Invalid Invalid [["Int", "0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) (T2 | T0 | true | false, T0)
 79.3: T0 to T1<Int, Int, Bytes32>, target ({generic 0}, T1<Int, Int, Bytes32>)
     Invalid Invalid Invalid [["(fn(p0: Bytes32) -> T1<true, Bytes, true | false>, Any)"], [], []] Err(FunctionType) fn<{generic 1}>(p0: {generic 1}) -> ((nil, true), (Bytes32, Int))
 80: type T0<{generic 0}> = fn<{generic 1}, {generic 2}>(p0: T0<{generic 2}>) -> fn(p0: nil, p1: {generic 0}) -> Bytes | {generic 1} | T0<Int>
 80.0: T0<Bytes> to T0<Int>, target {generic 0} | T0<Int>
-    Cast Cast Assign [["fn<{generic 1}, {generic 2}>(p0: T0<{generic 2}>) -> fn(p0: nil, p1: Bytes) -> Bytes | {generic 1} | T0<Int>"], [], []] Err(FunctionType) fn<{generic 1}, {generic 2}>(p0: T0<{generic 2}>) -> fn(p0: nil, p1: Int) -> Bytes | {generic 1} | T0<Int>
+    Cast Cast Assign [["fn<{generic 1}, {generic 2}>(p0: T0<{generic 2}>) -> fn(p0: nil, p1: Bytes) -> Bytes | {generic 1} | T0<Int>"], [], []] Ok(None) fn<{generic 1}, {generic 2}>(p0: T0<{generic 2}>) -> fn(p0: nil, p1: Int) -> Bytes | {generic 1} | T0<Int>
 80.1: (fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}, p2: Bytes) -> {generic 0}, fn<{generic 1}>(p0: {generic 1}, p1: true | false, p2: {generic 1}) -> {generic 1}) to T0<nil>, target {generic 2} | T0<nil>
     Invalid Invalid Assign [["(fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: Bytes) -> {generic 3}, fn<{generic 4}>(p0: {generic 4}, p1: true | false, p2: {generic 4}) -> {generic 4})"], [], []] Err(FunctionType) fn<{generic 5}, {generic 6}>(p0: T0<{generic 6}>) -> fn(p0: nil, p1: nil) -> Bytes | {generic 5} | T0<Int>
 80.2: T0<true> to (nil, nil), target {generic 0} | (nil, nil)
-    Invalid Invalid Assign [["fn<{generic 1}, {generic 2}>(p0: T0<{generic 2}>) -> fn(p0: nil, p1: true) -> Bytes | {generic 1} | T0<Int>"], [], []] Ok(And([IsPair { can_be_truthy: true }, Pair(And([IsAtom { can_be_truthy: true }, Atom(Value([]))]), And([IsAtom { can_be_truthy: true }, Atom(Value([]))]))])) (nil, nil)
+    Invalid Invalid Assign [["fn<{generic 1}, {generic 2}>(p0: T0<{generic 2}>) -> fn(p0: nil, p1: true) -> Bytes | {generic 1} | T0<Int>"], [], []] Err(FunctionType) (nil, nil)
 80.3: T0<Int> to fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}) -> true | false, target ({generic 1}, fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}) -> true | false)
     Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) fn<{generic 2}>(p0: {generic 2}, p1: {generic 2}) -> true | false
 81: skipped
@@ -637,7 +637,7 @@
 85: type T1<{generic 0}> = ((Bytes32, T0<{generic 1}>), fn<{generic 2}>(p0: {generic 0}) -> {generic 2} | {generic 0})
 85: type T2<{generic 0}, {generic 1}, {generic 2}> = fn(p0: {generic 0}) -> fn(p0: (Bytes, {generic 2}), p1: (true, T0<{generic 1}>)) -> T0<{generic 2}>
 85.0: fn<{generic 0}, {generic 1}>(p0: {generic 0}, p1: {generic 1}) -> true | T0<true | false> | Bytes to T0<true | false> | T0<Int> | (Int, T1<true | false>), target ({generic 2}, T0<true | false> | T0<Int> | (Int, T1<true | false>))
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(RecursiveType) (Bytes32, T0<true | false>) | (T0<true | false>, (true | false, nil)) | (Bytes32, T0<Int>) | (T0<Int>, (Int, nil)) | (Int, T1<true | false>)
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) (Bytes32, T0<true | false>) | (T0<true | false>, (true | false, nil)) | (Bytes32, T0<Int>) | (T0<Int>, (Int, nil)) | (Int, T1<true | false>)
 85.1: T0<true | false> to Bytes, target ({generic 0}, Bytes)
     Invalid Invalid Invalid [["Bytes32", "T0<true | false>"], [], []] Ok(Impossible) Never
 85.2: Any to T1<Bytes32>, target {generic 0} | T1<Bytes32>
@@ -648,11 +648,11 @@
 86.0: fn(p0: fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}, p2: T0<Bytes32, nil>) -> T0<{generic 0}, {generic 0}>) -> T0<true | false, nil> to T0<nil, nil>, target {generic 1} | T0<nil, nil>
     Invalid Invalid Assign [["fn(p0: fn<{generic 2}>(p0: {generic 2}, p1: {generic 2}, p2: T0<Bytes32, nil>) -> T0<{generic 2}, {generic 2}>) -> T0<true | false, nil>"], [], []] Err(FunctionType) fn<{generic 3}, {generic 4}>(p0: (T0<true | false, Bytes>, fn<{generic 5}, {generic 6}>(p0: {generic 4}, p1: T0<true, nil>) -> nil), p1: {generic 3} | T0<nil, {generic 3}>) -> {generic 4}
 86.1: T0<true | false, true> to T0<true | false, nil>, target ({generic 0}, T0<true | false, nil>)
-    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T0<true | false, true>
+    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T0<true | false, true>
 86.2: T0<Int, Bytes32> to T0<Bytes, true>, target ({generic 0}, T0<Bytes, true>)
-    Cast Cast Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) fn<{generic 1}, {generic 2}>(p0: (T0<true | false, Bytes>, fn<{generic 3}, {generic 4}>(p0: {generic 2}, p1: T0<true, nil>) -> Bytes), p1: {generic 1} | T0<Bytes, {generic 1}>) -> {generic 2}
+    Cast Cast Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) fn<{generic 1}, {generic 2}>(p0: (T0<true | false, Bytes>, fn<{generic 3}, {generic 4}>(p0: {generic 2}, p1: T0<true, nil>) -> Bytes), p1: {generic 1} | T0<Bytes, {generic 1}>) -> {generic 2}
 86.3: T0<true | false, Bytes> to T0<true, true | false>, target {generic 0} | T0<true, true | false>
-    Assign Invalid Assign [["fn<{generic 1}, {generic 2}>(p0: (T0<true | false, Bytes>, fn<{generic 3}, {generic 4}>(p0: {generic 2}, p1: T0<true, nil>) -> true | false), p1: {generic 1} | T0<true | false, {generic 1}>) -> {generic 2}"], [], []] Err(FunctionType) T0<true | false, Bytes>
+    Assign Invalid Assign [["fn<{generic 1}, {generic 2}>(p0: (T0<true | false, Bytes>, fn<{generic 3}, {generic 4}>(p0: {generic 2}, p1: T0<true, nil>) -> true | false), p1: {generic 1} | T0<true | false, {generic 1}>) -> {generic 2}"], [], []] Ok(None) T0<true | false, Bytes>
 87: type T0<{generic 0}> = {generic 0}
 87.0: T0<Bytes32> to Int, target ({generic 0}, Int)
     Cast Invalid Invalid [[], [], []] Ok(None) Bytes32
@@ -673,7 +673,7 @@
 89.2: T1<Int, true | false> to T0<Bytes32>, target {generic 0} | T0<Bytes32>
     Assign Invalid Assign [["fn<{generic 1}, {generic 2}>(p0: {generic 2}, p1: {generic 2}) -> fn(p0: true | false | T0<true | false> | Int, p1: (T1<Bytes32, true | false>, T1<Bytes32, true | false>)) -> (Bytes, true | false)"], [], []] Ok(None) T1<Int, true | false>
 89.3: T1<T1<Bytes, true | false>, Bytes> to T1<true | false, Int>, target ({generic 0}, T1<true | false, Int>)
-    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T1<T1<Bytes, true | false>, Bytes>
+    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T1<T1<Bytes, true | false>, Bytes>
 90: type T0<{generic 0}> = (fn<{generic 1}, {generic 2}>(p0: {generic 1}, p1: {generic 0}, p2: true | false) -> {generic 2} | {generic 0}, (nil, ({generic 0}, T1<{generic 0}>)))
 90: type T1<{generic 0}> = T0<Int>
 90.0: T1<Bytes32> to T1<Bytes32>, target ({generic 0}, T1<Bytes32>)
@@ -710,20 +710,20 @@
 95: type T0<{generic 0}, {generic 1}> = ({generic 1} | (Bytes, true) | {generic 0}, Any)
 95: type T1<{generic 0}, {generic 1}> = fn(p0: (fn<{generic 2}>(p0: {generic 2}) -> {generic 0}, T1<{generic 0}, {generic 0}>), p1: T1<true, true>) -> ((nil, true), Bytes32 | {generic 0})
 95.0: T1<true, true> to T0<Bytes32, Bytes32>, target {generic 0} | T0<Bytes32, Bytes32>
-    Invalid Invalid Assign [["fn(p0: (fn<{generic 1}>(p0: {generic 1}) -> true, T1<true, true>), p1: T1<true, true>) -> ((nil, true), Bytes32 | true)"], [], []] Ok(And([IsPair { can_be_truthy: true }, Pair(Or([And([IsAtom { can_be_truthy: true }, Atom(Length(32))]), And([IsPair { can_be_truthy: true }, Pair(IsAtom { can_be_truthy: true }, And([IsAtom { can_be_truthy: true }, Atom(Value([1]))]))])]), None)])) (Bytes32 | (Bytes, true), Any)
+    Invalid Invalid Assign [["fn(p0: (fn<{generic 1}>(p0: {generic 1}) -> true, T1<true, true>), p1: T1<true, true>) -> ((nil, true), Bytes32 | true)"], [], []] Err(FunctionType) (Bytes32 | (Bytes, true), Any)
 95.1: fn<{generic 0}, {generic 1}>(p0: {generic 0}) -> {generic 1} to T1<nil, Int>, target ({generic 2}, T1<nil, Int>)
     Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) fn(p0: (fn<{generic 3}>(p0: {generic 3}) -> nil, T1<nil, nil>), p1: T1<true, true>) -> ((nil, true), Bytes32 | nil)
 95.2: T1<nil, true> to T0<Bytes32, true>, target {generic 0} | T0<Bytes32, true>
-    Invalid Invalid Assign [["T1<nil, true>"], [], []] Ok(And([IsPair { can_be_truthy: true }, Pair(Or([And([IsAtom { can_be_truthy: true }, Or([Atom(Value([1])), Atom(Length(32))])]), And([IsPair { can_be_truthy: true }, Pair(IsAtom { can_be_truthy: true }, And([IsAtom { can_be_truthy: true }, Atom(Value([1]))]))])]), None)])) (true | (Bytes, true) | Bytes32, Any)
+    Invalid Invalid Assign [["T1<nil, true>"], [], []] Err(FunctionType) (true | (Bytes, true) | Bytes32, Any)
 95.3: T1<Bytes32, nil> to Int, target {generic 0} | Int
-    Invalid Invalid Assign [["fn(p0: (fn<{generic 1}>(p0: {generic 1}) -> Bytes32, T1<Bytes32, Bytes32>), p1: T1<true, true>) -> ((nil, true), Bytes32)"], [], []] Ok(IsAtom { can_be_truthy: true }) Int
+    Invalid Invalid Assign [["fn(p0: (fn<{generic 1}>(p0: {generic 1}) -> Bytes32, T1<Bytes32, Bytes32>), p1: T1<true, true>) -> ((nil, true), Bytes32)"], [], []] Err(FunctionType) Int
 96: type T0<{generic 0}> = fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}) -> (Int | {generic 0}, Any)
 96.0: T0<Int> to T0<Int>, target ({generic 0}, T0<Int>)
-    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T0<Int>
+    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T0<Int>
 96.1: T0<nil> to T0<true | false>, target {generic 0} | T0<true | false>
-    Cast Cast Assign [["T0<nil>"], [], []] Err(FunctionType) fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}) -> (Int | true | false, Any)
+    Cast Cast Assign [["T0<nil>"], [], []] Ok(None) fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}) -> (Int | true | false, Any)
 96.2: T0<Bytes> to T0<true>, target ({generic 0}, T0<true>)
-    Cast Cast Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}) -> (Int | true, Any)
+    Cast Cast Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}) -> (Int | true, Any)
 96.3: fn<{generic 0}, {generic 1}>(p0: {generic 1}) -> {generic 0} to T0<true>, target ({generic 2}, T0<true>)
     Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}) -> (Int | true, Any)
 97: type T0<{generic 0}, {generic 1}> = Int
@@ -741,7 +741,7 @@
 98.1: T0<Int, nil> to (fn<{generic 0}, {generic 1}>(p0: Bytes, p1: nil) -> nil, true | false), target ({generic 2}, (fn<{generic 0}, {generic 1}>(p0: Bytes, p1: nil) -> nil, true | false))
     Invalid Invalid Invalid [[], [], []] Ok(Impossible) Never
 98.2: fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}) -> {generic 0} to T0<Int, nil>, target ({generic 1}, T0<Int, nil>)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Or([Atom(Value([1])), Atom(Value([]))])])) true | false
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) true | false
 98.3: T0<Int, true | false> to T0<Bytes, true>, target {generic 0} | T0<Bytes, true>
     Assign Assign Assign [[], [], ["true", "false"]] Ok(None) T0<Int, true | false>
 99: skipped
@@ -762,7 +762,7 @@
 103.0: T0<Bytes32, true, true | false> to T0<Bytes, true, true | false>, target {generic 0} | T0<Bytes, true, true | false>
     Assign Invalid Assign [[], [], ["(Bytes32, (T0<true, Bytes, Bytes>, Bytes32))"]] Ok(None) T0<Bytes32, true, true | false>
 103.1: T0<Bytes32, Int, nil> | fn(p0: T0<nil, true, nil>, p1: T0<Bytes, Bytes, Bytes>) -> T0<Int, Int, Bytes> | (true | false, T0<Bytes, Int, nil>) to T0<nil, true, Bytes>, target {generic 0} | T0<nil, true, Bytes>
-    Invalid Invalid Assign [["(Bytes32, (T0<Int, Bytes, Bytes>, Bytes32))", "fn(p0: T0<nil, true, nil>, p1: T0<Bytes, Bytes, Bytes>) -> T0<Int, Int, Bytes>", "(true | false, T0<Bytes, Int, nil>)"], [], []] Err(RecursiveType) (nil, (T0<true, Bytes, Bytes>, Bytes32))
+    Invalid Invalid Assign [["(Bytes32, (T0<Int, Bytes, Bytes>, Bytes32))", "fn(p0: T0<nil, true, nil>, p1: T0<Bytes, Bytes, Bytes>) -> T0<Int, Int, Bytes>", "(true | false, T0<Bytes, Int, nil>)"], [], []] Err(FunctionType) (nil, (T0<true, Bytes, Bytes>, Bytes32))
 103.2: (T0<true | false, nil, true>, fn<{generic 0}, {generic 1}>(p0: true | false, p1: T0<true | false, {generic 0}, {generic 1}>) -> {generic 1}) to T0<Bytes32, Bytes, Int> | fn<{generic 2}>(p0: {generic 2}, p1: {generic 2}) -> {generic 2} | true | false, target {generic 3} | T0<Bytes32, Bytes, Int> | fn<{generic 2}>(p0: {generic 2}, p1: {generic 2}) -> {generic 2} | true | false
     Invalid Invalid Assign [["(T0<true | false, nil, true>, fn<{generic 4}, {generic 5}>(p0: true | false, p1: T0<true | false, {generic 4}, {generic 5}>) -> {generic 5})"], [], []] Err(FunctionType) fn<{generic 6}>(p0: {generic 6}, p1: {generic 6}) -> {generic 6}
 103.3: T0<nil, true | false, true | false> to T0<Int, true | false, nil>, target {generic 0} | T0<Int, true | false, nil>
@@ -774,14 +774,14 @@
 104.1: Any to T1<Bytes, Int>, target ({generic 0}, T1<Bytes, Int>)
     Invalid Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(IsAtom { can_be_truthy: true }) T1<Bytes, Int>
 104.2: fn<{generic 0}>(p0: {generic 0}) -> {generic 0} to T0<true, Bytes, Bytes>, target ({generic 1}, T0<true, Bytes, Bytes>)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(RecursiveType) ((Bytes, T1<true, true>), T0<Bytes, true, Bytes>)
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) ((Bytes, T1<true, true>), T0<Bytes, true, Bytes>)
 104.3: T1<nil, nil> to T1<true, nil>, target ({generic 0}, T1<true, nil>)
     Invalid Invalid Invalid [[], [], []] Ok(Impossible) Never
 105: type T0<{generic 0}, {generic 1}, {generic 2}> = Any
 105: type T1 = T2<true>
 105: type T2<{generic 0}> = (Any, (({generic 0}, {generic 0}), {generic 0}))
 105.0: fn<{generic 0}>(p0: {generic 0}) -> {generic 0} to T1, target ({generic 1}, T1)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(And([IsPair { can_be_truthy: true }, Pair(None, And([IsPair { can_be_truthy: true }, Pair(And([IsPair { can_be_truthy: true }, Pair(And([IsAtom { can_be_truthy: true }, Atom(Value([1]))]), And([IsAtom { can_be_truthy: true }, Atom(Value([1]))]))]), And([IsAtom { can_be_truthy: true }, Atom(Value([1]))]))]))])) (Any, ((true, true), true))
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) (Any, ((true, true), true))
 105.1: T2<Int> to Any | (T2<Bytes32>, Bytes) | Int, target {generic 0} | Any | (T2<Bytes32>, Bytes) | Int
     Assign Invalid Assign [[], [], ["(Any, ((Int, Int), Int))"]] Ok(None) T2<Int>
 105.2: T0<Bytes32, true, Int> to Bytes, target {generic 0} | Bytes
@@ -881,16 +881,16 @@
 118.2: T1<T1<true, true, Bytes>, true | false, true | false> to T0<true>, target {generic 0} | T0<true>
     Invalid Assign Assign [["false"], [], ["true"]] Ok(Atom(Value([1]))) T0<true>
 118.3: (nil, T0<true>) | T0<true> | fn<{generic 0}, {generic 1}>(p0: Bytes, p1: T1<{generic 0}, Bytes32, {generic 0}>, p2: {generic 1}) -> {generic 0} to T0<true>, target ({generic 2}, T0<true>)
-    Invalid Assign Invalid [["nil", "0 @ (Atom | (<0>, <0>))"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Atom(Value([1]))])) T0<true>
+    Invalid Assign Invalid [["nil", "0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T0<true>
 119: type T0<{generic 0}, {generic 1}, {generic 2}> = Int | true | fn(p0: nil) -> fn(p0: {generic 0}) -> T2<Int>
 119: type T1<{generic 0}> = (((T1<true>, T1<{generic 0}>), {generic 0}), fn(p0: fn(p0: Bytes) -> Int, p1: {generic 0}) -> T0<nil, {generic 0}, true> | T0<{generic 0}, {generic 0}, Int> | nil)
 119: type T2<{generic 0}> = Bytes
 119.0: T0<true | false, true | false, true | false> to T1<nil>, target {generic 0} | T1<nil>
-    Invalid Invalid Assign [["Int", "true", "fn(p0: nil) -> fn(p0: true | false) -> T2<Int>"], [], []] Err(RecursiveType) (((T1<true>, T1<nil>), nil), fn(p0: fn(p0: Bytes) -> Int, p1: nil) -> T0<nil, nil, true> | T0<nil, nil, Int> | nil)
+    Invalid Invalid Assign [["Int", "true", "fn(p0: nil) -> fn(p0: true | false) -> T2<Int>"], [], []] Err(FunctionType) (((T1<true>, T1<nil>), nil), fn(p0: fn(p0: Bytes) -> Int, p1: nil) -> T0<nil, nil, true> | T0<nil, nil, Int> | nil)
 119.1: T0<true | false, Bytes32, true> to T1<true>, target ({generic 0}, T1<true>)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(RecursiveType) (((T1<true>, T1<true>), true), fn(p0: fn(p0: Bytes) -> Int, p1: true) -> T0<nil, true, true> | T0<true, true, Int> | nil)
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) (((T1<true>, T1<true>), true), fn(p0: fn(p0: Bytes) -> Int, p1: true) -> T0<nil, true, true> | T0<true, true, Int> | nil)
 119.2: T0<Bytes, Bytes32, nil> to T2<Int>, target {generic 0} | T2<Int>
-    Invalid Cast Assign [["Int", "true", "fn(p0: nil) -> fn(p0: Bytes) -> T2<Int>"], [], []] Ok(IsAtom { can_be_truthy: true }) Int | true | Bytes
+    Invalid Cast Assign [["Int", "true", "fn(p0: nil) -> fn(p0: Bytes) -> T2<Int>"], [], []] Err(FunctionType) Int | true | Bytes
 119.3: T2<nil> to T0<Bytes32, nil, Int>, target {generic 0} | T0<Bytes32, nil, Int>
     Cast Invalid Assign [["Bytes"], [], []] Ok(None) Bytes | 0x01 | fn(p0: nil) -> fn(p0: Bytes32) -> T2<Int>
 120: skipped
@@ -934,7 +934,7 @@
 124.2: T0 to fn(p0: fn(p0: T1<Bytes32, Int, Bytes>, p1: Bytes32) -> T1<true | false, Int, true | false>, p1: T0 | T1<Bytes32, Bytes32, true> | Bytes, p2: (true, true | false)) -> T0 | Bytes32, target {generic 0} | fn(p0: fn(p0: T1<Bytes32, Int, Bytes>, p1: Bytes32) -> T1<true | false, Int, true | false>, p1: T0 | T1<Bytes32, Bytes32, true> | Bytes, p2: (true, true | false)) -> T0 | Bytes32
     Invalid Invalid Assign [["fn<{generic 1}, {generic 2}>(p0: (true | false, Any)) -> Any"], [], []] Err(FunctionType) fn(p0: fn(p0: T1<Bytes32, Int, Bytes>, p1: Bytes32) -> T1<true | false, Int, true | false>, p1: T0 | T1<Bytes32, Bytes32, true> | Bytes, p2: (true, true | false)) -> T0 | Bytes32
 124.3: T0 to T1<nil, Int, Bytes>, target ({generic 0}, T1<nil, Int, Bytes>)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Atom(Length(32))])) Bytes32
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) Bytes32
 125: type T0<{generic 0}> = (fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}, p2: {generic 1}) -> fn<{generic 2}, {generic 3}>(p0: true | false, p1: nil) -> {generic 3}, T0<Bytes>)
 125: type T1<{generic 0}, {generic 1}, {generic 2}> = fn<{generic 3}, {generic 4}>(p0: fn(p0: {generic 4}, p1: {generic 2}) -> Bytes32) -> {generic 3}
 125: type T2<{generic 0}> = true
@@ -961,7 +961,7 @@
 127.0: fn<{generic 0}>(p0: {generic 0}, p1: (true | false, T1<true>), p2: {generic 0}) -> {generic 0} to T0 | true | T1<Int> | T1<true | false> | T1<Bytes>, target {generic 1} | T0 | true | T1<Int> | T1<true | false> | T1<Bytes>
     Assign Invalid Assign [["fn<{generic 2}>(p0: {generic 2}, p1: (true | false, T1<true>), p2: {generic 2}) -> {generic 2}"], [], []] Ok(None) fn<{generic 2}>(p0: {generic 2}, p1: (true | false, T1<true>), p2: {generic 2}) -> {generic 2}
 127.1: fn<{generic 0}, {generic 1}>(p0: nil, p1: {generic 0}) -> {generic 1} to T1<nil>, target ({generic 2}, T1<nil>)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Atom(Value([1]))])) true
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) true
 127.2: Int to Int, target {generic 0} | Int
     Assign Assign Assign [[], [], ["Int"]] Ok(None) Int
 127.3: T1<nil> to T0, target {generic 0} | T0
@@ -989,11 +989,11 @@
 131: type T0 = fn<{generic 0}, {generic 1}>(p0: {generic 1}, p1: {generic 0}, p2: {generic 1}) -> fn(p0: T1<{generic 0}, {generic 1}>, p1: T0) -> T0 | true | false | {generic 0}
 131: type T1<{generic 0}, {generic 1}> = {generic 0}
 131.0: fn<{generic 0}, {generic 1}>(p0: {generic 1}, p1: {generic 1}, p2: {generic 1}) -> {generic 1} to ((T1<nil, Int>, T1<Int, Int>), Bytes), target ({generic 2}, ((T1<nil, Int>, T1<Int, Int>), Bytes))
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(And([IsPair { can_be_truthy: true }, Pair(And([IsPair { can_be_truthy: true }, Pair(And([IsAtom { can_be_truthy: true }, Atom(Value([]))]), IsAtom { can_be_truthy: true })]), IsAtom { can_be_truthy: true })])) ((T1<nil, Int>, T1<Int, Int>), Bytes)
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) ((T1<nil, Int>, T1<Int, Int>), Bytes)
 131.1: T0 to T0, target {generic 0} | T0
-    Assign Assign Assign [["fn<{generic 1}, {generic 2}>(p0: {generic 2}, p1: {generic 1}, p2: {generic 2}) -> fn(p0: T1<{generic 1}, {generic 2}>, p1: T0) -> T0 | true | false | {generic 1}"], [], []] Err(FunctionType) T0
+    Assign Assign Assign [["fn<{generic 1}, {generic 2}>(p0: {generic 2}, p1: {generic 1}, p2: {generic 2}) -> fn(p0: T1<{generic 1}, {generic 2}>, p1: T0) -> T0 | true | false | {generic 1}"], [], []] Ok(None) T0
 131.2: T0 to T1<Bytes32, true | false>, target ({generic 0}, T1<Bytes32, true | false>)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Atom(Length(32))])) Bytes32
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) Bytes32
 131.3: Bytes32 to T0, target {generic 0} | T0
     Invalid Invalid Assign [["Bytes32"], [], []] Err(FunctionType) fn<{generic 1}, {generic 2}>(p0: {generic 2}, p1: {generic 1}, p2: {generic 2}) -> fn(p0: T1<{generic 1}, {generic 2}>, p1: T0) -> T0 | true | false | {generic 1}
 132: type T0<{generic 0}> = true | false
@@ -1020,13 +1020,13 @@
 134: type T0<{generic 0}, {generic 1}, {generic 2}> = fn<{generic 3}, {generic 4}>(p0: Bytes32) -> {generic 4}
 134: type T1<{generic 0}, {generic 1}> = nil
 134.0: T0<Bytes, nil, true> to T1<Bytes32, Bytes32>, target {generic 0} | T1<Bytes32, Bytes32>
-    Invalid Invalid Assign [["fn<{generic 1}, {generic 2}>(p0: Bytes32) -> {generic 2}"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Atom(Value([]))])) nil
+    Invalid Invalid Assign [["fn<{generic 1}, {generic 2}>(p0: Bytes32) -> {generic 2}"], [], []] Err(FunctionType) nil
 134.1: Bytes to T0<Bytes, true, Bytes32>, target ({generic 0}, T0<Bytes, true, Bytes32>)
     Invalid Invalid Invalid [[], [], []] Err(FunctionType) fn<{generic 1}, {generic 2}>(p0: Bytes32) -> {generic 2}
 134.2: T0<true, Bytes, Int> to T0<Bytes32, true | false, nil>, target ({generic 0}, T0<Bytes32, true | false, nil>)
-    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T0<true, Bytes, Int>
+    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T0<true, Bytes, Int>
 134.3: T0<Int, Int, nil> to T0<Int, nil, nil>, target {generic 0} | T0<Int, nil, nil>
-    Assign Assign Assign [["fn<{generic 1}, {generic 2}>(p0: Bytes32) -> {generic 2}"], [], []] Err(FunctionType) T0<Int, Int, nil>
+    Assign Assign Assign [["fn<{generic 1}, {generic 2}>(p0: Bytes32) -> {generic 2}"], [], []] Ok(None) T0<Int, Int, nil>
 135: type T0<{generic 0}, {generic 1}, {generic 2}> = {generic 1}
 135.0: T0<Bytes32, Int, Bytes> to T0<Bytes, true | false, true | false>, target {generic 0} | T0<Bytes, true | false, true | false>
     Invalid Cast Assign [["Int"], [], []] Ok(Or([Atom(Value([1])), Atom(Value([]))])) 1 | 0
@@ -1044,7 +1044,7 @@
 136.2: T0<true | false> to T0<Int>, target {generic 0} | T0<Int>
     Invalid Invalid Assign [["fn(p0: true | false, p1: fn<{generic 1}>(p0: {generic 1}) -> T0<true | false> | fn<{generic 2}>(p0: {generic 2}, p1: T0<true>) -> nil) -> Any"], [], []] Err(FunctionType) fn(p0: Int, p1: fn<{generic 1}>(p0: {generic 1}) -> T0<Int> | fn<{generic 2}>(p0: {generic 2}, p1: T0<true>) -> nil) -> Any
 136.3: fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}) -> {generic 0} to T0<nil>, target {generic 1} | T0<nil>
-    Assign Invalid Assign [["fn<{generic 2}>(p0: {generic 2}, p1: {generic 2}) -> {generic 2}"], [], []] Err(FunctionType) fn<{generic 2}>(p0: {generic 2}, p1: {generic 2}) -> {generic 2}
+    Assign Invalid Assign [["fn<{generic 2}>(p0: {generic 2}, p1: {generic 2}) -> {generic 2}"], [], []] Ok(None) fn<{generic 2}>(p0: {generic 2}, p1: {generic 2}) -> {generic 2}
 137: type T0<{generic 0}, {generic 1}> = (fn<{generic 2}, {generic 3}>(p0: {generic 3}, p1: {generic 3}) -> {generic 2}, (Any, {generic 0} | T0<{generic 1}, true | false> | {generic 1}))
 137: type T1<{generic 0}, {generic 1}> = {generic 0}
 137.0: T1<Bytes32, Int> to T0<Bytes, true | false>, target {generic 0} | T0<Bytes, true | false>
@@ -1082,7 +1082,7 @@
 141.0: T0<Int> to T2<nil>, target ({generic 0}, T2<nil>)
     Invalid Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T2<nil>
 141.1: T2<Bytes> to T2<Bytes32>, target {generic 0} | T2<Bytes32>
-    Assign Invalid Assign [["fn(p0: Bytes, p1: fn<{generic 1}, {generic 2}>(p0: {generic 1}, p1: Any) -> nil, p2: fn<{generic 3}>(p0: fn<{generic 4}, {generic 5}>(p0: {generic 5}) -> Bytes32, p1: {generic 3} | Bytes, p2: {generic 3}) -> fn<{generic 6}>(p0: T0<nil>) -> T0<{generic 3}>) -> T2<Bytes> | Bytes | T0<Bytes>"], [], []] Err(FunctionType) T2<Bytes>
+    Assign Invalid Assign [["fn(p0: Bytes, p1: fn<{generic 1}, {generic 2}>(p0: {generic 1}, p1: Any) -> nil, p2: fn<{generic 3}>(p0: fn<{generic 4}, {generic 5}>(p0: {generic 5}) -> Bytes32, p1: {generic 3} | Bytes, p2: {generic 3}) -> fn<{generic 6}>(p0: T0<nil>) -> T0<{generic 3}>) -> T2<Bytes> | Bytes | T0<Bytes>"], [], []] Ok(None) T2<Bytes>
 141.2: T0<true> to T0<Int>, target {generic 0} | T0<Int>
     Assign Assign Assign [[], [], ["Atom", "0 @ (Atom | <0>, Atom | <0>)"]] Ok(None) T0<Int>
 141.3: fn(p0: T2<Bytes32>, p1: (T2<true>, Bytes)) -> T1<nil, Bytes32> to T1<Bytes32, nil>, target ({generic 0}, T1<Bytes32, nil>)
@@ -1097,7 +1097,7 @@
 142.2: T2<Bytes, T1<nil, nil>> to T0<Bytes32>, target ({generic 0}, T0<Bytes32>)
     Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) (Bytes32 | fn<{generic 1}>(p0: {generic 1}, p1: Int, p2: nil) -> true | false, (T2<Bytes, Bytes32>, T2<Bytes32, Int> | T2<Bytes32, Bytes32>))
 142.3: T1<true | false, nil> to T1<Bytes, Int>, target {generic 0} | T1<Bytes, Int>
-    Assign Assign Assign [["fn<{generic 1}>(p0: {generic 1}, p1: Any, p2: {generic 1}) -> {generic 1}"], [], []] Err(FunctionType) T1<true | false, nil>
+    Assign Assign Assign [["fn<{generic 1}>(p0: {generic 1}, p1: Any, p2: {generic 1}) -> {generic 1}"], [], []] Ok(None) T1<true | false, nil>
 143: type T0<{generic 0}, {generic 1}> = Bytes32
 143: type T1<{generic 0}> = {generic 0}
 143: type T2 = (T1<true | false>, fn<{generic 0}>(p0: true, p1: Bytes, p2: {generic 0}) -> nil)
@@ -1125,7 +1125,7 @@
 145.1: T1 to T0, target ({generic 0}, T0)
     Invalid Invalid Assign [["T0"], [], []] Ok(Impossible) Never
 145.2: fn(p0: T1, p1: T1, p2: nil) -> T0 | Bytes32 to T1, target ({generic 0}, T1)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(And([IsPair { can_be_truthy: true }, Pair(IsAtom { can_be_truthy: true }, IsAtom { can_be_truthy: true })])) (T0, T0)
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) (T0, T0)
 145.3: T1 to (Bytes32, Bytes32), target ({generic 0}, (Bytes32, Bytes32))
     Invalid Cast Invalid [["T0"], [], []] Ok(Pair(Atom(Length(32)), Atom(Length(32)))) (Bytes32, Bytes32)
 146: type T0 = (Bytes | T0 | T0, (fn<{generic 0}>(p0: true, p1: T0) -> {generic 0}, Bytes))
@@ -1187,7 +1187,7 @@
 31451.6: T1<Int> to T0, target {generic 0} | T0
     Invalid Invalid Assign [["true", "false"], [], []] Err(FunctionType) fn(p0: nil) -> fn<{generic 1}, {generic 2}>(p0: {generic 2}) -> {generic 1}
 31451.7: fn(p0: (T2<true>, true | false), p1: (Int, Int)) -> true | false | nil | T0 to T1<true | false>, target {generic 0} | T1<true | false>
-    Invalid Invalid Assign [["fn(p0: (T2<true>, true | false), p1: (Int, Int)) -> true | false | nil | T0"], [], []] Ok(And([IsAtom { can_be_truthy: true }, Or([Atom(Value([1])), Atom(Value([]))])])) true | false
+    Invalid Invalid Assign [["fn(p0: (T2<true>, true | false), p1: (Int, Int)) -> true | false | nil | T0"], [], []] Err(FunctionType) true | false
 35565: type T0 = fn(p0: fn<{generic 0}>(p0: Int, p1: Bytes, p2: {generic 0}) -> Bytes32 | T1, p1: T0, p2: T1) -> ((T1, T1), fn(p0: Int, p1: T1, p2: true) -> T1)
 35565: type T1 = fn<{generic 0}>(p0: T1 | {generic 0}, p1: {generic 0}, p2: {generic 0}) -> {generic 0}
 35565.0: fn<{generic 0}, {generic 1}>(p0: {generic 0}, p1: T0 | {generic 0} | T1) -> T1 | {generic 2} to (Int, T0), target ({generic 3}, (Int, T0))
@@ -1195,13 +1195,13 @@
 35565.1: T0 to T1, target {generic 0} | T1
     Invalid Invalid Assign [["fn(p0: fn<{generic 1}>(p0: Int, p1: Bytes, p2: {generic 1}) -> Bytes32 | T1, p1: T0, p2: T1) -> ((T1, T1), fn(p0: Int, p1: T1, p2: true) -> T1)"], [], []] Err(FunctionType) fn<{generic 2}>(p0: T1 | {generic 2}, p1: {generic 2}, p2: {generic 2}) -> {generic 2}
 35565.2: T1 to Bytes32 | T1 | nil, target ({generic 0}, Bytes32 | T1 | nil)
-    Cast Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) Bytes32 | T1 | nil
+    Cast Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) Bytes32 | T1 | nil
 35565.3: T0 to true | false | fn<{generic 0}, {generic 1}>(p0: T0) -> {generic 1}, target ({generic 2}, true | false | fn<{generic 0}, {generic 1}>(p0: T0) -> {generic 1})
     Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) true | false | fn<{generic 3}, {generic 4}>(p0: T0) -> {generic 4}
 35565.4: T1 to T1, target ({generic 0}, T1)
-    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) T1
+    Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T1
 35565.5: T0 to Int, target ({generic 0}, Int)
-    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(IsAtom { can_be_truthy: true }) Int
+    Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) Int
 35565.6: Any to fn<{generic 0}>(p0: {generic 0}) -> {generic 0}, target ({generic 1}, fn<{generic 0}>(p0: {generic 0}) -> {generic 0})
     Invalid Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) fn<{generic 2}>(p0: {generic 2}) -> {generic 2}
 35565.7: T0 to T1, target {generic 0} | T1

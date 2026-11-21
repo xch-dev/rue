@@ -100,5 +100,9 @@ test fn equivalent_generic_functions() -> Bool {
 test fn guard_other_candidates() -> Bool {
     // Guard: a candidate that isn't a function isn't compared
     let value = pick(identity, nil);
-    value is nil
+    accept(value)
+}
+
+fn accept(_value: (fn<V>(value: V) -> V) | nil) -> Bool {
+    true
 }
