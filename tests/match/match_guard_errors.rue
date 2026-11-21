@@ -96,6 +96,14 @@ fn inline_condition(value: Tagged | Int) -> Int {
     }
 }
 
+// Nor does the value of an arm without a type
+fn inline_wildcard_condition(value: Int | (Int, Int)) -> Int {
+    inline match value {
+        _ if value is (Int, Int) => value.first,
+        _ => 0,
+    }
+}
+
 // An arm of an `inline match` with a condition doesn't handle its type either
 fn inline_only_condition(value: Int | (Int, Int)) -> Int {
     inline match value {

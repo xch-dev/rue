@@ -37,6 +37,19 @@ tests:
   byte_cost: 300000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:80:5"
+- name: overlapping_condition_raises
+  program: (i (x) (q . 2) (q . 3))
+  debug_program: (a (q 2 4 (c 6 (c (q . 1) ()))) (c (c (q 3 (a (i (= 5 (q . 1)) (q 21 7 (q . 5)) ()) 1) (q . 1) (i (a (i (= 5 (q . 1)) (q 2 2 7) ()) 1) (q . 2) (q . 3))) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at inline_match_may_raise.rue:80:5"))) 1)) ()))
+  byte_cost: 180000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:80:5"
+- name: disjoint_condition
+  program: (q . 2)
+  debug_program: (a (q 16 (a 14 (c 4 ())) (a 10 (c 4 (q . 5)))) (c (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at inline_match_may_raise.rue:80:5"))) 1) (c (q 3 (not (l 3)) (q . 1) (i (a (i (l 3) (q 2 2 (f 3)) ()) 1) (q . 2) (q . 3))) (q 3 (= 3 ()) (q . 1) (i (a (i (= 3 (q . 1)) (q 2 2 (- 3 (q . 2))) ()) 1) (q . 2) (q . 3))))) ()))
+  output: "2"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 - name: first_condition_raises
   program: (q . 2)
   debug_program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 3 (a 2 3) (q . 2) (q . 3)) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at inline_match_may_raise.rue:80:5"))) 1)) ()))
@@ -46,19 +59,19 @@ tests:
   total_cost: 36020
 - name: allowed
   program: (i () (x) (q . 1))
-  debug_program: (a (q 2 2 (q . 1)) (c (q 3 (= 1 ()) (x (q . "raise called at inline_match_may_raise.rue:115:13") (q . "missing")) 1) ()))
+  debug_program: (a (q 2 2 (q . 1)) (c (q 3 (= 1 ()) (x (q . "raise called at inline_match_may_raise.rue:152:13") (q . "missing")) 1) ()))
   byte_cost: 156000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at inline_match_may_raise.rue:115:13" "missing")
+  debug_clvm_error: clvm raise ("raise called at inline_match_may_raise.rue:152:13" "missing")
 - name: statement_rest_raises
   program: (i () (x) ())
-  debug_program: (a (q 2 2 (c (q . 1) ())) (c (q 3 (= 3 ()) () (a (i (not (= 2 (q . 1))) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:135:5"))) 1)) ()))
+  debug_program: (a (q 2 2 (c (q . 1) ())) (c (q 3 (= 3 ()) () (a (i (not (= 2 (q . 1))) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:172:5"))) 1)) ()))
   byte_cost: 132000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:135:5"
+  debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:172:5"
 - name: statement_without_return
   program: (q . 4)
-  debug_program: (a (q 2 2 (c (q . 4) ())) (c (q 3 () (i (= 3 ()) (a (i ("debug_print" (q . "inline_match_may_raise.rue:147:13") ()) () ()) 1) ()) (a (i (not (= 2 (q . 1))) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:152:5"))) 1)) ()))
+  debug_program: (a (q 2 2 (c (q . 4) ())) (c (q 3 () (i (= 3 ()) (a (i ("debug_print" (q . "inline_match_may_raise.rue:184:13") ()) () ()) 1) ()) (a (i (not (= 2 (q . 1))) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:189:5"))) 1)) ()))
   output: "4"
   runtime_cost: 20
   byte_cost: 36000
@@ -67,27 +80,28 @@ tests:
   - ()
 - name: nested_statement_rest_raises
   program: (a (q 3 () (a 2 5) ()) (c (q 8) (c 1 1)))
-  debug_program: (a (q 2 2 (c (q . 1) (c () (q . 1)))) (c (q 2 (q 2 (i 31 (q 3 (= 23 ()) () (a 2 5)) (q 2 (i ("debug_print" (q . "inline_match_may_raise.rue:171:9") 11) () (q 2 2 5)) 1)) 1) (c (q 2 (i (not (= 2 (q . 1))) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:174:5"))) 1) (c 1 1))) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c () (q . 1)))) (c (q 2 (q 2 (i 31 (q 3 (= 23 ()) () (a 2 5)) (q 2 (i ("debug_print" (q . "inline_match_may_raise.rue:208:9") 11) () (q 2 2 5)) 1)) 1) (c (q 2 (i (not (= 2 (q . 1))) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:211:5"))) 1) (c 1 1))) ()))
   byte_cost: 468000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:174:5"
+  debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:211:5"
 - name: arm_rest_raises
   program: (a (q 3 () (a 2 5) (q . 1)) (c (q 8) (c 1 1)))
-  debug_program: (a (q 2 2 (c (q . 1) (c () ()))) (c (q 2 (q 2 (i (= 23 ()) (q 3 (= 31 ()) (q . 1) (a 2 5)) (q 2 (i ("debug_print" (q . "inline_match_may_raise.rue:192:13") 11) () (q 2 2 5)) 1)) 1) (c (q 2 (i (not (= 2 (q . 1))) (q 1 . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:196:5"))) 1) (c 1 1))) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c () ()))) (c (q 2 (q 2 (i (= 23 ()) (q 3 (= 31 ()) (q . 1) (a 2 5)) (q 2 (i ("debug_print" (q . "inline_match_may_raise.rue:229:13") 11) () (q 2 2 5)) 1)) 1) (c (q 2 (i (not (= 2 (q . 1))) (q 1 . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:233:5"))) 1) (c 1 1))) ()))
   byte_cost: 492000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:196:5"
+  debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:233:5"
 - name: nested_reported_once
   program: (a (q 3 () (x) ()) (c (q 8) (c 1 1)))
-  debug_program: (a (q 2 2 (c (q . 1) (c () (q . 1)))) (c (q 2 (q 2 (i 31 (q 3 (= 23 ()) () (a (i (> 11 (q . 1)) (q 2 2 5) (q 8 (q . "assertion failed at inline_match_may_raise.rue:215:9"))) 1)) (q 2 (i ("debug_print" (q . "inline_match_may_raise.rue:217:9") 11) () (q 2 2 5)) 1)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:220:5"))) 1) (c 1 1))) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c () (q . 1)))) (c (q 2 (q 2 (i 31 (q 3 (= 23 ()) () (a (i (> 11 (q . 1)) (q 2 2 5) (q 8 (q . "assertion failed at inline_match_may_raise.rue:252:9"))) 1)) (q 2 (i ("debug_print" (q . "inline_match_may_raise.rue:254:9") 11) () (q 2 2 5)) 1)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_match_may_raise.rue:257:5"))) 1) (c 1 1))) ()))
   byte_cost: 420000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:215:9"
+  debug_clvm_error: clvm raise "assertion failed at inline_match_may_raise.rue:252:9"
 diagnostics:
 - An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:8:5
 - An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:21:5
 - An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:85:5
-- An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:128:5
-- An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:164:9
-- An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:185:16
-- An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:208:9
+- An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:100:5
+- An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:165:5
+- An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:201:9
+- An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:222:16
+- An arm of this `inline match` can raise, but every arm is always evaluated regardless of which one matches; use a normal `match` instead at inline_match_may_raise.rue:245:9

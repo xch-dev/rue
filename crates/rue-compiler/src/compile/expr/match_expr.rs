@@ -82,6 +82,10 @@ pub fn compile_match_expr(
     let mut indistinguishable = Vec::new();
     // The arms with a condition that can be taken, which don't handle the values of their types
     let mut conditional = Vec::new();
+    // The patterns of the arms that are branches so far, and the conditions of an `inline match`
+    // that are evaluated for a value that an earlier arm takes
+    let mut branch_patterns: Vec<Option<TypeId>> = Vec::new();
+    let mut eager_conditions = Vec::new();
 
     let checkpoint = ctx.mapping_checkpoint();
 
@@ -273,7 +277,21 @@ pub fn compile_match_expr(
                 hir
             };
 
+            // The condition is only evaluated for the values that pass the arm's check, which
+            // an earlier arm takes if its type has any of them
+            if inline
+                && branch_patterns
+                    .iter()
+                    .any(|&earlier| match (earlier, pattern) {
+                        (Some(earlier), Some(ty)) => overlaps(ctx, earlier, ty),
+                        _ => true,
+                    })
+            {
+                eager_conditions.push(arm_condition);
+            }
+
             branches.push((condition, body.hir));
+            branch_patterns.push(pattern);
             conditional.push((pattern_srcloc, pattern));
             continue;
         }
@@ -293,6 +311,7 @@ pub fn compile_match_expr(
         let value = guard_value(ctx, &scrutinee, &reference);
         let condition = ctx.alloc_hir(Hir::Guard(Guard { value, ty, check }));
         branches.push((condition, body.hir));
+        branch_patterns.push(Some(ty));
         handled.push(ty);
 
         // The arms after this one only see the values that it didn't handle, like the `else`
@@ -343,12 +362,12 @@ pub fn compile_match_expr(
     }
 
     // What's evaluated whichever arm is taken, which is every arm of an `inline match`, and the
-    // condition of each arm after the first, since it's in the `else` branch of the arm before it
+    // conditions that are in the `else` branch of an arm that takes a value they're evaluated for
     let arms: Vec<HirId> = branches
         .iter()
         .map(|&(_, then)| then)
         .chain(else_branch)
-        .chain(branches.iter().skip(1).map(|&(condition, _)| condition))
+        .chain(eager_conditions)
         .collect();
 
     let else_branch = if let Some(else_branch) = else_branch {
@@ -443,7 +462,9 @@ struct Matched<'a> {
 ///
 /// An arm's condition is compiled like the right operand of `value is T && condition`: it sees the
 /// value narrowed and the binding, and the body sees what the condition narrows as well, like the
-/// branch of an `if` would.
+/// branch of an `if` would. In an `inline match`, the condition is the only part of the arm that
+/// sees the value narrowed, since it's the only part that the arm's type is checked before, and
+/// the body doesn't see what the condition narrows either.
 fn compile_arm(
     ctx: &mut Compiler,
     matched: &Matched<'_>,
@@ -508,7 +529,8 @@ fn compile_arm(
         // The arms of an `inline match` are evaluated whether or not the condition is true
         if let Some(index) = narrowing {
             ctx.revert_mappings(index, guard.syntax().text_range().end());
-        } else {
+        }
+        if !matched.inline {
             ctx.push_mappings(value.then_map, range.start());
         }
 

@@ -89,6 +89,43 @@ fn condition_raises_branch(x: Int) -> Int {
     }
 }
 
+// A condition is only evaluated for the values of its arm's type, so it's reported when an
+// earlier arm takes some of them
+
+test fn overlapping_condition_raises() -> Int {
+    overlapping_condition_raises_branch(1, 0)
+}
+
+fn overlapping_condition_raises_branch(x: Int, y: Int) -> Int {
+    inline match x {
+        1 if y > 5 => 1,
+        1 if positive(y) => 2,
+        _ => 3,
+    }
+}
+
+// The earlier arms take none of the values that these conditions are evaluated for
+
+test fn disjoint_condition() -> Int {
+    disjoint_condition_branch(0) + disjoint_pair_condition_branch(5)
+}
+
+fn disjoint_condition_branch(x: Int) -> Int {
+    inline match x {
+        0 => 1,
+        1 if positive(x - 2) => 2,
+        _ => 3,
+    }
+}
+
+fn disjoint_pair_condition_branch(x: Int | (Int, Int)) -> Int {
+    inline match x {
+        Int => 1,
+        (Int, Int) if positive(x.first) => 2,
+        _ => 3,
+    }
+}
+
 // The condition of the first arm is evaluated either way, like the condition of an `if`
 
 test fn first_condition_raises() -> Int {

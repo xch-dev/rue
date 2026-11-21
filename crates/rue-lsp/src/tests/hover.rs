@@ -865,6 +865,53 @@ fn test_hover_imported_variant_without_fields() {
 }
 
 #[test]
+fn test_hover_narrowed_in_inline_match_arm_condition() {
+    // Only the condition of an `inline match` arm sees the value narrowed
+    check(
+        r#"
+fn main(value: Int | (Int, Int)) -> Int {
+    inline match value {
+        Int if val$0ue > 1 => 1,
+        _ => 0,
+    }
+}
+"#,
+        expect![[r#"
+            value: Int
+        "#]],
+    );
+
+    check(
+        r#"
+fn main(value: Int | (Int, Int), other: Int | nil) -> Int {
+    inline match value {
+        Int if other is Int => if val$0ue is Int { 1 } else { 2 },
+        _ => 0,
+    }
+}
+"#,
+        expect![[r#"
+            value: Int | (Int, Int)
+        "#]],
+    );
+
+    // Nor does the arm's value see what the condition narrows, with or without a type
+    check(
+        r#"
+fn main(value: Int | (Int, Int), other: Int | nil) -> Int {
+    inline match value {
+        _ if other is Int => if oth$0er is Int { 1 } else { 2 },
+        _ => 0,
+    }
+}
+"#,
+        expect![[r#"
+            other: Int | nil
+        "#]],
+    );
+}
+
+#[test]
 fn test_hover_narrowed_in_match_arm_condition() {
     // The condition sees the value narrowed to the arm's type
     check(
