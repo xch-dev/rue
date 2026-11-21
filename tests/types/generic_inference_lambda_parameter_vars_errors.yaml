@@ -8,7 +8,7 @@ diagnostics:
 - Unused function `five_only` at generic_inference_lambda_parameter_vars_errors.rue:47:4
 - |-
   Cannot assign `(fn(y: T, _other: fn(v: T) -> Int) -> Int, (7, fn(_z: Int) -> 0))` to `(fn(value: Int, callback: fn(v: Int) -> Int) -> Int, (Int, fn(v: Int) -> Int))`, since they are incompatible at generic_inference_lambda_parameter_vars_errors.rue:57:39
-    note: `T` is a generic of the function that's called, since the type of the parameter `_x` wasn't inferred here; specify the parameter's type explicitly
+    note: `T` is a generic of the function that's called, since the type of the parameter `callback` wasn't inferred here; specify the parameter's type explicitly
 - Unused function `callback_map` at generic_inference_lambda_parameter_vars_errors.rue:62:4
 - Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars_errors.rue:70:5
 - Cannot assign `Int` to `7` without a type guard, since the value isn't always a valid `7` at generic_inference_lambda_parameter_vars_errors.rue:70:21

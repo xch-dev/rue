@@ -11,10 +11,10 @@ use rue_types::{
 
 use super::builtin::compile_builtin;
 use super::call_inference::{InferredCall, infer_call};
-use super::lambda::expected_parameter_count;
+use super::lambda::{expected_parameter_count, has_rest_parameter};
 use crate::{
     Compiler, CompletionContext, SyntaxCall, SyntaxItemKind, compile_expr, compile_path_value,
-    occurs_contravariantly, shows_type,
+    names_type, occurs_contravariantly,
 };
 
 pub fn compile_function_call_expr(
@@ -282,22 +282,47 @@ pub fn compile_function_call_expr(
             }
         }
 
-        // A generic that's in a parameter's type often isn't inferred because of an error that's
-        // already been reported, such as one in the body of the lambda it's the return type of,
-        // or an argument that's missing. That error is what to fix, which specifying the generic
-        // wouldn't. A generic that's only in the return type isn't inferred whatever the arguments
-        let other_errors = ctx.has_errors_since(reported);
+        // A generic often isn't inferred because of an error that's already been reported: one
+        // in an argument whose parameter has the generic in its type, such as in the body of the
+        // lambda that it's the return type of, or one for the arguments as a whole, such as one
+        // that's missing. That error is what to fix, which specifying the generic wouldn't. An
+        // error in another argument isn't why, and neither is any error for a generic that's
+        // only in the return type
+        let errors = if unreported.is_empty() {
+            Vec::new()
+        } else {
+            ctx.errors_since(reported)
+        };
+
+        let arguments: Vec<_> = args
+            .iter()
+            .map(|arg| ctx.srcloc(arg.syntax()).span)
+            .collect();
 
         for generic in unreported {
-            if other_errors
-                && function
-                    .param_types()
-                    .any(|ty| contains_generic(ctx.types_mut(), ty, generic))
-            {
+            let follows_from_an_error = errors.iter().any(|error| {
+                let argument = arguments
+                    .iter()
+                    .position(|arg| arg.start <= error.start && error.end <= arg.end);
+
+                match argument {
+                    Some(index) => function
+                        .params
+                        .get(index)
+                        .is_some_and(|param| contains_generic(ctx.types_mut(), param.ty, generic)),
+                    None => function
+                        .param_types()
+                        .any(|ty| contains_generic(ctx.types_mut(), ty, generic)),
+                }
+            });
+
+            if follows_from_an_error {
                 continue;
             }
 
-            let generic_name = ctx.type_name(generic);
+            // The generic is the callee's, whatever a type in the arguments was left as
+            let scope = ctx.last_scope_id();
+            let generic_name = ctx.type_name_in(scope, generic);
             let function_name = callee_name(call);
 
             ctx.diagnostic(
@@ -482,7 +507,7 @@ fn check_lambda_parameter_count(
     };
 
     if expected == found
-        || lambda.parameters().any(|param| param.spread().is_some())
+        || has_rest_parameter(lambda)
         || !matches!(ctx.try_is_assignable(ty, to), Ok(false))
     {
         return false;
@@ -554,7 +579,7 @@ fn note_inferred_unions(
 
         // In a call of a function by itself, the callee's generic is inferred as a type with the
         // caller's in it, which has the same name
-        if shows_type(&format!("`{name}`"), &generic_name) {
+        if names_type(&name, &generic_name) {
             continue;
         }
 

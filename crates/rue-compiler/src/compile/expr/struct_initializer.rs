@@ -16,14 +16,16 @@ use crate::{
     check_symbol_value, compile_expr, compile_field, compile_path,
 };
 
-/// Says which type an initializer's path is missing the generic arguments of, and how to write
+/// Says which struct an initializer's path is missing the generic arguments of, and how to write
 /// them, in the errors for it among the diagnostics since there were `count` of them. They're
 /// reported for the segment that names the type, which in an initializer are written after `::`.
-/// Returns the type as it's written, if its generic arguments are missing.
+/// A type that isn't a struct can't be initialized however it's written, so its error is left
+/// as it is. Returns the type as it's written, if its generic arguments are missing.
 fn name_missing_generic_arguments(
     ctx: &mut Compiler,
     path: &AstPathExpr,
     count: usize,
+    is_struct: bool,
 ) -> Option<String> {
     // The path up to each segment, which is what the segment names
     let mut prefix = String::new();
@@ -48,10 +50,13 @@ fn name_missing_generic_arguments(
                 DiagnosticKind::ExpectedGenericArguments(_, 0)
             ) && diagnostic.srcloc.span == srcloc.span
             {
-                diagnostic.kind = DiagnosticKind::MissingInitializerGenericArguments(
-                    prefix.clone(),
-                    format!("{prefix}::<...> {{ ... }}"),
-                );
+                if is_struct {
+                    diagnostic.kind = DiagnosticKind::MissingInitializerGenericArguments(
+                        prefix.clone(),
+                        format!("{prefix}::<...> {{ ... }}"),
+                    );
+                }
+
                 missing = Some(prefix.clone());
             }
         }
@@ -76,13 +81,14 @@ pub fn compile_struct_initializer_expr(
         ctx.unresolved().ty
     };
 
+    let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
+    let is_struct = matches!(ctx.ty(semantic), Type::Struct(_));
+
     // The type is named as it's written if its generic arguments are missing, since an error
-    // for one of its fields isn't about them
+    // for one of its fields, or that it isn't a struct, isn't about them
     let written = expr
         .path()
-        .and_then(|path| name_missing_generic_arguments(ctx, &path, count));
-
-    let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
+        .and_then(|path| name_missing_generic_arguments(ctx, &path, count, is_struct));
 
     ctx.add_syntax(
         SyntaxItemKind::CompletionContext(CompletionContext::StructFields {
@@ -99,7 +105,7 @@ pub fn compile_struct_initializer_expr(
 
     let Type::Struct(struct_type) = ctx.ty(semantic).clone() else {
         debug!("Unresolved struct initializer due to non struct type");
-        let name = ctx.type_name(ty);
+        let name = written.unwrap_or_else(|| ctx.type_name(ty));
         ctx.diagnostic(expr.syntax(), DiagnosticKind::NonStructInitializer(name));
         return ctx.unresolved();
     };

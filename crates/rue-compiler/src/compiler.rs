@@ -445,31 +445,28 @@ impl Compiler {
         &self.diagnostics[count..]
     }
 
-    /// Whether an error has been reported since there were `count` diagnostics that a generic of
-    /// a call might not have been inferred because of. That leaves out the errors that follow
-    /// from another one: those that show a type with a part that couldn't be compiled (see
-    /// [`Self::take_diagnostics`]), and those that show a generic that wasn't inferred, which
-    /// are there because of that rather than the other way around.
-    pub(crate) fn has_errors_since(&self, count: usize) -> bool {
+    /// Where the errors are that have been reported since there were `count` diagnostics and
+    /// that a generic of a call might not have been inferred because of. That leaves out the
+    /// errors that follow from another one: those that show a type with a part that couldn't be
+    /// compiled (see [`Self::take_diagnostics`]), and those that show a generic that wasn't
+    /// inferred, which are there because of that rather than the other way around.
+    pub(crate) fn errors_since(&self, count: usize) -> Vec<Range<usize>> {
         self.diagnostics
             .iter()
             .enumerate()
             .skip(count)
-            .any(|(index, diagnostic)| {
-                is_root_error(diagnostic) && self.uninferred_errors.binary_search(&index).is_err()
+            .filter(|(index, diagnostic)| {
+                is_root_error(diagnostic) && self.uninferred_errors.binary_search(index).is_err()
             })
+            .map(|(_, diagnostic)| diagnostic.srcloc.span.clone())
+            .collect()
     }
 
     /// Records that the errors reported since there were `count` diagnostics show a generic of
-    /// a call that wasn't inferred (see [`Self::has_errors_since`]).
+    /// a call that wasn't inferred (see [`Self::errors_since`]).
     pub(crate) fn uninferred_errors_since(&mut self, count: usize) {
-        for index in count..self.diagnostics.len() {
-            if self.uninferred_errors.binary_search(&index).is_err() {
-                self.uninferred_errors.push(index);
-            }
-        }
-
-        self.uninferred_errors.sort_unstable();
+        self.uninferred_errors.retain(|&index| index < count);
+        self.uninferred_errors.extend(count..self.diagnostics.len());
     }
 
     pub fn has_errors(&self) -> bool {
@@ -566,6 +563,8 @@ impl Compiler {
         self.uninferred_parameters.push((generic, name));
     }
 
+    /// Leaves as many of the parameters whose types weren't inferred as there were before a
+    /// lambda was compiled. The generics that were named in it aren't for an error after it.
     pub(crate) fn truncate_uninferred_parameters(&mut self, count: usize) {
         self.uninferred_parameters.truncate(count);
         self.named_generics.clear();
@@ -595,10 +594,12 @@ impl Compiler {
                 continue;
             }
 
+            // The parameter of the innermost lambda, since a call in a lambda that's passed to
+            // the same function has the same generics
             let note = self
                 .uninferred_parameters
                 .iter()
-                .find(|(other, _)| *other == generic)
+                .rfind(|(other, _)| *other == generic)
                 .map(|(_, parameter)| {
                     Note::new(format!(
                         "`{name}` is a generic of the function that's called, since the type of the parameter `{parameter}` wasn't inferred here; specify the parameter's type explicitly"
@@ -1513,6 +1514,17 @@ impl Compiler {
         solver.solve_narrowed(self.db.types_mut(), &self.builtins.types, infer)
     }
 
+    /// The name of the type that a value can't be assigned to, which is `to`. If it's shown as
+    /// another type, that's the parameter of a call as it's declared, whose generics are the
+    /// callee's rather than ones that a type in the arguments was left as.
+    fn shown_type_name(&mut self, to: TypeId, shown: TypeId) -> String {
+        if shown == to {
+            self.type_name(to)
+        } else {
+            self.naming_aside(|ctx| ctx.type_name(shown))
+        }
+    }
+
     fn compare_type(
         &mut self,
         node: &impl GetTextRange,
@@ -1533,7 +1545,7 @@ impl Compiler {
             Comparison::Cast => {
                 if !cast {
                     let from = self.type_name(from);
-                    let to = self.type_name(shown);
+                    let to = self.shown_type_name(to, shown);
                     self.diagnostic(node, DiagnosticKind::UnassignableType(from, to));
                 }
             }
@@ -1553,7 +1565,7 @@ impl Compiler {
                     };
 
                 let from = self.type_name(from);
-                let to = self.type_name(shown);
+                let to = self.shown_type_name(to, shown);
 
                 if can_guard {
                     if cast {
@@ -1760,14 +1772,21 @@ fn is_root_error(diagnostic: &Diagnostic) -> bool {
 
 /// Whether a diagnostic's message shows the type with the given name, on its own or as part of
 /// another type. Types are shown in backticks.
-pub(crate) fn shows_type(message: &str, name: &str) -> bool {
+fn shows_type(message: &str, name: &str) -> bool {
+    message
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .any(|code| names_type(code, name))
+}
+
+/// Whether the name of a type has the type with the given name in it, as `(T, Int)` has `T`.
+pub(crate) fn names_type(ty: &str, name: &str) -> bool {
     let is_part_of_name = |char: char| char.is_alphanumeric() || char == '_';
 
-    message.split('`').skip(1).step_by(2).any(|code| {
-        code.match_indices(name).any(|(start, _)| {
-            !code[..start].ends_with(is_part_of_name)
-                && !code[start + name.len()..].starts_with(is_part_of_name)
-        })
+    ty.match_indices(name).any(|(start, _)| {
+        !ty[..start].ends_with(is_part_of_name)
+            && !ty[start + name.len()..].starts_with(is_part_of_name)
     })
 }
 

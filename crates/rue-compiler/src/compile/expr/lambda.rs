@@ -130,14 +130,22 @@ impl LambdaBody {
 pub(crate) fn expected_parameter_count(expected_functions: &[FunctionType]) -> Option<usize> {
     let (first, rest) = expected_functions.split_first()?;
 
-    expected_functions
+    if expected_functions
         .iter()
-        .all(|function| function.nil_terminated)
-        .then_some(())?;
+        .any(|function| !function.nil_terminated)
+    {
+        return None;
+    }
 
     rest.iter()
         .all(|function| function.params.len() == first.params.len())
         .then_some(first.params.len())
+}
+
+/// Whether a lambda's last parameter is the rest of its arguments, in which case it has no number
+/// of parameters to be too many or too few.
+pub(crate) fn has_rest_parameter(lambda: &AstLambdaExpr) -> bool {
+    lambda.parameters().any(|param| param.spread().is_some())
 }
 
 /// Compiles a lambda, with its untyped parameters wrapped as `wrap` says, if it's given. It returns
@@ -201,11 +209,13 @@ pub(crate) fn compile_lambda(
     // A parameter that the function type expected of the lambda doesn't have is one too many,
     // rather than one that needs a type. That's reported once, for the first of them
     let first_extra_parameter = expected_parameter_count(&expected_functions)
-        .filter(|&expected| expected < len)
+        .filter(|&expected| expected < len && !has_rest_parameter(expr))
         .and_then(|expected| Some((expected, expr.parameters().nth(expected)?)));
     let mut too_many_parameters = false;
 
-    // The untyped parameters, by name and type
+    // The untyped parameters, by name and type, if the lambda is an argument of a call whose
+    // generics are being inferred
+    let inferred_generics = ctx.inferred_generics();
     let mut untyped_parameters = Vec::new();
 
     for (i, param) in expr.parameters().enumerate() {
@@ -284,7 +294,7 @@ pub(crate) fn compile_lambda(
             .binding()
             .map_or(String::new(), |binding| binding.syntax().text().to_string());
 
-        if param.ty().is_none() {
+        if param.ty().is_none() && !inferred_generics.is_empty() {
             untyped_parameters.push((name.clone(), ty));
         }
 
@@ -299,7 +309,6 @@ pub(crate) fn compile_lambda(
     // The untyped parameters whose types have generics of the calls that the lambda is an
     // argument of, which weren't inferred by the time it was compiled. An error in the body
     // that shows one of those generics says so (see `Compiler::name_uninferred_generics`)
-    let inferred_generics = ctx.inferred_generics();
     let uninferred_parameters = ctx.uninferred_parameter_count();
 
     for (name, ty) in untyped_parameters {

@@ -64,6 +64,26 @@ fn self_feeding<T>(pair: (Int, fn(value: T) -> T), value: T) -> T {
     pair.rest(value)
 }
 
+fn takes_none(function: fn() -> Int) -> Int {
+    function()
+}
+
+fn in_pair<T>(_pair: (Int, fn(value: T) -> Int)) -> Int {
+    1
+}
+
+fn each<T>(_list: List<fn(value: T) -> T>, value: T) -> T {
+    value
+}
+
+fn with_number<T>(_pair: (fn(value: T) -> T, Int)) -> Int {
+    1
+}
+
+fn two<T, U>(first: List<T>, _second: fn(value: U) -> Int) -> List<T> {
+    first
+}
+
 struct First {
     value: Int,
 }
@@ -97,6 +117,15 @@ fn lambda_parameter_count() -> nil {
     let nested = takes_two(fn(x) => takes(fn(p, q) => p));
     let nested_typed = takes_two(fn(x: Int, y: Int, z: Int) => takes(fn(p, q) => p));
     let nested_none = map([1, 2, 3], fn() => takes(fn(x, y) => x));
+
+    // And one that's part of an argument, where it's the only error
+    let pair = self_feeding((1, fn(x, y) => x), 5);
+    let pair_generic = in_pair((1, fn(x, y) => 1));
+    let list = each([fn(x) => x, fn(x, y) => x], 5);
+
+    // With too few, it's the argument as a whole that isn't what's expected
+    let pair_none = self_feeding((1, fn() => 1), 5);
+    let pair_generic_none = in_pair((1, fn() => 1));
     nil
 }
 
@@ -105,6 +134,11 @@ fn lambda_parameter_count() -> nil {
 fn no_parameter_count() -> nil {
     let rest_expected = takes_rest(fn(x, y, z) => x);
     let rest_passed = takes(fn(...a) => 1);
+    let rest_passed_none = takes_none(fn(...a) => 1);
+    let rest_passed_extra = takes(fn(x, ...y) => x);
+    let rest_passed_typed = takes(fn(a: Int, ...b: Int) => 1);
+    let rest_passed_few = takes_two(fn(...a: Int) => 1);
+    let rest_passed_many = takes_two(fn(a: Int, b: Int, ...c: Int) => 1);
     let either_extra = takes_either(fn(a, b, c) => a);
     let either_none = takes_either(fn() => 1);
     nil
@@ -168,10 +202,28 @@ fn only_uninferred_generic() -> nil {
     nil
 }
 
-// And where what's wrong couldn't have inferred it, since it's only in the return type
-fn return_type_generic() -> nil {
+// And where what's wrong couldn't have inferred it, since it's only in the return type, or in
+// the type of another parameter
+fn unrelated_generic() -> nil {
     let list = make("text");
     let pair = both(missing);
+    let other_argument = two([missing], fn(x) => 1);
+
+    // An argument that a type couldn't be compiled for isn't why either, once it's reported
+    let unresolved = empty();
+    let function = apply(unresolved, 5);
+    nil
+}
+
+// A call in a lambda that's passed to the same function has the same generics, which aren't the
+// ones of the call that it's in
+fn nested_calls_of_one_function() -> nil {
+    let argument = map([[1]], fn(list) => map(5, fn(x) => x));
+    let function = map([[1]], fn(list) => map(list, 5));
+    let inner_generic = map(map(nil, fn(x) => x), fn(y) => y);
+    let inner_parameter = call(fn(x) => call(fn(y) => y + 1));
+    let inner_call = call(fn(x) => call(fn(y) => 1));
+    let declared = self_feeding((1, fn(list) => self_feeding(7, list)), 5);
     nil
 }
 
@@ -229,7 +281,11 @@ fn uninferred_parameter<T>(outer: T, thing: Thing, either: First | Second) -> ni
     // Or one about a parameter that has a type
     let typed = self_feeding((1, fn(x: Int) => x.first), 5);
 
+    // An argument with the generic in its type isn't why the generic isn't inferred
+    let leaked = with_number((fn(x) => x, "text"));
+
     // Or an error after a lint that names the generic, about a type whose name has the generic's
+    // in it, or about a generic with the same name
     let lint = self_feeding(
         (
             1,
@@ -240,6 +296,7 @@ fn uninferred_parameter<T>(outer: T, thing: Thing, either: First | Second) -> ni
                     (Second, Any) => 2,
                 };
                 let wrong: Int = thing;
+                let other: Int = outer;
                 x
             },
         ),

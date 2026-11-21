@@ -86,7 +86,7 @@ fn main(value: Any) -> Int {
 
     // As does an argument that failed to compile, or is missing
     let _unresolved: Int = reverse(undeclared);
-    let _too_few = merge_list([]);
+    let _too_few: Int = merge_list([]);
 
     // The lambda's parameter is the generic
     let _lambda_parameter = each(nil, fn(item) => nil);
