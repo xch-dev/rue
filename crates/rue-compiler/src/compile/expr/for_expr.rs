@@ -65,12 +65,15 @@ enum ForKind {
 ///   `x == item || found` does once an item matches.
 /// - With a filter, such as `if x > 0`, the items that don't pass it are left out of the list, or
 ///   skipped by the fold.
-/// - With several lists, such as `for a in xs, b in ys`, the function takes what's left of each,
-///   and ends when the first one does. If another list runs out before that, getting its item or
-///   its rest fails, as `first` and `rest` do for nil.
 /// - Without a fold, if the body has no value, or the expression is a statement, whose value
 ///   isn't used, the body is only evaluated for each item, and the result is nil. So it is if the
 ///   body's value is nil, unless the expression is expected to be a list.
+/// - With several lists, such as `for a in xs, b in ys`, the function takes what's left of each,
+///   and ends when the first one does. If another list runs out before that, getting its item or
+///   its rest fails, as `first` and `rest` do for nil.
+/// - With a name after the item, such as `for x, rest in xs`, the name is bound to what's left of
+///   the list after the item, which is the rest of the parameter that the item is the first of.
+///   It's a list of the item's type, in scope where the item is.
 pub fn compile_for_expr(
     ctx: &mut Compiler,
     expr: &AstForExpr,

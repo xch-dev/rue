@@ -3,6 +3,10 @@
 fn main(xs: List<Int>, ys: List<Int>) -> Int {
     // A `,` after a list is followed by another one
     let a = for x in xs, { x };
+    let a2 = for x in xs, {
+        let doubled = x * 2;
+        doubled
+    };
 
     // A `,` after the item is followed by a name for what's left of the list
     let b = for x, in xs { x };
@@ -16,5 +20,5 @@ fn main(xs: List<Int>, ys: List<Int>) -> Int {
     // Each list has an item
     let e = for x in xs, in ys { x };
 
-    length(a) + length(b) + length(c) + length(d) + length(e)
+    length(a) + length(b) + length(c) + length(d) + length(e) + length(a2)
 }

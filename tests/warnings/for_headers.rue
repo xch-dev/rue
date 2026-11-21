@@ -1,6 +1,7 @@
 #![warn(shadowed_binding)]
 #![warn(naming_convention)]
 #![warn(unnecessary_parens)]
+#![warn(inline_value_may_fail)]
 
 // The lints see every list in the header of a `for`, and each of its bindings
 
@@ -8,7 +9,12 @@ struct Wrapper {
     list: List<Int>,
 }
 
-fn main(xs: List<Int>, ys: List<Int>, rest: Int, y: Int) -> List<Int> {
+fn positive(x: Int) -> Int {
+    assert x > 0;
+    x
+}
+
+fn main(xs: List<Int>, ys: List<Int>, rest: Int, y: Int, flag: Bool) -> List<Int> {
     // An item, and what's left of a list, that the filter and the body don't use
     let a = for x, others in xs { x };
     let b = for x in xs, other in ys { x };
@@ -31,5 +37,43 @@ fn main(xs: List<Int>, ys: List<Int>, rest: Int, y: Int) -> List<Int> {
     let i = for x in (xs), other in (ys) { x + other };
     let j = for x in xs, other in (Wrapper { list: ys }).list { x + other };
 
-    [...a, ...b, c, ...d, ...e, ...f, ...g, ...h, ...i, ...j]
+    // The result of a fold over several lists that's evaluated where the body refers to it isn't
+    // an `inline let`, though it may fail and isn't always evaluated
+    let k = for x in xs, other in ys fold found = false { x == 1 || positive(other) == 5 || found };
+
+    // An `inline let` whose value is a `for` over several lists can fail, since a list can run
+    // out, whatever its body does
+    inline let l = for x in xs, other in ys { x + other };
+    inline let m = for x in xs, other in ys fold sum = 0 { sum + x + other };
+
+    // Over one list, it can't, unless its body can
+    inline let n = for x, others in xs { x + length(others) };
+
+    [
+        ...a,
+        ...b,
+        c,
+        ...d,
+        ...e,
+        ...f,
+        ...g,
+        ...h,
+        ...i,
+        ...j,
+        if k {
+            1
+        } else {
+            0
+        },
+        ...if flag {
+            l
+        } else {
+            n
+        },
+        if flag {
+            m
+        } else {
+            0
+        },
+    ]
 }

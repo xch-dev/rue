@@ -156,24 +156,21 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
             } else if let Some(binding) = AstLetStmt::cast(node.clone())
                 .map(|stmt| stmt.binding())
                 .or_else(|| AstMatchArm::cast(node.clone()).map(|arm| arm.binding()))
+                .or_else(|| AstForFold::cast(node.clone()).map(|fold| fold.binding()))
             {
-                // A match arm's binding is named like a `let` binding
+                // A match arm's binding is named like a `let` binding, and so is the result of
+                // a fold
                 for name in binding
                     .iter()
                     .flat_map(|binding| binding_names(binding, false))
                 {
                     check_name(cx, source, Some(name), Case::Snake, "Binding");
                 }
-            } else if let Some(bindings) = AstForClause::cast(node.clone())
-                .map(|clause| clause.bindings().collect::<Vec<_>>())
-                .or_else(|| {
-                    AstForFold::cast(node.clone()).map(|fold| fold.binding().into_iter().collect())
-                })
-            {
-                // The item of a `for`, what's left of its list, and the result of its fold
-                for name in bindings
-                    .iter()
-                    .flat_map(|binding| binding_names(binding, false))
+            } else if let Some(clause) = AstForClause::cast(node.clone()) {
+                // The item of a `for`, and what's left of its list
+                for name in clause
+                    .bindings()
+                    .flat_map(|binding| binding_names(&binding, false))
                 {
                     check_name(cx, source, Some(name), Case::Snake, "Binding");
                 }

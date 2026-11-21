@@ -79,6 +79,12 @@ test fn lists_of_different_types() -> List<Int> {
     for { x, y } in points, (amount, name) in pairs { x + y + amount + name.length }
 }
 
+// A struct binding after the `,` is the item of another list, rather than the body
+test fn struct_binding_for_the_second_list() -> List<Int> {
+    let points = runtime([Point { x: 1, y: 2 }, Point { x: 3, y: 4 }]);
+    for a in runtime([10, 20]), { x, y } in points { a + x + y }
+}
+
 // A filter sees the items of every list
 test fn two_lists_with_a_filter() -> List<Int> {
     for a in runtime([1, 5, 2, 7]), b in runtime([3, 3, 3, 3]) if a > b { a - b }
@@ -276,6 +282,31 @@ test fn two_lists_with_two_references() -> Int {
             sum + b
         }
     }
+}
+
+// The result of a fold over several lists is evaluated once, before the body, where it's an
+// argument of a call, or spread into a list, rather than where a function that's inlined refers
+// to its parameter, which would go through the rest of the lists again
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+test fn two_lists_with_a_fold_as_an_argument() -> Int {
+    for a in runtime([1, 2, 3]), b in runtime([10, 20, 30]) fold sum = 0 { positive(sum + a + b) }
+}
+
+test fn two_lists_with_a_fold_as_a_lambda_argument() -> Int {
+    let adders = for a in runtime([1, 2]), b in runtime([10, 20]) { fn(n: Int) => n + a + b };
+    for add in adders, extra in runtime([100, 200]) fold total = 0 { add(total) + extra }
+}
+
+test fn two_lists_with_a_fold_spread_into_a_list() -> List<(Int, Int)> {
+    for x, rest in runtime([1, 2, 3]), y in runtime([
+        10,
+        20,
+        30,
+    ]) fold pairs: List<(Int, Int)> = nil { [...for z in rest { (x + y, z) }, ...pairs] }
 }
 
 // A constant can be a `for` over several lists

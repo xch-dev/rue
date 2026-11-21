@@ -432,6 +432,13 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             return FunctionFailure::fails();
         }
 
+        // A loop over several lists fails if a list other than the first runs out before it,
+        // since it takes the item and the rest of each without checking that they're there
+        if symbol.kind == FunctionKind::Loop && symbol.parameters.len() > 1 {
+            self.cache(function, FunctionFailure::fails());
+            return FunctionFailure::fails();
+        }
+
         self.resolve(Node::Function(function))
     }
 

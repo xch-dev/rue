@@ -2076,8 +2076,7 @@ fn for_headers() {
     let b = for   x ,  rest in xs { x + length(rest) };
     let c = for (a,b) , [...rest] in pairs  ,  { x, y },more in points if a>x fold sum:Int=0 { sum+a+b+x+y };
     for a,r in xs,b in ys { assert a > b; }
-    let d = for a /* item */ , /* rest */ r in xs /* first */ , // second
-    b in ys { a + b };
+    let d = for a /* item */ , /* rest */ r in xs /* first */ , /* second */ b in ys { a + b };
     [...for a in xs, b in ys { a + b }, 1]
 }
 ",
@@ -2091,8 +2090,7 @@ fn for_headers() {
                 for a, r in xs, b in ys {
                     assert a > b;
                 }
-                let d = for a /* item */ , /* rest */ r in xs /* first */ , // second
-                b in ys { a + b };
+                let d = for a /* item */ , /* rest */ r in xs /* first */ , /* second */ b in ys { a + b };
                 [...for a in xs, b in ys { a + b }, 1]
             }
         "#]],

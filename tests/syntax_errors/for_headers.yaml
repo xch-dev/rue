@@ -1,16 +1,17 @@
 diagnostics:
-- Unused binding `x` at for_headers.rue:5:17
-- Duplicate symbol `x` found in scope at for_headers.rue:5:28
-- Expected one of `,`, `in`, found `;` at for_headers.rue:5:31
-- Unused binding `in` at for_headers.rue:8:20
-- Expected `in`, found identifier at for_headers.rue:8:23
-- Unused binding `rest` at for_headers.rue:11:20
-- Expected `in`, found `,` at for_headers.rue:11:24
-- Unused binding `more` at for_headers.rue:11:26
-- Unused binding `x` at for_headers.rue:14:17
-- Expected one of `,`, `if`, `fold`, `{`, found identifier at for_headers.rue:14:25
-- Unused binding `in` at for_headers.rue:17:26
-- Expected one of `,`, `in`, found identifier at for_headers.rue:17:29
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_headers.rue:19:5
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_headers.rue:19:29
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_headers.rue:19:41
+- Expected binding, found `{` at for_headers.rue:5:26
+- Expected binding, found `{` at for_headers.rue:6:27
+- |-
+  Binding `doubled` is returned directly after it's declared at for_headers.rue:7:9
+    help: Return the value directly
+- Unused binding `in` at for_headers.rue:12:20
+- Expected `in`, found identifier at for_headers.rue:12:23
+- Unused binding `rest` at for_headers.rue:15:20
+- Expected `in`, found `,` at for_headers.rue:15:24
+- Unused binding `more` at for_headers.rue:15:26
+- Unused binding `x` at for_headers.rue:18:17
+- Expected one of `,`, `if`, `fold`, `{`, found identifier at for_headers.rue:18:25
+- Unused binding `in` at for_headers.rue:21:26
+- Expected one of `,`, `in`, found identifier at for_headers.rue:21:29
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_headers.rue:23:29
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_headers.rue:23:41

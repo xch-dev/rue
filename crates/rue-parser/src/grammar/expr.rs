@@ -435,6 +435,14 @@ fn for_expr(p: &mut Parser, checkpoint: Checkpoint) {
         if !p.try_eat(T![,]) {
             break;
         }
+
+        // A `{` after the `,` is the body, with nothing between them, unless it's a struct
+        // binding for the item of another list, which is followed by `in`, or by a `,`
+        if p.at_quiet(T!['{']) && !matches!(p.lookahead_past_group(), SyntaxKind::Ident | T![,]) {
+            p.expected("binding");
+            p.error_unexpected();
+            break;
+        }
     }
 
     if p.at(T![if]) {
@@ -4269,6 +4277,102 @@ mod tests {
             expect![[r#"
                 Expected binding, found `if` at main.rue:1:14
                 Expected one of `,`, `if`, `fold`, `{`, found eof at main.rue:1:24"#]],
+        );
+
+        // A `{` after the `,` is the body, unless an `in` or a `,` follows its `}`, which makes
+        // it a struct binding for the item of another list
+        check(
+            expr,
+            "for a in xs, { a }",
+            expect![[r#"
+            ForExpr@0..18
+              For@0..3 "for"
+              Whitespace@3..4 " "
+              ForClause@4..11
+                NamedBinding@4..5
+                  Ident@4..5 "a"
+                Whitespace@5..6 " "
+                Ident@6..8 "in"
+                Whitespace@8..9 " "
+                PathExpr@9..11
+                  PathSegment@9..11
+                    Ident@9..11 "xs"
+              Comma@11..12 ","
+              Whitespace@12..13 " "
+              Block@13..18
+                OpenBrace@13..14 "{"
+                Whitespace@14..15 " "
+                PathExpr@15..17
+                  PathSegment@15..17
+                    Ident@15..16 "a"
+                    Whitespace@16..17 " "
+                CloseBrace@17..18 "}"
+        "#]],
+            expect!["Expected binding, found `{` at main.rue:1:14"],
+        );
+        check(
+            expr,
+            "for a in xs, { b } in ys, { c }, rest in zs { a }",
+            expect![[r#"
+                ForExpr@0..49
+                  For@0..3 "for"
+                  Whitespace@3..4 " "
+                  ForClause@4..11
+                    NamedBinding@4..5
+                      Ident@4..5 "a"
+                    Whitespace@5..6 " "
+                    Ident@6..8 "in"
+                    Whitespace@8..9 " "
+                    PathExpr@9..11
+                      PathSegment@9..11
+                        Ident@9..11 "xs"
+                  Comma@11..12 ","
+                  Whitespace@12..13 " "
+                  ForClause@13..24
+                    StructBinding@13..18
+                      OpenBrace@13..14 "{"
+                      Whitespace@14..15 " "
+                      StructFieldBinding@15..17
+                        Ident@15..16 "b"
+                        Whitespace@16..17 " "
+                      CloseBrace@17..18 "}"
+                    Whitespace@18..19 " "
+                    Ident@19..21 "in"
+                    Whitespace@21..22 " "
+                    PathExpr@22..24
+                      PathSegment@22..24
+                        Ident@22..24 "ys"
+                  Comma@24..25 ","
+                  Whitespace@25..26 " "
+                  ForClause@26..44
+                    StructBinding@26..31
+                      OpenBrace@26..27 "{"
+                      Whitespace@27..28 " "
+                      StructFieldBinding@28..30
+                        Ident@28..29 "c"
+                        Whitespace@29..30 " "
+                      CloseBrace@30..31 "}"
+                    Comma@31..32 ","
+                    Whitespace@32..33 " "
+                    NamedBinding@33..37
+                      Ident@33..37 "rest"
+                    Whitespace@37..38 " "
+                    Ident@38..40 "in"
+                    Whitespace@40..41 " "
+                    PathExpr@41..44
+                      PathSegment@41..44
+                        Ident@41..43 "zs"
+                        Whitespace@43..44 " "
+                  Block@44..49
+                    OpenBrace@44..45 "{"
+                    Whitespace@45..46 " "
+                    PathExpr@46..48
+                      PathSegment@46..48
+                        Ident@46..47 "a"
+                        Whitespace@47..48 " "
+                    CloseBrace@48..49 "}"
+            "#]],
+            expect![""],
         );
 
         // Only one name can follow the item
