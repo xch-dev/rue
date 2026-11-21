@@ -93,6 +93,13 @@ fn inline_condition(value: Int | (Int, Int)) -> Int {
     }
 }
 
+// Nothing else is reported about which values an `inline match` with a condition handles
+fn inline_only_condition(value: Int | (Int, Int)) -> Int {
+    inline match value {
+        Int if true => 1,
+    }
+}
+
 // The rest of the block after a statement still sees the type of an arm with a condition that
 // falls through
 fn statement(value: Tagged | Plain | nil) -> Int {

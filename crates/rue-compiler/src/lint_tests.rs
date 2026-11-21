@@ -3218,6 +3218,7 @@ fn main(point: Point | nil, flag: Bool) -> Int {
         Point if (flag) => 1,
         Point if(point.x > 1)=> 2,
         Point if (Point { x: 1, y: 2 }).x > point.y => 3,
+        Point if (/* kept */ flag) => 4,
         _ => 0,
     }
 }
@@ -3238,11 +3239,13 @@ fn main(point: Point | nil, flag: Bool) -> Int {
         Point if flag => 1,
         Point if point.x > 1=> 2,
         Point if (Point { x: 1, y: 2 }).x > point.y => 3,
+        Point if (/* kept */ flag) => 4,
         _ => 0,
     }
 }
 "
     );
 
-    assert!(compile_source(&fixed, |_| {}).0.is_empty());
+    // Only the parentheses with a comment are left to report
+    assert_eq!(compile_source(&fixed, |_| {}).0.len(), 1);
 }

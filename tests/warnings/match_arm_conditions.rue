@@ -59,3 +59,15 @@ export fn parens(value: Tagged | Plain, flag: Bool) -> Int {
         _ => 6,
     }
 }
+
+// The parentheses are still reported around a comment, which the fix would remove, so it isn't
+// offered
+export fn parens_with_comments(value: Tagged | Plain, flag: Bool) -> Int {
+    match value {
+        Tagged if (/* why */ flag) => 1,
+        Tagged if (
+            flag // why
+        ) => 2,
+        _ => 3,
+    }
+}

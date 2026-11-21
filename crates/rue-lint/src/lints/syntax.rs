@@ -251,11 +251,15 @@ fn check_parens(cx: &mut LintContext<'_>, source: &Source, group: &AstGroupExpr)
         return;
     }
 
+    // A comment between the parentheses and the expression would be removed with them
+    let keeps_comments = comment_count(&text[start..end]) == comment_count(&replacement);
+
     if let Some(diagnostic) = cx.report(
         Lint::UnnecessaryParens,
         srcloc.clone(),
         "Unnecessary parentheses",
-    ) {
+    ) && keeps_comments
+    {
         diagnostic.suggestions.push(Suggestion::replace(
             "Remove the parentheses",
             srcloc,

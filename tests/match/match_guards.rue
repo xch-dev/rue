@@ -221,6 +221,37 @@ test fn statements() -> List<Int> {
     ]
 }
 
+// An arm with a condition whose type doesn't need to be checked takes any value that's left, so
+// that's what the rest of the block sees if it falls through, rather than the arm's type
+fn statement_unchecked(value: Tagged | Plain | nil, keep: Bool) -> Int {
+    match value {
+        nil => {
+            return 0;
+        }
+        Tagged | Plain | nil if keep => {}
+        _ if !keep => {
+            return 1;
+        }
+        _ => {}
+    }
+
+    let rest: Tagged | Plain = value;
+
+    match rest {
+        Tagged => 2,
+        Plain => 3,
+    }
+}
+
+test fn unchecked_statements() -> List<Int> {
+    [
+        statement_unchecked(nil, true),
+        statement_unchecked(Tagged { value: 1 }, true),
+        statement_unchecked(Plain { value: 1 }, true),
+        statement_unchecked(Plain { value: 1 }, false),
+    ]
+}
+
 // A condition can use the generic type of the value
 fn generic<T>(value: T | nil, fallback: T, use_fallback: Bool) -> T {
     match value {
