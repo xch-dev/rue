@@ -28,6 +28,20 @@ use super::{Lowerer, measure::Trial};
 /// [`Lowerer::lower_path_bindings`]).
 const MAX_PATH_CANDIDATES: usize = 8;
 
+/// How many runs of let statements with path bindings a run can be inside of and still be
+/// measured (see [`Lowerer::lower_path_bindings`]).
+const MAX_MEASURED_RUN_DEPTH: usize = 2;
+
+/// Whether reading a path of the size at each of the references can't take more bytes than
+/// binding it: binding a value takes at least five bytes more than the value itself
+/// (`(c VALUE REST)`), and each reference to it at least one. A path of one byte never does.
+fn is_small_path(references: usize, size: usize) -> bool {
+    references
+        .saturating_sub(1)
+        .saturating_mul(size.saturating_sub(1))
+        <= 6
+}
+
 impl Lowerer<'_, '_, '_> {
     /// Whether the binding, which is referenced more than once and isn't `inline`, is evaluated
     /// where it's referenced rather than bound. It isn't until its let statement is lowered.
@@ -65,8 +79,14 @@ impl Lowerer<'_, '_, '_> {
     /// the run with its bindings bound goes too deep, every way of lowering it does, and nothing
     /// else is tried, which keeps a program that's too deep from being lowered over and over.
     ///
-    /// Each measurement lowers the rest of the block again, so no more than
-    /// [`MAX_PATH_CANDIDATES`] bindings of a run are measured, and the rest are bound.
+    /// Each measurement lowers the rest of the block again, and a run after another one is
+    /// inside of it, so measuring every run of a long block would lower its end once for each
+    /// run before it, for each of their measurements. So no more than [`MAX_PATH_CANDIDATES`]
+    /// bindings of a run are measured, and the rest are bound, and only the runs that are fewer
+    /// than [`MAX_MEASURED_RUN_DEPTH`] deep in other runs with path bindings are measured. The
+    /// ones inside of those are decided by the size of the path alone (see
+    /// [`is_small_path`]), which is usually right, and can't make the outermost run larger than
+    /// it was either way.
     pub(super) fn lower_path_bindings(
         &mut self,
         env: &Environment,
@@ -75,6 +95,8 @@ impl Lowerer<'_, '_, '_> {
     ) -> LirId {
         let mut decided = Vec::new();
         let mut undecided = Vec::new();
+
+        let measured_depth = self.path_run_depth < MAX_MEASURED_RUN_DEPTH;
 
         if self.options.auto_inline && !self.paths_disabled {
             for &symbol in symbols {
@@ -89,7 +111,14 @@ impl Lowerer<'_, '_, '_> {
                     continue;
                 }
 
-                let key = (symbol, self.path_size(env, binding.value.hir));
+                let size = self.path_size(env, binding.value.hir);
+                let key = (symbol, size);
+
+                if !measured_depth {
+                    let references = self.graph.references(symbol);
+                    decided.push((symbol, is_small_path(references, size)));
+                    continue;
+                }
 
                 match self.path_choices.get(&key) {
                     Some(&is_path) => decided.push((symbol, is_path)),
@@ -110,6 +139,17 @@ impl Lowerer<'_, '_, '_> {
         let symbols: Vec<SymbolId> = undecided.iter().map(|&(symbol, _)| symbol).collect();
         let outermost = self.path_run_depth == 0;
         self.path_run_depth += 1;
+
+        // A run inside another one that has nothing left to measure is lowered once
+        if !outermost && undecided.is_empty() {
+            for &(symbol, is_path) in &decided {
+                self.set_path_bindings(&[symbol], is_path);
+            }
+
+            let lir = lower(self);
+            self.path_run_depth -= 1;
+            return lir;
+        }
 
         let mut best = if outermost {
             self.paths_disabled = true;

@@ -434,6 +434,27 @@ fn path_bindings_that_nest_too_deeply_are_bound() {
     });
 }
 
+/// Each run of let statements after another one is inside of it, so measuring every run of a
+/// long block lowered its end once for each run before it, for each of their measurements. Only
+/// the outer runs are measured, so this takes about as long as it did before path bindings,
+/// rather than minutes.
+#[test]
+fn many_runs_of_path_bindings_compile() {
+    const RUNS: usize = 200;
+
+    on_stack(2, || {
+        let source = format!(
+            "fn main(p: (Int, Int), n: Int) -> Int {{\n{}n\n}}",
+            links(RUNS, |i| format!(
+                "let a{i} = p.first;\nassert a{i} + a{i} > n;\n"
+            ))
+        );
+
+        let (diagnostics, result) = compile(&source);
+        assert!(result.is_ok(), "{result:?} {diagnostics:?}");
+    });
+}
+
 /// A program that nests too deeply is only lowered once for each run of path bindings before
 /// the error is found, rather than once for each way of lowering every run, which doubled with
 /// each one.
