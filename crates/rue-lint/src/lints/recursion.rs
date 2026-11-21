@@ -39,6 +39,7 @@ impl HirLintPass for UnconditionalRecursion {
             db,
             function: symbol,
             bindings: HashMap::new(),
+            loops: Vec::new(),
         };
 
         let Some(call) = search
@@ -73,6 +74,9 @@ struct Search<'a> {
     function: SymbolId,
     /// The result of searching each binding's value, so that it's only searched once.
     bindings: HashMap<SymbolId, Option<HirId>>,
+    /// The functions of the `for` expressions whose bodies are being searched (see
+    /// [`FunctionKind::Loop`]), innermost last.
+    loops: Vec<SymbolId>,
 }
 
 impl Search<'_> {
@@ -93,6 +97,9 @@ impl Search<'_> {
             {
                 Some(hir)
             }
+            Hir::FunctionCall(ref call) if self.loop_function(call.function).is_some() => self
+                .any(call.args.iter().copied())
+                .or_else(|| self.loop_call(hir, call.function)),
             Hir::If(condition, then, else_, inline) => self.expr(condition).or_else(|| {
                 if inline {
                     // Both branches of an `inline if` are evaluated
@@ -122,6 +129,47 @@ impl Search<'_> {
             // Everything else evaluates all of the nodes inside of it
             _ => self.any(node.children()),
         }
+    }
+
+    /// The function of a `for` expression that the node refers to, and its body.
+    fn loop_function(&self, callee: HirId) -> Option<(SymbolId, HirId)> {
+        let Hir::Reference(symbol) = self.db.hir(callee) else {
+            return None;
+        };
+
+        match self.db.symbol(*symbol) {
+            Symbol::Function(function) if function.kind == FunctionKind::Loop => {
+                Some((*symbol, function.body))
+            }
+            _ => None,
+        }
+    }
+
+    /// Searches what the function of a `for` expression evaluates when it's called. It calls
+    /// itself with the rest of its list until there's nothing left of it, so a call to the
+    /// function in what it does at the end of its list is on every path, if every item gets to
+    /// the loop's call of itself. That's where the items after a `for` that's spread in a list
+    /// are, and the value of a fold.
+    fn loop_call(&mut self, call: HirId, callee: HirId) -> Option<HirId> {
+        let (function, body) = self.loop_function(callee)?;
+
+        // The loop's call of itself gets to the end of its list, which is being searched
+        if self.loops.contains(&function) {
+            return Some(call);
+        }
+
+        let Hir::If(condition, step, end, _) = *self.db.hir(body) else {
+            return None;
+        };
+
+        self.loops.push(function);
+        let found = self.expr(condition).or_else(|| {
+            self.expr(step)?;
+            self.expr(end)
+        });
+        self.loops.pop();
+
+        found
     }
 
     fn binding(&mut self, symbol: SymbolId) -> Option<HirId> {

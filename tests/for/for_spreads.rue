@@ -109,10 +109,10 @@ test fn in_a_block() -> List<Int> {
     ]
 }
 
-// A fold that's spread is its result, which is copied too
+// A fold that's spread is its result, which is copied too: it ends with its own value
 test fn fold_before_the_last_item() -> List<Int> {
     let xs = runtime([1, 2, 3]);
-    [...for x in xs fold rest: List<Int> = nil { [x * 2, ...rest] }, 10]
+    [...for x in xs fold rest: List<Int> = [0] { [x * 2, ...rest] }, 10]
 }
 
 // A failure in the body or in an item after the `for` fails the list
@@ -187,7 +187,6 @@ test fn bound_item_after_fails_before_the_filter() -> List<Int> {
     [...for x in xs if positive(x) > 0 { x }, last]
 }
 
-#[allow(inline_value_may_fail)]
 test fn filter_fails_before_the_inline_item_after() -> List<Int> {
     let xs = runtime([1, 0, 3]);
     inline let last = small(xs.first + 100);

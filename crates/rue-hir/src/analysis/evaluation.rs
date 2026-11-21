@@ -26,6 +26,9 @@ pub(crate) struct Evaluation<'a, C> {
     /// last. What's followed inside a scope is forgotten when it ends, since it depends on the
     /// arguments, and is out of reach while an argument of an outer call is walked.
     scopes: Vec<Scope>,
+    /// The functions of the `for` expressions whose bodies are being followed (see
+    /// [`FunctionKind::Loop`]), innermost last.
+    loops: Vec<SymbolId>,
 }
 
 /// A call to an `inline fn` being followed, whose arguments are evaluated where the parameters
@@ -44,6 +47,7 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             target,
             followed: HashSet::new(),
             scopes: Vec::new(),
+            loops: Vec::new(),
         }
     }
 
@@ -349,7 +353,28 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
                     return false;
                 };
 
-                self.follow(function) && self.hir(symbol.body)
+                if symbol.kind != FunctionKind::Loop {
+                    return self.follow(function) && self.hir(symbol.body);
+                }
+
+                // A loop calls itself with the rest of its list until there's nothing left of
+                // it, so its call of itself evaluates what the loop does at the end of its list,
+                // such as the items after a `for` that's spread in a list, or the value of a
+                // fold. That's only if every item gets to the call, which the body being
+                // followed decides: an item that a fold stops at doesn't
+                if self.loops.contains(&function) {
+                    return true;
+                }
+
+                if !self.follow(function) {
+                    return false;
+                }
+
+                self.loops.push(function);
+                let evaluated = self.hir(symbol.body);
+                self.loops.pop();
+
+                evaluated
             })
     }
 }
