@@ -33,3 +33,50 @@ test fn match_arms(f: (fn() -> nil) | nil) -> Int {
         _ => 1,
     }
 }
+
+test fn generic_function(f: (fn<T>(a: T) -> T) | nil) -> Bool {
+    f is nil
+}
+
+test fn beside_generic<T>(f: T | fn() -> Int) -> Bool {
+    f is nil
+}
+
+test fn beside_any(f: Any | fn() -> Int) -> Bool {
+    f is Bytes
+}
+
+test fn whole_pair(pair: (fn() -> nil, Int) | (nil, Int)) -> Bool {
+    pair is (nil, Int)
+}
+
+test fn in_rest(pair: (Int, (fn() -> nil) | nil)) -> Bool {
+    pair.rest is nil
+}
+
+struct Bare {
+    ...callback: fn() -> Int,
+}
+
+test fn spread_struct(bare: Bare | nil) -> Bool {
+    bare is nil
+}
+
+test fn asserted(f: (fn() -> nil) | nil) -> Int {
+    assert !(f is nil);
+    1
+}
+
+// Functions that can be cast to each other can't be told apart either
+test fn other_function(f: (fn(x: Int) -> Int) | (fn(x: Bytes) -> Bytes)) -> Bool {
+    f is fn(x: Int) -> Int
+}
+
+// A cast that would need a check doesn't suggest a type guard
+test fn cast_to_int(f: fn() -> Int) -> Int {
+    f as Int
+}
+
+test fn assign_to_nil(f: (fn() -> Int) | nil) -> nil {
+    f
+}

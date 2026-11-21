@@ -611,6 +611,7 @@ fn test_check_errors() {
     // Unless nothing has to be checked
     assert_eq!(t.check(function, any), Ok(Check::None));
     assert_eq!(t.check(function, function_or_nil), Ok(Check::None));
+    assert_eq!(t.check(function, function), Ok(Check::None));
 
     // Checking an arbitrary value against a recursive type would require an infinite check
     let list = t.list(int);

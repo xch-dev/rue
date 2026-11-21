@@ -497,7 +497,7 @@
 69.2: T0<true | false> to T0<true | false>, target {generic 0} | T0<true | false>
     Assign Assign Assign [["fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> true | false"], [], []] Ok(None) T0<true | false>
 69.3: T0<nil> to T0<Int>, target {generic 0} | T0<Int>
-    Cast Invalid Assign [["fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> nil"], [], []] Ok(None) fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> Int
+    Cast Invalid Assign [["fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> nil"], [], []] Err(FunctionType) fn<{generic 1}>(p0: T0<Int>, p1: {generic 1}) -> Int
 70: type T0 = fn(p0: fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}, p2: nil) -> T0 | (Int, T0) | T0, p1: fn<{generic 1}, {generic 2}>(p0: Int, p1: ({generic 1}, T0), p2: (T0, Bytes32)) -> {generic 2}, p2: T0) -> fn<{generic 3}, {generic 4}>(p0: {generic 4}, p1: {generic 4}, p2: {generic 4}) -> T0 | T0 | true | T0 | nil
 70.0: T0 to T0, target {generic 0} | T0
     Assign Assign Assign [["fn(p0: fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}, p2: nil) -> T0 | (Int, T0) | T0, p1: fn<{generic 2}, {generic 3}>(p0: Int, p1: ({generic 2}, T0), p2: (T0, Bytes32)) -> {generic 3}, p2: T0) -> fn<{generic 4}, {generic 5}>(p0: {generic 5}, p1: {generic 5}, p2: {generic 5}) -> T0 | T0 | true | T0 | nil"], [], []] Ok(None) T0
@@ -513,7 +513,7 @@
 71.1: T0<Int, true | false> to T0<nil, nil>, target {generic 0} | T0<nil, nil>
     Invalid Cast Assign [["fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> true | false"], [], []] Err(FunctionType) fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> nil
 71.2: T0<Bytes32, true> to T0<Int, Int>, target {generic 0} | T0<Int, Int>
-    Cast Invalid Assign [["fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> true"], [], []] Ok(None) fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> Int
+    Cast Invalid Assign [["fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> true"], [], []] Err(FunctionType) fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> Int
 71.3: T0<Bytes, true | false> | Any to T0<true, Bytes>, target {generic 0} | T0<true, Bytes>
     Invalid Assign Assign [["fn<{generic 1}>(p0: {generic 1}, p1: fn<{generic 2}>(p0: fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: T0<{generic 1}, {generic 3}>) -> Int, p1: {generic 2}, p2: {generic 2}) -> Int) -> true | false", "Atom", "0 @ (Atom | <0>, Atom | <0>)"], [], []] Err(FunctionType) T0<true, Bytes>
 72: type T0 = (T0, (Bytes32, T0))
@@ -595,7 +595,7 @@
     Invalid Invalid Invalid [["(fn(p0: Bytes32) -> T1<true, Bytes, true | false>, Any)"], [], []] Err(FunctionType) fn<{generic 1}>(p0: {generic 1}) -> ((nil, true), (Bytes32, Int))
 80: type T0<{generic 0}> = fn<{generic 1}, {generic 2}>(p0: T0<{generic 2}>) -> fn(p0: nil, p1: {generic 0}) -> Bytes | {generic 1} | T0<Int>
 80.0: T0<Bytes> to T0<Int>, target {generic 0} | T0<Int>
-    Cast Cast Assign [["fn<{generic 1}, {generic 2}>(p0: T0<{generic 2}>) -> fn(p0: nil, p1: Bytes) -> Bytes | {generic 1} | T0<Int>"], [], []] Ok(None) fn<{generic 1}, {generic 2}>(p0: T0<{generic 2}>) -> fn(p0: nil, p1: Int) -> Bytes | {generic 1} | T0<Int>
+    Cast Cast Assign [["fn<{generic 1}, {generic 2}>(p0: T0<{generic 2}>) -> fn(p0: nil, p1: Bytes) -> Bytes | {generic 1} | T0<Int>"], [], []] Err(FunctionType) fn<{generic 1}, {generic 2}>(p0: T0<{generic 2}>) -> fn(p0: nil, p1: Int) -> Bytes | {generic 1} | T0<Int>
 80.1: (fn<{generic 0}>(p0: {generic 0}, p1: {generic 0}, p2: Bytes) -> {generic 0}, fn<{generic 1}>(p0: {generic 1}, p1: true | false, p2: {generic 1}) -> {generic 1}) to T0<nil>, target {generic 2} | T0<nil>
     Invalid Invalid Assign [["(fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}, p2: Bytes) -> {generic 3}, fn<{generic 4}>(p0: {generic 4}, p1: true | false, p2: {generic 4}) -> {generic 4})"], [], []] Err(FunctionType) fn<{generic 5}, {generic 6}>(p0: T0<{generic 6}>) -> fn(p0: nil, p1: nil) -> Bytes | {generic 5} | T0<Int>
 80.2: T0<true> to (nil, nil), target {generic 0} | (nil, nil)
@@ -650,7 +650,7 @@
 86.1: T0<true | false, true> to T0<true | false, nil>, target ({generic 0}, T0<true | false, nil>)
     Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T0<true | false, true>
 86.2: T0<Int, Bytes32> to T0<Bytes, true>, target ({generic 0}, T0<Bytes, true>)
-    Cast Cast Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) fn<{generic 1}, {generic 2}>(p0: (T0<true | false, Bytes>, fn<{generic 3}, {generic 4}>(p0: {generic 2}, p1: T0<true, nil>) -> Bytes), p1: {generic 1} | T0<Bytes, {generic 1}>) -> {generic 2}
+    Cast Cast Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) fn<{generic 1}, {generic 2}>(p0: (T0<true | false, Bytes>, fn<{generic 3}, {generic 4}>(p0: {generic 2}, p1: T0<true, nil>) -> Bytes), p1: {generic 1} | T0<Bytes, {generic 1}>) -> {generic 2}
 86.3: T0<true | false, Bytes> to T0<true, true | false>, target {generic 0} | T0<true, true | false>
     Assign Invalid Assign [["fn<{generic 1}, {generic 2}>(p0: (T0<true | false, Bytes>, fn<{generic 3}, {generic 4}>(p0: {generic 2}, p1: T0<true, nil>) -> true | false), p1: {generic 1} | T0<true | false, {generic 1}>) -> {generic 2}"], [], []] Ok(None) T0<true | false, Bytes>
 87: type T0<{generic 0}> = {generic 0}
@@ -721,9 +721,9 @@
 96.0: T0<Int> to T0<Int>, target ({generic 0}, T0<Int>)
     Assign Assign Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) T0<Int>
 96.1: T0<nil> to T0<true | false>, target {generic 0} | T0<true | false>
-    Cast Cast Assign [["T0<nil>"], [], []] Ok(None) fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}) -> (Int | true | false, Any)
+    Cast Cast Assign [["T0<nil>"], [], []] Err(FunctionType) fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}) -> (Int | true | false, Any)
 96.2: T0<Bytes> to T0<true>, target ({generic 0}, T0<true>)
-    Cast Cast Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}) -> (Int | true, Any)
+    Cast Cast Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) fn<{generic 1}>(p0: {generic 1}, p1: {generic 1}) -> (Int | true, Any)
 96.3: fn<{generic 0}, {generic 1}>(p0: {generic 1}) -> {generic 0} to T0<true>, target ({generic 2}, T0<true>)
     Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) fn<{generic 3}>(p0: {generic 3}, p1: {generic 3}) -> (Int | true, Any)
 97: type T0<{generic 0}, {generic 1}> = Int
@@ -1195,7 +1195,7 @@
 35565.1: T0 to T1, target {generic 0} | T1
     Invalid Invalid Assign [["fn(p0: fn<{generic 1}>(p0: Int, p1: Bytes, p2: {generic 1}) -> Bytes32 | T1, p1: T0, p2: T1) -> ((T1, T1), fn(p0: Int, p1: T1, p2: true) -> T1)"], [], []] Err(FunctionType) fn<{generic 2}>(p0: T1 | {generic 2}, p1: {generic 2}, p2: {generic 2}) -> {generic 2}
 35565.2: T1 to Bytes32 | T1 | nil, target ({generic 0}, Bytes32 | T1 | nil)
-    Cast Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Ok(None) Bytes32 | T1 | nil
+    Cast Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) Bytes32 | T1 | nil
 35565.3: T0 to true | false | fn<{generic 0}, {generic 1}>(p0: T0) -> {generic 1}, target ({generic 2}, true | false | fn<{generic 0}, {generic 1}>(p0: T0) -> {generic 1})
     Invalid Invalid Invalid [["0 @ (Atom | (<0>, <0>))"], [], []] Err(FunctionType) true | false | fn<{generic 3}, {generic 4}>(p0: T0) -> {generic 4}
 35565.4: T1 to T1, target ({generic 0}, T1)

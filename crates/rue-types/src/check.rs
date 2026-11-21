@@ -205,7 +205,7 @@ pub enum CheckError {
     RecursiveType,
 
     #[error(
-        "Cannot check a function value at runtime, since its representation depends on how it is compiled"
+        "Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds"
     )]
     FunctionType,
 
@@ -366,10 +366,15 @@ fn check_each_impl_inner(
     let mut result = Comparison::Assign;
 
     for &id in lhs {
-        result = max(
-            result,
-            compare_impl(arena, builtins, &mut ctx.comparison, id, rhs, None, None),
-        );
+        let comparison = compare_impl(arena, builtins, &mut ctx.comparison, id, rhs, None, None);
+
+        // A function can be cast to a function type that it isn't assignable to, but nothing can
+        // tell them apart at runtime, so it isn't accepted without a check like other casts are
+        if comparison == Comparison::Cast && matches!(arena[id], Type::Function(_)) {
+            return Err(CheckError::FunctionType);
+        }
+
+        result = max(result, comparison);
     }
 
     if result <= Comparison::Cast {
@@ -626,6 +631,7 @@ fn variants_of_inner(
         // A function is kept as is, rather than as the atom or pair that it's compiled to, so that
         // a check which has to look at it is an error. How a function is represented depends on
         // how it's compiled, so the result would differ between debug and release builds.
+        // Subtracting a type still splits a function into an atom and a pair.
         Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) | Type::Function(_) => {
             vec![id]
         }

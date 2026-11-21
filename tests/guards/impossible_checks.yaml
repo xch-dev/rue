@@ -1,5 +1,5 @@
 diagnostics:
-- Cannot check a function value at runtime, since its representation depends on how it is compiled at impossible_checks.rue:2:5
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at impossible_checks.rue:2:5
 - Cannot check if value is of recursive type at runtime at impossible_checks.rue:6:5
 - Cannot check if value is of recursive type at runtime at impossible_checks.rue:10:5
 - Cannot check if value is of recursive type at runtime at impossible_checks.rue:16:5
