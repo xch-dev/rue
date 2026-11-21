@@ -61,7 +61,6 @@ diagnostics:
 - |-
   Cannot assign `(Int, nil)` to `nil`, since they are incompatible at for_errors.rue:79:50
     note: The result of the fold is `nil`, which is the type of its value. Give it a type of its own, as in `fold rest: List<Int> = nil`
-- Cannot infer generic `T` for `count`; specify it explicitly, e.g. `count::<...>()` at for_errors.rue:82:13
 - |-
   Cannot assign `(Int, nil)` to `nil`, since they are incompatible at for_errors.rue:82:47
     note: The result of the fold is `nil`, which is the type of its value. Give it a type of its own, as in `fold rest: List<Int> = nil`
@@ -70,7 +69,3 @@ diagnostics:
     note: The result of the fold is `nil`, which is the type of its value. Give it a type of its own, as in `fold rest: List<Int> = nil`
 - Cannot assign `List<nil>` to `List<Int>` without a cast, since they are semantically different at for_errors.rue:88:24
 - Cannot assign `List<Int>` to `Int` without a type guard, since the value isn't always a valid `Int` at for_errors.rue:91:18
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:93:5
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:96:11
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:98:11
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_errors.rue:103:11
