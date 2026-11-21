@@ -308,7 +308,7 @@ pub(crate) fn generalized_call(
 ///   `A` in `fn make<A>(list: List<A>) -> fn(a: A) -> A`, where no type is the most useful one.
 /// - A generic that the call would have no value with, such as `T` in `first(nil)` with
 ///   `fn first<T>(list: List<T>) -> T`: the code after the call would be unreachable.
-/// - A generic that an argument which failed to compile would have given a type.
+/// - A generic that an argument which failed to compile, or is missing, would have given a type.
 fn unconstrained_as_never(
     ctx: &mut Compiler,
     function: &FunctionType,
@@ -322,7 +322,8 @@ fn unconstrained_as_never(
         .filter(|generic| !mappings.contains_key(generic))
         .collect();
 
-    if unmapped.is_empty() {
+    // A parameter without an argument, which is reported, could have given them a type
+    if unmapped.is_empty() || checks.len() != function.params.len() {
         return None;
     }
 

@@ -14,6 +14,7 @@ diagnostics:
 - Cannot assign `List<{unresolved}>` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_unconstrained_arguments_errors.rue:88:28
 - Undeclared symbol `undeclared` at generic_inference_unconstrained_arguments_errors.rue:88:36
 - Expected 2 arguments, but found 1 at generic_inference_unconstrained_arguments_errors.rue:89:20
+- Cannot infer generic `T` for `merge_list`; specify it explicitly, e.g. `merge_list::<...>()` at generic_inference_unconstrained_arguments_errors.rue:89:20
 - Cannot infer generic `T` for `each`; specify it explicitly, e.g. `each::<...>()` at generic_inference_unconstrained_arguments_errors.rue:92:29
 - Cannot infer generic `T` for `map`; specify it explicitly, e.g. `map::<...>()` at generic_inference_unconstrained_arguments_errors.rue:93:26
 - Cannot infer generic `T` for `with_callback`; specify it explicitly, e.g. `with_callback::<...>()` at generic_inference_unconstrained_arguments_errors.rue:97:32
