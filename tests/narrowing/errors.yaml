@@ -9,13 +9,13 @@ diagnostics:
 - Unused function `not_reference_true` at errors.rue:17:4
 - Cannot assign `Bool` to `false` without a type guard, since the value isn't always a valid `false` at errors.rue:17:41
 - Unused function `and_else` at errors.rue:25:4
-- Cannot assign `0 | Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:25:62
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:25:62
 - Unused function `all_else` at errors.rue:33:4
-- Cannot assign `0 | Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:33:62
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:33:62
 - Unused function `or_then` at errors.rue:41:4
-- Cannot assign `Int | (Int, Int) | 0` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:41:61
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:41:61
 - Unused function `any_then` at errors.rue:49:4
-- Cannot assign `Int | (Int, Int) | 0` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:49:62
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:49:62
 - Unused function `all_right` at errors.rue:58:4
 - Cannot use `>` operator with `Int | (Int, Int)` and `5` at errors.rue:59:19
 - Unused function `any_right` at errors.rue:62:4
@@ -23,6 +23,6 @@ diagnostics:
 - Unused function `same_path_any` at errors.rue:67:4
 - Cannot assign `Bytes32 | (Int, Int)` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at errors.rue:67:60
 - Unused function `inline_if` at errors.rue:76:4
-- Cannot assign `Int | (Int, Int) | 0` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:76:42
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:76:42
 - Unused function `if_expr_escape` at errors.rue:81:4
-- Cannot use `+` operator with `Int | (Int, Int)` and `Int | 0` at errors.rue:87:5
+- Cannot use `+` operator with `Int | (Int, Int)` and `Int` at errors.rue:87:5

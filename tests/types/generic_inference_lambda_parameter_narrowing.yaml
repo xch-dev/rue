@@ -60,7 +60,7 @@ diagnostics:
 - Unnecessary type guard from `List<Int>` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:38:16
 - Unnecessary type guard from `(Int, List<Int>)` to `(Any, Any)`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:55:19
 - Type guard from `MyInt | Bytes` to `Int` is always true, since every `MyInt | Bytes` value is also a valid `Int` at runtime; use a cast, or guard against a narrower type at generic_inference_lambda_parameter_narrowing.rue:67:21
-- Unnecessary type guard from `Int | 0` to `Int`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:74:8
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:74:8
 - Unnecessary type guard from `5 | (Int, List<Int>)` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:92:8
 - Unnecessary type guard from `(Int, List<Int>)` to `(Any, Any)`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:107:32
 - Unnecessary type guard from `((Int, List<Int>), nil)` to `(Any, Any)`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:113:30

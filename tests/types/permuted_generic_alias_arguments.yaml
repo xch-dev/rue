@@ -3,5 +3,5 @@ diagnostics:
 - Cannot assign `N1<1, 1, 2>` to `N0`, since they are incompatible at permuted_generic_alias_arguments.rue:15:18
 - Cannot assign `S0` to `R0`, since they are incompatible at permuted_generic_alias_arguments.rue:18:19
 - Cannot assign `R0` to `S0` without a cast, since they are semantically different at permuted_generic_alias_arguments.rue:19:19
-- Cannot assign `R0` to `R1<true | false, Bytes, Int>` without a cast, since they are semantically different at permuted_generic_alias_arguments.rue:20:37
-- Cannot assign `R1<true | false, Bytes, Int>` to `R0` without a type guard, since the value isn't always a valid `R0` at permuted_generic_alias_arguments.rue:21:24
+- Cannot assign `R0` to `R1<Bool, Bytes, Int>` without a cast, since they are semantically different at permuted_generic_alias_arguments.rue:20:37
+- Cannot assign `R1<Bool, Bytes, Int>` to `R0` without a type guard, since the value isn't always a valid `R0` at permuted_generic_alias_arguments.rue:21:24

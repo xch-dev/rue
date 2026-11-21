@@ -1197,3 +1197,37 @@ fn test_hints_for_unfinished_struct_updates() {
         "#]],
     );
 }
+
+#[test]
+fn test_hints_show_union_members_once() {
+    check_with(
+        TYPES,
+        r#"
+fn choose<T>(condition: Bool, first: T, second: T) -> T {
+    if condition { first } else { second }
+}
+
+fn main(condition: Bool, n: Int) -> Int {
+    let same = choose(condition, (n, n), (n, n));
+    let included = choose(condition, (n, n), (n, 0));
+    let overlapping = choose(condition, (n, 1), (0, n));
+    let flags = [choose(condition, true, false)];
+    same.first + included.first + overlapping.first + if flags.first { 1 } else { 0 }
+}
+"#,
+        expect![[r#"
+
+            fn choose<T>(condition: Bool, first: T, second: T) -> T {
+                if condition { first } else { second }
+            }
+
+            fn main(condition: Bool, n: Int) -> Int {
+                let same«: (Int, Int)» = choose(condition, (n, n), (n, n));
+                let included«: (Int, Int)» = choose(condition, (n, n), (n, 0));
+                let overlapping«: (Int, 1) | (0, Int)» = choose(condition, (n, 1), (0, n));
+                let flags«: (Bool, nil)» = [choose(condition, true, false)];
+                same.first + included.first + overlapping.first + if flags.first { 1 } else { 0 }
+            }
+        "#]],
+    );
+}

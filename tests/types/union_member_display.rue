@@ -1,0 +1,17 @@
+fn head_or<T>(list: List<T>, default: T) -> T {
+    if list is nil {
+        default
+    } else {
+        list.first
+    }
+}
+
+// `T` is inferred as `Int | 0`, which the warning shows as `Int`, since `0` is an `Int`
+test fn guard_on_an_included_literal() -> Int {
+    let value = head_or([1 + 1], 0);
+    if value is Int {
+        value
+    } else {
+        0
+    }
+}
