@@ -248,3 +248,43 @@ test fn large_condition(a: Int, b: Int) -> Int {
         > 100;
     a
 }
+
+// An `if` with two different results is the result of the checks before it
+test fn asserts_before_an_if(a: Int, b: Int, c: Bool) -> Int {
+    assert a > 0;
+    assert b > 0;
+
+    if c {
+        a + b
+    } else {
+        a * b
+    }
+}
+
+// A call or a division in the right operand of `||` is still only reached when the assert before
+// it has passed and the left operand is false
+test fn call_in_a_lazy_operand(items: List<Int>, limit: Int) -> Int {
+    assert limit > 0;
+    assert limit > 50 || is_sorted(items);
+    limit
+}
+
+test fn call_in_a_lazy_operand_after_a_failed_assert(items: List<Int>, limit: Int) -> Int {
+    assert limit > 0;
+    assert limit > 50 || is_sorted(items);
+    limit
+}
+
+test fn division_in_a_lazy_operand(a: Int, b: Int, c: Int) -> Int {
+    assert a > 0;
+    assert b > 0 || c / a > 1;
+    assert c > 0;
+    c
+}
+
+test fn division_in_a_lazy_operand_after_a_failed_assert(a: Int, b: Int, c: Int) -> Int {
+    assert a > 0;
+    assert b > 0 || c / a > 1;
+    assert c > 0;
+    c
+}

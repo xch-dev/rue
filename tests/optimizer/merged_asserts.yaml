@@ -194,6 +194,44 @@ tests:
   runtime_cost: 11308
   byte_cost: 1356000
   total_cost: 1367308
+- name: asserts_before_an_if
+  program: (a (i (all (> 2 ()) (> 5 ())) (q 2 (i 11 (q 16 2 5) (q 18 2 5)) 1) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (i (> 5 ()) (q 2 (i 11 (q 16 2 5) (q 18 2 5)) 1) (q 8 (q . "assertion failed at merged_asserts.rue:255:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:254:5"))) 1)
+  solution: (2 3 ())
+  output: "6"
+  runtime_cost: 3565
+  byte_cost: 828000
+  total_cost: 831565
+- name: call_in_a_lazy_operand
+  program: (a (q 2 (i (> 11 ()) (q 2 (i (> 11 (q . 50)) (q . 11) (q 2 (i (a 2 (c 2 5)) (q . 11) (q 8)) 1)) 1) (q 8)) 1) (c (q 2 (i 3 (q 2 (i 7 (q 2 (i (> 11 5) (q 2 2 (c 2 7)) ()) 1) (q 1 . 1)) 1) (q 1 . 1)) 1) 1))
+  debug_program: (a (q 2 (i (> 11 ()) (q 2 (i (a (i (> 11 (q . 50)) (q 1 . 1) (q 2 2 (c 2 5))) 1) (q . 11) (q 8 (q . "assertion failed at merged_asserts.rue:268:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:267:5"))) 1) (c (q 2 (i (not 3) (q 1 . 1) (q 2 (q 2 (i (not 2) (q 1 . 1) (q 2 (i (> (f 2) (f 7)) (q 2 5 (c 5 2)) ()) 1)) 1) (c (r 3) 1))) 1) 1))
+  solution: ((1 . 2) 60)
+  output: "60"
+  runtime_cost: 1880
+  byte_cost: 2100000
+  total_cost: 2101880
+- name: call_in_a_lazy_operand_after_a_failed_assert
+  program: (a (q 2 (i (> 11 ()) (q 2 (i (> 11 (q . 50)) (q . 11) (q 2 (i (a 2 (c 2 5)) (q . 11) (q 8)) 1)) 1) (q 8)) 1) (c (q 2 (i 3 (q 2 (i 7 (q 2 (i (> 11 5) (q 2 2 (c 2 7)) ()) 1) (q 1 . 1)) 1) (q 1 . 1)) 1) 1))
+  debug_program: (a (q 2 (i (> 11 ()) (q 2 (i (a (i (> 11 (q . 50)) (q 1 . 1) (q 2 2 (c 2 5))) 1) (q . 11) (q 8 (q . "assertion failed at merged_asserts.rue:274:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:273:5"))) 1) (c (q 2 (i (not 3) (q 1 . 1) (q 2 (q 2 (i (not 2) (q 1 . 1) (q 2 (i (> (f 2) (f 7)) (q 2 5 (c 5 2)) ()) 1)) 1) (c (r 3) 1))) 1) 1))
+  solution: ((1 . 2) 0)
+  byte_cost: 2100000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:273:5"
+- name: division_in_a_lazy_operand
+  program: (a (i (> 2 ()) (q 2 (i (all (a (i (> 5 ()) (q 1 . 1) (q 21 (/ 11 2) (q . 1))) 1) (> 11 ())) (q . 11) (q 8)) 1) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (i (a (i (> 5 ()) (q 1 . 1) (q 21 (/ 11 2) (q . 1))) 1) (q 2 (i (> 11 ()) (q . 11) (q 8 (q . "assertion failed at merged_asserts.rue:281:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:280:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:279:5"))) 1)
+  solution: (1 0 5)
+  output: "5"
+  runtime_cost: 4907
+  byte_cost: 1188000
+  total_cost: 1192907
+- name: division_in_a_lazy_operand_after_a_failed_assert
+  program: (a (i (> 2 ()) (q 2 (i (all (a (i (> 5 ()) (q 1 . 1) (q 21 (/ 11 2) (q . 1))) 1) (> 11 ())) (q . 11) (q 8)) 1) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (i (a (i (> 5 ()) (q 1 . 1) (q 21 (/ 11 2) (q . 1))) 1) (q 2 (i (> 11 ()) (q . 11) (q 8 (q . "assertion failed at merged_asserts.rue:288:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:287:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:286:5"))) 1)
+  solution: (0 0 5)
+  byte_cost: 1188000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:286:5"
 diagnostics:
 - |-
   This `if` statement only raises, so it can be written as an `assert` at merged_asserts.rue:142:5

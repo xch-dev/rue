@@ -586,13 +586,31 @@ fn test_checks_are_kept_apart() {
     let third = arena.alloc(Lir::If(large, result, fail, false));
     let second = arena.alloc(Lir::If(c, third, fail, false));
     let lir = arena.alloc(Lir::If(a, second, fail, false));
-    check(&mut arena, lir, THREE_ATOM_ENVS, expect!["(a (i (all 2 11) (q 2 (i (+ 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2) (q 16 2 5) (q 8)) 1) (q 8)) 1)"]);
+    check(
+        &mut arena,
+        lir,
+        THREE_ATOM_ENVS,
+        expect![
+            "(a (i (all 2 11) (q 2 (i (+ 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2) (q 16 2 5) (q 8)) 1) (q 8)) 1)"
+        ],
+    );
 
     // A check whose branches both reach the result has nothing to merge, and would only keep
     // its condition between two constants
     let both = arena.alloc(Lir::If(b, result, result, false));
     let lir = arena.alloc(Lir::If(a, fail, both, false));
-    check(&mut arena, lir, THREE_ATOM_ENVS, expect!["(a (i 2 (q 8) (q 2 (i 5 (q 16 2 5) (q 16 2 5)) 1)) 1)"]);
+    check(
+        &mut arena,
+        lir,
+        THREE_ATOM_ENVS,
+        expect!["(a (i 2 (q 8) (q 2 (i 5 (q 16 2 5) (q 16 2 5)) 1)) 1)"],
+    );
+
+    // An `if` with two different results is the result of the checks before it
+    let results = arena.alloc(Lir::If(b, result, one, false));
+    let second = arena.alloc(Lir::If(c, results, fail, false));
+    let lir = arena.alloc(Lir::If(a, second, fail, false));
+    check(&mut arena, lir, THREE_ATOM_ENVS, expect!["(a (i (all 2 11) (q 2 (i 5 (q 16 2 5) (q 1 . 1)) 1) (q 8)) 1)"]);
 
     // Checks that raise differently fail differently
     let message = arena.alloc(Lir::Raise(vec![one]));
