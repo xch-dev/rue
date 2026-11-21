@@ -1,6 +1,6 @@
-program: (a (q 2 (q 16 4 10 21 45 (f (r (c 17 (c 23 ()))))) (c 4 1)) (c (c (c 2 (c (+ 5 (q . 1)) ())) (c 2 (c 5 ()))) 1))
+program: (a (q 16 8 20 10 22 (f (r (c 8 (c 11 ()))))) (c (c (c 2 (c (+ 5 (q . 1)) ())) (c 2 (c 5 ()))) 1))
 debug_program: (a (q 2 (q 16 (+ (+ (+ (f 4) (f (r 4))) (f 13)) (f (r 13))) (f (r 6))) (c (c 4 (c (f 4) (c 11 ()))) 1)) (c (c (c 2 (c (+ 5 (q . 1)) ())) (c 2 (c 5 ()))) 1))
-byte_cost: 1188000
+byte_cost: 1020000
 clvm_error: path into atom
 diagnostics:
 - |-

@@ -238,3 +238,31 @@ tests:
   runtime_cost: 525
   byte_cost: 540000
   total_cost: 540525
+- name: block_scrutinee_evaluated_once
+  program: (a (q 2 (i 2 (q 3 (= (strlen 2) (q . 32)) (q . 1) (q . 2)) ()) 1) (c 2 1))
+  debug_program: (a (q 2 (i (= 2 ()) () (q 2 (i (= (strlen 2) (q . 32)) (q 1 . 1) (q 1 . 2)) 1)) 1) (c (a (i ("debug_print" (q . "match.rue:309:9") (q . "evaluated")) () (q . 2)) 1) 1))
+  solution: (0x0101010101010101010101010101010101010101010101010101010101010101)
+  output: "1"
+  runtime_cost: 1013
+  byte_cost: 660000
+  total_cost: 661013
+  print_messages:
+  - "\"evaluated\""
+- name: block_scrutinee_narrows_path
+  program: (a (q 2 (i 2 (q 2 (i (= (strlen 2) (q . 32)) (q 13 5) (q 16 5 (q . 1))) 1) ()) 1) (c 2 1))
+  debug_program: (a (q 2 (i (= 2 ()) () (q 2 (i (= (strlen 2) (q . 32)) (q 13 5) (q 16 5 (q . 1))) 1)) 1) (c (a (i ("debug_print" (q . "match.rue:321:9") (q . "evaluated")) () (q . 2)) 1) 1))
+  solution: (0x0101010101010101010101010101010101010101010101010101010101010101)
+  output: "32"
+  runtime_cost: 1416
+  byte_cost: 876000
+  total_cost: 877416
+  print_messages:
+  - "\"evaluated\""
+- name: cast_scrutinee
+  program: (a (i (l 2) (q 16 4 6) (q 13 2)) 1)
+  debug_program: (a (i (not (l 2)) (q 13 2) (q 16 (f 2) (r 2))) 1)
+  solution: ((3 . 4))
+  output: "7"
+  runtime_cost: 1137
+  byte_cost: 396000
+  total_cost: 397137

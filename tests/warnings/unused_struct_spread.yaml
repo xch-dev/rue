@@ -28,13 +28,13 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 - name: every_field_of_call
-  program: (a (q 3 () (a 2 5) (q 1 2)) (c (q 2 (i (> 1 ()) (q 4 1 (c 1 ())) (q 8)) 1) 1))
+  program: (i () (a (i (> 2 ()) (q 4 2 (c 2 ())) (q 8)) 1) (q 1 2))
   debug_program: (a (q 3 () (a 2 5) (c (q . 1) (c (q . 2) ()))) (c (q 2 (i (> 1 ()) (q 4 1 (c 1 ())) (q 8 (q . "assertion failed at unused_struct_spread.rue:13:5"))) 1) 1))
   solution: (4)
   output: (1 2)
-  runtime_cost: 1547
-  byte_cost: 900000
-  total_cost: 901547
+  runtime_cost: 1142
+  byte_cost: 636000
+  total_cost: 637142
 - name: every_field_on_lines
   program: (c (+ 4 4 4 4 4 4 4 4) (c (+ 10 10 10 10 10 10 10 10) ()))
   debug_program: (c (+ (+ (+ (+ (+ (+ (+ (f 2) (f 2)) (f 2)) (f 2)) (f 2)) (f 2)) (f 2)) (f 2)) (c (+ (+ (+ (+ (+ (+ (+ (f (r 2)) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) ()))
