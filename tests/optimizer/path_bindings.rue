@@ -355,3 +355,109 @@ test fn more_bindings_than_are_measured(many: Many) -> Int {
     let j = many.j;
     a * a + b * b + c * c + d * d + e * e + f * f + g * g + h * h + i * i + j * j
 }
+
+// Whether a path is smaller than a binding also depends on the other paths around it, which
+// binding it pushes one level deeper. What was measured for `b` while `a` was read as a path
+// isn't smaller once `a` is bound, so the block is lowered as it was before path bindings.
+test fn path_among_other_paths(
+    flag: Bool,
+    _p2: Int,
+    _p3: Int,
+    _p4: Int,
+    _p5: Int,
+    _p6: Int,
+    p7: Int,
+    _p8: Int,
+    p9: Int,
+) -> Int {
+    let a = p7;
+
+    if flag {
+        let b = p9;
+        b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + b
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+            + a
+    } else {
+        a + a
+    }
+}
+
+inline fn weighted_sum(t: Int, u: Int) -> Int {
+    let b = t;
+    b
+        + b
+        + b
+        + b
+        + b
+        + b
+        + b
+        + b
+        + b
+        + b
+        + b
+        + b
+        + b
+        + b
+        + b
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+        + u
+}
+
+// The same binding is the same path in both calls, but the other argument isn't
+test fn same_path_among_different_paths(
+    p1: Int,
+    _p2: Int,
+    _p3: Int,
+    _p4: Int,
+    _p5: Int,
+    _p6: Int,
+    p7: Int,
+    p8: Int,
+) -> Int {
+    weighted_sum(p8, p7) * weighted_sum(p8, p1)
+}

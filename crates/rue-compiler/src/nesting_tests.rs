@@ -434,6 +434,29 @@ fn path_bindings_that_nest_too_deeply_are_bound() {
     });
 }
 
+/// A program that nests too deeply is only lowered once for each run of path bindings before
+/// the error is found, rather than once for each way of lowering every run, which doubled with
+/// each one.
+#[test]
+fn path_bindings_in_a_program_that_is_too_deep_are_not_measured() {
+    const RUNS: usize = 300;
+
+    on_stack(2, || {
+        let source = format!(
+            "fn main(p: (Int, Int), n: Int) -> Int {{\n{}n\n}}",
+            links(RUNS, |i| format!(
+                "let a{i} = p.first;\nassert a{i} + a{i} > n;\n"
+            ))
+        );
+
+        let (_, result) = compile(&source);
+        assert!(
+            matches!(result, Err(Error::LoweringTooDeep(_))),
+            "{result:?}"
+        );
+    });
+}
+
 /// The search for unconditional recursion follows the whole chain of bindings. It used little stack
 /// for each binding when it recursed, so the chain is longer than the others.
 #[test]

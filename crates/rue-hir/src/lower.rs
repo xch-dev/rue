@@ -94,6 +94,12 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// binding it, by the size of the path it's lowered to, which is only measured the first
     /// time its let statement is lowered with a path of that size.
     path_choices: HashMap<(SymbolId, usize), bool>,
+    /// How many runs of let statements with path bindings are being measured around what's
+    /// being lowered.
+    path_run_depth: usize,
+    /// Whether no binding is read as a path, while a run is lowered the way it was before there
+    /// were path bindings.
+    paths_disabled: bool,
     /// Whether calling each function may fail, which is shared between checks.
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
     /// Whether the value of each constant may fail, for the ones that can't (see
@@ -181,6 +187,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             substitutions: RefCell::default(),
             path_bindings: RefCell::default(),
             path_choices: HashMap::new(),
+            path_run_depth: 0,
+            paths_disabled: false,
             function_failures: RefCell::default(),
             substitution_failures: RefCell::default(),
             constant_roots: OnceCell::new(),

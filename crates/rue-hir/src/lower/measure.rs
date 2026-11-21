@@ -22,6 +22,13 @@ pub(super) struct Trial {
     too_deep: Option<TooDeep>,
 }
 
+impl Trial {
+    /// Whether lowering it went too deep, which it didn't before.
+    pub fn is_too_deep(&self) -> bool {
+        self.too_deep.is_some()
+    }
+}
+
 impl Lowerer<'_, '_, '_> {
     /// Lowers something one way, and measures it. What it recorded for a debug sidecar is set
     /// aside, so that another way of lowering it starts from the same state. The one that's kept
