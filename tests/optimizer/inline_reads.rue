@@ -1,0 +1,121 @@
+// A reference in a value that's substituted wherever it's referenced, such as a part of a
+// destructured value, reads what it refers to as many times as the value is read. So a call that's
+// destructured is still only made once, however many times one of its parts is used, as it is
+// when the call is bound and its fields are read (see `whole_binding`).
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn pair(r: Int) -> (Int, Int) {
+    if r > 5 {
+        (r, r * 2)
+    } else {
+        (r * 3, r)
+    }
+}
+
+fn point(r: Int) -> Point {
+    if r > 5 {
+        Point { x: r, y: r * 2 }
+    } else {
+        Point { x: r * 3, y: r }
+    }
+}
+
+inline fn cube(a: Int) -> Int {
+    a * a * a
+}
+
+inline fn ignore(_a: Int, b: Int) -> Int {
+    b
+}
+
+// What each of the tests below is compared with
+test fn whole_binding(r: Int) -> Int {
+    let whole = pair(r);
+    whole.first * whole.first * whole.first
+}
+
+test fn one_part(r: Int) -> Int {
+    let (a, _) = pair(r);
+    a * a * a
+}
+
+test fn other_part(r: Int) -> Int {
+    let (_, b) = pair(r);
+    b * b * b
+}
+
+// A part that's used once is still read where it's used
+test fn part_used_once(r: Int) -> Int {
+    let (a, _) = pair(r);
+    a + 1
+}
+
+test fn struct_part(r: Int) -> Int {
+    let { x } = point(r);
+    x * x * x
+}
+
+test fn list_part(r: Int) -> Int {
+    let [a, _b] = [pair(r).first, r];
+    a * a * a
+}
+
+// A part of a part reads the call as often as it's used
+test fn nested_part(r: Int) -> Int {
+    let ((a, _), _) = (pair(r), r);
+    a * a * a
+}
+
+test fn inline_binding(r: Int) -> Int {
+    let whole = pair(r);
+    inline let a = whole.first;
+    a * a * a
+}
+
+// Each inline binding reads the one before it twice, so the call is read eight times
+test fn inline_chain(r: Int) -> Int {
+    let whole = pair(r);
+    inline let a = whole.first + whole.first;
+    inline let b = a + a;
+    b + b
+}
+
+// A match with one arm has no type guard to reference the value a second time
+test fn match_pair(r: Int) -> Int {
+    match pair(r) {
+        _ as (a, _) => a * a * a,
+    }
+}
+
+test fn match_struct(r: Int) -> Int {
+    match point(r) {
+        Point { x } => x * x * x,
+    }
+}
+
+test fn match_name(r: Int) -> Int {
+    match pair(r) {
+        _ as p => p.first * p.first * p.first,
+    }
+}
+
+// The argument of an `inline fn` is lowered for each reference to its parameter
+test fn inline_argument(r: Int) -> Int {
+    let whole = pair(r);
+    cube(whole.first)
+}
+
+test fn inline_argument_part(r: Int) -> Int {
+    let (a, _) = pair(r);
+    cube(a + 1)
+}
+
+// An argument that's never lowered doesn't make its binding any less referenced
+test fn unused_inline_argument(r: Int) -> Int {
+    let whole = pair(r);
+    ignore(whole.first, r)
+}

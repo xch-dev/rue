@@ -1,0 +1,121 @@
+tests:
+- name: whole_binding
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: one_part
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: other_part
+  program: (a (q 18 6 6 6) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (r 2) (r 2)) (r 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "2744"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: part_used_once
+  program: (+ (f (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1)) (q . 1))
+  debug_program: (a (q 2 (q 16 (f 2) (q . 1)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "8"
+  runtime_cost: 2754
+  byte_cost: 804000
+  total_cost: 806754
+- name: struct_part
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (c (* 2 (q . 2)) ())) (q 4 (* 2 (q . 3)) (c 2 ()))) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (c (* 1 (q . 2)) ())) (q 4 (* 1 (q . 3)) (c 1 ()))) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4311
+  byte_cost: 1068000
+  total_cost: 1072311
+- name: list_part
+  program: (a (q 18 4 4 4) (c (c (f (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1)) (c 2 ())) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (c (f (a 2 5)) (c 5 ())) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4441
+  byte_cost: 1116000
+  total_cost: 1120441
+- name: nested_part
+  program: (a (q 18 8 8 8) (c (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 2) 1))
+  debug_program: (a (q 2 (q 18 (* (f (f 2)) (f (f 2))) (f (f 2))) (c (c (a 2 5) 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4327
+  byte_cost: 996000
+  total_cost: 1000327
+- name: inline_binding
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: inline_chain
+  program: (a (q 16 4 4 4 4 4 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 16 (+ (+ (f 2) (f 2)) (+ (f 2) (f 2))) (+ (+ (f 2) (f 2)) (+ (f 2) (f 2)))) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "56"
+  runtime_cost: 5263
+  byte_cost: 1044000
+  total_cost: 1049263
+- name: match_pair
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: match_struct
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (c (* 2 (q . 2)) ())) (q 4 (* 2 (q . 3)) (c 2 ()))) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (c (* 1 (q . 2)) ())) (q 4 (* 1 (q . 3)) (c 1 ()))) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4311
+  byte_cost: 1068000
+  total_cost: 1072311
+- name: match_name
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: inline_argument
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: inline_argument_part
+  program: (a (q 18 (+ 4 (q . 1)) (+ 4 (q . 1)) (+ 4 (q . 1))) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (+ (f 2) (q . 1)) (+ (f 2) (q . 1))) (+ (f 2) (q . 1))) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "512"
+  runtime_cost: 6544
+  byte_cost: 1212000
+  total_cost: 1218544
+- name: unused_inline_argument
+  program: "2"
+  debug_program: (a (q 2 (q . 11) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "7"
+  runtime_cost: 48
+  byte_cost: 12000
+  total_cost: 12048
