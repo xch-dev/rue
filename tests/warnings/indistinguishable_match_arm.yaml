@@ -30,3 +30,4 @@ diagnostics:
 - |-
   Unreachable match arm, since an earlier arm also handles `nil`, which it can't tell apart from its own type at runtime at indistinguishable_match_arm.rue:90:9
     note: This arm also handles `nil` at indistinguishable_match_arm.rue:89:9
+- Match arm `Int` also handles `Bytes32`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at indistinguishable_match_arm.rue:156:9

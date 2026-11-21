@@ -137,6 +137,31 @@ A name is the way to use a value that isn't a variable, such as the result of a 
 
 A binding is checked against the type the arm narrows the value to, which is the union for an arm such as `A | B as (first, rest)`, and what's left for `_`, so it's an error if a `let` couldn't destructure that type the same way: a field can only be read from a union if its members are copies of one struct, such as an enum's variant with different generic arguments. The bindings are only in scope in their own arm, can shadow the value being matched on, and are reported by `unused_binding` if they aren't used.
 
+An arm can have a condition, which comes after its type and binding and before the `=>`. The arm is taken by the values of its type that the condition is true for, and the others go on to the arms after it:
+
+```rs
+fn describe(shape: Shape) -> Int {
+    match shape {
+        Circle { radius } if radius > 10 => 2,
+        Circle => 1,
+        Square as square if square.side > 10 => 2,
+        _ if is_small(shape) => 0,
+        Square | Point => 1,
+    }
+}
+```
+
+The condition sees the value narrowed to the arm's type and the arm's bindings, and it's only evaluated for the values of that type, like the right side of `shape is Circle && shape.radius > 10`, which is what the arm compiles to. A condition that's a type guard narrows the arm's value like it would in an `if`, so the value of `Tagged if value.inner is Int => ...` sees `value.inner` as an `Int`. Like the condition of an `if`, it needs parentheses around a struct initializer.
+
+An arm with a condition doesn't handle its type, since it only takes some of the values. The arms after it see every value that it does, a later arm for the same type isn't unreachable, and one of them has to handle the type, without a condition. This goes for `_ if condition` as well, which isn't the arm for everything that's left. The error points at the arms that have a condition:
+
+```
+Error: Match on `Shape` is not exhaustive, since it doesn't handle `Circle`
+  note: This arm has a condition, so it doesn't handle every value it matches
+```
+
+An `inline match` can't have conditions on its arms, since every arm is evaluated and none of them narrow the value.
+
 A match must handle every value its type allows, so adding a member to a union is an error at every `match` that doesn't handle it, rather than a value that silently falls through to the wrong branch. The error lists the members that aren't handled:
 
 ```
@@ -183,6 +208,8 @@ fn area(shape: Shape) -> Int {
 
 An arm narrows the value to its variant, so its fields can also be read from the value (`shape.radius` in the `Shape::Circle` arm), which compiles to the same code as the binding.
 
+A variant's arm can have a condition, like any other arm, which can use the fields it binds: `Shape::Circle { radius } if radius > 10 => ...` is only taken by the large circles, so an arm for `Shape::Circle` without a condition is still needed after it.
+
 Variants are named through the enum, such as `Shape::Circle`, both as types and as values. A variant with fields is created like a struct (`Shape::Circle { radius: 1 }`), and one without fields is a constant (`Shape::Empty`). The variants can also be imported, such as with `import Shape::*`, and an exported enum exports its variants.
 
 Each variant has a discriminant, which is `0` for the first variant and one more than the previous variant's for the rest, unless it's given as an integer literal like `Rect = 10`. The layout is the same as writing the structs by hand:
@@ -214,7 +241,7 @@ fn perimeter(shape: Shape) -> Int {
 }
 ```
 
-The code after a statement only sees the values of the branches that fall through to it. Above, `shape` is a `Shape::Rect` after the `match`. If only one branch of an `if` chain falls through, the code after it sees what that branch does. A statement whose branches all `return` or `raise` never finishes, so a function can end with it instead of a value, and code after it is reported by `unreachable_code`. A function without a return type can end with any statement. In the same way, the branches of the `if`, `match` or block that a function ends with can `return`, since it's what the function returns.
+The code after a statement only sees the values of the branches that fall through to it. Above, `shape` is a `Shape::Rect` after the `match`. An arm with a condition that falls through gives the code after it every value of its type, since that's what the arm narrows the value to. If only one branch of an `if` chain falls through, the code after it sees what that branch does. A statement whose branches all `return` or `raise` never finishes, so a function can end with it instead of a value, and code after it is reported by `unreachable_code`. A function without a return type can end with any statement. In the same way, the branches of the `if`, `match` or block that a function ends with can `return`, since it's what the function returns.
 
 As in Rust, a statement ends at its closing brace, so `if a { 1 } else { 2 } + 3` at the start of a statement is the statement followed by `+ 3`. Wrap it in parentheses to use it as a value. With a `;` after it, it's an expression statement like any other, whose branches are values.
 

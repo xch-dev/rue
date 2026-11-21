@@ -5,15 +5,15 @@ use rowan::TextRange;
 use rue_ast::{AstBinding, AstMatchArm, AstMatchExpr, AstNode};
 use rue_diagnostic::{DiagnosticKind, Note, SrcLoc};
 use rue_hir::{
-    BindingSymbol, Block, Declaration, Guard, Hir, HirId, Mappings, Statement, Symbol, SymbolPath,
-    Value, control_fallthroughs,
+    BinaryOp, BindingSymbol, Block, Declaration, Guard, Hir, HirId, Mappings, Statement, Symbol,
+    SymbolPath, Value, control_fallthroughs,
 };
 use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason};
 use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
 use crate::{
     Branches, Compiler, CompletionContext, SyntaxItemKind, compile_branching_expr, compile_expr,
-    compile_type, create_binding, type_at_path,
+    compile_type, create_binding, narrows_only_atoms, type_at_path,
 };
 
 /// Compiles a `match` expression into the `if` and `else if` chain of type guards that it's
@@ -21,6 +21,11 @@ use crate::{
 /// value against its pattern's type, out of the values that the arms before it didn't handle, and
 /// an arm that handles every value that's left is the chain's `else` branch. An `inline match` is an
 /// `inline if` chain, so every arm is evaluated and none of them narrow the value.
+///
+/// An arm with a condition, such as `Int as value if value > 10 => 1`, is the branch for
+/// `value is Int && value > 10`. It's only taken by some of the values of its type, so it doesn't
+/// handle any of them: the arms after it see the same values that it does, and one of them has to
+/// handle its type.
 pub fn compile_match_expr(
     ctx: &mut Compiler,
     expr: &AstMatchExpr,
@@ -75,6 +80,8 @@ pub fn compile_match_expr(
     let mut fallthrough_types = Vec::new();
     let mut handled = Vec::new();
     let mut indistinguishable = Vec::new();
+    // The arms with a condition that can be taken, which don't handle the values of their types
+    let mut conditional = Vec::new();
 
     let checkpoint = ctx.mapping_checkpoint();
 
@@ -104,6 +111,15 @@ pub fn compile_match_expr(
         let pattern_srcloc = ty_node
             .as_ref()
             .map_or_else(|| arm_srcloc.clone(), |ty| ctx.trimmed_srcloc(ty.syntax()));
+
+        let guard = arm.guard();
+
+        // Every arm of an `inline match` is evaluated and none of them narrow the value, so a
+        // condition could only choose between values that it can't rely on the arm's type for
+        if inline && let Some(guard) = &guard {
+            ctx.diagnostic(guard.syntax(), DiagnosticKind::InlineMatchArmCondition);
+            has_error = true;
+        }
 
         let pattern = match &ty_node {
             Some(ty) if ty.is_placeholder() => None,
@@ -186,8 +202,10 @@ pub fn compile_match_expr(
         let builtins = ctx.builtins().types;
 
         // Nothing is left after an arm that doesn't need to check anything, so there's nothing
-        // to subtract, which can be slow for large unions
+        // to subtract, which can be slow for large unions. An arm with a condition leaves
+        // everything, so nothing is subtracted for it either.
         let else_type = match pattern {
+            _ if guard.is_some() => remaining,
             Some(ty) if check != Check::None => ctx.subtract_type(&pattern_srcloc, remaining, ty),
             _ => builtins.never,
         };
@@ -196,20 +214,30 @@ pub fn compile_match_expr(
             let members = indistinguishable_members(ctx, &remaining_members, ty);
             if !members.is_empty() {
                 indistinguishable.push(Indistinguishable {
-                    pattern: pattern_srcloc,
+                    pattern: pattern_srcloc.clone(),
                     ty,
                     members,
+                    conditional: guard.is_some(),
                 });
             }
         }
 
-        let else_members = members(ctx, else_type);
+        let else_members = if guard.is_some() {
+            remaining_members.clone()
+        } else {
+            members(ctx, else_type)
+        };
 
         // A wildcard arm sees the value as the earlier arms left it, which is already in scope
         let narrowed = pattern.filter(|_| !inline);
-        let body = compile_arm(ctx, &matched, &arm, pattern, narrowed, remaining);
+        let Arm {
+            body,
+            condition: arm_condition,
+        } = compile_arm(ctx, &matched, &arm, pattern, narrowed, remaining);
         types.push(body.ty);
 
+        // An arm with a condition handles everything that's left if it's true, so it's the same
+        // as one that does for what falls through it, but the arms after it are still needed
         let catches_all = check == Check::None || else_members.is_empty();
 
         // An arm that handles everything that's left sees the members that are left, rather
@@ -219,6 +247,30 @@ pub fn compile_match_expr(
                 Some(ty) if !catches_all => fallthrough_types.push(ty),
                 _ => fallthrough_types.extend(remaining_members.iter().copied()),
             }
+        }
+
+        if let Some(arm_condition) = arm_condition {
+            // The condition is only evaluated for the values of the arm's type, like the right
+            // operand of `value is T && condition`, and a type that doesn't need to be checked
+            // leaves only the condition
+            let condition = if check == Check::None {
+                arm_condition.hir
+            } else {
+                let ty = pattern.expect("only a pattern with a type has a check");
+                let value = guard_value(ctx, &scrutinee, &reference);
+                let guard = ctx.alloc_hir(Hir::Guard(Guard { value, ty, check }));
+                let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::And, guard, arm_condition.hir));
+
+                if arm_condition.independent {
+                    ctx.set_independent_operands(hir);
+                }
+
+                hir
+            };
+
+            branches.push((condition, body.hir));
+            conditional.push((pattern_srcloc, pattern));
+            continue;
         }
 
         // An arm that handles every value that's left is the `else` branch, which doesn't need to
@@ -316,7 +368,25 @@ pub fn compile_match_expr(
                 || expr.syntax().clone(),
                 |scrutinee| scrutinee.syntax().clone(),
             );
+            let count = ctx.diagnostic_count();
             ctx.diagnostic(&node, DiagnosticKind::NonExhaustiveMatch(ty, missing));
+
+            // An arm with a condition looks like it handles its type, so it's pointed out if
+            // some of what's missing is what it matches
+            let notes: Vec<Note> = conditional
+                .into_iter()
+                .filter(|&(_, pattern)| pattern.is_none_or(|ty| overlaps(ctx, remaining, ty)))
+                .map(|(srcloc, _)| {
+                    Note::at(
+                        srcloc,
+                        "This arm has a condition, so it doesn't handle every value it matches",
+                    )
+                })
+                .collect();
+
+            for diagnostic in ctx.diagnostics_since_mut(count) {
+                diagnostic.notes.extend(notes.iter().cloned());
+            }
         }
 
         ctx.unresolved().hir
@@ -376,6 +446,10 @@ struct Matched<'a> {
 ///
 /// An arm's binding destructures the value as the body sees it, so it's in scope there.
 /// `remaining` is the type of the values that the arms before this one didn't handle.
+///
+/// An arm's condition is compiled like the right operand of `value is T && condition`: it sees the
+/// value narrowed and the binding, and the body sees what the condition narrows as well, like the
+/// branch of an `if` would.
 fn compile_arm(
     ctx: &mut Compiler,
     matched: &Matched<'_>,
@@ -383,21 +457,29 @@ fn compile_arm(
     pattern: Option<TypeId>,
     narrowed: Option<TypeId>,
     remaining: TypeId,
-) -> Value {
+) -> Arm {
     let body = arm.expr();
+    let guard = arm.guard();
 
     // An arm without a body still declares its bindings, so that they can be looked up
     let range = body.as_ref().map_or_else(
         || TextRange::empty(arm.syntax().text_range().end()),
         |body| body.syntax().text_range(),
     );
+    let start = guard
+        .as_ref()
+        .map_or(range.start(), |guard| guard.syntax().text_range().start());
     let mappings = narrowed
         .map(|ty| matched.reference.narrowed_to(ty))
         .unwrap_or_default();
 
+    // Whether the condition can be evaluated without checking the arm's type first, which is
+    // asked of the value before it's narrowed, as it is for `&&`
+    let independent = guard.is_some() && narrows_only_atoms(ctx, &mappings);
+
     // The bindings are declared in the scope that the mappings are in, which is the arm's own,
     // so a name that's bound twice is reported, and one that's already in scope is shadowed
-    let index = ctx.push_mappings(mappings, range.start());
+    let index = ctx.push_mappings(mappings, start);
 
     if let Some(binding) = arm.binding() {
         let count = ctx.diagnostic_count();
@@ -414,9 +496,30 @@ fn compile_arm(
         }
     }
 
+    let condition = guard.map(|guard| {
+        let value = if let Some(condition) = guard.condition() {
+            let value = compile_expr(ctx, &condition, None);
+            ctx.check_condition(condition.syntax(), value.ty);
+            value
+        } else {
+            debug!("Unresolved match arm condition");
+            ctx.unresolved()
+        };
+
+        // The arms of an `inline match` are evaluated whether or not the condition is true
+        if !matched.inline {
+            ctx.push_mappings(value.then_map, range.start());
+        }
+
+        ArmCondition {
+            hir: value.hir,
+            independent,
+        }
+    });
+
     let expected_type = matched.expected_type;
 
-    let value = match (body, matched.branches) {
+    let body = match (body, matched.branches) {
         (None, _) => {
             debug!("Unresolved match arm body");
             ctx.unresolved()
@@ -432,7 +535,22 @@ fn compile_arm(
     };
 
     ctx.revert_mappings(index, range.end());
-    value
+
+    Arm { body, condition }
+}
+
+/// A compiled arm of a `match`.
+struct Arm {
+    body: Value,
+    /// The condition after the arm's type and binding, if it has one.
+    condition: Option<ArmCondition>,
+}
+
+struct ArmCondition {
+    hir: HirId,
+    /// Whether the condition doesn't rely on the arm's type being checked first (see
+    /// [`narrows_only_atoms`]).
+    independent: bool,
 }
 
 /// Compiles the body of an arm that's never taken, so that its errors are still reported. It's
@@ -536,6 +654,9 @@ struct Indistinguishable {
     ty: TypeId,
     /// The members that no later arm has named yet.
     members: Vec<TypeId>,
+    /// Whether the arm has a condition, so it doesn't make the arms that name those members
+    /// unreachable.
+    conditional: bool,
 }
 
 /// Records that an arm is never taken. If it names members that an earlier arm takes, although
@@ -549,7 +670,7 @@ fn report_unreachable(
     indistinguishable: &mut [Indistinguishable],
 ) {
     if let Some(ty) = pattern {
-        for arm in indistinguishable.iter_mut() {
+        for arm in indistinguishable.iter_mut().filter(|arm| !arm.conditional) {
             // A pattern that covers the earlier arm's own type is unreachable whatever else it takes
             if ctx.is_assignable(arm.ty, ty) {
                 continue;

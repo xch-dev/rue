@@ -1,0 +1,130 @@
+// An arm with a condition doesn't handle its type, so the other arms have to
+
+enum Shape {
+    Empty,
+    Circle { radius: Int },
+    Rect { width: Int, height: Int },
+}
+
+struct Tagged {
+    kind = 1,
+    value: Int | (Int, Int),
+}
+
+struct Plain {
+    kind = 2,
+    value: Int,
+}
+
+fn not_handled(shape: Shape) -> Int {
+    match shape {
+        Shape::Circle { radius } if radius > 10 => radius,
+        Shape::Rect { width, height } => width * height,
+        Shape::Empty => 0,
+    }
+}
+
+// Only the arms that match some of what's missing are pointed out
+fn handled_later(shape: Shape) -> Int {
+    match shape {
+        Shape::Circle { radius } if radius > 10 => radius,
+        Shape::Circle => 1,
+        Shape::Rect { width, height } if width > height => width,
+        Shape::Empty if true => 0,
+    }
+}
+
+fn conditional_wildcard(value: Int | (Int, Int)) -> Int {
+    match value {
+        Int => value,
+        _ if value.first > 0 => value.first,
+    }
+}
+
+fn only_conditions(value: Int) -> Int {
+    match value {
+        Int if value > 10 => 1,
+        _ if value > 5 => 2,
+    }
+}
+
+// The condition is a `Bool`, like the condition of an `if`
+fn not_a_bool(value: Int | (Int, Int)) -> Int {
+    match value {
+        Int if value => 1,
+        (Int, Int) as (first, _) if first + 1 => 2,
+        _ => 3,
+    }
+}
+
+// A binding is only in scope in its own arm's condition and value
+fn other_arm(value: Tagged | Plain) -> Int {
+    match value {
+        Tagged { value: inner } if inner is Int => inner,
+        Tagged if inner is Int => 1,
+        Tagged => 2,
+        Plain => inner,
+    }
+}
+
+// What a condition narrows is only seen by the arm's value, and not by the arms after it
+fn not_narrowed_later(value: Tagged | Plain) -> Int {
+    match value {
+        Tagged if value.value is Int => value.value,
+        Tagged => value.value,
+        Plain => value.value,
+    }
+}
+
+// The condition doesn't see the value narrowed to the type of an arm that's never taken
+fn unreachable(value: Tagged | Plain) -> Int {
+    match value {
+        Tagged => 1,
+        Plain => 2,
+        Tagged if value.missing => 3,
+    }
+}
+
+// Every arm of an `inline match` is evaluated, so a condition can't be used there
+fn inline_condition(value: Int | (Int, Int)) -> Int {
+    inline match value {
+        Int if value > 10 => 1,
+        _ => 2,
+    }
+}
+
+// The rest of the block after a statement still sees the type of an arm with a condition that
+// falls through
+fn statement(value: Tagged | Plain | nil) -> Int {
+    match value {
+        Tagged if value.value is Int => {}
+        Tagged => {
+            return 1;
+        }
+        Plain => {
+            return 2;
+        }
+        nil => {}
+    }
+
+    let rest: nil = value;
+    let tagged: Tagged | nil = value;
+
+    match tagged {
+        Tagged => 1,
+        nil => 0,
+    }
+}
+
+// A condition has to be before the `=>` of an arm that's a statement too
+fn statement_condition(value: Int | (Int, Int)) -> Int {
+    match value {
+        Int if value > 10 => {
+            return 1;
+        }
+        (Int, Int) if value.first > 10 => value.first,
+        _ => {}
+    }
+
+    0
+}

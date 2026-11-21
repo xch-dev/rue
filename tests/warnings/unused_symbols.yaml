@@ -22,3 +22,6 @@ diagnostics:
 - Unused binding `end` at unused_symbols.rue:56:23
 - Unused binding `first` at unused_symbols.rue:57:24
 - Unused binding `rest` at unused_symbols.rue:57:31
+- Unused binding `end` at unused_symbols.rue:75:23
+- Unused binding `first` at unused_symbols.rue:76:24
+- Unused binding `rest` at unused_symbols.rue:76:31

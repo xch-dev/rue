@@ -229,6 +229,11 @@ pub enum DiagnosticKind {
     )]
     StatementMatchArmValue,
 
+    #[error(
+        "Cannot use a condition on an arm of an `inline match`, since every arm is evaluated and the value isn't narrowed to the arm's type"
+    )]
+    InlineMatchArmCondition,
+
     #[error("Expected an `else` branch, since the value of the `if` is used")]
     MissingElse,
 

@@ -146,6 +146,7 @@ ast_nodes!(
     IfExpr,
     MatchExpr,
     MatchArm,
+    MatchArmGuard,
     GuardExpr,
     CastExpr,
     FieldAccessExpr,
@@ -973,6 +974,14 @@ impl AstMatchArm {
         self.syntax().children().find_map(AstBinding::cast)
     }
 
+    /// The condition after the type and binding, such as `if radius > 10` in
+    /// `Circle { radius } if radius > 10 => 1`. The arm is only taken if it's true, so the arm
+    /// doesn't handle every value of its type.
+    pub fn guard(&self) -> Option<AstMatchArmGuard> {
+        self.syntax().children().find_map(AstMatchArmGuard::cast)
+    }
+
+    /// The arm's value, which comes after the `=>`.
     pub fn expr(&self) -> Option<AstExpr> {
         self.syntax().children().find_map(AstExpr::cast)
     }
@@ -1010,6 +1019,19 @@ impl AstMatchArm {
             next = element.next_sibling_or_token();
         }
         (None, has_comments)
+    }
+}
+
+impl AstMatchArmGuard {
+    pub fn if_token(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![if])
+    }
+
+    pub fn condition(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 

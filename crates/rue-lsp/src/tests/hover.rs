@@ -863,3 +863,65 @@ fn test_hover_imported_variant_without_fields() {
         "#]],
     );
 }
+
+#[test]
+fn test_hover_narrowed_in_match_arm_condition() {
+    // The condition sees the value narrowed to the arm's type
+    check(
+        r#"
+struct Point {
+    x: Int | nil,
+}
+
+fn main(value: Point | Int) -> Int {
+    match value {
+        Point if val$0ue.x is Int => value.x,
+        Point => 0,
+        Int => value,
+    }
+}
+"#,
+        expect![[r#"
+            value: Point
+        "#]],
+    );
+
+    // The arm's value sees what the condition narrows as well
+    check(
+        r#"
+struct Point {
+    x: Int | nil,
+}
+
+fn main(value: Point | Int) -> Int {
+    match value {
+        Point if value.x is Int => val$0ue.x,
+        Point => 0,
+        Int => value,
+    }
+}
+"#,
+        expect![[r#"
+            value: Point { x: Int }
+        "#]],
+    );
+
+    // The arms after it see the value as it was before the arm
+    check(
+        r#"
+struct Point {
+    x: Int | nil,
+}
+
+fn main(value: Point | Int) -> Int {
+    match value {
+        Point if value.x is Int => value.x,
+        _ => if val$0ue is Int { value } else { 0 },
+    }
+}
+"#,
+        expect![[r#"
+            value: Point | Int
+        "#]],
+    );
+}

@@ -147,3 +147,23 @@ fn main() -> Int {
         + several_arms(nil)
         + expected(nil)
 }
+
+// An arm with a condition takes the members it can't tell apart from its type as well, when the
+// condition is true, but it doesn't make the arms that name them unreachable. Naming them in the
+// arm's pattern is still how to say that it's intended.
+export fn conditions(value: Int | Bytes32 | (Int, Int)) -> Int {
+    match value {
+        Int if value > 10 => 1,
+        Bytes32 => 2,
+        Int => 3,
+        (Int, Int) => 4,
+    }
+}
+
+export fn conditions_named(value: Int | Bytes32 | (Int, Int)) -> Int {
+    match value {
+        Int | Bytes32 as atom if atom as Bytes == nil => 1,
+        Int | Bytes32 => 2,
+        (Int, Int) => 3,
+    }
+}
