@@ -38,9 +38,10 @@ pub struct CallSolver {
 impl CallSolver {
     /// A solver for a call with the candidates inferred from the type expected of it, if it has
     /// one. Its upper candidates only bound the generics where they're from union members that
-    /// can hold the call's return type (see `Inference::with_member_bounds`): with `(0, Int) | (1, Bytes)` expected of a
-    /// `fn mk<B>() -> (1, B)`, `B` is at most `Bytes`, not `Int` as well. Candidates that can't help, such as those that reference an enclosing call's generics,
-    /// should already be left out of them.
+    /// can hold the call's return type (see `Inference::with_member_bounds`): with
+    /// `(0, Int) | (1, Bytes)` expected of a `fn mk<B>() -> (1, B)`, `B` is at most `Bytes`, not
+    /// `Int` as well. Candidates that can't help, such as those that reference an enclosing
+    /// call's generics, should already be left out of them.
     pub fn new(
         arena: &mut Arena<Type>,
         builtins: &BuiltinTypes,
