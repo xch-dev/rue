@@ -128,8 +128,8 @@ pub struct Compiler {
     /// call's generics are solved, if there is one (see `Compiler::with_argument_requirement`).
     argument_requirement: Option<(TextRange, TypeId)>,
     lint_sites: LintSites,
-    /// The function of each `for` expression that makes a list, by the node of its call, so that
-    /// a list it's spread in can have it end with the items after it (see
+    /// The function of each `for` expression that makes a list which ends with nil, by the node
+    /// of its call, so that a list it's spread in can have it end with the items after it (see
     /// `end_list_loop_with`).
     list_loops: HashMap<HirId, SymbolId>,
     ambiguous_imports: HashSet<(ImportId, Declaration)>,
@@ -1505,9 +1505,12 @@ impl Compiler {
         self.list_loops.insert(call, function);
     }
 
-    /// The function of the `for` expression that the node is the call of, if it makes a list.
-    pub(crate) fn list_loop(&self, call: HirId) -> Option<SymbolId> {
-        self.list_loops.get(&call).copied()
+    /// The function of the `for` expression that the node is the call of, if it makes a list
+    /// that still ends with nil. It's only given once, since the list can only be made to end
+    /// with something else once: a list that starts with a `for` it has ended is that same node,
+    /// and a list that it's spread in must not end it again.
+    pub(crate) fn take_list_loop(&mut self, call: HirId) -> Option<SymbolId> {
+        self.list_loops.remove(&call)
     }
 
     /// The sites recorded for lints while compiling, which are checked by [`rue_lint`] once

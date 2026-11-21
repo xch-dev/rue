@@ -81,6 +81,20 @@ test fn between_spread_lists() -> List<Int> {
     [...ys, ...for x in xs if x != 2 { x * 2 }, ...for y in ys { y }, ...ys, 10, ...xs]
 }
 
+// A list that starts with a `for` it has given its end to is copied where it's spread before
+// other items, rather than given another end
+test fn in_a_list_that_is_spread() -> Any {
+    let xs = runtime([1, 2, 3]);
+    let ys = runtime([8, 9]);
+    [
+        [...[...for x in xs { x }, 1], 2],
+        [0, ...([...for x in xs { x }, 1]), 2],
+        [...[...[...for x in xs { x }, 1], 2], 3],
+        [...[...for x in xs { x }, ...ys], 2],
+        [...[...for x in xs { x }, ...for y in ys { y }], ...[...for y in ys { y }, 4], 5],
+    ]
+}
+
 // A `for` that a block or an `if` ends with is still copied in front of the rest
 test fn in_a_block() -> List<Int> {
     let xs: List<Int> = runtime([1, 2, 3]);
@@ -148,8 +162,8 @@ test fn second_for_fails_before_the_first() -> List<Int> {
 }
 
 // The items after the `for` are evaluated where its list ends, which is after the list it goes
-// through and the filter are evaluated, so their failure is the one that's raised. It's the
-// only difference from copying the `for` in front of the rest, which evaluates the rest first
+// through and the filter are evaluated, so their failure is the one that's raised. That's what
+// differs from copying the `for` in front of the rest, which evaluates the rest first
 fn checked(xs: List<Int>, first: Int) -> List<Int> {
     assert first > 0;
     xs
@@ -163,6 +177,21 @@ test fn filter_fails_before_the_item_after() -> List<Int> {
 test fn list_fails_before_the_item_after() -> List<Int> {
     let xs = runtime([0, 1]);
     [...for x in checked(xs, xs.first) { x }, small(xs.first + 100)]
+}
+
+// A binding that's only used after the `for` is evaluated before the loop, which captures it,
+// so its failure is the one that's raised, unless it's `inline`
+test fn bound_item_after_fails_before_the_filter() -> List<Int> {
+    let xs = runtime([1, 0, 3]);
+    let last = small(xs.first + 100);
+    [...for x in xs if positive(x) > 0 { x }, last]
+}
+
+#[allow(inline_value_may_fail)]
+test fn filter_fails_before_the_inline_item_after() -> List<Int> {
+    let xs = runtime([1, 0, 3]);
+    inline let last = small(xs.first + 100);
+    [...for x in xs if positive(x) > 0 { x }, last]
 }
 
 // Copied in front of the rest, as a `for` in a block is, the rest fails first

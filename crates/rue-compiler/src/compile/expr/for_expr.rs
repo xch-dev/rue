@@ -525,6 +525,9 @@ pub fn compile_for_expr(
 /// if one of them fails and the rest does too, it's their failure that's raised rather than the
 /// rest's. What the rest refers to is captured by the function, as with what the body refers to,
 /// so a binding that's only used there is evaluated before the list is gone through.
+///
+/// The function's type is changed to the type of the list it now gives. Nothing reads it after
+/// the function is compiled, and it's kept right for whatever does later.
 pub(crate) fn end_list_loop_with(
     ctx: &mut Compiler,
     function: SymbolId,

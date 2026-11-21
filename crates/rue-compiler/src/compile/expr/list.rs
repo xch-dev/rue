@@ -282,8 +282,10 @@ impl Tail {
 
             rest = prepend(ctx, &mut pending, rest);
 
-            // A `for` builds its list in front of the rest itself, by ending with it
-            if let Some(function) = ctx.list_loop(hir) {
+            // A `for` builds its list in front of the rest itself, by ending with it. That's
+            // only done once: a list that starts with such a `for` is its call too, and where
+            // it's spread before other items, it's copied in front of them
+            if let Some(function) = ctx.take_list_loop(hir) {
                 end_list_loop_with(ctx, function, rest, ty);
                 rest = hir;
                 continue;
