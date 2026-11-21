@@ -24,29 +24,29 @@ tests:
   byte_cost: 588000
   total_cost: 590408
 - name: if_stmt_else
-  program: (a (i (l 2) (q) (q . 2)) 1)
-  debug_program: (a (i (l 2) (q) (q . 2)) 1)
+  program: (a (i (l 2) () (q . 2)) 1)
+  debug_program: (a (i (l 2) () (q . 2)) 1)
   solution: (5)
   output: "5"
-  runtime_cost: 325
-  byte_cost: 276000
-  total_cost: 276325
+  runtime_cost: 349
+  byte_cost: 252000
+  total_cost: 252349
 - name: if_stmt_else_or
-  program: (a (i (a (i (l 2) (q 1 . 1) (q 7 5)) 1) (q) (q 16 2 5)) 1)
-  debug_program: (a (i (a (i (l 2) (q 1 . 1) (q 7 5)) 1) (q) (q 16 2 5)) 1)
+  program: (a (i (l 2) () (q 2 (i (l 5) () (q 16 2 5)) 1)) 1)
+  debug_program: (a (i (a (i (l 2) (q 1 . 1) (q 7 5)) 1) () (q 16 2 5)) 1)
   solution: (3 4)
   output: "7"
-  runtime_cost: 1414
-  byte_cost: 636000
-  total_cost: 637414
+  runtime_cost: 1462
+  byte_cost: 564000
+  total_cost: 565462
 - name: if_stmt_else_any
-  program: (a (i (any (l 2) (l 5)) (q) (q 16 2 5)) 1)
-  debug_program: (a (i (any (l 2) (l 5)) (q) (q 16 2 5)) 1)
+  program: (a (i (any (l 2) (l 5)) () (q 16 2 5)) 1)
+  debug_program: (a (i (any (l 2) (l 5)) () (q 16 2 5)) 1)
   solution: (3 4)
   output: "7"
-  runtime_cost: 2006
-  byte_cost: 468000
-  total_cost: 470006
+  runtime_cost: 2030
+  byte_cost: 444000
+  total_cost: 446030
 - name: if_stmt_else_not
   program: (a (i (= 2 (q . 1)) (q . 2) (q 8)) 1)
   debug_program: (a (i (not (= 2 (q . 1))) (q 8 (q . "raise called at statements.rue:39:9")) (q . 2)) 1)
@@ -56,21 +56,21 @@ tests:
   byte_cost: 348000
   total_cost: 348445
 - name: if_expr_then
-  program: (a (i (l 2) (q) (q . 2)) 1)
-  debug_program: (a (i (not (l 2)) (q . 2) (q)) 1)
+  program: (a (i (l 2) () (q . 2)) 1)
+  debug_program: (a (i (not (l 2)) (q . 2) ()) 1)
   solution: (5)
   output: "5"
-  runtime_cost: 325
-  byte_cost: 276000
-  total_cost: 276325
+  runtime_cost: 349
+  byte_cost: 252000
+  total_cost: 252349
 - name: if_expr_else
-  program: (a (i (l 2) (q) (q . 2)) 1)
-  debug_program: (a (i (l 2) (q) (q . 2)) 1)
+  program: (a (i (l 2) () (q . 2)) 1)
+  debug_program: (a (i (l 2) () (q . 2)) 1)
   solution: (5)
   output: "5"
-  runtime_cost: 325
-  byte_cost: 276000
-  total_cost: 276325
+  runtime_cost: 349
+  byte_cost: 252000
+  total_cost: 252349
 diagnostics:
 - |-
   This `if` statement only raises, so it can be written as an `assert` at statements.rue:38:5

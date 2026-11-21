@@ -326,6 +326,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![&&] => {
             let left = left(ctx);
+            let independent = narrows_only_atoms(ctx, &left.then_map);
             let right = right(ctx, Some(left.then_map.clone()));
 
             if ctx.is_unresolved(left.ty) || ctx.is_unresolved(right.ty) {
@@ -336,6 +337,11 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             if ctx.is_assignable(left.ty, ctx.builtins().types.bool) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.bool);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::And, left.hir, right.hir));
+
+                if independent {
+                    ctx.set_independent_operands(hir);
+                }
+
                 return Value::new(hir, ctx.builtins().types.bool).with_mappings(
                     ctx.merge_mappings(&left.then_map, &right.then_map),
                     HashMap::new(),
@@ -346,6 +352,7 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
         }
         T![||] => {
             let left = left(ctx);
+            let independent = narrows_only_atoms(ctx, &left.else_map);
             let right = right(ctx, Some(left.else_map.clone()));
 
             if ctx.is_unresolved(left.ty) || ctx.is_unresolved(right.ty) {
@@ -356,6 +363,11 @@ pub fn compile_binary_expr(ctx: &mut Compiler, binary: &AstBinaryExpr) -> Value 
             if ctx.is_assignable(left.ty, ctx.builtins().types.bool) {
                 ctx.assign_type(&op, right.ty, ctx.builtins().types.bool);
                 let hir = ctx.alloc_hir(Hir::Binary(BinaryOp::Or, left.hir, right.hir));
+
+                if independent {
+                    ctx.set_independent_operands(hir);
+                }
+
                 return Value::new(hir, ctx.builtins().types.bool).with_mappings(
                     HashMap::new(),
                     ctx.merge_mappings(&left.else_map, &right.else_map),
@@ -525,4 +537,28 @@ fn atom_enum(ctx: &mut Compiler, ty: TypeId) -> Option<TypeId> {
     }
 
     result
+}
+
+/// Whether the right operand of `&&` or `||` is type checked with the same shapes whether or not
+/// the left operand was evaluated first: the left operand narrows nothing for it, or only values
+/// that were already atoms, such as a `Mode` to the modes that are left. Then nothing the right
+/// operand does can rely on the left one for whether a value is an atom or a pair, so it can be
+/// evaluated on its own (see `Database::set_independent_operands`). Narrowing a field, or a value
+/// that could be a pair, lets the right operand read what's only there if the left one says so.
+fn narrows_only_atoms(ctx: &mut Compiler, mappings: &Mappings) -> bool {
+    let atom = ctx.builtins().types.atom;
+
+    for (&symbol, paths) in mappings {
+        if !paths.keys().all(Vec::is_empty) {
+            return false;
+        }
+
+        let ty = ctx.symbol_type(symbol);
+
+        if !ctx.is_castable(ty, atom) {
+            return false;
+        }
+    }
+
+    true
 }

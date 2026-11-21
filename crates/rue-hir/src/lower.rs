@@ -1,6 +1,10 @@
 #![allow(clippy::needless_pass_by_value)]
 
 mod debug;
+mod eager;
+mod inline;
+mod measure;
+mod path_binding;
 mod substitution;
 
 pub use debug::*;
@@ -61,7 +65,12 @@ pub struct Lowerer<'d, 'a, 'g> {
     db: &'d mut Database,
     arena: &'a mut Arena<Lir>,
     graph: &'g DependencyGraph,
-    inline_symbols: Vec<HashMap<SymbolId, HirId>>,
+    /// The parameters of each call that's being inlined, from the outermost to the innermost,
+    /// with the argument that's substituted for each one, or `None` if its argument is bound in
+    /// the environment or evaluated for its effect instead. A parameter is looked up in the
+    /// innermost call that has it, since the same function can be inlined inside the argument
+    /// of another call to it, where an outer call's argument isn't this call's.
+    inline_symbols: Vec<HashMap<SymbolId, Option<HirId>>>,
     /// The functions whose calls are being inlined, from the outermost to the innermost, which
     /// keeps a lambda from being inlined into a call of a function it depends on (see
     /// [`Self::known_lambda`]).
@@ -84,6 +93,23 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// Whether each binding or constant that's referenced once can be evaluated where it's
     /// referenced, which isn't the case if it may fail and the reference isn't always evaluated.
     substitutions: RefCell<HashMap<SymbolId, bool>>,
+    /// Whether each binding that's referenced more than once is evaluated where it's referenced
+    /// anyway, since its value is only a path into the environment, for the let statements being
+    /// lowered (see [`Self::lower_path_bindings`]).
+    path_bindings: RefCell<HashMap<SymbolId, bool>>,
+    /// Whether evaluating each such binding where it's referenced was found to be no larger than
+    /// binding it, by the size of the path it's lowered to, which is only measured the first
+    /// time its let statement is lowered with a path of that size.
+    path_choices: HashMap<(SymbolId, usize), bool>,
+    /// How many runs of let statements with path bindings are being measured around what's
+    /// being lowered.
+    path_run_depth: usize,
+    /// Whether no binding is read as a path, while a run is lowered the way it was before there
+    /// were path bindings.
+    paths_disabled: bool,
+    /// The functions that are only inlined if the program is measured to be smaller that way
+    /// (see [`Self::is_measured_function`]), and were (see [`Self::lower_main`]).
+    inlined_functions: HashSet<SymbolId>,
     /// Whether calling each function may fail, which is shared between checks.
     function_failures: RefCell<HashMap<SymbolId, FunctionFailure>>,
     /// Whether the value of each constant may fail, for the ones that can't (see
@@ -169,6 +195,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             dependencies: RefCell::default(),
             rounds: HashMap::new(),
             substitutions: RefCell::default(),
+            path_bindings: RefCell::default(),
+            path_choices: HashMap::new(),
+            path_run_depth: 0,
+            paths_disabled: false,
+            inlined_functions: HashSet::new(),
             function_failures: RefCell::default(),
             substitution_failures: RefCell::default(),
             constant_roots: OnceCell::new(),
@@ -202,6 +233,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .enumerate()
             .rev()
             .find_map(|(frame, symbols)| Some((frame, *symbols.get(&symbol)?)))
+            .and_then(|(frame, argument)| Some((frame, argument?)))
     }
 
     /// Lowers an argument where it's substituted into a function that's inlined. It's the caller's
@@ -290,6 +322,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         self.too_deep.as_ref()
     }
 
+    /// Lowers the value of a symbol in the environment. The entrypoint of a program that's
+    /// compiled to be run on chain is lowered with [`lower_main`](Self::lower_main) instead,
+    /// which also decides which functions to inline by measuring.
     pub fn lower_symbol_value(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
         if let Some((frame, hir)) = self.inline_substitution(symbol) {
             return self.lower_substitution(env, frame, hir);
@@ -363,7 +398,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .filter(|&&parameter| !self.graph.is_defined_in(parameter, symbol))
             .filter_map(|&symbol| {
                 let hir = self.inline_argument(symbol)?;
-                self.is_static_hir(hir).then_some((symbol, hir))
+                self.is_static_hir(hir).then_some((symbol, Some(hir)))
             })
             .collect();
         let inline_symbols = std::mem::replace(&mut self.inline_symbols, vec![static_arguments]);
@@ -603,9 +638,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     UnaryOp::PubkeyForExp => self.arena.alloc(Lir::PubkeyForExp(lir)),
                 }
             }
-            Hir::Binary(op, left, right) => {
-                let left = self.lower_hir(env, left);
-                let right = self.lower_hir(env, right);
+            Hir::Binary(op, left_hir, right_hir) => {
+                let left = self.lower_hir(env, left_hir);
+                let right = self.lower_hir(env, right_hir);
                 match op {
                     BinaryOp::Add => self.arena.alloc(Lir::Add(vec![left, right])),
                     BinaryOp::Sub => self.arena.alloc(Lir::Sub(vec![left, right])),
@@ -660,14 +695,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                         self.arena.alloc(Lir::Not(eq))
                     }
                     // The right operand is a `Bool`, so it's the result as it is, without
-                    // being turned into `1` or `()` again
+                    // being turned into `1` or `()` again. It's only evaluated if the left
+                    // operand doesn't decide the result, unless evaluating it either way is
+                    // smaller and can't be told apart (see [`Self::is_eager_operand`]).
                     BinaryOp::And => {
                         let false_atom = self.arena.alloc(Lir::Atom(vec![]));
-                        self.arena.alloc(Lir::If(left, right, false_atom, false))
+                        let eager = self.is_eager_operand(hir, left_hir, right_hir);
+                        self.arena.alloc(Lir::If(left, right, false_atom, eager))
                     }
                     BinaryOp::Or => {
                         let true_atom = self.arena.alloc(Lir::Atom(vec![1]));
-                        self.arena.alloc(Lir::If(left, true_atom, right, false))
+                        let eager = self.is_eager_operand(hir, left_hir, right_hir);
+                        self.arena.alloc(Lir::If(left, true_atom, right, eager))
                     }
                     BinaryOp::All => self.arena.alloc(Lir::All(vec![left, right])),
                     BinaryOp::Any => self.arena.alloc(Lir::Any(vec![left, right])),
@@ -889,7 +928,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// inlined inside a call to itself while code written in the outer call can still be lowered,
     /// since the inner call's parameters would hide the outer call's from that code. Calls by name
     /// only nest through the arguments of the outer call, which are the caller's code, as in
-    /// `twice(f, twice(f, x))`. But a lambda's code can be reached from inside a call it makes:
+    /// `twice(f, twice(f, x))`, where the inner call's frame has all of its own parameters (see
+    /// `inline_symbols`). But a lambda's code can be reached from inside a call it makes:
     /// the lambda can call a function whose call it was passed to, or pass a lambda it creates to
     /// an argument that calls the same lambda again. So a lambda isn't inlined inside a call of
     /// itself or of a function it depends on, and is built as a closure instead.
@@ -936,11 +976,16 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     /// Whether the argument is no more expensive to evaluate at each reference than to bind:
-    /// it's a value that's in the environment, or a small static value.
+    /// it's a value that's in the environment, a path to a field of one (through any arguments
+    /// and bindings that are substituted), or a small static value.
     fn is_trivial_argument(&self, hir: HirId) -> bool {
         if let Hir::Reference(symbol) = self.db.hir(self.db.without_casts(hir))
             && !self.should_inline(*symbol)
         {
+            return true;
+        }
+
+        if self.is_path(hir) {
             return true;
         }
 
@@ -1074,22 +1119,24 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// for its effect instead, and if it's only referenced some of the time, it's bound before
     /// the body like a let statement, so that it's still evaluated at the call. An argument whose
     /// parameter is referenced more than once is bound too, so that it's only evaluated once,
-    /// unless it's as cheap to evaluate each time (see [`Self::is_trivial_argument`]). Only
-    /// lambdas have such parameters here, since functions with them aren't inlined automatically
-    /// (see [`Self::should_inline`]).
+    /// unless it's as cheap to evaluate each time (see [`Self::is_trivial_argument`]).
     fn lower_inline_call(
         &mut self,
         env: &Environment,
         symbol: SymbolId,
         function: &FunctionSymbol,
-        mut args: HashMap<SymbolId, HirId>,
+        args: HashMap<SymbolId, HirId>,
     ) -> LirId {
         let mut effects = Vec::new();
         let mut bound = Vec::new();
+        let mut args: HashMap<SymbolId, Option<HirId>> = args
+            .into_iter()
+            .map(|(parameter, arg)| (parameter, Some(arg)))
+            .collect();
 
         if function.kind != FunctionKind::Inline {
             for &parameter in &function.parameters {
-                let Some(&arg) = args.get(&parameter) else {
+                let Some(&Some(arg)) = args.get(&parameter) else {
                     continue;
                 };
 
@@ -1103,7 +1150,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     continue;
                 }
 
-                args.remove(&parameter);
+                // The parameter stays in the call's frame, so that it isn't taken for the
+                // parameter of an enclosing call to the same function
+                args.insert(parameter, None);
 
                 if self.graph.references(parameter) == 0 {
                     effects.push(arg);
@@ -1309,7 +1358,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             })
             .collect();
 
-        let saved = self.forget_substitutions(&symbols);
+        let saved = self.forget_decisions(&symbols);
 
         let effects: Vec<SymbolId> = symbols
             .iter()
@@ -1317,7 +1366,26 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .filter(|&symbol| self.is_lowered_effect(symbol))
             .collect();
 
-        let binding_groups = self.group_symbols(symbols, false, true);
+        let expr = self.lower_path_bindings(env, &symbols, |this| {
+            this.lower_let_run(env, &symbols, &effects, stmts.clone(), body.clone())
+        });
+
+        self.restore_decisions(saved);
+
+        expr
+    }
+
+    /// Lowers a run of let statements and the rest of the block, with the bindings that aren't
+    /// substituted bound in groups before it.
+    fn lower_let_run(
+        &mut self,
+        env: &Environment,
+        symbols: &IndexSet<SymbolId>,
+        effects: &[SymbolId],
+        stmts: Vec<Statement>,
+        body: Tail,
+    ) -> LirId {
+        let binding_groups = self.group_symbols(symbols.clone(), false, true);
 
         let mut body_env = env.clone();
 
@@ -1348,8 +1416,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
             expr = self.arena.alloc(Lir::Run(expr, group_env));
         }
-
-        self.restore_substitutions(saved);
 
         expr
     }
@@ -1774,10 +1840,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn inline_argument(&self, symbol: SymbolId) -> Option<HirId> {
-        self.inline_symbols
-            .iter()
-            .rev()
-            .find_map(|symbols| symbols.get(&symbol).copied())
+        self.inline_substitution(symbol).map(|(_, hir)| hir)
     }
 
     /// Whether the value can be lowered in any environment, since it doesn't depend on it.
@@ -1862,13 +1925,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return true;
                 }
 
-                for parameter in &function.parameters {
-                    if self.graph.references(*parameter) > 1 {
-                        return false;
-                    }
+                if !self.options.auto_inline {
+                    return false;
                 }
 
-                references <= 1 && self.options.auto_inline
+                // A function that's called more than once, or that reads a parameter more than
+                // once, is only inlined if the program was measured to be smaller that way
+                !self.is_measured_function(symbol) || self.is_inlined_function(symbol)
             }
             Symbol::Constant(constant) => {
                 if constant.inline {
@@ -1882,7 +1945,15 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return true;
                 }
 
-                references <= 1 && self.options.auto_inline && self.can_substitute(symbol)
+                if !self.options.auto_inline {
+                    return false;
+                }
+
+                if references <= 1 {
+                    return self.can_substitute(symbol);
+                }
+
+                self.is_path_binding(symbol)
             }
         }
     }

@@ -24,13 +24,13 @@ tests:
   byte_cost: 444000
   total_cost: 444585
 - name: atom_shape_value
-  program: (a (i (l 2) (q) (q 9 2 (q . 42))) 1)
-  debug_program: (a (i (not (l 2)) (q 9 2 (q . 42)) (q)) 1)
+  program: (a (i (l 2) () (q 9 2 (q . 42))) 1)
+  debug_program: (a (i (not (l 2)) (q 9 2 (q . 42)) ()) 1)
   solution: (42)
   output: "1"
-  runtime_cost: 465
-  byte_cost: 372000
-  total_cost: 372465
+  runtime_cost: 489
+  byte_cost: 348000
+  total_cost: 348489
 - name: atom_length
   program: (= (strlen 2) (q . 32))
   debug_program: (= (strlen 2) (q . 32))

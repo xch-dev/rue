@@ -1,0 +1,14 @@
+// Without `operand_limits`, a product can't fail, so it's evaluated whether or not the left
+// operand decides the result (see `tests/operand_limits/eager_operands.rue`).
+
+fn any_large(items: List<Int>, factor: Int) -> Bool {
+    if items is nil {
+        return false;
+    }
+
+    items.first > 100 || items.first * factor > 100 || any_large(items.rest, factor)
+}
+
+test fn product_is_eager(items: List<Int>, factor: Int) -> Bool {
+    any_large(items, factor)
+}

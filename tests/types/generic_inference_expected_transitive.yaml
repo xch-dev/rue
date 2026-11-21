@@ -28,12 +28,12 @@ tests:
   byte_cost: 252000
   total_cost: 252955
 - name: nested_calls
-  program: (a (q 16 (a 6 (c 4 (a 6 (c 4 (q . 5))))) (q . 1)) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
+  program: (a (q 16 (a 2 (c (a 2 (q 5)) ())) (q . 1)) (c (q . 2) ()))
   debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5))))) 1)) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
   output: "6"
-  runtime_cost: 2245
-  byte_cost: 852000
-  total_cost: 854245
+  runtime_cost: 1491
+  byte_cost: 564000
+  total_cost: 565491
 - name: return_type
   program: (a (q . 2) (q 5))
   debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5))) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
@@ -105,9 +105,9 @@ tests:
   byte_cost: 420000
   total_cost: 420573
 - name: second_member_of_union
-  program: (a (q 5 (a 2 (c (q . 2) (q . 5)))) (c (q 4 (a 2 (c 3 ())) (a 2 (c 3 ()))) ()))
+  program: (f (a (q 4 (a 2 (q 5)) (a 2 (q 5))) (c (q . 2) 1)))
   debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5))) 1)) (c (c (q . 2) (q 4 (a 2 (c 3 ())) (a 2 (c 3 ())))) ()))
   output: "5"
-  runtime_cost: 1198
-  byte_cost: 804000
-  total_cost: 805198
+  runtime_cost: 722
+  byte_cost: 564000
+  total_cost: 564722

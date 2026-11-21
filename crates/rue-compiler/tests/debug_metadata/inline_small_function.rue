@@ -1,0 +1,11 @@
+// solution: (3 4)
+// solution: (0 4)
+
+fn checked(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+fn main(a: Int, b: Int) -> Int {
+    checked(a) * checked(b)
+}

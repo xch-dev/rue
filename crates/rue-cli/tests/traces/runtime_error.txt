@@ -16,9 +16,7 @@ error: Division by zero
     divide(x, y) + divide(y, x)
     x = 3
     y = ()
-  runtime_error.rue:10:5, in divide
+  runtime_error.rue:10:5, in divide (inlined)
     a / b
-    a = 3
-    b = ()
 ===== release: (6 2) =====
 output: 3

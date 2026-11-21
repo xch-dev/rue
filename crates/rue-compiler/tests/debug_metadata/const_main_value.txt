@@ -14,17 +14,11 @@ nodes:
       const_main_value.rue:7:12-7:17  (> 1 (q . 1))
         const_main_value.rue:7:16-7:17  (q . 1)
 ===== release =====
-program: (a (q 2 2 (q . 1)) (c (q 2 (i (> 1 (q . 1)) (q . 1) (q 8)) 1) ()))
-sidecar: 1008 bytes
+program: (x)
+sidecar: 392 bytes
 files:
   const_main_value.rue
 functions:
-  0: main (_ . _)
-  1: check x@1: integer
+  0: main _
 nodes:
-  const_main_value.rue:11:19-11:27  (a (q 2 2 (q . 1)) (c (q 2 (i (> 1 (q . 1)) (q . 1) (q 8)...
-    const_main_value.rue:11:19-11:27 fn main  (a 2 (q . 1))
-      const_main_value.rue:11:25-11:26  (q . 1)
-    const_main_value.rue:7:5-7:18 fn check  (a (i (> 1 (q . 1)) (q . 1) (q 8)) 1)
-      const_main_value.rue:7:12-7:17  (> 1 (q . 1))
-        const_main_value.rue:7:16-7:17  (q . 1)
+  const_main_value.rue:7:5-7:18 fn main label "check (inlined)"  (x)

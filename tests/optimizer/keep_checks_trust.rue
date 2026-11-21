@@ -45,3 +45,35 @@ test fn type_guard_checks_the_whole_shape(value: Any, flag: Bool) -> Int {
         0
     }
 }
+
+// A field of the solution is read where it's referenced, so a solution that's an atom where its
+// type says a struct only fails in the branch that reads it
+test fn field_of_the_wrong_shape(pair: (Int, Int), flag: Bool) -> Int {
+    let first = pair.first;
+
+    if flag {
+        first + first
+    } else {
+        0
+    }
+}
+
+// Both parts of a pair, put back together in order, are the pair itself, so a solution that's
+// an atom where its type says a pair is returned as it is
+test fn parts_of_the_wrong_shape(pair: (Int, Int)) -> ((Int, Int), (Int, Int)) {
+    let first = pair.first;
+    let rest = pair.rest;
+    ((first, rest), (first, rest))
+}
+
+fn second_of(_first: Int, second: Int) -> Int {
+    second
+}
+
+// A function that's inlined into each of its calls only evaluates an argument it never reads if
+// the argument may fail, as one that's called once does. Reading a field isn't treated as able
+// to fail, so a value of the wrong shape is never read here.
+test fn unread_argument_of_the_wrong_shape(value: Any) -> Int {
+    let pair = unchecked_cast::<(Int, Int)>(value);
+    second_of(pair.first, 1) + second_of(pair.rest, 2)
+}

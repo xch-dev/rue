@@ -36,12 +36,12 @@ tests:
   byte_cost: 372000
   total_cost: 372405
 - name: closed_candidate_binds_same_generic
-  program: (a (q 2 (a (a 2 (a 2 (q . 5))) (q ())) (q 1)) (c (q 4 (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) 1) (q 1))) ()))) ()))
+  program: (a (a (q 2 (q . 2) (c (q 1 . 5) 1)) (q ())) (q 1))
   debug_program: (a (q 2 (q 2 (q 2 (q 2 2 (c (q . 1) ())) (c (a 27 2) 1)) (c (a 9 2) 1)) (c (a 4 (q . 5)) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) (q 2 1 (c () ()))) ()))
   output: "5"
-  runtime_cost: 2282
-  byte_cost: 1212000
-  total_cost: 1214282
+  runtime_cost: 536
+  byte_cost: 492000
+  total_cost: 492536
 - name: instantiate_with_expected_generic
   program: (a (q . 2) (q 5))
   debug_program: (a (q 2 (q 2 2 (c (q . 5) ())) (c (a 2 ()) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))

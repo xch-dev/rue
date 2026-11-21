@@ -47,17 +47,17 @@ tests:
   byte_cost: 204000
   total_cost: 204590
 - name: pair_condition_raises
-  program: (a (q 3 (c (a 2 5) ()) (q . 2) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (i (c (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) ()) (q . 2) (q . 1))
   debug_program: (a (q 2 (q 2 (i (not 2) (q 1 . 1) (q 1 . 2)) 1) (c (c (a 2 5) ()) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at truthy_semantics.rue:7:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
-  byte_cost: 828000
+  byte_cost: 564000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at truthy_semantics.rue:7:9" "too big")
 - name: pair_statement_raises
-  program: (a (q 3 () (all (c (a 2 5) ()) 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8) (q . 1)) 1) 1))
+  program: (i () (all (c (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) ()) 2) (q . 1))
   debug_program: (a (q 3 (q . 1) (i (q . 1) (q . 1) (a 4 5)) (a 10 (c 14 5))) (c (c (q . 1) (c (q 4 (a 2 3) ()) (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at truthy_semantics.rue:7:9") (q . "too big")) (q . 1)) 1))) 1))
   solution: (50)
-  byte_cost: 876000
+  byte_cost: 612000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at truthy_semantics.rue:7:9" "too big")
 - name: assert_ne_nil_pair
@@ -78,10 +78,10 @@ tests:
   byte_cost: 156000
   total_cost: 156122
 - name: list_atom_terminator
-  program: (a (i 2 (q . 4) (q)) 1)
-  debug_program: (a (i (not 2) (q) (q 5 2)) 1)
+  program: (a (i 2 (q . 4) ()) 1)
+  debug_program: (a (i (not 2) () (q 5 2)) 1)
   solution: (5)
-  byte_cost: 228000
+  byte_cost: 204000
   clvm_error: path into atom
   debug_clvm_error: "InvalidOperatorArg: first of non-cons"
 - name: list_atom_terminator_raise
@@ -101,17 +101,17 @@ tests:
   byte_cost: 60000
   total_cost: 60249
 - name: list_atom_terminator_pair
-  program: (a (i 2 (q . 4) (q)) 1)
-  debug_program: (a (i (not (not 2)) (q 5 2) (q)) 1)
+  program: (a (i 2 (q . 4) ()) 1)
+  debug_program: (a (i (not (not 2)) (q 5 2) ()) 1)
   solution: (5)
-  byte_cost: 228000
+  byte_cost: 204000
   clvm_error: path into atom
   debug_clvm_error: "InvalidOperatorArg: first of non-cons"
 - name: list_atom_terminator_not_nil
-  program: (a (i 2 (q . 4) (q)) 1)
-  debug_program: (a (i (not (not 2)) (q 5 2) (q)) 1)
+  program: (a (i 2 (q . 4) ()) 1)
+  debug_program: (a (i (not (not 2)) (q 5 2) ()) 1)
   solution: (5)
-  byte_cost: 228000
+  byte_cost: 204000
   clvm_error: path into atom
   debug_clvm_error: "InvalidOperatorArg: first of non-cons"
 - name: list_atom_terminator_pair_value
@@ -123,18 +123,18 @@ tests:
   byte_cost: 108000
   total_cost: 108450
 - name: list_atom_terminator_nested
-  program: (i (a (i (l 2) (q 32 4) (q)) 1) (q . 1) (q . 2))
-  debug_program: (a (i (a (i (l 2) (q 32 (f 2)) (q)) 1) (q 1 . 1) (q 1 . 2)) 1)
+  program: (i (a (i (l 2) (q 32 4) ()) 1) (q . 1) (q . 2))
+  debug_program: (a (i (a (i (l 2) (q 32 (f 2)) ()) 1) (q 1 . 1) (q 1 . 2)) 1)
   solution: ((5 . 1))
   output: "2"
-  runtime_cost: 604
-  byte_cost: 468000
-  total_cost: 468604
+  runtime_cost: 628
+  byte_cost: 444000
+  total_cost: 444628
 - name: list_atom_terminator_walk
-  program: (a (q 2 2 (c 2 5)) (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) (q)) 1) 1))
-  debug_program: (a (q 2 2 (c 2 5)) (c (q 2 (i (not 3) (q) (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) 1))
+  program: (a (q 2 2 (c 2 5)) (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) 1))
+  debug_program: (a (q 2 2 (c 2 5)) (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) 1))
   solution: ((1 2 . 5))
-  byte_cost: 780000
+  byte_cost: 756000
   clvm_error: path into atom
   debug_clvm_error: "InvalidOperatorArg: rest of non-cons"
 diagnostics:

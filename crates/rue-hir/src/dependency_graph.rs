@@ -271,6 +271,11 @@ impl DependencyGraph {
         })
     }
 
+    /// The function that the symbol is defined in, such as the one a parameter belongs to.
+    pub fn owner(&self, symbol: SymbolId) -> Option<SymbolId> {
+        self.owners.get(&symbol).copied()
+    }
+
     /// Whether the symbol is defined in the function, or in a function defined in it, such as a
     /// parameter or local of the function or of a lambda inside it.
     pub fn is_defined_in(&self, symbol: SymbolId, function: SymbolId) -> bool {

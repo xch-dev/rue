@@ -119,9 +119,9 @@ pub const MAX_DIVISOR_BYTES: usize = 1024;
 /// The cost, under the cost model from before hard fork 2, that `keccak256_verify` declares for the
 /// softfork guard it checks the hash in, apart from [`KECCAK256_COST_PER_BYTE`] for each byte of
 /// the value. It's the cost of entering the guard (140), plus the cost of running the check in it,
-/// `(a (i (= (keccak256 2) 5) (q) (q 8)) 1)`, for an empty value and a matching 32 byte hash. The
+/// `(a (i (= (keccak256 2) 5) () (q 8)) 1)`, for an empty value and a matching 32 byte hash. The
 /// guard fails unless its cost is exactly the cost it declares.
-pub const KECCAK256_VERIFY_COST: u64 = 1206;
+pub const KECCAK256_VERIFY_COST: u64 = 1230;
 
 /// The cost of `keccak256` for each byte of its argument, under the cost model from before hard
 /// fork 2.

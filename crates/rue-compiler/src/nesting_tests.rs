@@ -398,6 +398,104 @@ fn long_chains_of_calls_compile() {
     });
 }
 
+/// Reading a binding that's only a path where it's referenced nests deeper than binding it does,
+/// so measuring whether the program is smaller that way can go past the lowering limit when the
+/// program itself doesn't. That way of lowering it isn't kept, and nothing is decided from it for
+/// the bindings inside of it, rather than failing to compile.
+#[test]
+fn path_bindings_that_nest_too_deeply_are_bound() {
+    on_stack(2, || {
+        let pair = (0..8).fold("Int".to_string(), |ty, _| format!("({ty}, Int)"));
+        let first = ".first".repeat(8);
+
+        for (asserts, inner) in [(505, false), (499, true), (495, true)] {
+            let (binding, body) = if inner {
+                (
+                    "assert n > 0;\nlet i = wide.i;\n",
+                    "v * v + i * i + i * i + i * i + i * i + i * i + i * i",
+                )
+            } else {
+                ("", "v * v")
+            };
+
+            let source = format!(
+                "struct Wide {{ _a: Int, _b: Int, _c: Int, _d: Int, _e: Int, _f: Int, _g: Int, \
+                 _h: Int, i: Int }}\n\nfn main(p: {pair}, wide: Wide, n: Int) -> Int {{\n\
+                 let v = p{first};\n{binding}{}{body}\n}}",
+                "assert n > 0;\n".repeat(asserts)
+            );
+
+            let (diagnostics, result) = compile(&source);
+            assert!(
+                result.is_ok(),
+                "{asserts} {inner}: {result:?} {diagnostics:?}"
+            );
+        }
+    });
+}
+
+/// Each run of let statements after another one is inside of it, so measuring every run of a
+/// long block lowered its end once for each run before it, for each of their measurements. Only
+/// the outer runs are measured, so this takes about as long as it did before path bindings,
+/// rather than minutes.
+#[test]
+fn many_runs_of_path_bindings_compile() {
+    const RUNS: usize = 200;
+
+    on_stack(2, || {
+        let source = format!(
+            "fn main(p: (Int, Int), n: Int) -> Int {{\n{}n\n}}",
+            links(RUNS, |i| format!(
+                "let a{i} = p.first;\nassert a{i} + a{i} > n;\n"
+            ))
+        );
+
+        let (diagnostics, result) = compile(&source);
+        assert!(result.is_ok(), "{result:?} {diagnostics:?}");
+    });
+}
+
+/// A program that nests too deeply is only lowered once for each run of path bindings before
+/// the error is found, rather than once for each way of lowering every run, which doubled with
+/// each one.
+#[test]
+fn path_bindings_in_a_program_that_is_too_deep_are_not_measured() {
+    const RUNS: usize = 300;
+
+    on_stack(2, || {
+        let source = format!(
+            "fn main(p: (Int, Int), n: Int) -> Int {{\n{}n\n}}",
+            links(RUNS, |i| format!(
+                "let a{i} = p.first;\nassert a{i} + a{i} > n;\n"
+            ))
+        );
+
+        let (_, result) = compile(&source);
+        assert!(
+            matches!(result, Err(Error::LoweringTooDeep(_))),
+            "{result:?}"
+        );
+    });
+}
+
+/// Inlining a function into each of its calls nests deeper than calling it does, so measuring
+/// whether the program is smaller that way can go past the lowering limit when the program
+/// itself doesn't. That way of lowering it isn't kept, rather than failing to compile.
+#[test]
+fn inlining_that_nests_too_deeply_is_not_kept() {
+    const LINKS: usize = 150;
+
+    on_stack(2, || {
+        let source = format!(
+            "fn inc(x: Int) -> Int {{ x * 3 }}\n\nfn main(x0: Int) -> Int {{\n{}x{LINKS}\n}}",
+            links(LINKS, |i| format!("let x{} = inc(x{i});\n", i + 1))
+        );
+
+        let (diagnostics, result) = compile(&source);
+        assert!(result.is_ok(), "{result:?} {diagnostics:?}");
+    });
+}
+
 /// The search for unconditional recursion follows the whole chain of bindings. It used little stack
 /// for each binding when it recursed, so the chain is longer than the others.
 #[test]

@@ -1,5 +1,5 @@
 use clvm_traits::{ToClvm, clvm_list, clvm_quote, clvm_tuple};
-use clvmr::{Allocator, NodePtr, SExp};
+use clvmr::{Allocator, NodePtr, SExp, serde::node_to_bytes};
 use id_arena::Arena;
 use num_bigint::BigUint;
 
@@ -24,6 +24,27 @@ pub fn codegen(
     options: CodegenOptions,
 ) -> Result<NodePtr> {
     codegen_node(arena, allocator, lir, options, &mut None)
+}
+
+/// How many bytes the program that the LIR compiles to takes up when it's serialized, optimizing
+/// it first if `optimize` is set, or `None` if it can't be generated. This is for comparing ways
+/// of lowering the same code by what they cost on chain, where each byte costs
+/// [`COST_PER_BYTE`](crate::COST_PER_BYTE). The LIR itself is left as it is.
+pub fn compiled_size(
+    arena: &mut Arena<Lir>,
+    lir: LirId,
+    optimize: bool,
+    options: CodegenOptions,
+) -> Option<usize> {
+    let lir = if optimize {
+        crate::optimize(arena, lir, options.target)
+    } else {
+        lir
+    };
+
+    let mut allocator = Allocator::new();
+    let ptr = codegen(arena, &mut allocator, lir, options).ok()?;
+    Some(node_to_bytes(&allocator, ptr).ok()?.len())
 }
 
 /// Generates CLVM like [`codegen`], and carries the tags of the LIR over to the pairs that each
@@ -122,7 +143,7 @@ fn codegen_step(
         }
         Lir::Quote(arg) => {
             let arg = codegen(arena, allocator, *arg)?;
-            Ok(clvm_quote!(arg).to_clvm(allocator)?)
+            quote_code(allocator, arg)
         }
         Lir::Path(path) => {
             let atom = path_to_atom(path);
@@ -269,14 +290,11 @@ fn codegen_step(
             if *inline {
                 Ok(clvm_list!(ClvmOp::If, cond, then_ptr, else_ptr).to_clvm(allocator)?)
             } else {
+                let then_ptr = quote_code(allocator, then_ptr)?;
+                let else_ptr = quote_code(allocator, else_ptr)?;
                 Ok(clvm_list!(
                     ClvmOp::Apply,
-                    clvm_list!(
-                        ClvmOp::If,
-                        cond,
-                        clvm_quote!(then_ptr),
-                        clvm_quote!(else_ptr)
-                    ),
+                    clvm_list!(ClvmOp::If, cond, then_ptr, else_ptr),
                     1
                 )
                 .to_clvm(allocator)?)
@@ -487,9 +505,25 @@ fn codegen_step(
     }
 }
 
+/// Generates code that evaluates to the value, which is `(q . VALUE)`, or `()` for nil, since nil
+/// evaluates to itself and is two bytes shorter than `(q)`. Either form is a constant to
+/// [`constant_code`], so what's built from it is the same.
+fn quote_code(allocator: &mut Allocator, value: NodePtr) -> Result<NodePtr> {
+    if is_nil_code(allocator, value) {
+        return Ok(NodePtr::NIL);
+    }
+
+    Ok(clvm_quote!(value).to_clvm(allocator)?)
+}
+
+fn is_nil_code(allocator: &Allocator, code: NodePtr) -> bool {
+    matches!(allocator.sexp(code), SExp::Atom) && allocator.atom(code).as_ref().is_empty()
+}
+
 /// Generates code that builds `(OPERATOR (q . VALUE) ARGS)` at runtime from the code for `VALUE`
 /// and `ARGS`, which is `(c (q . OPERATOR) (c (c (q . 1) VALUE) (c ARGS ())))` with its constant
-/// parts quoted if `fold` is set.
+/// parts quoted if `fold` is set. A value that's always nil is built as `()` rather than `(q)`,
+/// like [`quote_code`] does.
 fn operator_code(
     allocator: &mut Allocator,
     operator: ClvmOp,
@@ -497,8 +531,12 @@ fn operator_code(
     args: NodePtr,
     fold: bool,
 ) -> Result<NodePtr> {
-    let quote = clvm_quote!(ClvmOp::Quote).to_clvm(allocator)?;
-    let quoted_value = cons_code(allocator, quote, value, fold)?;
+    let quoted_value = if is_nil_code(allocator, value) {
+        NodePtr::NIL
+    } else {
+        let quote = clvm_quote!(ClvmOp::Quote).to_clvm(allocator)?;
+        cons_code(allocator, quote, value, fold)?
+    };
     let rest = cons_code(allocator, args, NodePtr::NIL, fold)?;
     let rest = cons_code(allocator, quoted_value, rest, fold)?;
     let operator = clvm_quote!(operator).to_clvm(allocator)?;
@@ -527,11 +565,7 @@ fn cons_code(
 /// atom is a path into the environment.
 fn constant_code(allocator: &Allocator, code: NodePtr) -> Option<NodePtr> {
     match allocator.sexp(code) {
-        SExp::Atom => allocator
-            .atom(code)
-            .as_ref()
-            .is_empty()
-            .then_some(NodePtr::NIL),
+        SExp::Atom => is_nil_code(allocator, code).then_some(NodePtr::NIL),
         SExp::Pair(first, rest) => match allocator.sexp(first) {
             SExp::Atom if allocator.atom(first).as_ref() == ClvmOp::Quote.to_atom() => Some(rest),
             _ => None,
@@ -572,14 +606,14 @@ fn codegen_static_value(
 }
 
 /// Generates a check that fails unless the Keccak-256 hash of the value is the hash, which is
-/// `(a (i (= (keccak256 VALUE) HASH) (q) (q 8)) 1)`.
+/// `(a (i (= (keccak256 VALUE) HASH) () (q 8)) 1)`.
 ///
 /// Before hard fork 2, `keccak256` is only available inside the softfork guard (extension 1), which
 /// always returns nil, so only the check can be run there. The values are put in the environment,
 /// so that each is only evaluated once, and the guard declares the exact cost of the check, which
 /// depends on the length of the value:
 ///
-/// `(a (q softfork (+ (q . 1206) (* (strlen 2) (q . 2))) (q . 1) (q . CHECK) 1) (c VALUE (c HASH ())))`
+/// `(a (q softfork (+ (q . 1230) (* (strlen 2) (q . 2))) (q . 1) (q . CHECK) 1) (c VALUE (c HASH ())))`
 ///
 /// where `CHECK` reads the value and hash from paths 2 and 5. If the check fails, the guard fails
 /// before its cost is compared, so the declared cost only has to be right when the hash matches.
@@ -618,13 +652,13 @@ fn keccak256_verify(
     Ok(clvm_list!(ClvmOp::Apply, clvm_quote!(guard), env).to_clvm(allocator)?)
 }
 
-/// `(a (i (= (keccak256 VALUE) HASH) (q) (q 8)) 1)`, which fails unless the hash matches.
+/// `(a (i (= (keccak256 VALUE) HASH) () (q 8)) 1)`, which fails unless the hash matches.
 fn keccak256_check(allocator: &mut Allocator, value: NodePtr, hash: NodePtr) -> Result<NodePtr> {
     let condition = clvm_list!(ClvmOp::Eq, clvm_list!(ClvmOp::Keccak256, value), hash);
     let check = clvm_list!(
         ClvmOp::If,
         condition,
-        clvm_quote!(()),
+        (),
         clvm_quote!(clvm_list!(ClvmOp::Raise))
     );
 
@@ -774,6 +808,126 @@ mod tests {
     }
 
     #[test]
+    fn quoted_nil_is_left_unquoted() {
+        let mut arena = Arena::new();
+        let nil = arena.alloc(Lir::Atom(Vec::new()));
+        let quote = arena.alloc(Lir::Quote(nil));
+        check(&arena, quote, expect!["()"]);
+
+        // Code that evaluates to nil, but isn't nil itself, is still quoted
+        let not = arena.alloc(Lir::Not(quote));
+        let listp = arena.alloc(Lir::Listp(not));
+        let quote = arena.alloc(Lir::Quote(listp));
+        check(&arena, quote, expect!["(q 7 (not ()))"]);
+    }
+
+    /// Nil is the same code quoted or not, so everything that uses a quoted value as data builds
+    /// the same value from it: the branches of an `if`, a function value that's run or captured,
+    /// and static pairs.
+    #[test]
+    fn unquoted_nil_is_the_same_value() {
+        use clvmr::{ChiaDialect, ClvmFlags, run_program};
+
+        let mut arena = Arena::new();
+        let nil = arena.alloc(Lir::Atom(Vec::new()));
+        let one = arena.alloc(Lir::Atom(vec![1]));
+        let raise = arena.alloc(Lir::Raise(vec![]));
+        let condition = arena.alloc(Lir::Path(2u8.into()));
+        let capture = arena.alloc(Lir::Path(3u8.into()));
+        let entire_env = arena.alloc(Lir::Path(1u8.into()));
+        let nil_function = arena.alloc(Lir::Quote(nil));
+        let pair = arena.alloc(Lir::Cons(nil, one));
+        let nil_pair = arena.alloc(Lir::Cons(nil_function, nil));
+        let dynamic_pair = arena.alloc(Lir::Cons(nil_function, capture));
+
+        let cases = [
+            (
+                arena.alloc(Lir::If(condition, nil, raise, false)),
+                expect!["(a (i 2 () (q 8)) 1)"],
+                [Some("()"), None],
+            ),
+            (
+                arena.alloc(Lir::If(condition, one, nil, false)),
+                expect!["(a (i 2 (q 1 . 1) ()) 1)"],
+                [Some("1"), Some("()")],
+            ),
+            (
+                arena.alloc(Lir::If(condition, nil, nil, false)),
+                expect!["(a (i 2 () ()) 1)"],
+                [Some("()"), Some("()")],
+            ),
+            (
+                arena.alloc(Lir::If(condition, nil, one, true)),
+                expect!["(i 2 () (q . 1))"],
+                [Some("()"), Some("1")],
+            ),
+            (
+                arena.alloc(Lir::Run(nil_function, entire_env)),
+                expect!["(a () 1)"],
+                [Some("()"), Some("()")],
+            ),
+            (
+                arena.alloc(Lir::Closure(nil_function, vec![], true)),
+                expect!["(q 2 () 1)"],
+                [Some("(a () 1)"), Some("(a () 1)")],
+            ),
+            (
+                arena.alloc(Lir::Closure(nil_function, vec![nil, capture], false)),
+                expect![
+                    "(c (q . 2) (c () (c (c (q . 4) (c () (c (c (q . 4) (c (c (q . 1) 3) (q ()))) ()))) ())))"
+                ],
+                [
+                    Some("(a () (c () (c (q . 7) ())))"),
+                    Some("(a () (c () (c (q . 7) ())))"),
+                ],
+            ),
+            (
+                pair,
+                expect!["(q () . 1)"],
+                [Some("(() . 1)"), Some("(() . 1)")],
+            ),
+            (nil_pair, expect!["(c () ())"], [Some("(())"), Some("(())")]),
+            (
+                dynamic_pair,
+                expect!["(c () 3)"],
+                [Some("(() . 7)"), Some("(() . 7)")],
+            ),
+        ];
+
+        for (lir, expect, outputs) in cases {
+            check_with_options(&arena, lir, true, expect);
+
+            for optimize_static_pairs in [false, true] {
+                for (condition, expected) in ["1", "()"].into_iter().zip(outputs) {
+                    let mut allocator = Allocator::new();
+                    let program = codegen(
+                        &arena,
+                        &mut allocator,
+                        lir,
+                        CodegenOptions {
+                            optimize_static_pairs,
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                    let env =
+                        rue_clvm::assemble(&mut allocator, &format!("({condition} . 7)")).unwrap();
+                    let output = run_program(
+                        &mut allocator,
+                        &ChiaDialect::new(ClvmFlags::empty()),
+                        program,
+                        env,
+                        u64::MAX,
+                    )
+                    .ok()
+                    .map(|output| disassemble_program(&allocator, output.1));
+                    assert_eq!(output.as_deref(), expected);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn test_run() {
         let mut arena = Arena::new();
         let a = arena.alloc(Lir::Atom(b"a".to_vec()));
@@ -852,7 +1006,7 @@ mod tests {
             ),
             (
                 arena.alloc(Lir::Closure(function, vec![constant, nil], false)),
-                expect!["(q 2 (q 16 2 2) (c (q . 16) (c (q) ())))"],
+                expect!["(q 2 (q 16 2 2) (c (q . 16) (c () ())))"],
             ),
             (
                 arena.alloc(Lir::Closure(function, vec![env_capture, constant], true)),

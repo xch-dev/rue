@@ -1,0 +1,21 @@
+===== debug: (3 4) =====
+output: 12
+===== debug: (0 4) =====
+error: clvm raise
+  inline_small_function.rue:10:5, in main
+    checked(a) * checked(b)
+    a = ()
+    b = 4
+  inline_small_function.rue:5:5, in checked
+    assert value > 0;
+    value = ()
+===== release: (3 4) =====
+output: 12
+===== release: (0 4) =====
+error: clvm raise
+  inline_small_function.rue:10:5, in main
+    checked(a) * checked(b)
+    a = ()
+    b = 4
+  inline_small_function.rue:5:5, in checked (inlined)
+    assert value > 0;

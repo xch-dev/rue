@@ -1,9 +1,9 @@
-program: (a (q 16 (a 2 ()) (a 2 ()) (q . 67)) (c (q 1 . 1) ()))
+program: (q . 69)
 debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (a 110 (c (c 94 126) ())) (a 118 (c 78 ()))) (a 102 (c 86 ()))) (a 122 (c 70 ()))) (a 106 (c 90 ()))) (f (a 74 ()))) (a 114 ())) (a 82 (c 32 ()))) (a 66 (c (c 32 98) ()))) (a 124 ())) (f (a 92 ()))) (a 76 (c 108 ()))) (a 84 (c 116 ()))) (f (a 100 ()))) (a 120 (c 68 ()))) (a 104 (c 88 ()))) (a 72 ())) ()) (f (r (c () (c (q . 1) ()))))) (a 112 ())) (f (r (a 80 ())))) (c (c (c (c (c (q 1 . 1) (c (q 4 () (c (q . 3) ())) (q 9 1 ()))) (c (c (q 2 (q 2 (i (= (f 2) ()) (q 16 (f (r (c (q . 1) (c (q . 1) ())))) ()) (q 8 (q . "assertion failed at unused_export.rue:232:9"))) 1) (c (c () ()) 1)) (q 2 2 ())) (c (q 1 . 2) (q 2 2 ())))) (c (c (c (q 1 . 1) (q 4 (q . 1) ())) (c (q 5 (a 2 ())) (q 4 (q . 1) ()))) (c (c (q 5 (a 2 ())) (q 4 (q . 1) ())) (c (q 4 (q . 1) ()) (q 5 (c (q . 1) (c () ()))))))) (c (c (c (c (q 16 (a 4 ()) (a 6 ())) (q 1 . 2)) (c (q 16 (a 2 ()) (q . 1)) (q 5 (c (q . 1) ())))) (c (c (q 4 (q . 1) ()) (q 2 2 ())) (c (q 1 . 1) (q 2 2 ())))) (c (c (c (q 1 . 1) (q 2 2 ())) (c (q 1 . 1) (q 2 2 ()))) (c (c (q 1 . 2) (q 16 (a 4 (c 6 ())) (q . 1))) (c (q . 2) (q . 42)))))) ()))
 output: "69"
-runtime_cost: 1731
-byte_cost: 492000
-total_cost: 493731
+runtime_cost: 20
+byte_cost: 36000
+total_cost: 36020
 diagnostics:
 - |-
   `only_inside` is exported, but is never used outside of module `helpers` at unused_export.rue:14:15

@@ -56,9 +56,9 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: pass_polymorphic_function
-  program: (a (q 2 2 (c (q . 2) (q . 42))) (c (q 2 2 (c (a 2 (c 3 ())) ())) ()))
+  program: (a (q 2 2 (c (a 2 (q 42)) ())) (c (q . 2) 1))
   debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 42))) (c (c (q . 2) (q 2 2 (c (a 2 (c 3 ())) ()))) ()))
   output: "42"
-  runtime_cost: 1068
-  byte_cost: 684000
-  total_cost: 685068
+  runtime_cost: 715
+  byte_cost: 468000
+  total_cost: 468715

@@ -1,0 +1,247 @@
+tests:
+- name: three_asserts
+  program: (a (i (all (> 2 ()) (> 5 2) (> 11 5)) (q 16 2 5 11) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (i (> 5 2) (q 2 (i (> 11 5) (q 16 (+ 2 5) 11) (q 8 (q . "assertion failed at merged_asserts.rue:7:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:6:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:5:5"))) 1)
+  solution: (1 2 3)
+  output: "6"
+  runtime_cost: 4352
+  byte_cost: 660000
+  total_cost: 664352
+- name: three_asserts_first_is_false
+  program: (a (i (all (> 2 ()) (> 5 2) (> 11 5)) (q 16 2 5 11) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (i (> 5 2) (q 2 (i (> 11 5) (q 16 (+ 2 5) 11) (q 8 (q . "assertion failed at merged_asserts.rue:14:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:13:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:12:5"))) 1)
+  solution: (0 2 3)
+  byte_cost: 660000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:12:5"
+- name: three_asserts_last_is_false
+  program: (a (i (all (> 2 ()) (> 5 2) (> 11 5)) (q 16 2 5 11) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (i (> 5 2) (q 2 (i (> 11 5) (q 16 (+ 2 5) 11) (q 8 (q . "assertion failed at merged_asserts.rue:21:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:20:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:19:5"))) 1)
+  solution: (1 2 2)
+  byte_cost: 660000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:21:5"
+- name: narrowed_by_an_earlier_assert
+  program: (a (i (all (not (l 2)) (> 2 (q . 5))) (q . 2) (q 8)) 1)
+  debug_program: (a (i (not (l 2)) (q 2 (i (> 2 (q . 5)) (q . 2) (q 8 (q . "assertion failed at merged_asserts.rue:30:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:29:5"))) 1)
+  solution: (7)
+  output: "7"
+  runtime_cost: 1898
+  byte_cost: 516000
+  total_cost: 517898
+- name: narrowed_by_an_earlier_assert_that_is_false
+  program: (a (i (all (not (l 2)) (> 2 (q . 5))) (q . 2) (q 8)) 1)
+  debug_program: (a (i (not (l 2)) (q 2 (i (> 2 (q . 5)) (q . 2) (q 8 (q . "assertion failed at merged_asserts.rue:36:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:35:5"))) 1)
+  solution: ((1 . 2))
+  byte_cost: 516000
+  clvm_error: "InvalidOperatorArg: Requires Int Argument: >"
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:35:5"
+- name: fields_narrowed_by_an_earlier_assert
+  program: (a (i (all (a (i (l 2) (q 2 (i (l 4) () (q 32 (l 6))) 1) ()) 1) (> 4 6)) (q . 4) (q 8)) 1)
+  debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (f 2))) (q 32 (l (r 2))) ()) 1) ()) 1) (q 2 (i (> (f 2) (r 2)) (q 5 2) (q 8 (q . "assertion failed at merged_asserts.rue:42:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:41:5"))) 1)
+  solution: ((3 . 2))
+  output: "3"
+  runtime_cost: 2548
+  byte_cost: 972000
+  total_cost: 974548
+- name: fields_narrowed_by_an_earlier_assert_that_is_false
+  program: (a (i (all (a (i (l 2) (q 2 (i (l 4) () (q 32 (l 6))) 1) ()) 1) (> 4 6)) (q . 4) (q 8)) 1)
+  debug_program: (a (i (a (i (l 2) (q 2 (i (not (l (f 2))) (q 32 (l (r 2))) ()) 1) ()) 1) (q 2 (i (> (f 2) (r 2)) (q 5 2) (q 8 (q . "assertion failed at merged_asserts.rue:48:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:47:5"))) 1)
+  solution: (5)
+  byte_cost: 972000
+  clvm_error: path into atom
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:47:5"
+- name: condition_that_may_fail
+  program: (a (i 2 (q 2 (i (all (> (/ 5 2) (q . 1)) (> 5 ())) (q . 5) (q 8)) 1) (q 8)) 1)
+  debug_program: (a (i (not (= 2 ())) (q 2 (i (> (/ 5 2) (q . 1)) (q 2 (i (> 5 ()) (q . 5) (q 8 (q . "assertion failed at merged_asserts.rue:57:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:56:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:55:5"))) 1)
+  solution: (2 6)
+  output: "6"
+  runtime_cost: 3546
+  byte_cost: 804000
+  total_cost: 807546
+- name: condition_that_may_fail_is_not_evaluated
+  program: (a (i 2 (q 2 (i (all (> (/ 5 2) (q . 1)) (> 5 ())) (q . 5) (q 8)) 1) (q 8)) 1)
+  debug_program: (a (i (not (= 2 ())) (q 2 (i (> (/ 5 2) (q . 1)) (q 2 (i (> 5 ()) (q . 5) (q 8 (q . "assertion failed at merged_asserts.rue:64:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:63:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:62:5"))) 1)
+  solution: (0 6)
+  byte_cost: 804000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:62:5"
+- name: call_is_not_merged
+  program: (a (q 2 (i (> 11 ()) (q 2 (i (all (a 2 (c 2 5)) (> (q . 100) 11)) (q . 11) (q 8)) 1) (q 8)) 1) (c (q 2 (i 3 (q 2 (i 7 (q 2 (i (> 11 5) (q 2 2 (c 2 7)) ()) 1) (q 1 . 1)) 1) (q 1 . 1)) 1) 1))
+  debug_program: (a (q 2 (i (> 11 ()) (q 2 (i (a 2 (c 2 5)) (q 2 (i (> (q . 100) 11) (q . 11) (q 8 (q . "assertion failed at merged_asserts.rue:86:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:85:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:84:5"))) 1) (c (q 2 (i (not 3) (q 1 . 1) (q 2 (q 2 (i (not 2) (q 1 . 1) (q 2 (i (> (f 2) (f 7)) (q 2 5 (c 5 2)) ()) 1)) 1) (c (r 3) 1))) 1) 1))
+  solution: ((1 2 3) 5)
+  output: "5"
+  runtime_cost: 6813
+  byte_cost: 1956000
+  total_cost: 1962813
+- name: separated_by_a_let
+  program: (a (i (> 2 ()) (q 2 (q 2 (i (all (> 2 5) (> 2 11)) (q 18 2 2) (q 8)) 1) (c (+ 2 5) 1)) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (q 2 (i (> 2 5) (q 2 (i (> 2 11) (q 18 2 2) (q 8 (q . "assertion failed at merged_asserts.rue:95:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:94:5"))) 1) (c (+ 2 5) 1)) (q 8 (q . "assertion failed at merged_asserts.rue:92:5"))) 1)
+  solution: (1 2)
+  output: "9"
+  runtime_cost: 5180
+  byte_cost: 1092000
+  total_cost: 1097180
+- name: asserts_of_conjunctions
+  program: (a (i (all (> 11 5) (> 11 2) (> 11 ()) (> (q . 100) 11)) (q . 11) (q 8)) 1)
+  debug_program: (a (i (a (i (> 11 5) (q 21 11 2) ()) 1) (q 2 (i (a (i (> 11 ()) (q 21 (q . 100) 11) ()) 1) (q . 11) (q 8 (q . "assertion failed at merged_asserts.rue:102:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:101:5"))) 1)
+  solution: (1 2 3)
+  output: "3"
+  runtime_cost: 4064
+  byte_cost: 684000
+  total_cost: 688064
+- name: inlined_asserts
+  program: (i () (a (i (all (> 2 ()) (> (q . 10) 2)) () (q 8)) 1) 2)
+  debug_program: (i (q . 1) 2 (a (i (> 2 ()) (q 2 (i (> (q . 10) 2) () (q 8 (q . "assertion failed at merged_asserts.rue:108:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:107:5"))) 1))
+  solution: (5)
+  output: "5"
+  runtime_cost: 2368
+  byte_cost: 564000
+  total_cost: 566368
+- name: asserts_before_nil
+  program: (a (i (all (= 2 5) (= 5 11)) () (q 8)) 1)
+  debug_program: (a (i (= 2 5) (q 2 (i (= 5 11) () (q 8 (q . "assertion failed at merged_asserts.rue:119:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:118:5"))) 1)
+  solution: (1 1 1)
+  output: ()
+  runtime_cost: 1526
+  byte_cost: 444000
+  total_cost: 445526
+- name: separated_by_a_path_binding
+  program: (a (i (all (not 2) (a (i (= 9 13) (q 1 . 1) (q 9 9 19)) 1)) () (q 8)) 1)
+  debug_program: (a (i (= 2 ()) (q 2 (q 2 (i (a (i (= 2 (r 11)) (q 1 . 1) (q 9 2 (f 23))) 1) () (q 8 (q . "assertion failed at merged_asserts.rue:131:5"))) 1) (c (f 5) 1)) (q 8 (q . "assertion failed at merged_asserts.rue:129:5"))) 1)
+  solution: (() (1 . 1))
+  output: ()
+  runtime_cost: 1788
+  byte_cost: 732000
+  total_cost: 733788
+- name: separated_by_a_path_binding_that_fails
+  program: (a (i (all (not 2) (a (i (= 9 13) (q 1 . 1) (q 9 9 19)) 1)) () (q 8)) 1)
+  debug_program: (a (i (= 2 ()) (q 2 (q 2 (i (a (i (= 2 (r 11)) (q 1 . 1) (q 9 2 (f 23))) 1) () (q 8 (q . "assertion failed at merged_asserts.rue:137:5"))) 1) (c (f 5) 1)) (q 8 (q . "assertion failed at merged_asserts.rue:135:5"))) 1)
+  solution: (() (1 . 2) (3))
+  byte_cost: 732000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:137:5"
+- name: raise_statements
+  program: (a (i (all (not (> 2 5)) (not (> 5 (q . 100))) (> 2 ())) (q 17 5 2) (q 8)) 1)
+  debug_program: (a (i (> 2 5) (q 8 (q . "raise called at merged_asserts.rue:143:9")) (q 2 (i (> 5 (q . 100)) (q 8 (q . "raise called at merged_asserts.rue:147:9")) (q 2 (i (> 2 ()) (q 17 5 2) (q 8 (q . "assertion failed at merged_asserts.rue:150:5"))) 1)) 1)) 1)
+  solution: (1 5)
+  output: "4"
+  runtime_cost: 4339
+  byte_cost: 756000
+  total_cost: 760339
+- name: raise_statements_that_fail
+  program: (a (i (all (not (> 2 5)) (not (> 5 (q . 100))) (> 2 ())) (q 17 5 2) (q 8)) 1)
+  debug_program: (a (i (> 2 5) (q 8 (q . "raise called at merged_asserts.rue:156:9")) (q 2 (i (> 5 (q . 100)) (q 8 (q . "raise called at merged_asserts.rue:160:9")) (q 2 (i (> 2 ()) (q 17 5 2) (q 8 (q . "assertion failed at merged_asserts.rue:163:5"))) 1)) 1)) 1)
+  solution: (1 500)
+  byte_cost: 756000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "raise called at merged_asserts.rue:160:9"
+- name: call_is_not_made_after_a_failed_assert
+  program: (a (q 2 (i (> 11 ()) (q 2 (i (all (a 2 (c 2 5)) (> (q . 100) 11)) (q . 11) (q 8)) 1) (q 8)) 1) (c (q 2 (i 3 (q 2 (i 7 (q 2 (i (> 11 5) (q 2 2 (c 2 7)) ()) 1) (q 1 . 1)) 1) (q 1 . 1)) 1) 1))
+  debug_program: (a (q 2 (i (> 11 ()) (q 2 (i (a 2 (c 2 5)) (q 2 (i (> (q . 100) 11) (q . 11) (q 8 (q . "assertion failed at merged_asserts.rue:171:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:170:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:169:5"))) 1) (c (q 2 (i (not 3) (q 1 . 1) (q 2 (q 2 (i (not 2) (q 1 . 1) (q 2 (i (> (f 2) (f 7)) (q 2 5 (c 5 2)) ()) 1)) 1) (c (r 3) 1))) 1) 1))
+  solution: ((1 . 2) 0)
+  byte_cost: 1956000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:169:5"
+- name: inlined_asserts_that_fail
+  program: (i () (a (i (all (> 2 ()) (> (q . 10) 2)) () (q 8)) 1) 2)
+  debug_program: (i (q . 1) 2 (a (i (> 2 ()) (q 2 (i (> (q . 10) 2) () (q 8 (q . "assertion failed at merged_asserts.rue:108:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:107:5"))) 1))
+  solution: (20)
+  byte_cost: 564000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:108:5"
+- name: asserts_before_nil_that_fail
+  program: (a (i (all (= 2 5) (= 5 11)) () (q 8)) 1)
+  debug_program: (a (i (= 2 5) (q 2 (i (= 5 11) () (q 8 (q . "assertion failed at merged_asserts.rue:182:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:181:5"))) 1)
+  solution: (1 1 2)
+  byte_cost: 444000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:182:5"
+- name: asserts_of_conjunctions_that_fail
+  program: (a (i (all (> 11 5) (> 11 2) (> 11 ()) (> (q . 100) 11)) (q . 11) (q 8)) 1)
+  debug_program: (a (i (a (i (> 11 5) (q 21 11 2) ()) 1) (q 2 (i (a (i (> 11 ()) (q 21 (q . 100) 11) ()) 1) (q . 11) (q 8 (q . "assertion failed at merged_asserts.rue:187:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:186:5"))) 1)
+  solution: (1 2 100)
+  byte_cost: 684000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:187:5"
+- name: assert_before_a_let_fails
+  program: (a (i (> 2 ()) (q 2 (q 2 (i (all (> 2 5) (> 2 11)) (q 18 2 2) (q 8)) 1) (c (+ 2 5) 1)) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (q 2 (i (> 2 5) (q 2 (i (> 2 11) (q 18 2 2) (q 8 (q . "assertion failed at merged_asserts.rue:195:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:194:5"))) 1) (c (+ 2 5) 1)) (q 8 (q . "assertion failed at merged_asserts.rue:192:5"))) 1)
+  solution: (0 2)
+  byte_cost: 1092000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:192:5"
+- name: assert_after_a_let_fails
+  program: (a (i (> 2 ()) (q 2 (q 2 (i (all (> 2 5) (> 2 11)) (q 18 2 2) (q 8)) 1) (c (+ 2 5) 1)) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (q 2 (i (> 2 5) (q 2 (i (> 2 11) (q 18 2 2) (q 8 (q . "assertion failed at merged_asserts.rue:203:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:202:5"))) 1) (c (+ 2 5) 1)) (q 8 (q . "assertion failed at merged_asserts.rue:200:5"))) 1)
+  solution: (1 0)
+  byte_cost: 1092000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:202:5"
+- name: branches_that_return_the_same_value
+  program: (a (i 2 (q 8) (q 2 (i 5 (q . 23) (q 2 (i 11 (q . 23) (q . 23)) 1)) 1)) 1)
+  debug_program: (a (i (not 2) (q 2 (i 5 (q . 23) (q 2 (i 11 (q . 23) (q . 23)) 1)) 1) (q 8 (q . "assertion failed at merged_asserts.rue:209:5"))) 1)
+  solution: (() () () 7)
+  output: "7"
+  runtime_cost: 843
+  byte_cost: 684000
+  total_cost: 684843
+- name: large_condition
+  program: (a (i (all (> 2 ()) (> 5 ())) (q 2 (i (> (+ 2 5 2 5 2 5 2 5 2 5 2 5 2 5 2 5 2 5 2 5 2 5) (q . 100)) (q . 2) (q 8)) 1) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (i (> 5 ()) (q 2 (i (> (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 2 5) 2) 5) 2) 5) 2) 5) 2) 5) 2) 5) 2) 5) 2) 5) 2) 5) 2) 5) 2) 5) (q . 100)) (q . 2) (q 8 (q . "assertion failed at merged_asserts.rue:226:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:225:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:224:5"))) 1)
+  solution: (30 40)
+  output: "30"
+  runtime_cost: 11308
+  byte_cost: 1356000
+  total_cost: 1367308
+- name: asserts_before_an_if
+  program: (a (i (all (> 2 ()) (> 5 ())) (q 2 (i 11 (q 16 2 5) (q 18 2 5)) 1) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (i (> 5 ()) (q 2 (i 11 (q 16 2 5) (q 18 2 5)) 1) (q 8 (q . "assertion failed at merged_asserts.rue:255:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:254:5"))) 1)
+  solution: (2 3 ())
+  output: "6"
+  runtime_cost: 3565
+  byte_cost: 828000
+  total_cost: 831565
+- name: call_in_a_lazy_operand
+  program: (a (q 2 (i (> 11 ()) (q 2 (i (> 11 (q . 50)) (q . 11) (q 2 (i (a 2 (c 2 5)) (q . 11) (q 8)) 1)) 1) (q 8)) 1) (c (q 2 (i 3 (q 2 (i 7 (q 2 (i (> 11 5) (q 2 2 (c 2 7)) ()) 1) (q 1 . 1)) 1) (q 1 . 1)) 1) 1))
+  debug_program: (a (q 2 (i (> 11 ()) (q 2 (i (a (i (> 11 (q . 50)) (q 1 . 1) (q 2 2 (c 2 5))) 1) (q . 11) (q 8 (q . "assertion failed at merged_asserts.rue:268:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:267:5"))) 1) (c (q 2 (i (not 3) (q 1 . 1) (q 2 (q 2 (i (not 2) (q 1 . 1) (q 2 (i (> (f 2) (f 7)) (q 2 5 (c 5 2)) ()) 1)) 1) (c (r 3) 1))) 1) 1))
+  solution: ((1 . 2) 60)
+  output: "60"
+  runtime_cost: 1880
+  byte_cost: 2100000
+  total_cost: 2101880
+- name: call_in_a_lazy_operand_after_a_failed_assert
+  program: (a (q 2 (i (> 11 ()) (q 2 (i (> 11 (q . 50)) (q . 11) (q 2 (i (a 2 (c 2 5)) (q . 11) (q 8)) 1)) 1) (q 8)) 1) (c (q 2 (i 3 (q 2 (i 7 (q 2 (i (> 11 5) (q 2 2 (c 2 7)) ()) 1) (q 1 . 1)) 1) (q 1 . 1)) 1) 1))
+  debug_program: (a (q 2 (i (> 11 ()) (q 2 (i (a (i (> 11 (q . 50)) (q 1 . 1) (q 2 2 (c 2 5))) 1) (q . 11) (q 8 (q . "assertion failed at merged_asserts.rue:274:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:273:5"))) 1) (c (q 2 (i (not 3) (q 1 . 1) (q 2 (q 2 (i (not 2) (q 1 . 1) (q 2 (i (> (f 2) (f 7)) (q 2 5 (c 5 2)) ()) 1)) 1) (c (r 3) 1))) 1) 1))
+  solution: ((1 . 2) 0)
+  byte_cost: 2100000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:273:5"
+- name: division_in_a_lazy_operand
+  program: (a (i (> 2 ()) (q 2 (i (all (a (i (> 5 ()) (q 1 . 1) (q 21 (/ 11 2) (q . 1))) 1) (> 11 ())) (q . 11) (q 8)) 1) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (i (a (i (> 5 ()) (q 1 . 1) (q 21 (/ 11 2) (q . 1))) 1) (q 2 (i (> 11 ()) (q . 11) (q 8 (q . "assertion failed at merged_asserts.rue:281:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:280:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:279:5"))) 1)
+  solution: (1 0 5)
+  output: "5"
+  runtime_cost: 4907
+  byte_cost: 1188000
+  total_cost: 1192907
+- name: division_in_a_lazy_operand_after_a_failed_assert
+  program: (a (i (> 2 ()) (q 2 (i (all (a (i (> 5 ()) (q 1 . 1) (q 21 (/ 11 2) (q . 1))) 1) (> 11 ())) (q . 11) (q 8)) 1) (q 8)) 1)
+  debug_program: (a (i (> 2 ()) (q 2 (i (a (i (> 5 ()) (q 1 . 1) (q 21 (/ 11 2) (q . 1))) 1) (q 2 (i (> 11 ()) (q . 11) (q 8 (q . "assertion failed at merged_asserts.rue:288:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:287:5"))) 1) (q 8 (q . "assertion failed at merged_asserts.rue:286:5"))) 1)
+  solution: (0 0 5)
+  byte_cost: 1188000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at merged_asserts.rue:286:5"
+diagnostics:
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at merged_asserts.rue:142:5
+    help: Replace it with an `assert`
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at merged_asserts.rue:146:5
+    help: Replace it with an `assert`
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at merged_asserts.rue:155:5
+    help: Replace it with an `assert`
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at merged_asserts.rue:159:5
+    help: Replace it with an `assert`

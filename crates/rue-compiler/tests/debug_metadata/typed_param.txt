@@ -18,18 +18,17 @@ nodes:
             typed_param.rue:11:26-11:27  (q . 5)
             typed_param.rue:11:12-11:23  (strlen 11)
 ===== release =====
-program: (a (i 47 (q 2 (i (= 5 (sha256 2)) (q 8) (q 2 (i (> (q . 5) (strlen 23)) (q . 11) (q 8)) 1)) 1) (q 8)) 1)
-sidecar: 2010 bytes
+program: (a (i (all 47 (not (= 5 (sha256 2))) (> (q . 5) (strlen 23))) (q . 11) (q 8)) 1)
+sidecar: 1690 bytes
 files:
   typed_param.rue
 functions:
   0: main (owner@2: bytes48 . (target@5: bytes32 . (amount@11: integer . (memo@23: atom . (enabled@47: atom . _)))))
 nodes:
-  typed_param.rue:9:5-9:20 fn main label "validate (inlined)"  (a (i 47 (q 2 (i (= 5 (sha256 2)) (q 8) (q 2 (i (> (q . 5...
-    typed_param.rue:10:5-10:45  (a (i (= 5 (sha256 2)) (q 8) (q 2 (i (> (q . 5) (strlen 2...
+  typed_param.rue:9:5-9:20 fn main label "validate (inlined)"  (a (i (all 47 (not (= 5 (sha256 2))) (> (q . 5) (strlen 2...
+    typed_param.rue:10:5-10:45  (not (= 5 (sha256 2)))
       typed_param.rue:10:12-10:44  (= 5 (sha256 2))
         typed_param.rue:10:22-10:44  (sha256 2)
-      typed_param.rue:11:5-11:28  (a (i (> (q . 5) (strlen 23)) (q . 11) (q 8)) 1)
-        typed_param.rue:11:12-11:27  (> (q . 5) (strlen 23))
-          typed_param.rue:11:26-11:27  (q . 5)
-          typed_param.rue:11:12-11:23  (strlen 23)
+    typed_param.rue:11:12-11:27  (> (q . 5) (strlen 23))
+      typed_param.rue:11:26-11:27  (q . 5)
+      typed_param.rue:11:12-11:23  (strlen 23)

@@ -14,8 +14,11 @@ pub struct CompilerOptions {
     /// Whether to compile the standard library.
     pub std: bool,
 
-    /// Whether symbols which are only referenced once (including any parameters they have)
-    /// should be inlined automatically (even if they are not marked as `inline`).
+    /// Whether symbols are inlined automatically, even if they aren't marked as `inline`: the
+    /// ones that are only referenced once (including any parameters they have), and the
+    /// functions and bindings that the program is measured to be smaller with when they're
+    /// inlined, such as a small function that's called more than once, or a binding that's only
+    /// a path into the environment.
     pub auto_inline: bool,
 
     /// Whether to fully optimize the generated LIR, or preserve the original structure.

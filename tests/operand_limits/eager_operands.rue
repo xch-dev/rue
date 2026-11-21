@@ -1,0 +1,32 @@
+// With `operand_limits`, a product can fail for an operand that's too long, so it's only
+// evaluated when the left operand doesn't decide the result. Without it, the same function
+// evaluates both operands (see `tests/optimizer/eager_products.rue`).
+
+fn any_large(items: List<Int>, factor: Int) -> Bool {
+    if items is nil {
+        return false;
+    }
+
+    items.first > 100 || items.first * factor > 100 || any_large(items.rest, factor)
+}
+
+test fn product_is_skipped(items: List<Int>, factor: Int) -> Bool {
+    any_large(items, factor)
+}
+
+test fn product_is_evaluated(items: List<Int>, factor: Int) -> Bool {
+    any_large(items, factor)
+}
+
+// Addition doesn't limit its operands
+fn any_large_sum(items: List<Int>, offset: Int) -> Bool {
+    if items is nil {
+        return false;
+    }
+
+    items.first > 100 || items.first + offset > 100 || any_large_sum(items.rest, offset)
+}
+
+test fn sum_is_eager(items: List<Int>, offset: Int) -> Bool {
+    any_large_sum(items, offset)
+}

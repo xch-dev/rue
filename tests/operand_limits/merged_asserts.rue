@@ -1,0 +1,16 @@
+// With `operand_limits`, a product can fail for an operand that's too long, so an assert of one
+// is only checked once the assert before it has passed
+
+test fn product_is_not_merged(a: Int, b: Int) -> Int {
+    assert a > 0;
+    assert a * b > 10;
+    assert b > 0;
+    a
+}
+
+test fn product_is_not_evaluated(a: Int, b: Int) -> Int {
+    assert a > 0;
+    assert a * b > 10;
+    assert b > 0;
+    a
+}

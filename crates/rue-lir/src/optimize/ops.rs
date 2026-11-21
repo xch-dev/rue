@@ -13,7 +13,7 @@ use crate::{
         ArgList, Truthiness, fold_atoms, is_atom, is_boolean, is_nil, is_pure, opt_truthy,
         reads_env,
     },
-    parent_path, rest_path,
+    parent_path, path_to_atom, rest_path,
     stack::grow_stack,
 };
 
@@ -598,6 +598,7 @@ pub fn opt_any(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
 // `(i c 1 ())` is `c` if `c` is always `()` or `1`, and `(i c () 1)` is always `(not c)`
 pub fn opt_if(
     arena: &mut Arena<Lir>,
+    target: ClvmTarget,
     condition: LirId,
     then: LirId,
     otherwise: LirId,
@@ -637,9 +638,30 @@ pub fn opt_if(
                     arena[condition].clone()
                 && (is_boolean(arena, inner_then) || is_boolean(arena, inner_otherwise))
             {
-                let inner_then = opt_if(arena, inner_then, then, otherwise, false);
-                let inner_otherwise = opt_if(arena, inner_otherwise, then, otherwise, false);
-                return opt_if(arena, inner, inner_then, inner_otherwise, inner_inline);
+                let inner_then = opt_if(arena, target, inner_then, then, otherwise, false);
+                let inner_otherwise =
+                    opt_if(arena, target, inner_otherwise, then, otherwise, false);
+                return opt_if(
+                    arena,
+                    target,
+                    inner,
+                    inner_then,
+                    inner_otherwise,
+                    inner_inline,
+                );
+            }
+
+            // An inline `if` evaluates both branches, so one that picks between a bool and a
+            // constant is `any` or `all` of the condition and the bool, which is what `a || b`
+            // and `a && b` are when `b` is evaluated either way
+            if inline {
+                if let Some(check) = nil_check(arena, replacement, then, otherwise, inline) {
+                    return check;
+                }
+
+                if let Some(logic) = eager_logic(arena, replacement, then, otherwise) {
+                    return logic;
+                }
             }
 
             let (condition, then, otherwise) =
@@ -649,13 +671,373 @@ pub fn opt_if(
                     (replacement, then, otherwise)
                 };
 
+            if !inline {
+                if let Some(merged) = merge_checks(arena, target, condition, then, otherwise) {
+                    return merged;
+                }
+
+                if let Some(direct) = branch_directly(arena, target, condition, then, otherwise) {
+                    return direct;
+                }
+            }
+
             alloc_if(arena, condition, then, otherwise, inline)
         }
     }
 }
 
+/// `(not x)` for `(i (l x) () (not x))`, or for the same with `(= x ())` if the `if` isn't inline
+/// (see [`alloc_if`]).
+fn nil_check(
+    arena: &mut Arena<Lir>,
+    condition: LirId,
+    then: LirId,
+    otherwise: LirId,
+    inline: bool,
+) -> Option<LirId> {
+    let Lir::Listp(value) = arena[condition] else {
+        return None;
+    };
+
+    if !is_nil(arena, then) {
+        return None;
+    }
+
+    let checked = match arena[otherwise] {
+        Lir::Not(checked) => checked,
+        Lir::Eq(left, right) if !inline && is_nil(arena, right) => left,
+        Lir::Eq(left, right) if !inline && is_nil(arena, left) => right,
+        _ => return None,
+    };
+
+    same_value(arena, value, checked).then(|| arena.alloc(Lir::Not(value)))
+}
+
+/// `(i c 1 b)` is `(any c b)` and `(i c b ())` is `(all c b)` if `b` is always `()` or `1`, since
+/// every operand is evaluated in order either way, and `(i c () b)` and `(i c b 1)` are the same
+/// with `(not c)`. The condition can be a replacement that only has the same truthiness.
+fn eager_logic(
+    arena: &mut Arena<Lir>,
+    condition: LirId,
+    then: LirId,
+    otherwise: LirId,
+) -> Option<LirId> {
+    // An `if` between two constants is already as small as it gets
+    let is_bool = |arena: &Arena<Lir>, value: LirId| {
+        !matches!(arena[value], Lir::Atom(_)) && is_boolean(arena, value)
+    };
+
+    if is_atom(arena, then, &[1]) && is_bool(arena, otherwise) {
+        return Some(opt_any(arena, vec![condition, otherwise]));
+    }
+
+    if is_nil(arena, otherwise) && is_bool(arena, then) {
+        return Some(opt_all(arena, vec![condition, then]));
+    }
+
+    if is_nil(arena, then) && is_bool(arena, otherwise) {
+        let negated = opt_not(arena, condition);
+        return Some(opt_all(arena, vec![negated, otherwise]));
+    }
+
+    if is_atom(arena, otherwise, &[1]) && is_bool(arena, then) {
+        let negated = opt_not(arena, condition);
+        return Some(opt_any(arena, vec![negated, then]));
+    }
+
+    None
+}
+
+/// How many nodes a condition can have and still be checked along with the one before it (see
+/// [`merge_checks`]). None of them is a call, so each is at most one operator, which costs a few
+/// hundred to run on atoms the size of a hash, far less than the bytes that a check of its own
+/// takes.
+const MAX_MERGED_CHECK_SIZE: usize = 24;
+
+/// A check that's only reached once another check has passed, and that fails the same way, is
+/// checked along with it: `(a (i a (q 2 (i b (q . T) (q 8)) 1) (q 8)) 1)`, which is what two
+/// asserts in a row are, becomes `(a (i (all a b) (q . T) (q 8)) 1)`, which is about 17 bytes
+/// smaller. A check that passes when its condition is false is merged the same way, with the
+/// condition negated, and so is one that branches to the same result in more than one place,
+/// such as `(a (i b (q . T) (q 2 (i c (q . T) (q 8)) 1)) 1)` from an assert of `b || c` (see
+/// [`pass_condition`]).
+///
+/// If the first condition fails the check, the program fails whether or not the rest is
+/// evaluated first, and if it passes, the rest is evaluated either way. So this never changes
+/// whether the program fails, even if the second condition relies on the first, as `(> x 5)`
+/// does after a check that `x` is an atom. Two things could still be told apart, so they're
+/// ruled out:
+///
+/// - A condition that isn't cheap, such as a call, would run before the program fails, when it
+///   would have failed right away (see [`is_cheap_check`]).
+/// - A condition with an operator that can fail for operands of the right types, such as a
+///   division, would fail with its own error where the first check would have raised. A
+///   condition that relies on the first one still can, for a value that fails that check.
+///
+/// The checks after such a condition are left as they are, and are the result of the ones that
+/// are merged. The checks of a debug build raise with their own locations, so they're never the
+/// same.
+fn merge_checks(
+    arena: &mut Arena<Lir>,
+    target: ClvmTarget,
+    condition: LirId,
+    then: LirId,
+    otherwise: LirId,
+) -> Option<LirId> {
+    let (passes, rest, failure) = match (&arena[then], &arena[otherwise]) {
+        (_, Lir::Raise(_)) => (true, then, otherwise),
+        (Lir::Raise(_), _) => (false, otherwise, then),
+        _ => return None,
+    };
+
+    if !matches!(arena[rest], Lir::If(_, _, _, false)) {
+        return None;
+    }
+
+    let mut result = None;
+    let mut budget = MAX_MERGED_CHECK_SIZE;
+    let inner = pass_condition(arena, target, rest, failure, &mut result, &mut budget)?;
+    let result = result?;
+
+    // Nothing in the rest fails the same way, so there's nothing to merge
+    if matches!(arena[inner], Lir::Atom(_)) {
+        return None;
+    }
+
+    // Checks that all pass when their conditions are false fail when any of them is true
+    if !passes && let Lir::Not(inner) = arena[inner] {
+        let any = opt_any(arena, vec![condition, inner]);
+        return Some(opt_if(arena, target, any, failure, result, false));
+    }
+
+    let first = if passes {
+        condition
+    } else {
+        opt_not(arena, condition)
+    };
+    let all = opt_all(arena, vec![first, inner]);
+
+    Some(opt_if(arena, target, all, result, failure, false))
+}
+
+/// The condition under which a tree of checks reaches its result rather than the failure, as a
+/// bool: an `if` with a cheap condition (see [`is_cheap_check`]) whose branches are the failure,
+/// the result, or more checks of the same kind. The result is whatever the first branch that
+/// isn't one of those is, and every other such branch must be the same value. An `if` that isn't
+/// made of those is a result itself, so the checks after one that isn't cheap are left as they
+/// are.
+///
+/// The budget is the number of nodes in the conditions and of branches that are followed, which
+/// is reduced by them.
+fn pass_condition(
+    arena: &mut Arena<Lir>,
+    target: ClvmTarget,
+    tree: LirId,
+    failure: LirId,
+    result: &mut Option<LirId>,
+    budget: &mut usize,
+) -> Option<LirId> {
+    *budget = budget.checked_sub(1)?;
+
+    if same_value(arena, tree, failure) {
+        return Some(arena.alloc(Lir::Atom(vec![])));
+    }
+
+    if result.is_some_and(|result| same_value(arena, tree, result)) {
+        return Some(arena.alloc(Lir::Atom(vec![1])));
+    }
+
+    if let Lir::If(condition, then, otherwise, false) = arena[tree] {
+        let result_before = *result;
+        let budget_before = *budget;
+
+        // The budget bounds how deep this goes
+        let branches = if is_cheap_check(arena, target, condition, budget) {
+            pass_condition(arena, target, then, failure, result, budget).and_then(|then| {
+                let otherwise = pass_condition(arena, target, otherwise, failure, result, budget)?;
+                Some((then, otherwise))
+            })
+        } else {
+            None
+        };
+
+        // If both branches reach the result, or both fail, the condition would only be kept to
+        // be evaluated, between two constants that are larger than what they stand for
+        let same = |arena: &Arena<Lir>, then: LirId, otherwise: LirId| {
+            matches!(
+                (&arena[then], &arena[otherwise]),
+                (Lir::Atom(then), Lir::Atom(otherwise)) if then.is_empty() == otherwise.is_empty()
+            )
+        };
+
+        if let Some((then, otherwise)) = branches
+            && !same(arena, then, otherwise)
+        {
+            return Some(opt_if(arena, target, condition, then, otherwise, false));
+        }
+
+        *result = result_before;
+        *budget = budget_before;
+    }
+
+    if result.is_some() {
+        return None;
+    }
+
+    *result = Some(tree);
+    Some(arena.alloc(Lir::Atom(vec![1])))
+}
+
+/// Whether the condition has no more nodes than the budget, which is reduced by them, and is
+/// only made of values and of operators that can't fail for operands of the right types. These
+/// are among the ones the failure analysis of the HIR treats as unable to fail, which leaves
+/// out anything that runs other code, which could run for as long as it likes. It also leaves
+/// out the operators that only can't fail for some constants (division and shifts), and the
+/// ones that cost far more to run than a check does (`pubkey_for_exp`, `keccak256`).
+fn is_cheap_check(
+    arena: &Arena<Lir>,
+    target: ClvmTarget,
+    condition: LirId,
+    budget: &mut usize,
+) -> bool {
+    let Some(rest) = budget.checked_sub(1) else {
+        return false;
+    };
+
+    *budget = rest;
+
+    // The budget bounds how deep this goes
+    let mut all = |values: &[LirId]| {
+        values
+            .iter()
+            .all(|&value| is_cheap_check(arena, target, value, budget))
+    };
+
+    match &arena[condition] {
+        Lir::Atom(_) | Lir::Path(_) | Lir::Quote(_) => true,
+        Lir::First(value)
+        | Lir::Rest(value)
+        | Lir::Listp(value)
+        | Lir::Not(value)
+        | Lir::Strlen(value)
+        | Lir::Lognot(value) => all(&[*value]),
+        Lir::Cons(left, right)
+        | Lir::Eq(left, right)
+        | Lir::Gt(left, right)
+        | Lir::GtBytes(left, right) => all(&[*left, *right]),
+        Lir::If(condition, then, otherwise, _) => all(&[*condition, *then, *otherwise]),
+        Lir::Add(args)
+        | Lir::Sub(args)
+        | Lir::Concat(args)
+        | Lir::Logand(args)
+        | Lir::Logior(args)
+        | Lir::Logxor(args)
+        | Lir::All(args)
+        | Lir::Any(args)
+        | Lir::Sha256(args)
+        | Lir::Sha256Inline(args) => all(args),
+        // `LIMITS` rejects an operand that's too long
+        Lir::Mul(args) => !target.limits_operands() && all(args),
+        Lir::Run(..)
+        | Lir::Closure(..)
+        | Lir::Div(..)
+        | Lir::Divmod(..)
+        | Lir::Mod(..)
+        | Lir::Modpow(..)
+        | Lir::Raise(_)
+        | Lir::Substr(..)
+        | Lir::Ash(..)
+        | Lir::Lsh(..)
+        | Lir::PubkeyForExp(_)
+        | Lir::G1Add(_)
+        | Lir::G1Subtract(_)
+        | Lir::G1Multiply(..)
+        | Lir::G1Negate(_)
+        | Lir::G1Map(..)
+        | Lir::G2Add(_)
+        | Lir::G2Subtract(_)
+        | Lir::G2Multiply(..)
+        | Lir::G2Negate(_)
+        | Lir::G2Map(..)
+        | Lir::BlsPairingIdentity(_)
+        | Lir::BlsVerify(..)
+        | Lir::Keccak256(_)
+        | Lir::Keccak256Inline(_)
+        | Lir::CoinId(..)
+        | Lir::K1Verify(..)
+        | Lir::R1Verify(..)
+        | Lir::Keccak256Verify(..)
+        | Lir::Op(..)
+        | Lir::DebugPrint(..) => false,
+    }
+}
+
+/// An `if` whose condition is another `if` with a branch that's a constant, such as
+/// `(a (i (a (i a (q 1 . 1) (q . B)) 1) (q . T) (q . F)) 1)` from `if a || b`, already knows which
+/// way it goes when the inner condition picks the constant. Branching there directly gives
+/// `(a (i a (q . T) (q 2 (i B (q . T) (q . F)) 1)) 1)`, which runs one less `a`, and has the branch
+/// that's taken twice in place of the constant. So it's only done if that branch is no larger
+/// than the constant was, which is five bytes for `(q 1 . 1)` and one for `()`.
+fn branch_directly(
+    arena: &mut Arena<Lir>,
+    target: ClvmTarget,
+    condition: LirId,
+    then: LirId,
+    otherwise: LirId,
+) -> Option<LirId> {
+    let Lir::If(inner, inner_then, inner_otherwise, false) = arena[condition] else {
+        return None;
+    };
+
+    let repeated = |arena: &Arena<Lir>, constant: LirId| {
+        let Lir::Atom(atom) = &arena[constant] else {
+            return None;
+        };
+
+        let (taken, constant_size) = if atom.is_empty() {
+            (otherwise, 1)
+        } else {
+            (then, 5)
+        };
+
+        (quoted_size(arena, taken)? <= constant_size).then_some(taken)
+    };
+
+    if let Some(taken) = repeated(arena, inner_then) {
+        let rest = opt_if(arena, target, inner_otherwise, then, otherwise, false);
+        return Some(opt_if(arena, target, inner, taken, rest, false));
+    }
+
+    if let Some(taken) = repeated(arena, inner_otherwise) {
+        let rest = opt_if(arena, target, inner_then, then, otherwise, false);
+        return Some(opt_if(arena, target, inner, rest, taken, false));
+    }
+
+    None
+}
+
+/// How many bytes the value takes up as the quoted branch of an `if`, if it's one of the values
+/// that are at most five: `()`, a path or `(x)` in one byte, which is quoted as it is, or an atom
+/// of one byte, which is `(q 1 . ATOM)`.
+fn quoted_size(arena: &Arena<Lir>, value: LirId) -> Option<usize> {
+    let single_byte = |bytes: &[u8]| matches!(bytes, [byte] if *byte < 0x80);
+
+    match &arena[value] {
+        Lir::Atom(atom) if atom.is_empty() => Some(1),
+        Lir::Atom(atom) if single_byte(atom) => Some(5),
+        Lir::Path(path) if single_byte(&path_to_atom(path)) => Some(3),
+        Lir::Raise(args) if args.is_empty() => Some(5),
+        _ => None,
+    }
+}
+
 /// Allocates an `if` whose condition is already optimized, making it inline if both branches are
 /// atoms, since evaluating both is then the same as choosing one and is cheaper.
+///
+/// `(i (l x) () (not x))` is `(not x)`, since `not` is already false for a pair. This is what a
+/// check for nil is lowered to when the value could also be a pair or another atom, such as
+/// `x is nil` for an `Any`. The check can also end in `(= x ())`, which is `(not x)` for an atom,
+/// and is only evaluated for one unless the `if` is inline.
 pub fn alloc_if(
     arena: &mut Arena<Lir>,
     condition: LirId,
@@ -663,6 +1045,10 @@ pub fn alloc_if(
     otherwise: LirId,
     inline: bool,
 ) -> LirId {
+    if let Some(check) = nil_check(arena, condition, then, otherwise, inline) {
+        return check;
+    }
+
     let inline =
         inline || (matches!(arena[then], Lir::Atom(_)) && matches!(arena[otherwise], Lir::Atom(_)));
 
@@ -1160,7 +1546,9 @@ fn same_value_step(arena: &Arena<Lir>, left: LirId, right: LirId) -> bool {
         | (Lir::Sub(left), Lir::Sub(right))
         | (Lir::Mul(left), Lir::Mul(right))
         | (Lir::Concat(left), Lir::Concat(right))
-        | (Lir::Sha256(left), Lir::Sha256(right)) => {
+        | (Lir::Sha256(left), Lir::Sha256(right))
+        // Two raises with the same arguments fail the same way, which `merge_checks` relies on
+        | (Lir::Raise(left), Lir::Raise(right)) => {
             left.len() == right.len()
                 && left
                     .iter()

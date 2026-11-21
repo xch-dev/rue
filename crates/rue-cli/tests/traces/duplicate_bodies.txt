@@ -13,7 +13,5 @@ error: clvm raise
     first(x) + second(y)
     x = -1
     y = 5
-  in <ambiguous: first | second>
-    arguments = [-1]
-  in <ambiguous>
-    arguments = [-1]
+  duplicate_bodies.rue:8:5, in first (inlined)
+    assert a > 0;

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use id_arena::{Arena, ArenaBehavior, DefaultArenaBehavior};
 use indexmap::{IndexMap, IndexSet};
@@ -31,6 +31,9 @@ pub struct Database {
     /// `Database::report_type_as`).
     reported_types: HashMap<TypeId, TypeId>,
     hir_srclocs: HashMap<HirId, SrcLoc>,
+    /// The `&&` and `||` expressions whose right operand doesn't rely on the left one (see
+    /// `Database::set_independent_operands`).
+    independent_operands: HashSet<HirId>,
     hir_scopes: HashMap<HirId, ScopeId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
     scopes: Arena<Scope>,
@@ -161,6 +164,21 @@ impl Database {
     /// available for the same nodes as [`hir_type`](Self::hir_type).
     pub fn hir_srcloc(&self, hir: HirId) -> Option<&SrcLoc> {
         self.hir_srclocs.get(&hir)
+    }
+
+    /// Records that the right operand of an `&&` or `||` expression is type checked the same way
+    /// whether or not the left operand was evaluated first, since the left operand doesn't narrow
+    /// any types for it, other than of values that were already atoms. Otherwise the right
+    /// operand can rely on the left one, as `x.first` does in `x is (Int, Int) && x.first == 1`,
+    /// and evaluating it on its own could fail.
+    pub fn set_independent_operands(&mut self, hir: HirId) {
+        self.independent_operands.insert(hir);
+    }
+
+    /// Whether the right operand of the `&&` or `||` expression doesn't rely on the left one (see
+    /// [`set_independent_operands`](Self::set_independent_operands)).
+    pub fn has_independent_operands(&self, hir: HirId) -> bool {
+        self.independent_operands.contains(&hir)
     }
 
     /// Records the scope that the source expression of a HIR node is in, which is used to name

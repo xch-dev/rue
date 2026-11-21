@@ -8,29 +8,29 @@ tests:
   byte_cost: 60000
   total_cost: 60068
 - name: pair_value_single
-  program: (a (i (= 4 (q . 42)) (q 9 6 (q . 34)) (q)) 1)
-  debug_program: (a (i (= (f 2) (q . 42)) (q 9 (r 2) (q . 34)) (q)) 1)
+  program: (a (i (= 4 (q . 42)) (q 9 6 (q . 34)) ()) 1)
+  debug_program: (a (i (= (f 2) (q . 42)) (q 9 (r 2) (q . 34)) ()) 1)
   solution: ((42 . 34))
   output: "1"
-  runtime_cost: 593
-  byte_cost: 420000
-  total_cost: 420593
+  runtime_cost: 617
+  byte_cost: 396000
+  total_cost: 396617
 - name: pair_value_union
-  program: (a (i (a (i (= 4 (q . 42)) (q 1 . 1) (q 9 4 (q . 34))) 1) (q 2 (i (= 6 (q . 42)) (q 1 . 1) (q 9 6 (q . 34))) 1) (q)) 1)
-  debug_program: (a (i (a (i (= (f 2) (q . 42)) (q 1 . 1) (q 9 (f 2) (q . 34))) 1) (q 2 (i (= (r 2) (q . 42)) (q 1 . 1) (q 9 (r 2) (q . 34))) 1) (q)) 1)
+  program: (a (i (a (i (= 4 (q . 42)) (q 1 . 1) (q 9 4 (q . 34))) 1) (q 2 (i (= 6 (q . 42)) (q 1 . 1) (q 9 6 (q . 34))) 1) ()) 1)
+  debug_program: (a (i (a (i (= (f 2) (q . 42)) (q 1 . 1) (q 9 (f 2) (q . 34))) 1) (q 2 (i (= (r 2) (q . 42)) (q 1 . 1) (q 9 (r 2) (q . 34))) 1) ()) 1)
   solution: ((42 . 34))
   output: "1"
-  runtime_cost: 1223
-  byte_cost: 1092000
-  total_cost: 1093223
+  runtime_cost: 1247
+  byte_cost: 1068000
+  total_cost: 1069247
 - name: pair_shape_value
-  program: (a (i (l 2) (q 2 (i (a (i (l 4) (q) (q 9 4 (q . 42))) 1) (q 2 (i (l 6) (q) (q 9 6 (q . 34))) 1) (q)) 1) (q)) 1)
-  debug_program: (a (i (l 2) (q 2 (i (a (i (not (l (f 2))) (q 9 (f 2) (q . 42)) (q)) 1) (q 2 (i (not (l (r 2))) (q 9 (r 2) (q . 34)) (q)) 1) (q)) 1) (q)) 1)
+  program: (a (i (l 2) (q 2 (i (l 4) () (q 2 (i (= 4 (q . 42)) (q 2 (i (l 6) () (q 9 6 (q . 34))) 1) ()) 1)) 1) ()) 1)
+  debug_program: (a (i (l 2) (q 2 (i (a (i (not (l (f 2))) (q 9 (f 2) (q . 42)) ()) 1) (q 2 (i (not (l (r 2))) (q 9 (r 2) (q . 34)) ()) 1) ()) 1) ()) 1)
   solution: ((42 . 34))
   output: "1"
-  runtime_cost: 1432
-  byte_cost: 1212000
-  total_cost: 1213432
+  runtime_cost: 1528
+  byte_cost: 1116000
+  total_cost: 1117528
 - name: narrow_pair
   program: (= 4 ())
   debug_program: (= (f 2) ())
@@ -40,9 +40,9 @@ tests:
   byte_cost: 84000
   total_cost: 84214
 - name: guard_type_assumption_shortcut
-  program: (a (q 2 (i 4 (q 8) (q 2 (i (a (i 4 (q) (q 9 (strlen 6) (q . 32))) 1) (q 8) (q)) 1)) 1) (c (q ()) 1))
-  debug_program: (a (q 2 (i (= (f 2) ()) (q 2 (i (not (a (i (= (f 2) ()) (q 9 (strlen (r 2)) (q . 32)) (q)) 1)) (q) (q 8 (q . "assertion failed at pairs.rue:28:5"))) 1) (q 8 (q . "assertion failed at pairs.rue:25:5"))) 1) (c (c () ()) 1))
+  program: (a (q 2 (i (all (not 4) (a (i 4 (q 1 . 1) (q 32 (= (strlen 6) (q . 32)))) 1)) () (q 8)) 1) (c (q ()) 1))
+  debug_program: (a (q 2 (i (= (f 2) ()) (q 2 (i (not (a (i (= (f 2) ()) (q 9 (strlen (r 2)) (q . 32)) ()) 1)) () (q 8 (q . "assertion failed at pairs.rue:28:5"))) 1) (q 8 (q . "assertion failed at pairs.rue:25:5"))) 1) (c (c () ()) 1))
   output: ()
-  runtime_cost: 1366
-  byte_cost: 1068000
-  total_cost: 1069366
+  runtime_cost: 2384
+  byte_cost: 996000
+  total_cost: 998384

@@ -14,12 +14,12 @@ tests:
   byte_cost: 276000
   total_cost: 276959
 - name: nested_call
-  program: (a (q 16 (a 6 (c 4 (c (a 6 (c 4 (q 1 . 2))) (q . 3)))) (q . 1)) (c (c (q . 4) (q 2 2 (c 3 ()))) ()))
+  program: (a (q 16 (a 2 (c (c (a 2 (q (q . 2))) (q . 3)) ())) (q . 1)) (c (q . 4) ()))
   debug_program: (a (q 16 (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 1) (q . 2)))) (q . 3)))) (q . 1)) (c (c (q 5 2) (q 2 2 (c 3 ()))) ()))
   output: "2"
-  runtime_cost: 2324
-  byte_cost: 972000
-  total_cost: 974324
+  runtime_cost: 1570
+  byte_cost: 684000
+  total_cost: 685570
 - name: deeper_compound
   program: (+ (a (q . 4) (q (q 2 . 3))) (q . 1))
   debug_program: (a (q 16 (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 1) (c (q . 2) (q . 3))))) (q . 1)) (c (c (q 5 2) (q 2 2 (c 3 ()))) ()))

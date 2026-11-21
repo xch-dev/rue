@@ -1,0 +1,70 @@
+// `x is nil` for a value that could be any atom or a pair is `(not x)`, since `not` is already
+// false for a pair.
+
+fn describe(x: Any) -> Int {
+    if x is nil {
+        1
+    } else {
+        2
+    }
+}
+
+// Nil, another atom, a pair, and an atom that's zero but isn't nil
+test fn in_a_condition(a: Any, b: Any, c: Any, d: Any) -> List<Int> {
+    [describe(a), describe(b), describe(c), describe(d)]
+}
+
+test fn as_a_value(a: Any, b: Any, c: Any, d: Any) -> List<Bool> {
+    [a is nil, b is nil, c is nil, d is nil]
+}
+
+test fn negated(a: Any, b: Any, c: Any, d: Any) -> List<Bool> {
+    [!(a is nil), !(b is nil), !(c is nil), !(d is nil)]
+}
+
+// A value that already can't be a pair is checked the same way
+test fn atom_or_nil(a: Bytes | nil, b: Bytes | nil) -> List<Int> {
+    [
+        if a is nil {
+            1
+        } else {
+            2
+        },
+        if b is nil {
+            1
+        } else {
+            2
+        },
+    ]
+}
+
+// The value is only evaluated once, and its checks are kept
+test fn value_that_may_fail(f: fn(x: Int) -> Any, x: Int) -> Bool {
+    f(x) is nil
+}
+
+test fn value_that_fails(f: fn(x: Int) -> Any, x: Int) -> Bool {
+    f(x) is nil
+}
+
+// Narrowing still works after the check
+test fn narrows(x: Any) -> Int {
+    if x is nil {
+        return 0;
+    }
+
+    if x is Bytes {
+        return x.length;
+    }
+
+    -1
+}
+
+// In a condition too
+test fn condition_that_fails(f: fn(x: Int) -> Any, x: Int) -> Int {
+    if f(x) is nil {
+        1
+    } else {
+        2
+    }
+}

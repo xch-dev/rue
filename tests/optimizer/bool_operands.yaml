@@ -1,50 +1,50 @@
 tests:
 - name: or_call
-  program: (a (q 2 (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q 2 9 2)) 1) (c (a 6 (q . 5)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) (q)) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
-  debug_program: (a (q 2 (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q 2 9 2)) 1) (c (a 6 (q . 5)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) (q)) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1)) ()))
+  program: (a (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q 34 (> 2 (q . 100)) (> (q . 1000) 2))) 1) (c (q . 5) 1))
+  debug_program: (a (q 2 (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q 2 9 2)) 1) (c (a 6 (q . 5)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1)) ()))
   output: "1"
-  runtime_cost: 1925
-  byte_cost: 1716000
-  total_cost: 1717925
+  runtime_cost: 643
+  byte_cost: 828000
+  total_cost: 828643
 - name: or_call_false
-  program: (a (q 2 (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q 2 9 2)) 1) (c (a 6 (q . 6)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) (q)) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
-  debug_program: (a (q 2 (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q 2 9 2)) 1) (c (a 6 (q . 6)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) (q)) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1)) ()))
+  program: (a (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q 34 (> 2 (q . 100)) (> (q . 1000) 2))) 1) (c (q . 6) 1))
+  debug_program: (a (q 2 (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q 2 9 2)) 1) (c (a 6 (q . 6)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1)) ()))
   output: ()
-  runtime_cost: 2920
-  byte_cost: 1716000
-  total_cost: 1718920
+  runtime_cost: 2568
+  byte_cost: 828000
+  total_cost: 830568
 - name: and_call
-  program: (a (q 2 (q 2 (i (> 2 (q . 5)) (q 2 9 2) (q)) 1) (c (a 6 (q . 500)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) (q)) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
-  debug_program: (a (q 2 (q 2 (i (> 2 (q . 5)) (q 2 9 2) (q)) 1) (c (a 6 (q . 500)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) (q)) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1)) ()))
+  program: (a (q 2 (i (> 2 (q . 5)) (q 34 (> 2 (q . 100)) (> (q . 1000) 2)) ()) 1) (c (q . 500) 1))
+  debug_program: (a (q 2 (q 2 (i (> 2 (q . 5)) (q 2 9 2) ()) 1) (c (a 6 (q . 500)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1)) ()))
   output: "1"
-  runtime_cost: 3836
-  byte_cost: 1716000
-  total_cost: 1719836
+  runtime_cost: 2981
+  byte_cost: 804000
+  total_cost: 806981
 - name: and_call_false
-  program: (a (q 2 (q 2 (i (> 2 (q . 5)) (q 2 9 2) (q)) 1) (c (a 6 (q . 50)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) (q)) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
-  debug_program: (a (q 2 (q 2 (i (> 2 (q . 5)) (q 2 9 2) (q)) 1) (c (a 6 (q . 50)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) (q)) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1)) ()))
+  program: (a (q 2 (i (> 2 (q . 5)) (q 34 (> 2 (q . 100)) (> (q . 1000) 2)) ()) 1) (c (q . 50) 1))
+  debug_program: (a (q 2 (q 2 (i (> 2 (q . 5)) (q 2 9 2) ()) 1) (c (a 6 (q . 50)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1)) ()))
   output: ()
-  runtime_cost: 3303
-  byte_cost: 1692000
-  total_cost: 1695303
+  runtime_cost: 2975
+  byte_cost: 780000
+  total_cost: 782975
 - name: or_value_outside_of_its_type
-  program: (a (q 2 (q 2 (i (= 2 (q . 6)) (q 1 . 1) (q . 2)) 1) (c (a 2 (q . 5)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
+  program: (a (q 2 (i (= 2 (q . 6)) (q 1 . 1) (q . 2)) 1) (c (q . 5) 1))
   debug_program: (a (q 2 (q 2 (i (= 2 (q . 6)) (q 1 . 1) (q . 2)) 1) (c (a 2 (q . 5)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1) ()))
   output: "5"
-  runtime_cost: 1878
-  byte_cost: 1116000
-  total_cost: 1117878
+  runtime_cost: 671
+  byte_cost: 540000
+  total_cost: 540671
 - name: and_value_outside_of_its_type
-  program: (a (q 2 (q 2 (i (= 2 (q . 5)) (q . 2) (q)) 1) (c (a 2 (q . 5)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8)) 1) ()))
-  debug_program: (a (q 2 (q 2 (i (= 2 (q . 5)) (q . 2) (q)) 1) (c (a 2 (q . 5)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1) ()))
+  program: (a (q 2 (i (= 2 (q . 5)) (q . 2) ()) 1) (c (q . 5) 1))
+  debug_program: (a (q 2 (q 2 (i (= 2 (q . 5)) (q . 2) ()) 1) (c (a 2 (q . 5)) 1)) (c (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1) ()))
   output: "5"
-  runtime_cost: 1878
-  byte_cost: 1092000
-  total_cost: 1093878
+  runtime_cost: 695
+  byte_cost: 492000
+  total_cost: 492695
 - name: or_turned_into_a_bool
-  program: (a (q 2 (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q 3 (a 9 2) (q . 1) ())) 1) (c (a 6 (q . 500)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) (q)) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
-  debug_program: (a (q 2 (q 2 (q 2 (i 2 (q 1 . 1) (q)) 1) (c (a (i (= 2 (q . 5)) (q 1 . 1) (q 2 9 2)) 1) 1)) (c (a 6 (q . 500)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) (q)) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1)) ()))
+  program: (a (q 2 (i (= 2 (q . 5)) (q 1 . 1) (q 34 (> 2 (q . 100)) (> (q . 1000) 2))) 1) (c (q . 500) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i 2 (q 1 . 1) ()) 1) (c (a (i (= 2 (q . 5)) (q 1 . 1) (q 2 9 2)) 1) 1)) (c (a 6 (q . 500)) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 21 (q . 1000) 1) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at bool_operands.rue:5:5"))) 1)) ()))
   output: "1"
-  runtime_cost: 3550
-  byte_cost: 1860000
-  total_cost: 1863550
+  runtime_cost: 2573
+  byte_cost: 852000
+  total_cost: 854573

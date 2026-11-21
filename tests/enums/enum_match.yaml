@@ -1,57 +1,57 @@
 tests:
 - name: match_variants
-  program: (a (q 2 (i (a 4 (q ())) (q 8) (q 2 (i (= (a 4 (q 1 2)) (q . 12)) (q 2 (i (= (a 4 (q 10 2 3)) (q . 6)) (q 2 (i (= (a 6 (q 10 2 3)) (q . 6)) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1)) 1) (c (c (q 2 (i 2 (q 2 (i (= 2 (q . 1)) (q 18 5 5 (q . 3)) (q 18 5 11)) 1) (q)) 1) (q 2 (i 2 (q 2 (i (= 2 (q . 1)) (q 18 5 5 (q . 3)) (q 18 5 11)) 1) (q)) 1)) ()))
-  debug_program: (a (q 2 (i (= (a 4 (c () ())) ()) (q 2 (i (= (a 4 (c (q . 1) (c (q . 2) ()))) (q . 12)) (q 2 (i (= (a 4 (c (q . 10) (c (q . 2) (c (q . 3) ())))) (q . 6)) (q 2 (i (= (a 6 (c (q . 10) (c (q . 2) (c (q . 3) ())))) (q . 6)) (q) (q 8 (q . "assertion failed at enum_match.rue:45:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:44:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:43:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:42:5"))) 1) (c (c (q 2 (i (= (f 1) ()) (q) (q 2 (i (= (f 1) (q . 1)) (q 18 (* (q . 3) (f (r 1))) (f (r 1))) (q 18 (f (r 1)) (f (r (r 1))))) 1)) 1) (q 2 (i (= (f 1) ()) (q) (q 2 (i (= (f 1) (q . 1)) (q 18 (* (q . 3) (f (r 1))) (f (r 1))) (q 18 (f (r 1)) (f (r (r 1))))) 1)) 1)) ()))
+  program: ()
+  debug_program: (a (q 2 (i (= (a 4 (c () ())) ()) (q 2 (i (= (a 4 (c (q . 1) (c (q . 2) ()))) (q . 12)) (q 2 (i (= (a 4 (c (q . 10) (c (q . 2) (c (q . 3) ())))) (q . 6)) (q 2 (i (= (a 6 (c (q . 10) (c (q . 2) (c (q . 3) ())))) (q . 6)) () (q 8 (q . "assertion failed at enum_match.rue:45:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:44:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:43:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:42:5"))) 1) (c (c (q 2 (i (= (f 1) ()) () (q 2 (i (= (f 1) (q . 1)) (q 18 (* (q . 3) (f (r 1))) (f (r 1))) (q 18 (f (r 1)) (f (r (r 1))))) 1)) 1) (q 2 (i (= (f 1) ()) () (q 2 (i (= (f 1) (q . 1)) (q 18 (* (q . 3) (f (r 1))) (f (r 1))) (q 18 (f (r 1)) (f (r (r 1))))) 1)) 1)) ()))
   output: ()
-  runtime_cost: 8749
-  byte_cost: 3588000
-  total_cost: 3596749
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: match_unit_variants
-  program: (a (q 2 (i (a 2 ()) (q 8) (q 2 (i (a 2 (q . 1)) (q 2 (i (a 2 (q . 5)) (q) (q 8)) 1) (q 8)) 1)) 1) (c (q 32 (= 1 ())) ()))
-  debug_program: (a (q 2 (i (not (a 2 ())) (q 2 (i (a 2 (q . 1)) (q 2 (i (a 2 (q . 5)) (q) (q 8 (q . "assertion failed at enum_match.rue:58:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:57:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:56:5"))) 1) (c (q 2 (i (= 1 ()) (q) (q 1 . 1)) 1) ()))
+  program: ()
+  debug_program: (a (q 2 (i (not (a 2 ())) (q 2 (i (a 2 (q . 1)) (q 2 (i (a 2 (q . 5)) () (q 8 (q . "assertion failed at enum_match.rue:58:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:57:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:56:5"))) 1) (c (q 2 (i (= 1 ()) () (q 1 . 1)) 1) ()))
   output: ()
-  runtime_cost: 2621
-  byte_cost: 1308000
-  total_cost: 1310621
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: match_rest
-  program: (a (q 2 (i (a 2 (q 10 1 1)) (q 2 (i (a 2 (q 1 1)) (q 8) (q 2 (i (a 2 (q ())) (q 8) (q)) 1)) 1) (q 8)) 1) (c (q 9 2 (q . 10)) ()))
-  debug_program: (a (q 2 (i (a 2 (c (q . 10) (c (q . 1) (c (q . 1) ())))) (q 2 (i (not (a 2 (c (q . 1) (c (q . 1) ())))) (q 2 (i (not (a 2 (c () ()))) (q) (q 8 (q . "assertion failed at enum_match.rue:72:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:71:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:70:5"))) 1) (c (q 2 (i (= (f 1) (q . 10)) (q 1 . 1) (q)) 1) ()))
+  program: ()
+  debug_program: (a (q 2 (i (a 2 (c (q . 10) (c (q . 1) (c (q . 1) ())))) (q 2 (i (not (a 2 (c (q . 1) (c (q . 1) ())))) (q 2 (i (not (a 2 (c () ()))) () (q 8 (q . "assertion failed at enum_match.rue:72:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:71:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:70:5"))) 1) (c (q 2 (i (= (f 1) (q . 10)) (q 1 . 1) ()) 1) ()))
   output: ()
-  runtime_cost: 1937
-  byte_cost: 1452000
-  total_cost: 1453937
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: match_generic
-  program: (a (q 2 (i (= (a 2 (q (()) . 1)) (q . 1)) (q 2 (i (= (a 2 (q (q 2) . 1)) (q . 2)) (q) (q 8)) 1) (q 8)) 1) (c (q 2 (i 4 (q . 10) (q . 3)) 1) ()))
-  debug_program: (a (q 2 (i (= (a 2 (c (c () ()) (q . 1))) (q . 1)) (q 2 (i (= (a 2 (c (c (q . 1) (c (q . 2) ())) (q . 1))) (q . 2)) (q) (q 8 (q . "assertion failed at enum_match.rue:85:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:84:5"))) 1) (c (q 2 (i (= (f 2) ()) (q . 3) (q 5 (r 2))) 1) ()))
+  program: ()
+  debug_program: (a (q 2 (i (= (a 2 (c (c () ()) (q . 1))) (q . 1)) (q 2 (i (= (a 2 (c (c (q . 1) (c (q . 2) ())) (q . 1))) (q . 2)) () (q 8 (q . "assertion failed at enum_match.rue:85:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:84:5"))) 1) (c (q 2 (i (= (f 2) ()) (q . 3) (q 5 (r 2))) 1) ()))
   output: ()
-  runtime_cost: 1912
-  byte_cost: 1404000
-  total_cost: 1405912
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: inline_match
-  program: (a (q 2 (i (= (a 2 ()) (q . 1)) (q 2 (i (= (a 2 (q . 1)) (q . 2)) (q 2 (i (= (a 2 (q . 5)) (q . 3)) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (c (q 3 1 (i (= 1 (q . 1)) (q . 2) (q . 3)) (q . 1)) ()))
-  debug_program: (a (q 2 (i (= (a 2 ()) (q . 1)) (q 2 (i (= (a 2 (q . 1)) (q . 2)) (q 2 (i (= (a 2 (q . 5)) (q . 3)) (q) (q 8 (q . "assertion failed at enum_match.rue:99:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:98:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:97:5"))) 1) (c (q 3 (= 1 ()) (q . 1) (i (= 1 (q . 1)) (q . 2) (q . 3))) ()))
+  program: ()
+  debug_program: (a (q 2 (i (= (a 2 ()) (q . 1)) (q 2 (i (= (a 2 (q . 1)) (q . 2)) (q 2 (i (= (a 2 (q . 5)) (q . 3)) () (q 8 (q . "assertion failed at enum_match.rue:99:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:98:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:97:5"))) 1) (c (q 3 (= 1 ()) (q . 1) (i (= 1 (q . 1)) (q . 2) (q . 3))) ()))
   output: ()
-  runtime_cost: 2885
-  byte_cost: 1836000
-  total_cost: 1838885
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: match_variant_fields
-  program: (a (q 2 (i (a 4 (q ())) (q 8) (q 2 (i (= (a 4 (q 1 1)) (q . 1)) (q 2 (i (= (a 4 (q 1 2)) (q . 2)) (q 2 (i (= (a 6 (q 1 1)) (q . 1)) (q 2 (i (= (a 6 (q 1 2)) (q . 2)) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1)) 1) (c (c (q 2 (i 2 (q 2 (i (= 5 (q . 1)) (q 1 . 1) (q . 5)) 1) (q)) 1) (q 2 (i (a (i 2 (q 2 (i (= 2 (q . 1)) (q 9 5 (q . 1)) (q)) 1) (q 1 . 1)) 1) (q 1 . 1) (q . 5)) 1)) ()))
-  debug_program: (a (q 2 (i (= (a 4 (c () ())) ()) (q 2 (i (= (a 4 (c (q . 1) (c (q . 1) ()))) (q . 1)) (q 2 (i (= (a 4 (c (q . 1) (c (q . 2) ()))) (q . 2)) (q 2 (i (= (a 6 (c (q . 1) (c (q . 1) ()))) (q . 1)) (q 2 (i (= (a 6 (c (q . 1) (c (q . 2) ()))) (q . 2)) (q) (q 8 (q . "assertion failed at enum_match.rue:136:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:135:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:134:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:133:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:132:5"))) 1) (c (c (q 2 (i (= (f 1) ()) (q) (q 2 (i (= (f (r 1)) (q . 1)) (q 1 . 1) (q 5 (r 1))) 1)) 1) (q 2 (i (a (i (= (f 1) ()) (q 1 . 1) (q 2 (i (= (f 1) (q . 1)) (q 9 (f (r 1)) (q . 1)) (q)) 1)) 1) (q 1 . 1) (q 2 (q . 2) (c (f (r 1)) 1))) 1)) ()))
+  program: ()
+  debug_program: (a (q 2 (i (= (a 4 (c () ())) ()) (q 2 (i (= (a 4 (c (q . 1) (c (q . 1) ()))) (q . 1)) (q 2 (i (= (a 4 (c (q . 1) (c (q . 2) ()))) (q . 2)) (q 2 (i (= (a 6 (c (q . 1) (c (q . 1) ()))) (q . 1)) (q 2 (i (= (a 6 (c (q . 1) (c (q . 2) ()))) (q . 2)) () (q 8 (q . "assertion failed at enum_match.rue:136:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:135:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:134:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:133:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:132:5"))) 1) (c (c (q 2 (i (= (f 1) ()) () (q 2 (i (= (f (r 1)) (q . 1)) (q 1 . 1) (q 5 (r 1))) 1)) 1) (q 2 (i (a (i (= (f 1) ()) (q 1 . 1) (q 2 (i (= (f 1) (q . 1)) (q 9 (f (r 1)) (q . 1)) ()) 1)) 1) (q 1 . 1) (q 2 (q . 2) (c (f (r 1)) 1))) 1)) ()))
   output: ()
-  runtime_cost: 6632
-  byte_cost: 4020000
-  total_cost: 4026632
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: match_every_combination_of_fields
-  program: (a (q 2 (i (a 4 (q ())) (q 8) (q 2 (i (= (a 4 (q 1 1 1)) (q . 1)) (q 2 (i (= (a 6 (q 1 1 1)) (q . 10)) (q 2 (i (= (a 6 (q 1 2 1)) (q . 21)) (q 2 (i (= (a 4 (q 1 1 2)) (q . 2)) (q 2 (i (= (a 4 (q 1 2 1)) (q . 3)) (q 2 (i (= (a 4 (q 1 2 2)) (q . 4)) (q) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1)) 1) (c (c (q 2 (i 2 (q 2 (i (a (i (= 5 (q . 1)) (q 9 11 (q . 1)) (q)) 1) (q 1 . 1) (q 2 (i (= 5 (q . 1)) (q 1 . 2) (q 2 (i (= 11 (q . 1)) (q 1 . 3) (q 16 5 11)) 1)) 1)) 1) (q)) 1) (q 2 (i 2 (q 2 (i (a (i (= 5 (q . 1)) (q 9 11 (q . 1)) (q)) 1) (q 1 . 10) (q 16 (* 5 (q . 10)) 11)) 1) (q)) 1)) ()))
-  debug_program: (a (q 2 (i (= (a 4 (c () ())) ()) (q 2 (i (= (a 4 (c (q . 1) (c (q . 1) (c (q . 1) ())))) (q . 1)) (q 2 (i (= (a 6 (c (q . 1) (c (q . 1) (c (q . 1) ())))) (q . 10)) (q 2 (i (= (a 6 (c (q . 1) (c (q . 2) (c (q . 1) ())))) (q . 21)) (q 2 (i (= (a 4 (c (q . 1) (c (q . 1) (c (q . 2) ())))) (q . 2)) (q 2 (i (= (a 4 (c (q . 1) (c (q . 2) (c (q . 1) ())))) (q . 3)) (q 2 (i (= (a 4 (c (q . 1) (c (q . 2) (c (q . 2) ())))) (q . 4)) (q) (q 8 (q . "assertion failed at enum_match.rue:166:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:165:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:164:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:163:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:162:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:161:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:160:5"))) 1) (c (c (q 2 (i (= (f 1) ()) (q) (q 2 (i (a (i (= (f (r 1)) (q . 1)) (q 9 (f (r (r 1))) (q . 1)) (q)) 1) (q 1 . 1) (q 2 (i (= (f (r 1)) (q . 1)) (q 1 . 2) (q 2 (i (= (f (r (r 1))) (q . 1)) (q 1 . 3) (q 16 (f (r 1)) (f (r (r 1))))) 1)) 1)) 1)) 1) (q 2 (i (= (f 1) ()) (q) (q 2 (i (a (i (= (f (r 1)) (q . 1)) (q 9 (f (r (r 1))) (q . 1)) (q)) 1) (q 1 . 10) (q 16 (* (f (r 1)) (q . 10)) (f (r (r 1))))) 1)) 1)) ()))
+  program: ()
+  debug_program: (a (q 2 (i (= (a 4 (c () ())) ()) (q 2 (i (= (a 4 (c (q . 1) (c (q . 1) (c (q . 1) ())))) (q . 1)) (q 2 (i (= (a 6 (c (q . 1) (c (q . 1) (c (q . 1) ())))) (q . 10)) (q 2 (i (= (a 6 (c (q . 1) (c (q . 2) (c (q . 1) ())))) (q . 21)) (q 2 (i (= (a 4 (c (q . 1) (c (q . 1) (c (q . 2) ())))) (q . 2)) (q 2 (i (= (a 4 (c (q . 1) (c (q . 2) (c (q . 1) ())))) (q . 3)) (q 2 (i (= (a 4 (c (q . 1) (c (q . 2) (c (q . 2) ())))) (q . 4)) () (q 8 (q . "assertion failed at enum_match.rue:166:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:165:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:164:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:163:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:162:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:161:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:160:5"))) 1) (c (c (q 2 (i (= (f 1) ()) () (q 2 (i (a (i (= (f (r 1)) (q . 1)) (q 9 (f (r (r 1))) (q . 1)) ()) 1) (q 1 . 1) (q 2 (i (= (f (r 1)) (q . 1)) (q 1 . 2) (q 2 (i (= (f (r (r 1))) (q . 1)) (q 1 . 3) (q 16 (f (r 1)) (f (r (r 1))))) 1)) 1)) 1)) 1) (q 2 (i (= (f 1) ()) () (q 2 (i (a (i (= (f (r 1)) (q . 1)) (q 9 (f (r (r 1))) (q . 1)) ()) 1) (q 1 . 10) (q 16 (* (f (r 1)) (q . 10)) (f (r (r 1))))) 1)) 1)) ()))
   output: ()
-  runtime_cost: 14849
-  byte_cost: 6324000
-  total_cost: 6338849
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
 - name: match_imported_variants
-  program: (a (q 2 (i (= (a 2 (q () 3)) (q . 9)) (q 2 (i (= (a 2 (q 1 4)) (q . 4)) (q) (q 8)) 1) (q 8)) 1) (c (q 2 (i 2 (q . 5) (q 18 5 5)) 1) ()))
-  debug_program: (a (q 2 (i (= (a 2 (c () (c (q . 3) ()))) (q . 9)) (q 2 (i (= (a 2 (c (q . 1) (c (q . 4) ()))) (q . 4)) (q) (q 8 (q . "assertion failed at enum_match.rue:186:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:185:5"))) 1) (c (q 2 (i (= (f 1) ()) (q 18 (f (r 1)) (f (r 1))) (q 5 (r 1))) 1) ()))
+  program: ()
+  debug_program: (a (q 2 (i (= (a 2 (c () (c (q . 3) ()))) (q . 9)) (q 2 (i (= (a 2 (c (q . 1) (c (q . 4) ()))) (q . 4)) () (q 8 (q . "assertion failed at enum_match.rue:186:5"))) 1) (q 8 (q . "assertion failed at enum_match.rue:185:5"))) 1) (c (q 2 (i (= (f 1) ()) (q 18 (f (r 1)) (f (r 1))) (q 5 (r 1))) 1) ()))
   output: ()
-  runtime_cost: 2956
-  byte_cost: 1452000
-  total_cost: 1454956
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044

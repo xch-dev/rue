@@ -4,16 +4,16 @@ byte_cost: 252000
 clvm_error: path into atom
 tests:
 - name: announces_the_nonce
-  program: (a (q 2 22 (c (c 4 (c 10 30)) (c (c (c (q . 51) (c (sha256 (q . "destination")) (q 1))) ()) (c (sha256 (q . "nonce")) ())))) (c (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) (c (q 2 2 5) (c (q 2 (q 2 (i (= (a 9 (c 9 2)) (a 9 (c 9 (a 21 (c 29 (c 7 ())))))) (q . 2) (q 8)) 1) (c (a 10 (c (q 4 (c (q . 60) (c 5 ())) 2) (c 3 ()))) 1)) (q 4 (c (q . 60) (c 5 ())) 2)))) ()))
+  program: (a (q 2 (q 2 (q 2 (i (= (a 19 (c 19 2)) (a 19 (c 19 (a 43 (c 59 (c 5 ())))))) (q . 2) (q 8)) 1) (c (a 21 (c (q 4 (c (q . 60) (c 5 ())) 2) (c 2 ()))) 1)) (c (c (c (c (q . 51) (c (sha256 (q . "destination")) (q 1))) ()) (c (sha256 (q . "nonce")) ())) 1)) (c (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) (q (a 2 5) 4 (c (q . 60) (c 5 ())) 2)) ()))
   debug_program: (a (q 2 22 (c (c 4 (c 10 (c 46 62))) (c (c (c (q . 51) (c (sha256 (q . "destination")) (c (q . 1) ()))) ()) (c (sha256 (q . "nonce")) ())))) (c (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) (c (c (q . 2) (c (q . 2) (c (q . 5) ()))) (c (q 2 (q 2 (i (= (a 9 (c 9 2)) (a 9 (c 9 (a 21 (c 45 (c 7 ())))))) (q . 2) (q 8 (q . "assertion failed at conditions_w_fee_announce.rue:14:5"))) 1) (c (a 10 (c (c (q . 2) (c (c (q . 1) 30) (c (q . 1) ()))) (c 3 ()))) 1)) (c (c (q . 4) (c (c (q . 4) (c (c (q . 1) (q . 60)) (c (c (q . 4) (c (q . 5) (c () ()))) ()))) (c (q . 2) ()))) (q 4 (c (q . 60) (c 5 ())) 2))))) ()))
   output: ((60 0x78377b525757b494427f89014f97d79928f3938d14eb51e20fb5dec9834eb304) (51 0xb5c755aaab1038b3d5627bbde7f47ca80c5f5c0481c6d33f04139d07aa1530e7 1))
-  runtime_cost: 47511
-  byte_cost: 4092000
-  total_cost: 4139511
+  runtime_cost: 47131
+  byte_cost: 3804000
+  total_cost: 3851131
 - name: announces_with_no_conditions
-  program: (a (q 2 22 (c (c 4 (c 10 30)) (q () ()))) (c (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) (c (q 2 2 5) (c (q 2 (q 2 (i (= (a 9 (c 9 2)) (a 9 (c 9 (a 21 (c 29 (c 7 ())))))) (q . 2) (q 8)) 1) (c (a 10 (c (q 4 (c (q . 60) (c 5 ())) 2) (c 3 ()))) 1)) (q 4 (c (q . 60) (c 5 ())) 2)))) ()))
+  program: (a (q 2 (q 2 (i (= (a 9 (c 9 2)) (a 9 (c 9 (a 21 (c 29 (q (() ()))))))) (q . 2) (q 8)) 1) (c (a 10 (c (q 4 (c (q . 60) (c 5 ())) 2) (q (() ())))) 1)) (c (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) (q (a 2 5) 4 (c (q . 60) (c 5 ())) 2)) ()))
   debug_program: (a (q 2 22 (c (c 4 (c 10 (c 46 62))) (c () (c () ())))) (c (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) (c (c (q . 2) (c (q . 2) (c (q . 5) ()))) (c (q 2 (q 2 (i (= (a 9 (c 9 2)) (a 9 (c 9 (a 21 (c 45 (c 7 ())))))) (q . 2) (q 8 (q . "assertion failed at conditions_w_fee_announce.rue:14:5"))) 1) (c (a 10 (c (c (q . 2) (c (c (q . 1) 30) (c (q . 1) ()))) (c 3 ()))) 1)) (c (c (q . 4) (c (c (q . 4) (c (c (q . 1) (q . 60)) (c (c (q . 4) (c (q . 5) (c () ()))) ()))) (c (q . 2) ()))) (q 4 (c (q . 60) (c 5 ())) 2))))) ()))
   output: ((60 ()))
-  runtime_cost: 23008
-  byte_cost: 3396000
-  total_cost: 3419008
+  runtime_cost: 22124
+  byte_cost: 2916000
+  total_cost: 2938124

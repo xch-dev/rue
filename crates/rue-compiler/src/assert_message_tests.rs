@@ -408,7 +408,7 @@ fn inline_argument_that_only_reaches_a_message_is_reported() {
         let warnings = compile(&source).warnings();
         assert_eq!(warnings.len(), 1, "{source}: {warnings:?}");
         assert!(warnings[0].ends_with("InlineValueMayFail"), "{warnings:?}");
-        assert_eq!(program(&source, false), "(a (i 5 (q) (q 8)) 1)", "{source}");
+        assert_eq!(program(&source, false), "(a (i 5 () (q 8)) 1)", "{source}");
     }
 }
 

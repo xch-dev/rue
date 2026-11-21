@@ -8,7 +8,7 @@ tests:
   total_cost: 36020
 - name: lambda_waits_for_a_later_lambda
   program: (q . 5)
-  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))) (c (q . 1) (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ())))))) (c (q 2 2 (c 5 ())) ()))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))) (c (q . 1) (c (q . 2) (c () (c (q . 1) ())))))) (c (q 2 2 (c 5 ())) ()))
   output: "5"
   runtime_cost: 20
   byte_cost: 36000
@@ -71,32 +71,32 @@ tests:
   total_cost: 36020
 - name: generic_lambda_doesnt_hold_others_up
   program: (a (q 1 . 1) (q 1))
-  debug_program: (a (q 2 14 (c (a 10 (c (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))) (c (q . 1) ()))) (a 4 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 5) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))))) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c () ()))))) (c (c (q 2 2 (c 5 ())) (c (q 2 5 (c (a 2 (c 7 ())) ())) (q 2 2 (c (a 3 ()) ())))) ()))
+  debug_program: (a (q 2 14 (c (a 10 (c (c (q . 2) (c () (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))) (c (q . 1) ()))) (a 4 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 5) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))))) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c () ()))))) (c (c (q 2 2 (c 5 ())) (c (q 2 5 (c (a 2 (c 7 ())) ())) (q 2 2 (c (a 3 ()) ())))) ()))
   output: "1"
   runtime_cost: 151
   byte_cost: 180000
   total_cost: 180151
 - name: lambda_waits_for_what_its_generics_are_mapped_to
-  program: (a (q 2 2 (c (q . 2) (c (q . 1) (c (q . 1) (q . 2))))) (c (q 2 (i (> 11 ()) (q 2 2 (c 5 ())) (q 2 2 (c 5 ()))) 1) ()))
+  program: (a (q 2 2 (q 1)) (c (q . 2) 1))
   debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 1) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 11 ()) (q 2 2 (c 5 ())) (q 2 2 (c 5 ()))) 1) ()))
   output: "1"
-  runtime_cost: 1742
-  byte_cost: 1164000
-  total_cost: 1165742
+  runtime_cost: 433
+  byte_cost: 324000
+  total_cost: 324433
 - name: lambda_for_a_mapped_bare_generic_doesnt_wait
-  program: (a (q 3 () (a (a 2 (c (a 2 (c (q 1 . 7) (c (q 1 1 . 9) (q)))) (c (q 1) (q)))) (q ())) ()) (c (q . 2) ()))
-  debug_program: (a (q 2 (q 3 () (a 2 (c () ())) ()) (c (a 2 (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 1 . 9)) (c (q . 1) ())))) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ())))))) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q)) (c (q . 1) ())))) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q)) (c (q . 1) ())))))) 1)) (c (q . 2) ()))
+  program: (i () (a (q 1 . 7) (q ())) ())
+  debug_program: (a (q 2 (q 3 () (a 2 (c () ())) ()) (c (a 2 (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 1 . 9)) (c (q . 1) ())))) (c (q . 1) ()))) (c (q . 2) (c () (c (q . 1) ())))))) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c () (c (q . 1) ())))) (c (q . 1) ()))) (c (q . 2) (c () (c (q . 1) ())))))) 1)) (c (q . 2) ()))
   output: ()
-  runtime_cost: 1157
-  byte_cost: 1068000
-  total_cost: 1069157
+  runtime_cost: 273
+  byte_cost: 276000
+  total_cost: 276273
 - name: lambda_waits_for_the_generics_its_own_are_inferred_through
-  program: (a (q 2 2 (c (c (q . 2) (q . 2)) (c (q . 1) (c (q . 1) (q . 2))))) (c (q 2 (i (> 11 ()) (q 2 6 (c (a 4 (c 5 ())) ())) (q 2 6 (c (a 4 (c 5 ())) ()))) 1) ()))
+  program: (a (q 2 5 (c (a 2 (q 1)) ())) (c (q . 2) (c (q . 2) 1)))
   debug_program: (a (q 2 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (q . 1) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 11 ()) (q 2 6 (c (a 4 (c 5 ())) ())) (q 2 6 (c (a 4 (c 5 ())) ()))) 1) ()))
   output: "1"
-  runtime_cost: 2103
-  byte_cost: 1548000
-  total_cost: 1550103
+  runtime_cost: 790
+  byte_cost: 564000
+  total_cost: 564790
 - name: nested_call_doesnt_wait_for_a_lower_bound
   program: (a (q 1 . 8) (q 5))
   debug_program: (a (q 2 (q 2 2 (c (q . 5) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) (q 1 . 8)) (c (q . 1) ()))) (a 10 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))))) 1)) (c (c (q . 2) (c (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ()))) (q . 2))) ()))
