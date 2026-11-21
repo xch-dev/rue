@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use log::debug;
 use rowan::TextRange;
-use rue_ast::{AstBinding, AstMatchArm, AstMatchExpr, AstNode};
+use rue_ast::{AstBinding, AstMatchArm, AstMatchArmGuard, AstMatchExpr, AstNode};
 use rue_diagnostic::{DiagnosticKind, Note, SrcLoc};
 use rue_hir::{
     BinaryOp, BindingSymbol, Block, Declaration, Guard, Hir, HirId, Mappings, Statement, Symbol,
@@ -201,14 +201,13 @@ pub fn compile_match_expr(
 
         let builtins = ctx.builtins().types;
 
+        // What's left after the arm, unless it has a condition, which leaves everything.
         // Nothing is left after an arm that doesn't need to check anything, so there's nothing
-        // to subtract, which can be slow for large unions. An arm with a condition leaves
-        // everything, so nothing is subtracted for it either.
-        let else_type = match pattern {
-            _ if guard.is_some() => remaining,
+        // to subtract, which can be slow for large unions.
+        let else_type = guard.is_none().then(|| match pattern {
             Some(ty) if check != Check::None => ctx.subtract_type(&pattern_srcloc, remaining, ty),
             _ => builtins.never,
-        };
+        });
 
         if !has_error && let Some(ty) = pattern {
             let members = indistinguishable_members(ctx, &remaining_members, ty);
@@ -222,23 +221,28 @@ pub fn compile_match_expr(
             }
         }
 
-        let else_members = if guard.is_some() {
-            remaining_members.clone()
-        } else {
-            members(ctx, else_type)
-        };
+        let rest = else_type.map(|else_type| (else_type, members(ctx, else_type)));
 
         // A wildcard arm sees the value as the earlier arms left it, which is already in scope
         let narrowed = pattern.filter(|_| !inline);
         let Arm {
             body,
             condition: arm_condition,
-        } = compile_arm(ctx, &matched, &arm, pattern, narrowed, remaining);
+        } = compile_arm(
+            ctx,
+            &matched,
+            &arm,
+            guard.as_ref(),
+            pattern,
+            narrowed,
+            remaining,
+        );
         types.push(body.ty);
 
-        // An arm with a condition handles everything that's left if it's true, so it's the same
-        // as one that does for what falls through it, but the arms after it are still needed
-        let catches_all = check == Check::None || else_members.is_empty();
+        // An arm with a condition whose type needs no check takes any value that's left, so
+        // that's what falls through it, although it isn't the arm that handles them
+        let catches_all =
+            check == Check::None || rest.as_ref().is_some_and(|(_, members)| members.is_empty());
 
         // An arm that handles everything that's left sees the members that are left, rather
         // than the type they're left in, which can keep the name of an alias that's been narrowed
@@ -282,6 +286,8 @@ pub fn compile_match_expr(
         }
 
         let ty = pattern.expect("only a pattern with a type has a check");
+        let (else_type, else_members) =
+            rest.expect("only an arm with a condition leaves everything");
 
         // Every check of an `inline match` is evaluated, even on the values that the arms before
         // it handle, so it can't rely on them being left out
@@ -454,21 +460,19 @@ fn compile_arm(
     ctx: &mut Compiler,
     matched: &Matched<'_>,
     arm: &AstMatchArm,
+    guard: Option<&AstMatchArmGuard>,
     pattern: Option<TypeId>,
     narrowed: Option<TypeId>,
     remaining: TypeId,
 ) -> Arm {
     let body = arm.expr();
-    let guard = arm.guard();
 
     // An arm without a body still declares its bindings, so that they can be looked up
     let range = body.as_ref().map_or_else(
         || TextRange::empty(arm.syntax().text_range().end()),
         |body| body.syntax().text_range(),
     );
-    let start = guard
-        .as_ref()
-        .map_or(range.start(), |guard| guard.syntax().text_range().start());
+    let start = guard.map_or(range.start(), |guard| guard.syntax().text_range().start());
     let mappings = narrowed
         .map(|ty| matched.reference.narrowed_to(ty))
         .unwrap_or_default();
@@ -553,8 +557,8 @@ struct ArmCondition {
     independent: bool,
 }
 
-/// Compiles the body of an arm that's never taken, so that its errors are still reported. It's
-/// left out of the HIR, so it isn't generated. The arms of an `inline match` don't narrow the
+/// Compiles the condition and body of an arm that's never taken, so that their errors are still
+/// reported. It's left out of the HIR, so it isn't generated. The arms of an `inline match` don't narrow the
 /// value, so it isn't narrowed here either.
 fn compile_unreachable_arm(
     ctx: &mut Compiler,
@@ -564,7 +568,16 @@ fn compile_unreachable_arm(
     remaining: TypeId,
 ) {
     let narrowed = (!matched.inline).then(|| pattern.unwrap_or(ctx.builtins().types.never));
-    let _ = compile_arm(ctx, matched, arm, pattern, narrowed, remaining);
+    let guard = arm.guard();
+    let _ = compile_arm(
+        ctx,
+        matched,
+        arm,
+        guard.as_ref(),
+        pattern,
+        narrowed,
+        remaining,
+    );
 }
 
 /// Declares the bindings of an arm, such as `x` and `y` in `Point { x, y } => x + y`, which

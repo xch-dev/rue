@@ -167,3 +167,23 @@ export fn conditions_named(value: Int | Bytes32 | (Int, Int)) -> Int {
         (Int, Int) => 3,
     }
 }
+
+// An arm with a condition is reported for the members it also takes even if an arm after it takes
+// them too, and it's never the reason that a later arm for them is unreachable: that's the arm
+// without a condition
+export fn conditions_then_unconditional(value: Int | Bytes32 | (Int, Int)) -> Int {
+    match value {
+        Int if value > 10 => 1,
+        Int => 2,
+        Bytes32 => 3,
+        (Int, Int) => 4,
+    }
+}
+
+export fn conditions_both_reported(value: Int | Bytes32 | (Int, Int)) -> Int {
+    match value {
+        Int if value > 10 => 1,
+        Int => 2,
+        (Int, Int) => 3,
+    }
+}

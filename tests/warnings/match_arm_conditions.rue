@@ -1,0 +1,61 @@
+// The lints about conditions see the condition of a match arm. `constant_condition` and
+// `duplicate_condition` only see it if the arm's type doesn't need to be checked at runtime,
+// since the condition is otherwise only part of what the arm checks.
+
+struct Tagged {
+    kind = 1,
+    value: Int,
+}
+
+struct Plain {
+    kind = 2,
+    value: Int,
+}
+
+export fn constant(value: Int) -> Int {
+    match value {
+        Int if true => 1,
+        _ if false => 2,
+        _ if value > 0 => 3,
+        _ => 4,
+    }
+}
+
+export fn constant_with_check(value: Tagged | Plain) -> Int {
+    match value {
+        Tagged if true => 1,
+        Tagged => 2,
+        Plain => 3,
+    }
+}
+
+export fn duplicate(value: Int, flag: Bool) -> Int {
+    match value {
+        Int if value > 1 => 1,
+        _ if flag => 2,
+        Int if value > 1 => 3,
+        _ if !flag => 4,
+        _ => 5,
+    }
+}
+
+export fn duplicate_with_check(value: Tagged | Plain, flag: Bool) -> Int {
+    match value {
+        Tagged if flag => 1,
+        Tagged if flag => 2,
+        Plain if flag => 3,
+        _ => 4,
+    }
+}
+
+// Parentheses around the whole condition aren't needed, unless it's a struct initializer
+export fn parens(value: Tagged | Plain, flag: Bool) -> Int {
+    match value {
+        Tagged if (flag) => 1,
+        Tagged if (value.value > 1) => 2,
+        Tagged if (value.value + 1) * 2 > 1 => 3,
+        Tagged if (Plain { value: 1 }).value > 1 => 4,
+        Plain if value.value == (Plain { value: 1 }).value => 5,
+        _ => 6,
+    }
+}

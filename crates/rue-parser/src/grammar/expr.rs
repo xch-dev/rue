@@ -360,18 +360,7 @@ fn if_expr_with(
         p.expected(&T![match].to_string());
     }
     p.expect(T![if]);
-    let child = p.checkpoint();
-    expr_with(
-        p,
-        child,
-        ExprOptions {
-            minimum_binding_power: 0,
-            allow_statement: false,
-            allow_struct_initializer: false,
-            inline: false,
-            allow_range: false,
-        },
-    );
+    condition_expr(p);
     block(p);
     if allow_statement && !p.at(T![else]) {
         p.start_at(checkpoint, SyntaxKind::IfStmt);
@@ -396,6 +385,24 @@ fn if_expr_with(
     }
 }
 
+/// The expression before the braces of an `if` or `match`, or before the `=>` of a match arm with
+/// a condition. A brace after it starts what comes next, so it can't be a struct initializer
+/// without parentheses.
+fn condition_expr(p: &mut Parser) {
+    let checkpoint = p.checkpoint();
+    expr_with(
+        p,
+        checkpoint,
+        ExprOptions {
+            minimum_binding_power: 0,
+            allow_statement: false,
+            allow_struct_initializer: false,
+            inline: false,
+            allow_range: false,
+        },
+    );
+}
+
 /// A `match` expression, such as `match value { Int => 1, _ => 2 }`, or an `inline match`. Each
 /// arm's pattern is a type, which can be followed by a binding that names or destructures the
 /// value, such as `Point { x, y } => x + y` or `Point as point => point.x`, and then by a
@@ -408,18 +415,7 @@ fn match_expr(p: &mut Parser, checkpoint: Checkpoint, allow_inline: bool) {
         p.try_eat(T![inline]);
     }
     p.expect(T![match]);
-    let child = p.checkpoint();
-    expr_with(
-        p,
-        child,
-        ExprOptions {
-            minimum_binding_power: 0,
-            allow_statement: false,
-            allow_struct_initializer: false,
-            inline: false,
-            allow_range: false,
-        },
-    );
+    condition_expr(p);
     if p.expect(T!['{']) {
         delimited_list(p, T!['}'], |p| {
             let mut ends_with_brace = match_arm(p);
@@ -461,18 +457,7 @@ fn match_arm(p: &mut Parser) -> bool {
     if p.at(T![if]) {
         p.start(SyntaxKind::MatchArmGuard);
         p.expect(T![if]);
-        let child = p.checkpoint();
-        expr_with(
-            p,
-            child,
-            ExprOptions {
-                minimum_binding_power: 0,
-                allow_statement: false,
-                allow_struct_initializer: false,
-                inline: false,
-                allow_range: false,
-            },
-        );
+        condition_expr(p);
         p.finish();
     }
 

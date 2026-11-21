@@ -1,0 +1,12 @@
+diagnostics:
+- Condition always evaluates to `true` at match_arm_conditions.rue:17:16
+- Condition always evaluates to `false` at match_arm_conditions.rue:18:14
+- |-
+  This condition is the same as an earlier one in the `else if` chain, so its branch is never taken at match_arm_conditions.rue:36:16
+    note: The same condition is checked here first at match_arm_conditions.rue:34:16
+- |-
+  Unnecessary parentheses at match_arm_conditions.rue:54:19
+    help: Remove the parentheses
+- |-
+  Unnecessary parentheses at match_arm_conditions.rue:55:19
+    help: Remove the parentheses

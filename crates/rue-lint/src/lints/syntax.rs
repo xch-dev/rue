@@ -401,7 +401,8 @@ fn is_whole_expression(node: &SyntaxNode) -> bool {
         | SyntaxKind::ListItem
         | SyntaxKind::Block
         | SyntaxKind::GroupExpr
-        | SyntaxKind::LambdaExpr => true,
+        | SyntaxKind::LambdaExpr
+        | SyntaxKind::MatchArmGuard => true,
         // Only the condition of an `if` is a whole expression, since a branch must be a block
         SyntaxKind::IfStmt | SyntaxKind::IfExpr => is_first_expr_of(&parent, node),
         // The index or a bound is a whole expression inside of the brackets, unlike the value

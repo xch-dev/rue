@@ -116,7 +116,20 @@ fn statement(value: Tagged | Plain | nil) -> Int {
     }
 }
 
-// A condition has to be before the `=>` of an arm that's a statement too
+// What the condition narrows isn't carried past the statement
+fn statement_narrowing(value: Tagged | Plain) -> Int {
+    match value {
+        Tagged if value.value is Int => {}
+        _ => {
+            return 1;
+        }
+    }
+
+    let inner: Int = value.value;
+    inner + 1
+}
+
+// An arm with a condition still needs a block in a `match` statement
 fn statement_condition(value: Int | (Int, Int)) -> Int {
     match value {
         Int if value > 10 => {
