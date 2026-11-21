@@ -7,9 +7,16 @@ use indexmap::{IndexSet, set::Slice};
 use rue_options::CompilerOptions;
 
 use crate::{
-    Database, FailureAnalysis, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
+    BindingSymbol, Block, ConstantSymbol, Database, FailureAnalysis, FieldAccess, FieldKind,
+    FunctionKind, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
     analysis::{Callee, Effect, resolve_callee},
+    lower::MAX_REPEATED_STATIC_SIZE,
 };
+
+/// The most reads that are counted for a symbol. Each inline binding that reads another one more
+/// than once multiplies the reads of what's below it, so a chain of them would overflow otherwise.
+/// Nothing tells counts this high apart, and they're added up when captures are put in a tree.
+const MAX_READS: usize = 1 << 16;
 
 #[derive(Debug, Clone)]
 pub struct DependencyGraph {
@@ -21,8 +28,26 @@ pub struct DependencyGraph {
     // Keeps track of the symbol that each local is defined in
     owners: HashMap<SymbolId, SymbolId>,
 
-    // Keeps track of the number of times a symbol is referenced
+    // Keeps track of the number of times a symbol is read. While the graph is being built, this
+    // is how many references to it have been visited, which is only compared with zero. Once
+    // it's built, each of those is counted as many times as it's lowered (see `count_reads`)
     references: HashMap<SymbolId, usize>,
+
+    // Keeps track of the number of references to each symbol in each place that's lowered a
+    // different number of times, which is `None` for a place that's lowered once
+    reads: HashMap<(Option<RepeatId>, SymbolId), usize>,
+
+    // The places that are lowered once for each read of something else, and the place that each
+    // one is in, if that's repeated too
+    repeats: IndexSet<(Repeat, Option<RepeatId>)>,
+
+    // Keeps track of the place being visited, if it's repeated
+    repeat: Option<RepeatId>,
+
+    // Keeps track of the place that each symbol is defined in, if it's repeated: the one that
+    // the let statement of a binding or the expression of a lambda is in, and the body of a
+    // lambda for its parameters. There's a copy of the symbol in each copy of that place
+    definitions: HashMap<SymbolId, RepeatId>,
 
     // Keeps track of whether a symbol is ever used as a closure
     closures: HashSet<SymbolId>,
@@ -83,11 +108,30 @@ pub struct DependencyGraph {
     failures: FailureAnalysis,
 }
 
+/// An index into the places that are lowered more than once (see [`Repeat`]).
+type RepeatId = usize;
+
+/// Somewhere that's lowered once for each read of a symbol, rather than once, since its value is
+/// substituted for every reference to it. A reference in one of these is as many reads of what it
+/// refers to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Repeat {
+    /// The value of an inline binding or constant.
+    Value(SymbolId),
+    /// An argument for the parameter of an `inline fn`, which substitutes its arguments wherever
+    /// the body references its parameters.
+    Argument(SymbolId),
+    /// The body of the lambda, which is lowered wherever the lambda expression is, and so only
+    /// as often as the place that it's in.
+    Lambda(SymbolId),
+}
+
 /// A type guard whose check doesn't use its value, along with the symbol whose body it's in, which
 /// hasn't been decided by [`visit_effects`] yet.
 #[derive(Debug, Clone, Copy)]
 struct UnvisitedGuard {
     current: Option<SymbolId>,
+    repeat: Option<RepeatId>,
     guard: HirId,
     value: HirId,
 }
@@ -109,6 +153,10 @@ impl DependencyGraph {
             dependencies: HashMap::new(),
             owners: HashMap::new(),
             references: HashMap::new(),
+            reads: HashMap::new(),
+            repeats: IndexSet::new(),
+            repeat: None,
+            definitions: HashMap::new(),
             closures: HashSet::new(),
             loops: HashSet::new(),
             loop_captures: HashSet::new(),
@@ -157,11 +205,94 @@ impl DependencyGraph {
             assign_destructured_owner(db, &mut graph, symbol);
         }
 
-        graph.count_default_references(db);
+        graph.count_reads(db);
         graph.find_loop_captures(db);
         graph.find_loop_dependencies(db);
 
         graph
+    }
+
+    /// Enters a place that's inside the one being visited.
+    fn enter(&mut self, repeat: Repeat) -> RepeatId {
+        let (id, _) = self.repeats.insert_full((repeat, self.repeat));
+        self.repeat = Some(id);
+        id
+    }
+
+    /// The place that the symbol is defined in, if it's repeated. The parts of a destructured
+    /// value don't have a let statement of their own, so they're defined where it is.
+    fn definition(&self, db: &Database, mut symbol: SymbolId) -> Option<RepeatId> {
+        loop {
+            if let Some(&repeat) = self.definitions.get(&symbol) {
+                return Some(repeat);
+            }
+
+            // A binding with a let statement is defined there, whatever its value refers to
+            if self.lets.contains_key(&symbol) {
+                return None;
+            }
+
+            let Symbol::Binding(binding) = db.symbol(symbol) else {
+                return None;
+            };
+
+            symbol = binding.value.reference.as_ref()?.symbol;
+        }
+    }
+
+    /// Counts how many times each symbol is read, now that every reference has been visited.
+    ///
+    /// A reference is lowered once for each time the code it's in is. That's once for the body
+    /// of a function, or the value of a binding or constant that's bound. But the value of an
+    /// inline binding or constant is lowered again for every reference to it, and so is the
+    /// argument of an `inline fn` for every reference to its parameter. So a reference in one of
+    /// those counts as many times as the binding, constant or parameter is read itself. The parts
+    /// of a destructured value are inline bindings that read it, so a part that's used three
+    /// times reads the value three times, which must not be taken for a single reference to a
+    /// value that can be substituted there.
+    ///
+    /// A let statement or a lambda expression in one of those places is lowered as often too,
+    /// along with the value of the binding or the body of the lambda. There's a copy of the
+    /// binding, or of the lambda and its parameters, in each copy of the place, so their reads
+    /// are counted for one copy: the references outside the place they're defined in don't
+    /// exist, and the ones inside aren't multiplied by how often that place is lowered.
+    ///
+    /// The default value of a struct's field is one of these values: it's an inline constant
+    /// that every initializer that leaves the field out refers to, so what it references is read
+    /// in each of them.
+    ///
+    /// The counts are for one copy of each function's body. A function that's inlined into more
+    /// than one call has a copy of its body in each, but they each read what's in them as often.
+    ///
+    /// A binding or constant whose value is small and static is the exception: its reads aren't
+    /// multiplied, so one that's referenced once is still substituted, and folded with what uses
+    /// it. Repeating such a value costs no more than binding it would.
+    fn count_reads(&mut self, db: &Database) {
+        let mut sites: HashMap<SymbolId, Vec<(Option<RepeatId>, usize)>> = HashMap::new();
+
+        for (&(repeat, symbol), &count) in &self.reads {
+            sites.entry(symbol).or_default().push((repeat, count));
+        }
+
+        // The counts don't depend on the order, unless a value is substituted into itself, which
+        // it can't be. If it ever is, they're still the same from run to run
+        let mut symbols: Vec<SymbolId> = sites.keys().copied().collect();
+        symbols.sort_unstable();
+
+        let mut counter = ReadCounter {
+            db,
+            graph: self,
+            sites,
+            counts: HashMap::new(),
+            counting: HashSet::new(),
+            static_sizes: HashMap::new(),
+        };
+
+        for symbol in symbols {
+            counter.reads(symbol);
+        }
+
+        self.references = counter.counts;
     }
 
     /// The block that the binding's let statement is in, and its index in the block's statements.
@@ -286,56 +417,6 @@ impl DependencyGraph {
     /// isn't substituted there unless that's as cheap as referring to it.
     pub fn is_loop_capture(&self, symbol: SymbolId) -> bool {
         self.loop_captures.contains(&symbol)
-    }
-
-    /// The default value of a struct's field is evaluated in every initializer that leaves the
-    /// field out, but the constant they refer to for it is only visited once. So what the value
-    /// references is counted again for each of the other initializers, as if the value were
-    /// written in each of them. Otherwise a function or constant that only the default value
-    /// referenced would be substituted into every one of them, as something that's only used
-    /// once is.
-    ///
-    /// What's defined inside of the value, such as a let statement, is defined again in each
-    /// place, so it isn't counted again itself, but what it references is.
-    fn count_default_references(&mut self, db: &Database) {
-        let constants: Vec<(SymbolId, usize)> = self
-            .references
-            .iter()
-            .filter(|&(&symbol, &references)| references > 1 && db.is_default_constant(symbol))
-            .map(|(&symbol, &references)| (symbol, references - 1))
-            .collect();
-
-        for (constant, extra) in constants {
-            let mut seen = HashSet::new();
-            let mut pending = vec![constant];
-
-            // This default value, and those of the other fields that it uses
-            let mut defaults = vec![constant];
-
-            while let Some(symbol) = pending.pop() {
-                for &dependency in self.dependencies.get(&symbol).into_iter().flatten() {
-                    if !seen.insert(dependency) {
-                        continue;
-                    }
-
-                    if defaults
-                        .iter()
-                        .any(|&default| self.is_defined_in(dependency, default))
-                    {
-                        pending.push(dependency);
-                        continue;
-                    }
-
-                    *self.references.entry(dependency).or_insert(0) += extra;
-
-                    // Another default value that this one uses is evaluated here as well
-                    if db.is_default_constant(dependency) {
-                        pending.push(dependency);
-                        defaults.push(dependency);
-                    }
-                }
-            }
-        }
     }
 
     fn find_loop_captures(&mut self, db: &Database) {
@@ -880,6 +961,173 @@ struct Reach {
     waiting: bool,
 }
 
+/// Counts the reads of each symbol from the references to it (see
+/// [`DependencyGraph::count_reads`]).
+struct ReadCounter<'a> {
+    db: &'a Database,
+    graph: &'a DependencyGraph,
+    /// The number of references to each symbol in each place.
+    sites: HashMap<SymbolId, Vec<(Option<RepeatId>, usize)>>,
+    counts: HashMap<SymbolId, usize>,
+    /// The symbols whose reads are being counted, so that a value that's substituted into itself
+    /// doesn't count forever. That can't happen today, since a binding or constant can't refer
+    /// to itself, and neither can an `inline fn`.
+    counting: HashSet<SymbolId>,
+    /// The size of the value of each binding and constant that's small and static, or `None` if
+    /// it isn't, or while it's being found.
+    static_sizes: HashMap<SymbolId, Option<usize>>,
+}
+
+impl ReadCounter<'_> {
+    fn reads(&mut self, symbol: SymbolId) -> usize {
+        if let Some(&count) = self.counts.get(&symbol) {
+            return count;
+        }
+
+        if !self.counting.insert(symbol) {
+            return 1;
+        }
+
+        // Each symbol is only counted once
+        let sites = self.sites.remove(&symbol).unwrap_or_default();
+        let multiplied = self.static_size(symbol).is_none();
+        let definition = self.graph.definition(self.db, symbol);
+
+        // A chain of inline bindings is as deep as it's long
+        let count = rue_types::grow_stack(|| {
+            sites.into_iter().fold(0usize, |total, (repeat, count)| {
+                let times = if multiplied {
+                    self.times_lowered(repeat, definition)
+                } else {
+                    1
+                };
+
+                total.saturating_add(count.saturating_mul(times))
+            })
+        })
+        .min(MAX_READS);
+
+        self.counting.remove(&symbol);
+        self.counts.insert(symbol, count);
+        count
+    }
+
+    /// How many times the place is lowered for each time that the place `definition` is, which
+    /// it's inside of, or altogether if that's `None`.
+    fn times_lowered(&mut self, repeat: Option<RepeatId>, definition: Option<RepeatId>) -> usize {
+        let Some(id) = repeat else {
+            return 1;
+        };
+
+        if repeat == definition {
+            return 1;
+        }
+
+        let (repeat, outer) = self.graph.repeats[id];
+
+        let times = match repeat {
+            Repeat::Value(symbol) | Repeat::Argument(symbol) => self.reads(symbol),
+            Repeat::Lambda(_) => 1,
+        };
+
+        // Something that's visited is lowered, apart from the argument for a parameter that an
+        // `inline fn` never references. That still counts once, so that what's only referenced
+        // there is treated the way it was when its reference was visited: as referenced, and so
+        // not evaluated for its effect.
+        times
+            .max(1)
+            .saturating_mul(self.times_lowered(outer, definition))
+            .min(MAX_READS)
+    }
+
+    /// The size of the atoms of the symbol's value, if it's a binding or constant whose value is
+    /// static and small (see [`MAX_REPEATED_STATIC_SIZE`]), so that repeating it doesn't evaluate
+    /// anything again, or take more bytes than binding it.
+    fn static_size(&mut self, symbol: SymbolId) -> Option<usize> {
+        if let Some(&size) = self.static_sizes.get(&symbol) {
+            return size;
+        }
+
+        let value = match self.db.symbol(symbol) {
+            Symbol::Binding(BindingSymbol { value, .. })
+            | Symbol::Constant(ConstantSymbol { value, .. }) => value.hir,
+            Symbol::Unresolved
+            | Symbol::Module(_)
+            | Symbol::Function(_)
+            | Symbol::Parameter(_)
+            | Symbol::Builtin(_) => return None,
+        };
+
+        // A value isn't static if it's followed back into itself
+        self.static_sizes.insert(symbol, None);
+
+        let mut budget = MAX_REPEATED_STATIC_SIZE;
+
+        // A chain of constants is as deep as it's long
+        let size = rue_types::grow_stack(|| self.is_small_static(value, &mut budget))
+            .then(|| MAX_REPEATED_STATIC_SIZE - budget);
+
+        self.static_sizes.insert(symbol, size);
+        size
+    }
+
+    /// Whether the value is static and its atoms take up no more than the budget, which is
+    /// reduced by their size. This follows references to bindings and constants. It's what the
+    /// lowerer checks for an argument (see `Lowerer::is_small_static`), without the values that
+    /// depend on what's being inlined.
+    fn is_small_static(&mut self, hir: HirId, budget: &mut usize) -> bool {
+        let mut take = |size: usize| match budget.checked_sub(size) {
+            Some(rest) => {
+                *budget = rest;
+                true
+            }
+            None => false,
+        };
+
+        match self.db.hir(hir) {
+            Hir::Nil | Hir::Bool(_) => take(1),
+            Hir::Int(value) => take(value.bits().div_ceil(8) as usize + 1),
+            Hir::Bytes(bytes) => take(bytes.len() + 1),
+            Hir::String(string) => take(string.len() + 1),
+            Hir::Pair(first, rest) => {
+                self.is_small_static(*first, budget) && self.is_small_static(*rest, budget)
+            }
+            Hir::List(list) => list
+                .items
+                .iter()
+                .all(|&item| self.is_small_static(item, budget)),
+            Hir::Struct(initializer) => initializer
+                .fields
+                .iter()
+                .all(|field| self.is_small_static(field.value, budget)),
+            Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_small_static(*hir, budget),
+            // A field of a static value is folded, and is no larger than the value
+            Hir::FieldAccess(FieldAccess {
+                value,
+                kind: FieldKind::Path(_),
+                ..
+            }) => self.is_small_static(*value, budget),
+            Hir::Const(expr) => expr
+                .result
+                .is_some_and(|result| self.is_small_static(result, budget)),
+            Hir::Block(Block {
+                statements,
+                body: Some(body),
+            }) if statements.is_empty() => self.is_small_static(*body, budget),
+            Hir::Reference(symbol) => self.static_size(*symbol).is_some_and(take),
+            _ => false,
+        }
+    }
+}
+
+/// Visits somewhere that's lowered once for each read of something else.
+fn visit_repeated(db: &Database, graph: &mut DependencyGraph, repeat: Repeat, hir: HirId) {
+    let outer = graph.repeat;
+    graph.enter(repeat);
+    visit_hir(db, graph, hir, false);
+    graph.repeat = outer;
+}
+
 fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bool) {
     match db.hir(hir) {
         Hir::Unresolved
@@ -918,6 +1166,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             if uses == 0 {
                 graph.unvisited_guards.push(UnvisitedGuard {
                     current: graph.current,
+                    repeat: graph.repeat,
                     guard: hir,
                     value: guard.value,
                 });
@@ -965,6 +1214,11 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
 
                         graph.lets.insert(*stmt, (hir, index));
 
+                        // The value is lowered with the let statement, which is visited before it
+                        if let Some(repeat) = graph.repeat {
+                            graph.definitions.insert(*stmt, repeat);
+                        }
+
                         visit_let(db, graph, *stmt);
                     }
                     // A `debug` statement, the value of a `raise` and the message of an
@@ -992,6 +1246,11 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 graph.owners.insert(*lambda, current);
             }
 
+            // The body is lowered with the lambda expression, which is visited before it
+            if let Some(repeat) = graph.repeat {
+                graph.definitions.insert(*lambda, repeat);
+            }
+
             graph.closures.insert(*lambda);
 
             visit_symbol_reference(graph, *lambda);
@@ -1002,15 +1261,29 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             visit_hir(db, graph, *else_, false);
         }
         Hir::FunctionCall(call) => {
+            let mut inline = None;
+
             if let Hir::Reference(function) = db.hir(db.without_casts(call.function))
-                && let Symbol::Function(_) = db.symbol(*function)
+                && let Symbol::Function(symbol) = db.symbol(*function)
             {
                 graph.calls.entry(*function).or_default().push(hir);
+
+                if symbol.kind == FunctionKind::Inline {
+                    inline = Some(symbol);
+                }
             }
 
             visit_hir(db, graph, call.function, true);
-            for &arg in &call.args {
-                visit_hir(db, graph, arg, false);
+
+            for (index, &arg) in call.args.iter().enumerate() {
+                // The arguments of an `inline fn` are lowered where its parameters are referenced
+                let parameter = inline.and_then(|function| function.argument_parameter(index));
+
+                if let Some(parameter) = parameter {
+                    visit_repeated(db, graph, Repeat::Argument(parameter), arg);
+                } else {
+                    visit_hir(db, graph, arg, false);
+                }
             }
         }
         Hir::Unary(_op, arg) => {
@@ -1085,11 +1358,31 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
 fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     graph.current = Some(symbol);
 
+    // Its value or body is lowered as often as the place it's defined in
+    graph.repeat = graph.definition(db, symbol);
+
     match db.symbol(symbol) {
+        // The value of an inline binding or constant is lowered where it's referenced
+        Symbol::Constant(ConstantSymbol { value, inline, .. })
+        | Symbol::Binding(BindingSymbol { value, inline, .. })
+            if *inline =>
+        {
+            visit_repeated(db, graph, Repeat::Value(symbol), value.hir);
+        }
         Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {}
         Symbol::Function(function) => {
             for &parameter in &function.parameters {
                 graph.owners.insert(parameter, symbol);
+            }
+
+            // The body of a lambda in a place that's repeated is a place of its own, which its
+            // parameters are defined in
+            if graph.repeat.is_some() {
+                let body = graph.enter(Repeat::Lambda(symbol));
+
+                for &parameter in &function.parameters {
+                    graph.definitions.insert(parameter, body);
+                }
             }
 
             visit_hir(db, graph, function.body, false);
@@ -1103,6 +1396,7 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     }
 
     graph.current = None;
+    graph.repeat = None;
 }
 
 /// Destructured bindings don't have a let statement of their own, so they're defined in the same
@@ -1236,8 +1530,10 @@ fn visit_effects(db: &Database, graph: &mut DependencyGraph) -> bool {
         added = true;
 
         let outer = std::mem::replace(&mut graph.current, unvisited.current);
+        let outer_repeat = std::mem::replace(&mut graph.repeat, unvisited.repeat);
         visit_hir(db, graph, unvisited.value, false);
         graph.current = outer;
+        graph.repeat = outer_repeat;
 
         let referenced = std::mem::take(&mut graph.referenced);
         graph.pending.extend(referenced.into_iter().rev());
@@ -1259,6 +1555,7 @@ fn visit_symbol_reference(graph: &mut DependencyGraph, symbol: SymbolId) {
             .or_default()
             .insert(symbol);
         *graph.references.entry(symbol).or_insert(0) += 1;
+        *graph.reads.entry((graph.repeat, symbol)).or_insert(0) += 1;
     }
 
     if !graph.visited.contains(&symbol) {

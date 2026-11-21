@@ -1,0 +1,408 @@
+tests:
+- name: whole_binding
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: one_part
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: other_part
+  program: (a (q 18 6 6 6) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (r 2) (r 2)) (r 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "2744"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: part_used_once
+  program: (+ (f (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1)) (q . 1))
+  debug_program: (a (q 2 (q 16 (f 2) (q . 1)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "8"
+  runtime_cost: 2754
+  byte_cost: 804000
+  total_cost: 806754
+- name: struct_part
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (c (* 2 (q . 2)) ())) (q 4 (* 2 (q . 3)) (c 2 ()))) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (c (* 1 (q . 2)) ())) (q 4 (* 1 (q . 3)) (c 1 ()))) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4311
+  byte_cost: 1068000
+  total_cost: 1072311
+- name: list_part
+  program: (a (q 18 4 4 4) (c (c (f (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1)) (c 2 ())) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (c (f (a 2 5)) (c 5 ())) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4441
+  byte_cost: 1116000
+  total_cost: 1120441
+- name: nested_part
+  program: (a (q 18 8 8 8) (c (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 2) 1))
+  debug_program: (a (q 2 (q 18 (* (f (f 2)) (f (f 2))) (f (f 2))) (c (c (a 2 5) 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4327
+  byte_cost: 996000
+  total_cost: 1000327
+- name: inline_binding
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: inline_chain
+  program: (a (q 16 4 4 4 4 (q . 4)) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 16 (+ (+ (f 2) (q . 1)) (+ (f 2) (q . 1))) (+ (+ (f 2) (q . 1)) (+ (f 2) (q . 1)))) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "32"
+  runtime_cost: 4106
+  byte_cost: 996000
+  total_cost: 1000106
+- name: inline_constant
+  program: (a (q 16 (* 4 4 4) 5) (c (q 7 . 14) 1))
+  debug_program: (a (q 2 (q 16 (* (* (f 2) (f 2)) (f 2)) 11) (c (a 2 (q . 7)) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "350"
+  runtime_cost: 3110
+  byte_cost: 396000
+  total_cost: 399110
+- name: match_pair
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: match_struct
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (c (* 2 (q . 2)) ())) (q 4 (* 2 (q . 3)) (c 2 ()))) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (c (* 1 (q . 2)) ())) (q 4 (* 1 (q . 3)) (c 1 ()))) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4311
+  byte_cost: 1068000
+  total_cost: 1072311
+- name: match_name
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: inline_argument
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: inline_argument_part
+  program: (a (q 18 (+ 4 (q . 1)) (+ 4 (q . 1)) (+ 4 (q . 1))) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (+ (f 2) (q . 1)) (+ (f 2) (q . 1))) (+ (f 2) (q . 1))) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "512"
+  runtime_cost: 6544
+  byte_cost: 1212000
+  total_cost: 1218544
+- name: unused_inline_argument
+  program: (a (q . 5) (c (a (i (> 2 (q . 100)) (q 8) (q . 2)) 1) 1))
+  debug_program: (a (q 2 (q . 11) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at inline_reads.rue:70:9") (q . "too big")) (q . 1)) 1) 1))
+  solution: (7)
+  output: "7"
+  runtime_cost: 1086
+  byte_cost: 516000
+  total_cost: 517086
+- name: auto_inlined_parameter_part
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 6 (a 4 5)) (c (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c 1 1))) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: spread_argument
+  program: (a (q 16 (* 4 4 4) (q . 1)) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 16 (q . 1) (* (* (f 2) (f 2)) (f 2))) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "344"
+  runtime_cost: 5005
+  byte_cost: 1020000
+  total_cost: 1025005
+- name: argument_of_argument
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (f 2) (f 2)) (f 2)) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: block_in_argument
+  program: (a (q 18 (a (q 18 2 2) (c (+ 4 (q . 1)) 1)) (a (q 18 2 2) (c (+ 4 (q . 1)) 1)) (a (q 18 2 2) (c (+ 4 (q . 1)) 1))) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (a (q 18 2 2) (c (+ (f 2) (q . 1)) 1)) (a (q 18 2 2) (c (+ (f 2) (q . 1)) 1))) (a (q 18 2 2) (c (+ (f 2) (q . 1)) 1))) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "262144"
+  runtime_cost: 10466
+  byte_cost: 1932000
+  total_cost: 1942466
+- name: part_in_argument
+  program: (a (q 18 (+ (f (a 2 5)) (q . 1)) (+ (f (a 2 5)) (q . 1)) (+ (f (a 2 5)) (q . 1))) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  debug_program: (a (q 18 (* (a (q 16 (f 2) (q . 1)) (c (a 2 5) 1)) (a (q 16 (f 2) (q . 1)) (c (a 2 5) 1))) (a (q 16 (f 2) (q . 1)) (c (a 2 5) 1))) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "512"
+  runtime_cost: 10932
+  byte_cost: 1596000
+  total_cost: 1606932
+- name: part_in_lambda_in_argument
+  program: (a (q 18 (+ (f (a 2 5)) (q . 1)) (+ (f (a 2 5)) (q . 1)) (+ (f (a 2 5)) (q . 1))) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  debug_program: (a (q 18 (* (a (c (q . 2) (c (c (q . 1) (q 2 (q 16 (f 2) (q . 1)) (c (a 5 2) 1))) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) ()) (a (c (q . 2) (c (c (q . 1) (q 2 (q 16 (f 2) (q . 1)) (c (a 5 2) 1))) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) ())) (a (c (q . 2) (c (c (q . 1) (q 2 (q 16 (f 2) (q . 1)) (c (a 5 2) 1))) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) ())) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "512"
+  runtime_cost: 10932
+  byte_cost: 1596000
+  total_cost: 1606932
+- name: binding_of_inline_block
+  program: (a (q 16 (r (a 2 5)) (f (a 2 5)) (f (a (i (> (f (a 2 (+ 5 (q . 1)))) ()) (q 2 2 5) (q 8)) 1))) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (r (a (q . 2) (c (a 11 23) 1))) (f (a (q . 2) (c (a 11 23) 1)))) (f 2)) (c (a (i (> (f 2) ()) (q 2 (q . 2) (c (a 5 11) 1)) (q 8 (q . "assertion failed at inline_reads.rue:259:9"))) 1) 1)) (c (a 2 (+ 5 (q . 1))) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "28"
+  runtime_cost: 11463
+  byte_cost: 1836000
+  total_cost: 1847463
+- name: binding_of_inline_block_read_first
+  program: (a (q 16 (f (a (i (> (f (a 2 (+ 5 (q . 1)))) ()) (q 2 2 5) (q 8)) 1)) (r (a 2 5)) (f (a 2 5))) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (f 2) (r (a (q . 2) (c (a 11 23) 1)))) (f (a (q . 2) (c (a 11 23) 1)))) (c (a (i (> (f 2) ()) (q 2 (q . 2) (c (a 5 11) 1)) (q 8 (q . "assertion failed at inline_reads.rue:272:9"))) 1) 1)) (c (a 2 (+ 5 (q . 1))) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "28"
+  runtime_cost: 11463
+  byte_cost: 1836000
+  total_cost: 1847463
+- name: guard_in_inline_binding
+  program: (a (q 2 (q 2 (i (any (q . 1) (a 5 4)) (q 3 (any (q . 1) (a 5 4)) (q . 1) (q . 2)) (q 1 . 3)) 1) (c (a (i (> 5 (q . 5)) (q 4 5 (* 5 (q . 2))) (q 4 (* 5 (q . 3)) 5)) 1) 1)) (c (q 2 (i (> 1 (q . 100)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 (i (i () (a 9 (f 2)) (q . 1)) (q 2 (i (i () (a 9 (f 2)) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (q 1 . 3)) 1) (c (a 6 5) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at inline_reads.rue:70:9") (q . "too big")) (q . 1)) 1) (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1)) 1))
+  solution: (7)
+  output: "1"
+  runtime_cost: 6346
+  byte_cost: 2076000
+  total_cost: 2082346
+- name: guard_in_inline_argument
+  program: (a (q 2 (q 18 (i (any (q . 1) (a 5 4)) (q . 2) (q . 3)) (i (any (q . 1) (a 5 4)) (q . 2) (q . 3)) (i (any (q . 1) (a 5 4)) (q . 2) (q . 3))) (c (a (i (> 5 (q . 5)) (q 4 5 (* 5 (q . 2))) (q 4 (* 5 (q . 3)) 5)) 1) 1)) (c (q 2 (i (> 1 (q . 100)) (q 8) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (a (i (i () (a 9 (f 2)) (q . 1)) (q 1 . 2) (q 1 . 3)) 1) (a (i (i () (a 9 (f 2)) (q . 1)) (q 1 . 2) (q 1 . 3)) 1)) (a (i (i () (a 9 (f 2)) (q . 1)) (q 1 . 2) (q 1 . 3)) 1)) (c (a 6 5) 1)) (c (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at inline_reads.rue:70:9") (q . "too big")) (q . 1)) 1) (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1)) 1))
+  solution: (7)
+  output: "8"
+  runtime_cost: 10018
+  byte_cost: 2388000
+  total_cost: 2398018
+- name: lambda_in_inline_binding
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (a (c (q . 2) (c (c (q . 1) (q 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) ()))) ()))) ()) (a (c (q . 2) (c (c (q . 1) (q 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) ()))) ()))) ())) (a (c (q . 2) (c (c (q . 1) (q 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) ()))) ()))) ())) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: lambda_in_inline_argument
+  program: (a (q 18 4 4 4) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (a (c (q . 2) (c (c (q . 1) (q 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) ()))) ()))) ()) (a (c (q . 2) (c (c (q . 1) (q 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) ()))) ()))) ())) (a (c (q . 2) (c (c (q . 1) (q 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) ()))) ()))) ())) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "343"
+  runtime_cost: 4216
+  byte_cost: 924000
+  total_cost: 928216
+- name: lambda_binding_in_inline_argument
+  program: (a (q 18 (+ 4 (q . 2)) (+ 4 (q . 2)) (+ 4 (q . 2))) (c (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1) 1))
+  debug_program: (a (q 2 (q 18 (* (a (c (q . 2) (c (c (q . 1) (q 2 (q 16 2 (q . 1)) (c (+ 23 (f 2)) 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ()))) (c (q . 1) ())) (a (c (q . 2) (c (c (q . 1) (q 2 (q 16 2 (q . 1)) (c (+ 23 (f 2)) 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ()))) (c (q . 1) ()))) (a (c (q . 2) (c (c (q . 1) (q 2 (q 16 2 (q . 1)) (c (+ 23 (f 2)) 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) ()))) ()))) (c (q . 1) ()))) (c (a 2 5) 1)) (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) 1))
+  solution: (7)
+  output: "729"
+  runtime_cost: 6544
+  byte_cost: 1212000
+  total_cost: 1218544
+- name: static_constant_argument
+  program: (+ 2 (q . 200))
+  debug_program: (a (q 16 (+ 2 2) 5) (c (q . 100) 1))
+  solution: (7)
+  output: "207"
+  runtime_cost: 837
+  byte_cost: 132000
+  total_cost: 132837
+- name: static_binding_argument
+  program: (+ 2 (q . 8))
+  debug_program: (a (q 16 (* (* 2 2) 2) 5) (c (q . 2) 1))
+  solution: (7)
+  output: "15"
+  runtime_cost: 824
+  byte_cost: 108000
+  total_cost: 108824
+- name: static_constant_part
+  program: (+ 2 (q . 10000))
+  debug_program: (a (q 2 (q 16 (* (f 2) (f 2)) 11) (c 2 1)) (c (c (q . 100) (c (q . 7) ())) 1))
+  solution: (7)
+  output: "10007"
+  runtime_cost: 837
+  byte_cost: 132000
+  total_cost: 132837
+- name: static_field_constant
+  program: (+ 2 (q . 200))
+  debug_program: (a (q 2 (q 16 (+ 2 2) 11) (c (f 2) 1)) (c (c (q . 100) (c (q . 7) ())) 1))
+  solution: (7)
+  output: "207"
+  runtime_cost: 837
+  byte_cost: 132000
+  total_cost: 132837
+- name: static_field_binding
+  program: (+ 2 (q . 1000000))
+  debug_program: (a (q 2 (q 16 (* (* 2 2) 2) 11) (c (f 2) 1)) (c (c (q . 100) (c (q . 7) ())) 1))
+  solution: (7)
+  output: "1000007"
+  runtime_cost: 850
+  byte_cost: 144000
+  total_cost: 144850
+- name: static_pair_part
+  program: (+ 2 (q . 9))
+  debug_program: (a (q 2 (q 16 (* (f 2) (f 2)) 11) (c 2 1)) (c (c (q . 3) (q . 4)) 1))
+  solution: (7)
+  output: "16"
+  runtime_cost: 824
+  byte_cost: 108000
+  total_cost: 108824
+- name: static_bytes
+  program: (concat (q . 1108151960067) 2)
+  debug_program: (a (q 14 (concat 2 2) 5) (c (q . 66051) 1))
+  solution: (0x05)
+  output: "283686901777157"
+  runtime_cost: 572
+  byte_cost: 180000
+  total_cost: 180572
+- name: static_string
+  program: (concat (q . "abcabc") 2)
+  debug_program: (a (q 14 (concat 2 2) 5) (c (q . "abc") 1))
+  solution: ("d")
+  output: "\"abcabcd\""
+  runtime_cost: 572
+  byte_cost: 180000
+  total_cost: 180572
+- name: static_bool
+  program: "2"
+  debug_program: (a (q 2 (i (a (i 2 (q . 2) ()) 1) (q . 5) ()) 1) (c (q . 1) 1))
+  solution: (1)
+  output: "1"
+  runtime_cost: 48
+  byte_cost: 12000
+  total_cost: 12048
+- name: static_cast
+  program: (+ 2 (q . 10))
+  debug_program: (a (q 16 (+ 2 2) 5) (c (q . 5) 1))
+  solution: (7)
+  output: "17"
+  runtime_cost: 824
+  byte_cost: 108000
+  total_cost: 108824
+- name: static_list_part
+  program: (+ 2 (q . 9))
+  debug_program: (a (q 2 (q 16 (* (f 2) (f 2)) 11) (c 2 1)) (c (c (q . 3) (c (q . 4) ())) 1))
+  solution: (7)
+  output: "16"
+  runtime_cost: 824
+  byte_cost: 108000
+  total_cost: 108824
+- name: static_const_expr
+  program: (+ 2 (q . 10))
+  debug_program: (a (q 16 (+ 2 2) 5) (c (q . 5) 1))
+  solution: (7)
+  output: "17"
+  runtime_cost: 824
+  byte_cost: 108000
+  total_cost: 108824
+- name: static_block_binding
+  program: (+ 2 (q . 10))
+  debug_program: (a (q 16 (+ 2 2) 5) (c (q . 5) 1))
+  solution: (7)
+  output: "17"
+  runtime_cost: 824
+  byte_cost: 108000
+  total_cost: 108824
+- name: large_static_bytes
+  program: (a (q 14 2 2 5) (c (q . 0x0102030405060708090a0b0c) 1))
+  debug_program: (a (q 14 (concat 2 2) 5) (c (q . 0x0102030405060708090a0b0c) 1))
+  solution: (0x05)
+  output: "0x0102030405060708090a0b0c0102030405060708090a0b0c05"
+  runtime_cost: 1247
+  byte_cost: 444000
+  total_cost: 445247
+- name: large_static_int
+  program: (a (q 16 2 2 5) (c (q . 0x01000000000000000000) 1))
+  debug_program: (a (q 16 (+ 2 2) 5) (c (q . 0x01000000000000000000) 1))
+  solution: (7)
+  output: "0x02000000000000000007"
+  runtime_cost: 1597
+  byte_cost: 420000
+  total_cost: 421597
+- name: large_static_pair_part
+  program: (a (q 16 (* 4 4) 5) (c (q 16909060 . 84281096) 1))
+  debug_program: (a (q 2 (q 16 (* (f 2) (f 2)) 11) (c 2 1)) (c (c (q . 16909060) (q . 84281096)) 1))
+  solution: (7)
+  output: "285916310083607"
+  runtime_cost: 2312
+  byte_cost: 468000
+  total_cost: 470312
+- name: large_static_references
+  program: (a (q 2 (q 16 (* 4 4) 11) (c (c 2 2) 1)) (c (q . 4328719365) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (* (f 2) (f 2)) 23) (c 2 1)) (c (c 2 2) 1)) (c (q . 4328719365) 1))
+  solution: (7)
+  output: "0x01040a14232c2e2820"
+  runtime_cost: 2727
+  byte_cost: 648000
+  total_cost: 650727
+- name: folded_constant_is_bound
+  program: (a (q 16 2 2 5) (c (q . 200) 1))
+  debug_program: (a (q 16 (+ 2 2) 5) (c (* (q . 100) (q . 2)) 1))
+  solution: (7)
+  output: "407"
+  runtime_cost: 1469
+  byte_cost: 324000
+  total_cost: 325469
+- name: field_of_large_static_is_bound
+  program: (a (q 16 (* 4 4) 5) (c (q 100 0x0101010101010101010101010101010101010101010101010101010101010101) 1))
+  debug_program: (a (q 2 (q 16 (* (f 2) (f 2)) 11) (c 2 1)) (c (c (q . 100) (c (q . 0x0101010101010101010101010101010101010101010101010101010101010101) ())) 1))
+  solution: (7)
+  output: "10007"
+  runtime_cost: 2161
+  byte_cost: 780000
+  total_cost: 782161
+- name: many_parts
+  program: (+ (* 4 4) (* 9 9) (* 19 19) (* 39 39) (* 79 79) (* -97 -97) (* 319 319) (* 639 639) (* 1279 1279) (* 2559 2559))
+  debug_program: (a (q 16 (+ (+ (+ (+ (+ (+ (+ (+ (* (f 16) (f 16)) (* (f 24) (f 24))) (* (f 20) (f 20))) (* (f 44) (f 44))) (* (f 60) (f 60))) (* (f 18) (f 18))) (* (f 26) (f 26))) (* (f 22) (f 22))) (* (f 46) (f 46))) (* (f 62) (f 62))) (c (c (c (c 2 5) (c 11 (c 23 47))) (c (c 95 -65) (c 383 (c 767 1535)))) 1))
+  solution: ((1 . 0) (2 . 0) (3 . 0) (4 . 0) (5 . 0) (6 . 0) (7 . 0) (8 . 0) (9 . 0) (10 . 0))
+  output: "385"
+  runtime_cost: 14750
+  byte_cost: 1212000
+  total_cost: 1226750
+diagnostics:
+- |-
+  This operand of `&&` is the same as an earlier one, so it has no effect at inline_reads.rue:53:10
+    note: The same condition is checked here first at inline_reads.rue:53:5
+- |-
+  This `if` statement only raises, so it can be written as an `assert` at inline_reads.rue:69:5
+    help: Replace it with an `assert`
+- |-
+  Binding `whole` is returned directly after it's declared at inline_reads.rue:254:9
+    help: Return the value directly
+- |-
+  Binding `whole` is returned directly after it's declared at inline_reads.rue:267:9
+    help: Return the value directly
+- Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:281:24
+- Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:296:12

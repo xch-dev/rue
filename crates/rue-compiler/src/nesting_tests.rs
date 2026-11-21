@@ -341,6 +341,98 @@ fn long_chains_of_constants_are_followed() {
     });
 }
 
+/// The reads of a constant are counted through the whole chain of inline constants that read it.
+/// The first constant has the lowest symbol, so it's counted first, before anything it's read
+/// through. Only the graph is built, so the chain can be long enough to overflow a 2 MiB stack if
+/// the count recursed without growing it, which it didn't at a quarter of this length.
+#[test]
+fn long_chains_of_inline_constants_are_counted() {
+    const LINKS: usize = 20_000;
+
+    on_stack(2, || {
+        let source = format!(
+            "fn main(a: Int) -> Int {{ C{LINKS} + a }}\nfn one() -> Int {{ 1 }}\nconst C0: Int = one();\n{}",
+            links(LINKS, |i| format!(
+                "inline const C{}: Int = C{i} + 1;\n",
+                i + 1
+            ))
+        );
+
+        let (mut ctx, tree, kind) = compile_tree(&source);
+        let diagnostics = ctx.take_diagnostics();
+        assert!(errors(&diagnostics).is_empty(), "{diagnostics:?}");
+
+        let scope = ctx.module(tree.find(&kind).unwrap().module).scope;
+        let main = ctx.scope(scope).symbol("main").unwrap();
+        let first = ctx.scope(scope).symbol("C0").unwrap();
+
+        let graph = DependencyGraph::build(&ctx, main, *ctx.options());
+        assert_eq!(graph.references(first), 1);
+    });
+}
+
+/// Whether a constant is static is found through the whole chain of constants that are each the
+/// one before. The last constant is declared first, so it has the lowest symbol and is counted
+/// first, before the ones its value is found through.
+#[test]
+fn long_chains_of_static_constants_are_counted() {
+    const LINKS: usize = 20_000;
+
+    on_stack(2, || {
+        let source = format!(
+            "inline fn double(a: Int) -> Int {{ a + a }}\nfn main(a: Int) -> Int {{ double(C{LINKS}) + a }}\n{}const C0: Int = 1;\n",
+            links(LINKS, |i| format!(
+                "const C{}: Int = C{};\n",
+                LINKS - i,
+                LINKS - i - 1
+            ))
+        );
+
+        let (mut ctx, tree, kind) = compile_tree(&source);
+        let diagnostics = ctx.take_diagnostics();
+        assert!(errors(&diagnostics).is_empty(), "{diagnostics:?}");
+
+        let scope = ctx.module(tree.find(&kind).unwrap().module).scope;
+        let main = ctx.scope(scope).symbol("main").unwrap();
+        let last = ctx.scope(scope).symbol(&format!("C{LINKS}")).unwrap();
+
+        // It's lowered twice, but its value is small and static
+        let graph = DependencyGraph::build(&ctx, main, *ctx.options());
+        assert_eq!(graph.references(last), 1);
+    });
+}
+
+/// Each inline constant reads the one before it twice, so the reads of the first one double with
+/// each link, and stop at the most that are counted rather than overflowing.
+#[test]
+fn reads_through_inline_constants_are_capped() {
+    const LINKS: usize = 100;
+
+    let source = format!(
+        "fn main(a: Int) -> Int {{ C{LINKS} + a }}\nfn one() -> Int {{ 1 }}\nconst C0: Int = one();\n{}",
+        links(LINKS, |i| format!(
+            "inline const C{}: Int = C{i} + C{i};\n",
+            i + 1
+        ))
+    );
+
+    let (mut ctx, tree, kind) = compile_tree(&source);
+    let diagnostics = ctx.take_diagnostics();
+    assert!(errors(&diagnostics).is_empty(), "{diagnostics:?}");
+
+    let scope = ctx.module(tree.find(&kind).unwrap().module).scope;
+    let main = ctx.scope(scope).symbol("main").unwrap();
+    let first = ctx.scope(scope).symbol("C0").unwrap();
+    let fourth = ctx.scope(scope).symbol("C3").unwrap();
+
+    let graph = DependencyGraph::build(&ctx, main, *ctx.options());
+    assert_eq!(graph.references(first), 1 << 16);
+    assert_eq!(graph.references(fourth), 1 << 16);
+
+    let last = ctx.scope(scope).symbol(&format!("C{}", LINKS - 3)).unwrap();
+    assert_eq!(graph.references(last), 8);
+}
+
 /// Whether a function can raise is checked through the whole chain of calls.
 #[test]
 fn long_chains_of_calls_are_followed() {

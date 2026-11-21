@@ -1,0 +1,463 @@
+// A reference in a value that's substituted wherever it's referenced, such as a part of a
+// destructured value, reads what it refers to as many times as the value is read. So a call that's
+// destructured is still only made once, however many times one of its parts is used, as it is
+// when the call is bound and its fields are read (see `whole_binding`).
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn pair(r: Int) -> (Int, Int) {
+    if r > 5 {
+        (r, r * 2)
+    } else {
+        (r * 3, r)
+    }
+}
+
+fn point(r: Int) -> Point {
+    if r > 5 {
+        Point { x: r, y: r * 2 }
+    } else {
+        Point { x: r * 3, y: r }
+    }
+}
+
+fn cube_first(whole: (Int, Int)) -> Int {
+    let (a, _) = whole;
+    a * a * a
+}
+
+inline fn cube(a: Int) -> Int {
+    a * a * a
+}
+
+inline fn ignore(_a: Int, b: Int) -> Int {
+    b
+}
+
+inline fn same(a: Int) -> Int {
+    a
+}
+
+inline fn double(a: Int) -> Int {
+    a + a
+}
+
+inline fn twice(a: Bytes) -> Bytes {
+    a + a
+}
+
+inline fn both(a: Bool) -> Bool {
+    a && a
+}
+
+inline fn text_twice(a: String) -> String {
+    a + a
+}
+
+inline fn rest_cube(a: Int, ...rest: Int) -> Int {
+    a + rest * rest * rest
+}
+
+inline fn apply(f: fn() -> Int) -> Int {
+    f() * f() * f()
+}
+
+fn check(x: Int) -> Int {
+    if x > 100 {
+        raise "too big";
+    }
+    x
+}
+
+struct Hashed {
+    fee: Int,
+    _hash: Bytes32,
+}
+
+struct Config {
+    fee: Int,
+    _limit: Int,
+}
+
+const FEE: Int = 100;
+const CONFIG_FEE: Int = CONFIG.fee;
+const LIMITS: (Int, Int) = (3, 4);
+const SHORT: Bytes = 0x010203;
+const LONG: Bytes = 0x0102030405060708090a0b0c;
+const TEXT: String = "abc";
+const FLAG: Bool = true;
+const CAST: Int = 5 as Int;
+const ITEMS: [Int, Int] = [3, 4];
+const EVALUATED: Int = const { 2 + 3 };
+const BIG: Int = 4722366482869645213696;
+const WIDE: (Int, Int) = (16909060, 84281096);
+const HALF: Int = 4328719365;
+const HALVES: (Int, Int) = (HALF, HALF);
+const PRODUCT: Int = 100 * 2;
+
+const HASHED: Hashed = Hashed {
+    fee: 100,
+    _hash: 0x0101010101010101010101010101010101010101010101010101010101010101,
+};
+
+const CONFIG: Config = Config { fee: 100, _limit: 7 };
+const WHOLE: (Int, Int) = pair(7);
+inline const PART: Int = WHOLE.first;
+
+// What each of the tests below is compared with
+test fn whole_binding(r: Int) -> Int {
+    let whole = pair(r);
+    whole.first * whole.first * whole.first
+}
+
+test fn one_part(r: Int) -> Int {
+    let (a, _) = pair(r);
+    a * a * a
+}
+
+test fn other_part(r: Int) -> Int {
+    let (_, b) = pair(r);
+    b * b * b
+}
+
+// A part that's used once is still read where it's used
+test fn part_used_once(r: Int) -> Int {
+    let (a, _) = pair(r);
+    a + 1
+}
+
+test fn struct_part(r: Int) -> Int {
+    let { x } = point(r);
+    x * x * x
+}
+
+test fn list_part(r: Int) -> Int {
+    let [a, _b] = [pair(r).first, r];
+    a * a * a
+}
+
+// A part of a part reads the call as often as it's used
+test fn nested_part(r: Int) -> Int {
+    let ((a, _), _) = (pair(r), r);
+    a * a * a
+}
+
+test fn inline_binding(r: Int) -> Int {
+    let whole = pair(r);
+    inline let a = whole.first;
+    a * a * a
+}
+
+// The call is only referenced once, by an inline binding that's read four times
+test fn inline_chain(r: Int) -> Int {
+    let whole = pair(r);
+    inline let a = whole.first + 1;
+    inline let b = a + a;
+    b + b
+}
+
+// A constant that's read through an inline constant is bound like one that's read as often
+test fn inline_constant(r: Int) -> Int {
+    PART * PART * PART + r
+}
+
+// A match with one arm has no type guard to reference the value a second time
+test fn match_pair(r: Int) -> Int {
+    match pair(r) {
+        _ as (a, _) => a * a * a,
+    }
+}
+
+test fn match_struct(r: Int) -> Int {
+    match point(r) {
+        Point { x } => x * x * x,
+    }
+}
+
+test fn match_name(r: Int) -> Int {
+    match pair(r) {
+        _ as p => p.first * p.first * p.first,
+    }
+}
+
+// The argument of an `inline fn` is lowered for each reference to its parameter
+test fn inline_argument(r: Int) -> Int {
+    let whole = pair(r);
+    cube(whole.first)
+}
+
+test fn inline_argument_part(r: Int) -> Int {
+    let (a, _) = pair(r);
+    cube(a + 1)
+}
+
+// An argument that's never lowered doesn't make its binding any less referenced, so it isn't
+// taken for one that's evaluated for its effect
+test fn unused_inline_argument(r: Int) -> Int {
+    let checked = check(r);
+    ignore(checked, r)
+}
+
+// A function that's called once is inlined, and its parameter is read as often as the part is, so
+// the argument is bound rather than substituted for it
+test fn auto_inlined_parameter_part(r: Int) -> Int {
+    cube_first(pair(r))
+}
+
+// The arguments after the fixed parameters are all passed for the last one
+test fn spread_argument(r: Int) -> Int {
+    let (a, _) = pair(r);
+    rest_cube(1, ...a)
+}
+
+// An argument inside another one is lowered as often as both of their parameters are read
+test fn argument_of_argument(r: Int) -> Int {
+    let (a, _) = pair(r);
+    cube(same(a))
+}
+
+// A block in an argument is lowered with it, along with its bindings, which are each read as
+// often as they are in one copy
+test fn block_in_argument(r: Int) -> Int {
+    let whole = pair(r);
+    cube({
+        let a = whole.first + 1;
+        a * a
+    })
+}
+
+// A part is defined where the let statement of what it's destructured from is, so it's read as
+// often in each copy of the block
+test fn part_in_argument(r: Int) -> Int {
+    cube({
+        let (a, _) = pair(r);
+        a + 1
+    })
+}
+
+test fn part_in_lambda_in_argument(r: Int) -> Int {
+    cube((
+        fn() => {
+            let (a, _) = pair(r);
+            a + 1
+        }
+    )())
+}
+
+// A binding with a let statement is defined there, although its value is an inline binding whose
+// own value has a let statement, so what it reads is only read once
+test fn binding_of_inline_block(r: Int) -> Int {
+    inline let inner = {
+        let whole = pair(r);
+        whole
+    };
+    let other = pair(r + 1);
+    let outer = {
+        assert other.first > 0;
+        inner
+    };
+    inner.rest + inner.first + outer.first
+}
+
+test fn binding_of_inline_block_read_first(r: Int) -> Int {
+    inline let inner = {
+        let whole = pair(r);
+        whole
+    };
+    let other = pair(r + 1);
+    let outer = {
+        assert other.first > 0;
+        inner
+    };
+    outer.first + inner.rest + inner.first
+}
+
+// The value of a guard that's only evaluated for its effect is lowered with the guard
+test fn guard_in_inline_binding(r: Int) -> Int {
+    let (a, _) = pair(r);
+    inline let small = check(a) is Any;
+    if small {
+        if small {
+            1
+        } else {
+            2
+        }
+    } else {
+        3
+    }
+}
+
+test fn guard_in_inline_argument(r: Int) -> Int {
+    let (a, _) = pair(r);
+    cube(
+        if check(a) is Any {
+            2
+        } else {
+            3
+        },
+    )
+}
+
+// The body of a lambda is lowered wherever the lambda is
+test fn lambda_in_inline_binding(r: Int) -> Int {
+    let whole = pair(r);
+    inline let first = fn() => whole.first;
+    first() * first() * first()
+}
+
+test fn lambda_in_inline_argument(r: Int) -> Int {
+    let (a, _) = pair(r);
+    apply(fn() => a)
+}
+
+// What's defined in the lambda is read as often in each copy of its body
+test fn lambda_binding_in_inline_argument(r: Int) -> Int {
+    let whole = pair(r);
+    cube((
+        fn(x: Int) => {
+            let sum = x + whole.first;
+            sum + 1
+        }
+    )(1))
+}
+
+// A value that's small and static is as cheap to repeat as to bind, so it's still substituted,
+// and folded with what uses it
+test fn static_constant_argument(r: Int) -> Int {
+    double(FEE) + r
+}
+
+test fn static_binding_argument(r: Int) -> Int {
+    let two = 2;
+    cube(two) + r
+}
+
+test fn static_constant_part(r: Int) -> Int {
+    let { fee } = CONFIG;
+    fee * fee + r
+}
+
+test fn static_field_constant(r: Int) -> Int {
+    double(CONFIG_FEE) + r
+}
+
+test fn static_field_binding(r: Int) -> Int {
+    let fee = CONFIG.fee;
+    cube(fee) + r
+}
+
+test fn static_pair_part(r: Int) -> Int {
+    let (a, _) = LIMITS;
+    a * a + r
+}
+
+test fn static_bytes(r: Bytes) -> Bytes {
+    twice(SHORT) + r
+}
+
+test fn static_string(r: String) -> String {
+    text_twice(TEXT) + r
+}
+
+test fn static_bool(r: Bool) -> Bool {
+    both(FLAG) && r
+}
+
+test fn static_cast(r: Int) -> Int {
+    double(CAST) + r
+}
+
+test fn static_list_part(r: Int) -> Int {
+    let [a, _b] = ITEMS;
+    a * a + r
+}
+
+test fn static_const_expr(r: Int) -> Int {
+    double(EVALUATED) + r
+}
+
+test fn static_block_binding(r: Int) -> Int {
+    let five = { 5 };
+    double(five) + r
+}
+
+// A static value that's too large to repeat is read as often as it's lowered, and bound
+test fn large_static_bytes(r: Bytes) -> Bytes {
+    twice(LONG) + r
+}
+
+test fn large_static_int(r: Int) -> Int {
+    double(BIG) + r
+}
+
+// Each part is small enough, but the value isn't
+test fn large_static_pair_part(r: Int) -> Int {
+    let (a, _) = WIDE;
+    a * a + r
+}
+
+// The size of a constant that's referenced counts towards the value
+test fn large_static_references(r: Int) -> Int {
+    let (a, _) = HALVES;
+    a * a + r
+}
+
+// A value that's only static once it's folded isn't static as it's written, so it's bound when
+// it's read more than once, as it is when it's referenced more than once
+test fn folded_constant_is_bound(r: Int) -> Int {
+    double(PRODUCT) + r
+}
+
+// A small field of a static value that's too large to repeat is bound with the rest of the value
+test fn field_of_large_static_is_bound(r: Int) -> Int {
+    let { fee } = HASHED;
+    fee * fee + r
+}
+
+// More parts than are measured in one run of let statements are still read as paths
+test fn many_parts(
+    p1: (Int, Int),
+    p2: (Int, Int),
+    p3: (Int, Int),
+    p4: (Int, Int),
+    p5: (Int, Int),
+    p6: (Int, Int),
+    p7: (Int, Int),
+    p8: (Int, Int),
+    p9: (Int, Int),
+    p10: (Int, Int),
+) -> Int {
+    let (a1, _) = p1;
+    let (a2, _) = p2;
+    let (a3, _) = p3;
+    let (a4, _) = p4;
+    let (a5, _) = p5;
+    let (a6, _) = p6;
+    let (a7, _) = p7;
+    let (a8, _) = p8;
+    let (a9, _) = p9;
+    let (a10, _) = p10;
+    a1
+            * a1
+        + a2
+            * a2
+        + a3
+            * a3
+        + a4
+            * a4
+        + a5
+            * a5
+        + a6
+            * a6
+        + a7
+            * a7
+        + a8
+            * a8
+        + a9
+            * a9
+        + a10
+            * a10
+}

@@ -82,11 +82,11 @@ impl Lowerer<'_, '_, '_> {
     /// Each measurement lowers the rest of the block again, and a run after another one is
     /// inside of it, so measuring every run of a long block would lower its end once for each
     /// run before it, for each of their measurements. So no more than [`MAX_PATH_CANDIDATES`]
-    /// bindings of a run are measured, and the rest are bound, and only the runs that are fewer
-    /// than [`MAX_MEASURED_RUN_DEPTH`] deep in other runs with path bindings are measured. The
-    /// ones inside of those are decided by the size of the path alone (see
-    /// [`is_small_path`]), which is usually right, and can't make the outermost run larger than
-    /// it was either way.
+    /// bindings of a run are measured, and only the runs that are fewer than
+    /// [`MAX_MEASURED_RUN_DEPTH`] deep in other runs with path bindings are measured. The rest
+    /// of the bindings, and the ones in the runs inside of those, are decided by the size of the
+    /// path alone (see [`is_small_path`]), which is usually right, and can't make the outermost
+    /// run larger than it was either way.
     pub(super) fn lower_path_bindings(
         &mut self,
         env: &Environment,
@@ -104,10 +104,9 @@ impl Lowerer<'_, '_, '_> {
                     continue;
                 };
 
-                if binding.inline
-                    || self.graph.references(symbol) <= 1
-                    || !self.is_path(binding.value.hir)
-                {
+                let references = self.graph.references(symbol);
+
+                if binding.inline || references <= 1 || !self.is_path(binding.value.hir) {
                     continue;
                 }
 
@@ -115,7 +114,6 @@ impl Lowerer<'_, '_, '_> {
                 let key = (symbol, size);
 
                 if !measured_depth {
-                    let references = self.graph.references(symbol);
                     decided.push((symbol, is_small_path(references, size)));
                     continue;
                 }
@@ -123,9 +121,11 @@ impl Lowerer<'_, '_, '_> {
                 match self.path_choices.get(&key) {
                     Some(&is_path) => decided.push((symbol, is_path)),
                     None if undecided.len() < MAX_PATH_CANDIDATES => undecided.push(key),
+                    // The rest are decided by the size of the path alone
                     None => {
-                        self.path_choices.insert(key, false);
-                        decided.push((symbol, false));
+                        let is_path = is_small_path(references, size);
+                        self.path_choices.insert(key, is_path);
+                        decided.push((symbol, is_path));
                     }
                 }
             }

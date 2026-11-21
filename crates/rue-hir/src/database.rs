@@ -38,7 +38,6 @@ pub struct Database {
     hir_scopes: HashMap<HirId, ScopeId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
     default_field_uses: HashMap<(TypeId, String), HirId>,
-    default_constants: HashSet<SymbolId>,
     scopes: Arena<Scope>,
     imports: Arena<Import>,
     symbols: Arena<Symbol>,
@@ -261,13 +260,6 @@ impl Database {
     pub fn insert_default_field_use(&mut self, ty: TypeId, name: String, constant: SymbolId) {
         let hir = self.alloc_hir(Hir::Reference(constant));
         self.default_field_uses.insert((ty, name), hir);
-        self.default_constants.insert(constant);
-    }
-
-    /// Whether the symbol is the constant that initializers refer to for the default value of a
-    /// struct's field.
-    pub fn is_default_constant(&self, symbol: SymbolId) -> bool {
-        self.default_constants.contains(&symbol)
     }
 
     /// The value an initializer uses for a field it leaves out, which refers to the default
