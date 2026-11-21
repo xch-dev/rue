@@ -204,7 +204,9 @@ pub enum CheckError {
     #[error("Cannot check if value is of recursive type at runtime")]
     RecursiveType,
 
-    #[error("Cannot check if value is of function type at runtime")]
+    #[error(
+        "Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds"
+    )]
     FunctionType,
 
     #[error("Cannot check if value is of generic type at runtime")]
@@ -364,10 +366,15 @@ fn check_each_impl_inner(
     let mut result = Comparison::Assign;
 
     for &id in lhs {
-        result = max(
-            result,
-            compare_impl(arena, builtins, &mut ctx.comparison, id, rhs, None, None),
-        );
+        let comparison = compare_impl(arena, builtins, &mut ctx.comparison, id, rhs, None, None);
+
+        // A function can be cast to a function type that it isn't assignable to, but nothing can
+        // tell them apart at runtime, so it isn't accepted without a check like other casts are
+        if comparison == Comparison::Cast && matches!(arena[id], Type::Function(_)) {
+            return Err(CheckError::FunctionType);
+        }
+
+        result = max(result, comparison);
     }
 
     if result <= Comparison::Cast {
@@ -621,13 +628,17 @@ fn variants_of_inner(
     match arena[id].clone() {
         Type::Apply(_) => unreachable!(),
         Type::Ref(id) => variants_of_impl(arena, builtins, id, seen),
-        Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) => {
+        // A function is kept as is, rather than as the atom or pair that it's compiled to, so that
+        // a check which has to look at it is an error. How a function is represented depends on
+        // how it's compiled, so the result would differ between debug and release builds.
+        // Subtracting a type still splits a function into an atom and a pair.
+        Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) | Type::Function(_) => {
             vec![id]
         }
         Type::Never => vec![],
         Type::Alias(alias) => variants_of_impl(arena, builtins, alias.inner, seen),
         Type::Struct(ty) => variants_of_impl(arena, builtins, ty.inner, seen),
-        Type::Function(_) | Type::Any => vec![builtins.atom, builtins.recursive_any_pair],
+        Type::Any => vec![builtins.atom, builtins.recursive_any_pair],
         Type::Union(ty) => {
             let mut variants = Vec::new();
 

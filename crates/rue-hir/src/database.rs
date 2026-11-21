@@ -6,8 +6,8 @@ use rue_diagnostic::{Name, SourceKind, SrcLoc};
 use rue_types::{Type, TypeId};
 
 use crate::{
-    FunctionKind, Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol, Scope, ScopeId, Symbol,
-    SymbolId, UnaryOp, Value,
+    FieldAccess, FieldKind, FunctionKind, Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol,
+    Scope, ScopeId, Symbol, SymbolId, UnaryOp, Value,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -36,6 +36,7 @@ pub struct Database {
     /// `Database::set_independent_operands`).
     independent_operands: HashSet<HirId>,
     hir_scopes: HashMap<HirId, ScopeId>,
+    single_use_loop_rests: HashSet<SymbolId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
     default_field_uses: HashMap<(TypeId, String), HirId>,
     scopes: Arena<Scope>,
@@ -125,20 +126,35 @@ impl Database {
             Hir::Pair(first, rest) => self.is_literal_hir(*first) && self.is_literal_hir(*rest),
             Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_literal_hir(*hir),
             Hir::List(list) => list.items.iter().all(|&item| self.is_literal_hir(item)),
-            Hir::Struct(initializer) => initializer
-                .fields
-                .iter()
-                .all(|field| self.is_literal_hir(field.value)),
+            Hir::Struct(initializer) => {
+                initializer.values().all(|value| self.is_literal_hir(value))
+            }
             _ => false,
         }
     }
 
+    /// Records that the body of a fold refers to the binding for the result of the rest of the
+    /// list in one place, which is evaluated at most once for the item.
+    pub fn set_single_use_loop_rest(&mut self, symbol: SymbolId) {
+        self.single_use_loop_rests.insert(symbol);
+    }
+
+    /// Whether the binding for the result of a fold for the rest of the list is only referred
+    /// to in one place that's evaluated at most once for the item, so that evaluating it there
+    /// doesn't go through the rest of the list more than once. It's substituted there like any
+    /// other binding that's referred to once: unless it may fail and the body doesn't always
+    /// get to it, since the rest of the list would then fail for some items and not for others
+    /// that it fails for when it's evaluated before the body. Other bindings for the result
+    /// are never substituted, since something that evaluates them more than once, such as a
+    /// function that's inlined, would go through the rest of the list again for every item.
+    pub fn is_single_use_loop_rest(&self, symbol: SymbolId) -> bool {
+        self.single_use_loop_rests.contains(&symbol)
+    }
+
     /// Whether the node is the call of a loop to itself with the rest of its list (see
     /// `FunctionKind::Loop`), which is the result of a `for` expression's fold for the rest of the
-    /// list. A binding for it is either `inline`, and evaluated where the body refers to it, or
-    /// evaluated once before the body. It's never substituted like other bindings that are only
-    /// referred to once, since something that evaluates it more than once, such as a function
-    /// that's inlined, would go through the rest of the list again for every item.
+    /// list. A binding for it is evaluated once before the body, unless it can be evaluated where
+    /// the body refers to it instead (see [`Self::is_single_use_loop_rest`]).
     pub fn is_loop_rest_call(&self, hir: HirId) -> bool {
         let Hir::FunctionCall(call) = self.hir(hir) else {
             return false;
@@ -171,6 +187,35 @@ impl Database {
             hir = *value;
         }
         hir
+    }
+
+    /// The symbol that a path is read from, if the node is one: a symbol or the fields of one,
+    /// through casts, which have no effect. A path can be read any number of times without
+    /// evaluating anything again.
+    pub fn path_symbol(&self, hir: HirId) -> Option<SymbolId> {
+        self.path(hir).map(|(symbol, _)| symbol)
+    }
+
+    /// The symbol that a path is read from (see [`path_symbol`](Self::path_symbol)), and how many
+    /// steps into the symbol's value the path is.
+    pub fn path(&self, mut hir: HirId) -> Option<(SymbolId, usize)> {
+        let mut steps = 0;
+
+        loop {
+            hir = match self.hir(hir) {
+                Hir::Reference(symbol) => return Some((*symbol, steps)),
+                Hir::Cast(value) => *value,
+                Hir::FieldAccess(FieldAccess {
+                    value,
+                    kind: FieldKind::Path(path),
+                    ..
+                }) => {
+                    steps += path.len();
+                    *value
+                }
+                _ => return None,
+            };
+        }
     }
 
     /// Records the static type of a HIR node. Each expression compiles to a node of its own,
@@ -708,6 +753,11 @@ impl Database {
                     .fields
                     .iter()
                     .map(|field| format!("{}: {}", field.name, self.debug_hir(field.value)))
+                    .chain(
+                        initializer
+                            .tail_value()
+                            .map(|tail| format!("...{}", self.debug_hir(tail)))
+                    )
                     .collect::<Vec<_>>()
                     .join(", ")
             ),

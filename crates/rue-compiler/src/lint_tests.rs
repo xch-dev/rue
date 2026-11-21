@@ -1863,6 +1863,127 @@ fn main(value: Bytes, other: Bytes, index: Int) -> Bytes {
 }
 
 #[test]
+fn unused_struct_spread_is_removed() {
+    let source = "\
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+struct Empty {}
+
+struct Spend {
+    opcode = 51,
+    amount: Int,
+}
+
+struct Tagged {
+    tag: 7,
+    amount: Int,
+}
+
+fn main(point: Point, empty: Empty, n: Int) -> (List<Point>, Empty) {
+    let lines = Point {
+        ...point,
+        x: 1,
+        y: 2,
+    };
+    let call = Point { ...make(n), x: 1, y: 2 };
+    let block = Point { ...{ assert n > 1; point }, x: 1, y: 2 };
+    let comment = Point { ...point /* why */, x: 1, y: 2 };
+    let trailing = Point {
+        ...point, // why
+        x: 1,
+        y: 2,
+    };
+    let tight = Point {...point,x: 1, y: 2 };
+    let used = Point { ...point, x: 1 };
+    ([Point { ...point, x: 1, y: 2 }, lines, call, block, comment, trailing, tight, used], Empty { ...empty })
+}
+
+fn make(n: Int) -> Point {
+    assert n > 0;
+    Point { x: n, y: n }
+}
+
+export fn constants(spend: Spend, tagged: Tagged, n: Int) -> (Spend, Tagged) {
+    (Spend { ...spend, amount: n }, Tagged { ...tagged, amount: n })
+}
+";
+
+    let fixed = fix(source);
+
+    // The call and the block are still evaluated, since they can fail, and the comment before the
+    // comma would be removed with the spread, so those are left for the user. A comment after the
+    // comma is kept
+    assert_eq!(
+        fixed,
+        "\
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+struct Empty {}
+
+struct Spend {
+    opcode = 51,
+    amount: Int,
+}
+
+struct Tagged {
+    tag: 7,
+    amount: Int,
+}
+
+fn main(point: Point, empty: Empty, n: Int) -> (List<Point>, Empty) {
+    let lines = Point {
+        x: 1,
+        y: 2,
+    };
+    let call = Point { ...make(n), x: 1, y: 2 };
+    let block = Point { ...{ assert n > 1; point }, x: 1, y: 2 };
+    let comment = Point { ...point /* why */, x: 1, y: 2 };
+    let trailing = Point {
+        // why
+        x: 1,
+        y: 2,
+    };
+    let tight = Point {x: 1, y: 2 };
+    let used = Point { ...point, x: 1 };
+    ([Point { x: 1, y: 2 }, lines, call, block, comment, trailing, tight, used], Empty { })
+}
+
+fn make(n: Int) -> Point {
+    assert n > 0;
+    Point { x: n, y: n }
+}
+
+export fn constants(spend: Spend, tagged: Tagged, n: Int) -> (Spend, Tagged) {
+    (Spend { amount: n }, Tagged { ...tagged, amount: n })
+}
+"
+    );
+
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    // Nothing else used `empty` or `spend`, which only the spreads that were removed referred
+    // to. `Tagged` would be missing its `tag` without the spread, so it has no suggestion
+    assert_eq!(
+        reports,
+        vec![
+            "Warning 18: Unused parameter `empty`",
+            "Warning 23: Every field of `Point` is specified, so nothing is copied from the spread value",
+            "Warning 24: Every field of `Point` is specified, so nothing is copied from the spread value",
+            "Warning 25: Every field of `Point` is specified, so nothing is copied from the spread value",
+            "Warning 41: Unused parameter `spend`",
+            "Warning 42: Every other field of `Tagged` is a constant, so nothing is read from the spread value",
+        ]
+    );
+    assert!(!has_errors);
+}
+
+#[test]
 fn unreachable_code_is_reported_once_at_its_start() {
     let source = "\
 fn main() -> Int {

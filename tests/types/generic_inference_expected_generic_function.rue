@@ -98,7 +98,11 @@ test fn union_return_type() -> Int {
 
 test fn union_expected_type() -> Bool {
     let function: (fn<T>(a: T) -> (T, T)) | nil = make();
-    function is nil
+    accept(function)
+}
+
+fn accept(_function: (fn<T>(a: T) -> (T, T)) | nil) -> Bool {
+    true
 }
 
 fn pair_with_five<T>(value: T) -> (T, 5) {

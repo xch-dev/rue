@@ -1,0 +1,848 @@
+struct Point {
+    x: Int,
+    y: Int,
+    z: Int,
+}
+
+struct Tail {
+    x: Int,
+    y: Int,
+    ...z: Int,
+}
+
+struct Spend {
+    opcode = 51,
+    puzzle_hash: Bytes32,
+    amount: Int,
+    ...memos: Any,
+}
+
+enum Shape {
+    Square { side: Int, color: Int },
+    Rect { width: Int, height: Int },
+}
+
+fn point(n: Int) -> Point {
+    Point { x: n, y: n + 1, z: n * 2 }
+}
+
+fn spend(n: Int) -> Spend {
+    Spend { puzzle_hash: sha256(n as Bytes), amount: n, memos: nil }
+}
+
+// Most tests that update a struct are followed by the same struct rebuilt by hand, which it's
+// never larger than. The fields after the last one that's written are the rest of the value
+// being updated, rather than a copy of each of them
+test fn update_first(p: Point, n: Int) -> Point {
+    Point { ...p, x: n }
+}
+
+test fn rebuild_first(p: Point, n: Int) -> Point {
+    Point { x: n, y: p.y, z: p.z }
+}
+
+test fn update_middle(p: Point, n: Int) -> Point {
+    Point { ...p, y: n }
+}
+
+test fn rebuild_middle(p: Point, n: Int) -> Point {
+    Point { x: p.x, y: n, z: p.z }
+}
+
+// Nothing comes after the last field, so every field before it is copied
+test fn update_last(p: Point, n: Int) -> Point {
+    Point { ...p, z: n }
+}
+
+test fn rebuild_last(p: Point, n: Int) -> Point {
+    Point { x: p.x, y: p.y, z: n }
+}
+
+test fn update_first_two(p: Point, n: Int) -> Point {
+    Point { ...p, x: n, y: n }
+}
+
+test fn rebuild_first_two(p: Point, n: Int) -> Point {
+    Point { x: n, y: n, z: p.z }
+}
+
+test fn update_first_and_last(p: Point, n: Int) -> Point {
+    Point { ...p, x: n, z: n }
+}
+
+test fn rebuild_first_and_last(p: Point, n: Int) -> Point {
+    Point { x: n, y: p.y, z: n }
+}
+
+// A struct with nothing written is the value itself
+test fn update_nothing(p: Point) -> Point {
+    Point { ...p }
+}
+
+// The last field of a struct that isn't nil-terminated is the rest of the value either way
+test fn update_first_of_tail(t: Tail, n: Int) -> Tail {
+    Tail { ...t, x: n }
+}
+
+test fn rebuild_first_of_tail(t: Tail, n: Int) -> Tail {
+    Tail { x: n, y: t.y, z: t.z }
+}
+
+test fn update_last_of_tail(t: Tail, n: Int) -> Tail {
+    Tail { ...t, z: n }
+}
+
+test fn rebuild_last_of_tail(t: Tail, n: Int) -> Tail {
+    Tail { x: t.x, y: t.y, z: n }
+}
+
+// A value that isn't a path is only evaluated once. It isn't bound if it's only used once, which
+// it is when only the rest of it is kept
+test fn update_first_of_call(n: Int) -> Point {
+    Point { ...point(n), x: 1 }
+}
+
+test fn rebuild_first_of_call(n: Int) -> Point {
+    let p = point(n);
+    Point { x: 1, y: p.y, z: p.z }
+}
+
+test fn update_middle_of_call(n: Int) -> Point {
+    Point { ...point(n), y: 1 }
+}
+
+test fn rebuild_middle_of_call(n: Int) -> Point {
+    let p = point(n);
+    Point { x: p.x, y: 1, z: p.z }
+}
+
+test fn update_last_of_call(n: Int) -> Point {
+    Point { ...point(n), z: 1 }
+}
+
+test fn rebuild_last_of_call(n: Int) -> Point {
+    let p = point(n);
+    Point { x: p.x, y: p.y, z: 1 }
+}
+
+// A field whose type is a single value, such as an opcode, is that value rather than a read of
+// the spread value, as it is when the struct is rebuilt by hand
+test fn update_after_constant(s: Spend, puzzle_hash: Bytes32) -> Spend {
+    Spend { ...s, puzzle_hash }
+}
+
+test fn rebuild_after_constant(s: Spend, puzzle_hash: Bytes32) -> Spend {
+    Spend { puzzle_hash, amount: s.amount, memos: s.memos }
+}
+
+// The value is bound as it is when the struct is rebuilt, since the rest of it is two fields in
+test fn update_after_constant_of_call(n: Int, puzzle_hash: Bytes32) -> Spend {
+    Spend { ...spend(n), puzzle_hash }
+}
+
+test fn rebuild_after_constant_of_call(n: Int, puzzle_hash: Bytes32) -> Spend {
+    let s = spend(n);
+    Spend { puzzle_hash, amount: s.amount, memos: s.memos }
+}
+
+test fn update_after_constant_of_binding(n: Int, puzzle_hash: Bytes32) -> Spend {
+    let s = spend(n);
+    Spend { ...s, puzzle_hash }
+}
+
+inline fn update_spend(s: Spend, puzzle_hash: Bytes32) -> Spend {
+    Spend { ...s, puzzle_hash }
+}
+
+inline fn rebuild_spend(s: Spend, puzzle_hash: Bytes32) -> Spend {
+    Spend { puzzle_hash, amount: s.amount, memos: s.memos }
+}
+
+// Reading the constant would evaluate the argument of an inline function again
+test fn update_after_constant_of_inline_parameter(n: Int, puzzle_hash: Bytes32) -> Spend {
+    update_spend(spend(n), puzzle_hash)
+}
+
+test fn rebuild_after_constant_of_inline_parameter(n: Int, puzzle_hash: Bytes32) -> Spend {
+    rebuild_spend(spend(n), puzzle_hash)
+}
+
+test fn update_last_after_constant_of_call(n: Int, memos: Any) -> Spend {
+    Spend { ...spend(n), memos }
+}
+
+test fn rebuild_last_after_constant_of_call(n: Int, memos: Any) -> Spend {
+    let s = spend(n);
+    Spend { puzzle_hash: s.puzzle_hash, amount: s.amount, memos }
+}
+
+struct Versioned {
+    value: Int,
+    version = 2,
+    kind = "versioned",
+}
+
+// The rest of the spread value isn't used if every field in it is a constant, so the struct
+// doesn't depend on the value at all
+#[allow(unused_struct_spread)]
+test fn update_before_constants(versioned: Versioned, n: Int) -> Versioned {
+    Versioned { ...versioned, value: n }
+}
+
+test fn rebuild_before_constants(_versioned: Versioned, n: Int) -> Versioned {
+    Versioned { value: n }
+}
+
+struct Operation {
+    opcode = 51,
+    first: Int,
+    second: Int,
+}
+
+fn operation(n: Int) -> Operation {
+    assert n > 0;
+    Operation { first: n, second: n + 1 }
+}
+
+// Reading the constant would be a second use of a value that's otherwise used in place, since
+// only one field is read from the rest of it
+test fn update_after_constant_in_place(n: Int) -> Operation {
+    Operation { ...operation(n), first: 1 }
+}
+
+test fn rebuild_after_constant_in_place(n: Int) -> Operation {
+    let o = operation(n);
+    Operation { first: 1, second: o.second }
+}
+
+// The discriminant of an enum variant is a constant too
+test fn update_variant(rect: Shape::Rect, n: Int) -> Shape::Rect {
+    Shape::Rect { ...rect, height: n }
+}
+
+test fn rebuild_variant(rect: Shape::Rect, n: Int) -> Shape::Rect {
+    Shape::Rect { width: rect.width, height: n }
+}
+
+test fn update_nil_variant(square: Shape::Square, n: Int) -> Shape::Square {
+    Shape::Square { ...square, side: n }
+}
+
+test fn rebuild_nil_variant(square: Shape::Square, n: Int) -> Shape::Square {
+    Shape::Square { side: n, color: square.color }
+}
+
+struct Mixed {
+    value: Int,
+    version = 2,
+    other: Int,
+}
+
+// A constant in the rest of the spread value is part of it, as long as another field in it is
+// read
+test fn update_mixed_tail(mixed: Mixed, n: Int) -> Mixed {
+    Mixed { ...mixed, value: n }
+}
+
+test fn rebuild_mixed_tail(mixed: Mixed, n: Int) -> Mixed {
+    Mixed { value: n, other: mixed.other }
+}
+
+struct Optional {
+    value: Int | nil,
+    count: Int,
+    other: Int,
+}
+
+// A field that's only narrowed to a single value is still read, as it is when the struct is
+// rebuilt, since a path is smaller than the value, and it's a reference either way
+test fn update_narrowed_field(optional: Optional, n: Int) -> Optional {
+    if optional.count is 7 {
+        Optional { ...optional, other: n }
+    } else if optional.value is nil {
+        Optional { ...optional, other: n }
+    } else {
+        optional
+    }
+}
+
+test fn rebuild_narrowed_field(optional: Optional, n: Int) -> Optional {
+    if optional.count is 7 {
+        Optional { value: optional.value, count: optional.count, other: n }
+    } else if optional.value is nil {
+        Optional { value: optional.value, count: optional.count, other: n }
+    } else {
+        optional
+    }
+}
+
+// A cast of a path is still a path, so it isn't bound
+test fn update_cast(pair: (Int, (Int, (Int, nil))), n: Int) -> Point {
+    Point { ...pair as Point, z: n }
+}
+
+// Every field is written, so the value isn't used, and it's only evaluated if it can fail
+#[allow(unused_struct_spread)]
+test fn update_every_field(n: Int) -> Point {
+    Point { ...point(n), x: 1, y: 2, z: 3 }
+}
+
+fn checked(n: Int) -> Point {
+    assert n > 0;
+    point(n)
+}
+
+#[allow(unused_struct_spread)]
+test fn update_every_field_of_failing_call(n: Int) -> Point {
+    Point { ...checked(n), x: 1, y: 2, z: 3 }
+}
+
+const ORIGIN: Point = Point { x: 1, y: 2, z: 3 };
+
+// A constant is a path, so its fields are read from it like a parameter's
+test fn update_constant() -> Point {
+    Point { ...ORIGIN, y: 5 }
+}
+
+test fn rebuild_constant() -> Point {
+    Point { x: ORIGIN.x, y: 5, z: ORIGIN.z }
+}
+
+// A block that ends in a path is narrowed like the path, but it isn't one, so it's bound rather
+// than being evaluated for each field
+test fn update_block(p: Point, n: Int) -> Point {
+    Point {
+        ...{
+            debug "evaluated";
+            assert n > 0;
+            p
+        },
+        z: n,
+    }
+}
+
+test fn rebuild_block(p: Point, n: Int) -> Point {
+    let q = {
+        debug "evaluated";
+        assert n > 0;
+        p
+    };
+    Point { x: q.x, y: q.y, z: n }
+}
+
+// It's still evaluated when every field is written, since it can fail
+#[allow(unused_struct_spread)]
+test fn update_every_field_of_failing_block(p: Point, n: Int) -> Point {
+    Point {
+        ...{
+            assert n > 0;
+            p
+        },
+        x: 1,
+        y: 2,
+        z: 3,
+    }
+}
+
+inline fn update_inline(p: Point) -> Point {
+    Point { ...p, y: 1 }
+}
+
+inline fn rebuild_inline(p: Point) -> Point {
+    Point { x: p.x, y: 1, z: p.z }
+}
+
+// The parameter of an inline function is a path that's replaced by its argument wherever it's
+// used, so the argument is evaluated for each use, as it is when the struct is rebuilt
+test fn update_inline_parameter(n: Int) -> Point {
+    update_inline(point(n))
+}
+
+test fn rebuild_inline_parameter(n: Int) -> Point {
+    rebuild_inline(point(n))
+}
+
+fn update_walk(a: Int, b: Int, c: Int, d: Int, t: Tail, n: Int) -> (Int, Tail) {
+    if n > 9 {
+        return update_walk(a + b, b + c, c + d, d + a, t, n - 1);
+    }
+    (a + a + a + b + b + b + c + c + c + d, Tail { ...t, x: n })
+}
+
+fn rebuild_walk(a: Int, b: Int, c: Int, d: Int, t: Tail, n: Int) -> (Int, Tail) {
+    if n > 9 {
+        return rebuild_walk(a + b, b + c, c + d, d + a, t, n - 1);
+    }
+    (a + a + a + b + b + b + c + c + c + d, Tail { x: n, y: t.y, z: t.z })
+}
+
+// The parameters of a function are laid out by how often they're referenced. The rest of the
+// spread value is one reference, but it counts as one for each field in it, as when the struct is
+// rebuilt, so that the value isn't moved further away, which would make this larger
+test fn update_layout(t: Tail, n: Int) -> (Int, Tail) {
+    update_walk(1, 2, 3, 4, t, n)
+}
+
+test fn rebuild_layout(t: Tail, n: Int) -> (Int, Tail) {
+    rebuild_walk(1, 2, 3, 4, t, n)
+}
+
+struct Wide {
+    a: Int,
+    b: Int,
+    c: Int,
+    d: Int,
+    ...e: Int,
+}
+
+fn wide(n: Int) -> Wide {
+    assert n > 0;
+    Wide { a: n, b: n + 1, c: n + 2, d: n + 3, e: n + 4 }
+}
+
+// A value that's only used for the rest of it is used in place, unless the rest is further in than
+// the first field. Each step to it would be an operation around the value then, where a value
+// that's bound only has a longer path, so it's bound as it is when the struct is rebuilt
+test fn update_deep_tail_of_binding(n: Int) -> (Wide, Int) {
+    let q = wide(n);
+    let w = sha256(n as Bytes) as Int;
+    (Wide { ...q, a: n, b: n, c: n }, w + w)
+}
+
+test fn rebuild_deep_tail_of_binding(n: Int) -> (Wide, Int) {
+    let q = wide(n);
+    let w = sha256(n as Bytes) as Int;
+    (Wide { a: n, b: n, c: n, d: q.d, e: q.e }, w + w)
+}
+
+test fn update_deep_tail_two_fields_in(n: Int) -> (Wide, Int) {
+    let q = wide(n);
+    let w = sha256(n as Bytes) as Int;
+    (Wide { ...q, a: n, b: n }, w + w)
+}
+
+test fn rebuild_deep_tail_two_fields_in(n: Int) -> (Wide, Int) {
+    let q = wide(n);
+    let w = sha256(n as Bytes) as Int;
+    (Wide { a: n, b: n, c: q.c, d: q.d, e: q.e }, w + w)
+}
+
+test fn update_deep_tail_of_call(n: Int) -> (Wide, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (Wide { ...wide(n), a: n, b: n, c: n }, w + w)
+}
+
+test fn rebuild_deep_tail_of_call(n: Int) -> (Wide, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (
+        {
+            let q = wide(n);
+            Wide { a: n, b: n, c: n, d: q.d, e: q.e }
+        },
+        w + w,
+    )
+}
+
+struct Long {
+    a: Int,
+    b: Int,
+    c: Int,
+    d: Int,
+    e: Int,
+    f: Int,
+    g: Int,
+    h: Int,
+}
+
+fn long(n: Int) -> Long {
+    assert n > 0;
+    Long { a: n, b: n, c: n, d: n, e: n, f: n, g: n + 1, h: n + 2 }
+}
+
+test fn update_deep_tail_of_long_binding(n: Int) -> (Long, Int) {
+    let q = long(n);
+    let w = sha256(n as Bytes) as Int;
+    (Long { ...q, a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 }, w + w)
+}
+
+test fn rebuild_deep_tail_of_long_binding(n: Int) -> (Long, Int) {
+    let q = long(n);
+    let w = sha256(n as Bytes) as Int;
+    (Long { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: q.g, h: q.h }, w + w)
+}
+
+struct Holder {
+    k: Int,
+    inner: Tail,
+}
+
+struct FirstHolder {
+    inner: Tail,
+    k: Int,
+}
+
+fn holder(n: Int) -> Holder {
+    assert n > 0;
+    Holder { k: n, inner: Tail { x: n, y: n + 1, z: n + 2 } }
+}
+
+fn first_holder(n: Int) -> FirstHolder {
+    assert n > 0;
+    FirstHolder { inner: Tail { x: n, y: n + 1, z: n + 2 }, k: n }
+}
+
+// The value being updated can be a field of a value that's only used for it. The steps to the
+// field count towards how far in the rest is, so the value is bound as it is when the struct is
+// rebuilt
+test fn update_field_of_binding(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    (Tail { ...v.inner, x: n }, w + w)
+}
+
+test fn rebuild_field_of_binding(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    (Tail { x: n, y: v.inner.y, z: v.inner.z }, w + w)
+}
+
+test fn update_first_field_of_binding(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = first_holder(n);
+    (Tail { ...v.inner, x: n }, w + w)
+}
+
+test fn rebuild_first_field_of_binding(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = first_holder(n);
+    (Tail { x: n, y: v.inner.y, z: v.inner.z }, w + w)
+}
+
+test fn update_whole_field_of_binding(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    (Tail { ...v.inner }, w + w)
+}
+
+test fn rebuild_whole_field_of_binding(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    (Tail { x: v.inner.x, y: v.inner.y, z: v.inner.z }, w + w)
+}
+
+// A field of a call is read from a binding of the call, rather than being bound itself
+test fn update_field_of_call(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (Tail { ...holder(n).inner, x: n }, w + w)
+}
+
+test fn rebuild_field_of_call(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (
+        {
+            let v = holder(n);
+            Tail { x: n, y: v.inner.y, z: v.inner.z }
+        },
+        w + w,
+    )
+}
+
+test fn rebuild_field_of_call_bound_outside(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    (Tail { x: n, y: v.inner.y, z: v.inner.z }, w + w)
+}
+
+// A binding of a field is one more step to the value that it's a field of
+test fn update_binding_of_field(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    let inner = v.inner;
+    (Tail { ...inner, x: n }, w + w)
+}
+
+test fn rebuild_binding_of_field(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = holder(n);
+    let inner = v.inner;
+    (Tail { x: n, y: inner.y, z: inner.z }, w + w)
+}
+
+// Other fields that are copied from a field of a call are paths into the binding of the call
+test fn update_field_of_call_twice(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (Tail { ...holder(n).inner, y: n }, w + w)
+}
+
+test fn rebuild_field_of_call_twice(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (
+        {
+            let v = holder(n);
+            Tail { x: v.inner.x, y: n, z: v.inner.z }
+        },
+        w + w,
+    )
+}
+
+// A call that's only used for the rest of it is used in place further in than a binding is,
+// since binding it on its own costs more, but not this far in
+test fn update_deep_tail_of_long_call(n: Int) -> (Long, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (Long { ...long(n), a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 }, w + w)
+}
+
+test fn rebuild_deep_tail_of_long_call(n: Int) -> (Long, Int) {
+    let w = sha256(n as Bytes) as Int;
+    (
+        {
+            let q = long(n);
+            Long { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: q.g, h: q.h }
+        },
+        w + w,
+    )
+}
+
+struct LastHolder {
+    k: Int,
+    j: Int,
+    inner: Tail,
+}
+
+fn last_holder(n: Int) -> LastHolder {
+    assert n > 0;
+    LastHolder { k: n, j: n, inner: Tail { x: n, y: n + 1, z: n + 2 } }
+}
+
+// Four steps into a call is the first that's bound rather than being used in place
+test fn update_four_steps_into_call(n: Int) -> Tail {
+    Tail { ...last_holder(n).inner, x: n }
+}
+
+test fn rebuild_four_steps_into_call(n: Int) -> Tail {
+    let v = last_holder(n);
+    Tail { x: n, y: v.inner.y, z: v.inner.z }
+}
+
+// A struct is updated in the body of a `for` from its item, from a value outside of the loop and
+// from a call, which is evaluated once for each item
+test fn update_item_in_for(points: List<Tail>, n: Int) -> List<Tail> {
+    for p in points { Tail { ...p, x: n } }
+}
+
+test fn rebuild_item_in_for(points: List<Tail>, n: Int) -> List<Tail> {
+    for p in points { Tail { x: n, y: p.y, z: p.z } }
+}
+
+test fn update_outside_for(t: Tail, items: List<Int>) -> List<Tail> {
+    for i in items { Tail { ...t, x: i } }
+}
+
+test fn rebuild_outside_for(t: Tail, items: List<Int>) -> List<Tail> {
+    for i in items { Tail { x: i, y: t.y, z: t.z } }
+}
+
+test fn update_call_in_for(items: List<Int>) -> List<Tail> {
+    for i in items { Tail { ...holder(i).inner, y: i } }
+}
+
+test fn rebuild_call_in_for(items: List<Int>) -> List<Tail> {
+    for i in items {
+        let v = holder(i);
+        Tail { x: v.inner.x, y: i, z: v.inner.z }
+    }
+}
+
+// A part of a destructured value, an inline binding and the parameter of an inline function are
+// each replaced by what they stand for, so the rest is as many steps further into that, and it's
+// bound as it is when the struct is rebuilt
+test fn update_destructured(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let { inner } = first_holder(n);
+    let u = sha256(w as Bytes) as Int;
+    (Tail { ...inner, x: n }, n + w + w + u + u)
+}
+
+test fn rebuild_destructured(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let { inner } = first_holder(n);
+    let u = sha256(w as Bytes) as Int;
+    (Tail { x: n, y: inner.y, z: inner.z }, n + w + w + u + u)
+}
+
+test fn update_inline_binding_of_field(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = first_holder(n);
+    inline let i = v.inner;
+    let u = sha256(w as Bytes) as Int;
+    (Tail { ...i, x: n }, n + w + w + u + u)
+}
+
+test fn rebuild_inline_binding_of_field(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = first_holder(n);
+    inline let i = v.inner;
+    let u = sha256(w as Bytes) as Int;
+    (Tail { x: n, y: i.y, z: i.z }, n + w + w + u + u)
+}
+
+inline fn update_inline_tail(p: Tail, n: Int) -> Tail {
+    Tail { ...p, x: n }
+}
+
+inline fn rebuild_inline_tail(p: Tail, n: Int) -> Tail {
+    Tail { x: n, y: p.y, z: p.z }
+}
+
+test fn update_inline_argument_of_field(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = first_holder(n);
+    let u = sha256(w as Bytes) as Int;
+    (update_inline_tail(v.inner, n), n + w + w + u + u)
+}
+
+test fn rebuild_inline_argument_of_field(n: Int) -> (Tail, Int) {
+    let w = sha256(n as Bytes) as Int;
+    let v = first_holder(n);
+    let u = sha256(w as Bytes) as Int;
+    (rebuild_inline_tail(v.inner, n), n + w + w + u + u)
+}
+
+struct LongRest {
+    a: Int,
+    b: Int,
+    c: Int,
+    d: Int,
+    e: Int,
+    f: Int,
+    g: Int,
+    ...h: Int,
+}
+
+fn long_rest(n: Int) -> LongRest {
+    assert n > 0;
+    LongRest { a: n, b: n, c: n, d: n, e: n, f: n, g: n + 1, h: n + 2 }
+}
+
+fn ints(n: Int) -> List<Int> {
+    assert n > 0;
+    [n, n + 1]
+}
+
+// The result of the rest of a `for` is evaluated before the body when the rest of it that's
+// reused is this far in, as it is when the struct is rebuilt
+test fn update_fold(n: Int) -> LongRest {
+    for i in ints(n) fold acc: LongRest = long_rest(n) {
+        LongRest { ...acc, a: i, b: i, c: i, d: i, e: i, f: i }
+    }
+}
+
+test fn rebuild_fold(n: Int) -> LongRest {
+    for i in ints(n) fold acc: LongRest = long_rest(n) {
+        LongRest { a: i, b: i, c: i, d: i, e: i, f: i, g: acc.g, h: acc.h }
+    }
+}
+
+// An update in an inline value counts for where its value goes in the environment as often as
+// the inline value is read
+fn update_walk_inline(a: Int, b: Int, t: Point, n: Int) -> (Int, List<Point>) {
+    if n > 9 {
+        return update_walk_inline(a + b, b, t, n - 1);
+    }
+    inline let s = Point { ...t, x: n };
+    (a + a + a + a + b + b, [s, s, s])
+}
+
+fn rebuild_walk_inline(a: Int, b: Int, t: Point, n: Int) -> (Int, List<Point>) {
+    if n > 9 {
+        return rebuild_walk_inline(a + b, b, t, n - 1);
+    }
+    inline let s = Point { x: n, y: t.y, z: t.z };
+    (a + a + a + a + b + b, [s, s, s])
+}
+
+test fn update_layout_inline(t: Point, n: Int) -> (Int, List<Point>) {
+    update_walk_inline(1, 2, t, n)
+}
+
+test fn rebuild_layout_inline(t: Point, n: Int) -> (Int, List<Point>) {
+    rebuild_walk_inline(1, 2, t, n)
+}
+
+// A struct that's updated with a literal isn't one itself, since the rest of it isn't
+test fn update_literal_outside_for(t: Point, items: List<Int>) -> List<Point> {
+    let s = Point { ...t, x: 1 };
+    for i in items { Point { ...s, y: i } }
+}
+
+test fn rebuild_literal_outside_for(t: Point, items: List<Int>) -> List<Point> {
+    let s = Point { x: 1, y: t.y, z: t.z };
+    for i in items { Point { x: s.x, y: i, z: s.z } }
+}
+
+// A few fields in, the result is used where the struct is updated, since binding it on its own
+// costs more than the steps to the rest of it
+test fn update_fold_third(n: Int) -> LongRest {
+    for i in ints(n) fold acc: LongRest = long_rest(n) { LongRest { ...acc, a: i, b: i, c: i } }
+}
+
+test fn rebuild_fold_third(n: Int) -> LongRest {
+    for i in ints(n) fold acc: LongRest = long_rest(n) {
+        LongRest { a: i, b: i, c: i, d: acc.d, e: acc.e, f: acc.f, g: acc.g, h: acc.h }
+    }
+}
+
+test fn update_fold_first(n: Int) -> Point {
+    for i in ints(n) fold acc = (Point { x: n, y: n, z: n }) { Point { ...acc, x: i } }
+}
+
+test fn rebuild_fold_first(n: Int) -> Point {
+    for i in ints(n) fold acc = (Point { x: n, y: n, z: n }) { Point { x: i, y: acc.y, z: acc.z } }
+}
+
+fn below_five(i: Int) -> Int {
+    assert i < 5;
+    i
+}
+
+// A fold goes through the whole list whichever of the two is written, so a branch that doesn't
+// use the result still fails for an item after it
+test fn update_fold_skipped(items: List<Int>) -> Point {
+    for i in items fold acc = (Point { x: 0, y: 0, z: 0 }) {
+        if i == 0 {
+            Point { x: 1, y: 1, z: 1 }
+        } else {
+            Point { ...acc, x: below_five(i) }
+        }
+    }
+}
+
+test fn rebuild_fold_skipped(items: List<Int>) -> Point {
+    for i in items fold acc = (Point { x: 0, y: 0, z: 0 }) {
+        if i == 0 {
+            Point { x: 1, y: 1, z: 1 }
+        } else {
+            Point { x: below_five(i), y: acc.y, z: acc.z }
+        }
+    }
+}
+
+const HELD: Holder = Holder { k: 3, inner: Tail { x: 3, y: 4, z: 5 } };
+inline const HELD_INNER: Tail = HELD.inner;
+
+// A field of a constant is folded where it's used, however far in the rest is
+test fn update_field_of_constant(n: Int) -> Tail {
+    Tail { ...HELD.inner, x: n }
+}
+
+test fn rebuild_field_of_constant(n: Int) -> Tail {
+    Tail { x: n, y: HELD.inner.y, z: HELD.inner.z }
+}
+
+test fn update_inline_constant_of_field(n: Int) -> Tail {
+    Tail { ...HELD_INNER, x: n }
+}
+
+test fn rebuild_inline_constant_of_field(n: Int) -> Tail {
+    Tail { x: n, y: HELD_INNER.y, z: HELD_INNER.z }
+}

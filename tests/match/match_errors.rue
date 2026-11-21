@@ -89,6 +89,7 @@ fn generic_pattern<T>(value: T | nil) -> Int {
     }
 }
 
+// The `nil` arm is reported too, since it would also have to look at the function
 fn function_pattern(value: nil | fn() -> Int) -> Int {
     match value {
         fn() -> Int => 1,

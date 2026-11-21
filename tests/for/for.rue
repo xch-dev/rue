@@ -62,10 +62,34 @@ test fn fold_of_an_empty_list() -> Int {
     for x in runtime([] as List<Int>) fold sum = 100 { sum + x }
 }
 
-// A body that refers to the result for the rest of the list once only evaluates it if it gets to
-// it, so this stops at the first item that matches: the second item would fail
-test fn fold_stops_early() -> Bool {
+// A fold goes through the whole list, so this fails for the second item, though the first one
+// matches before the body gets to the result for the rest of the list
+test fn fold_fails_after_a_match() -> Bool {
     for x in runtime([1, 0]) fold found = false { x == 1 || positive(x) == 5 || found }
+}
+
+// However often the body refers to the result
+test fn fold_fails_after_a_match_with_two_references() -> Bool {
+    for x in runtime([1, 0]) fold found = false { x == 1 || positive(x) == 5 || found || found }
+}
+
+// And if it doesn't refer to it at all
+test fn fold_fails_without_a_reference() -> Int {
+    for x in runtime([1, 0]) fold last = 0 { positive(x) }
+}
+
+// A body that can't fail stops where it doesn't get to the result, since nothing tells the
+// difference: this doesn't go through the items after the first one that matches
+test fn fold_stops_early() -> Bool {
+    for x in runtime([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) fold found = false {
+        x == 1 || found
+    }
+}
+
+// The result is evaluated where the body refers to it if the body always gets to it, though it
+// may fail
+test fn fold_that_always_gets_to_the_result() -> Int {
+    for x in runtime([1, 2, 3]) fold sum = 0 { positive(x) + sum }
 }
 
 // A body that refers to it more than once has it evaluated before the body

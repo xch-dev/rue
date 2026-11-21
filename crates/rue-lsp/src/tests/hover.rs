@@ -1014,3 +1014,22 @@ fn main(xs: List<Int | (Int, Int)>) -> List<Int> {
         "#]],
     );
 }
+
+#[test]
+fn test_hover_struct_initializer_spread() {
+    check(
+        r#"
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn main(point: Point) -> Point {
+    Point { ...po$0int, x: 1 }
+}
+"#,
+        expect![[r#"
+            point: Point
+        "#]],
+    );
+}

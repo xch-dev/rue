@@ -510,3 +510,29 @@ test fn no_check(circle: Circle) -> Int {
         Circle { radius } => radius,
     }
 }
+
+struct BlockPoint {
+    x: Int,
+    y: Int,
+}
+
+// A block that ends in a path is bound, so it's evaluated once however many arms check it and
+// bind its fields, and the path is still narrowed in the arms
+test fn block_value_with_bindings(value: BlockPoint | nil, n: Int) -> Int {
+    match {
+        debug "evaluated";
+        assert n > 0;
+        value
+    } {
+        BlockPoint { x, y } => x + y + value.x,
+        nil => 0,
+    }
+}
+
+// A struct can be updated from the value in an arm that binds its fields
+test fn struct_update_in_arm(value: BlockPoint | nil) -> BlockPoint {
+    match value {
+        BlockPoint { x } => BlockPoint { ...value, y: x + 1 },
+        nil => BlockPoint { x: 0, y: 0 },
+    }
+}

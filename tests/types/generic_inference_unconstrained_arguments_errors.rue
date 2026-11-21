@@ -1,0 +1,112 @@
+// A generic that nothing gives a type is only `Never` when a parameter's type references it, the
+// arguments hold no value of it, and the call still has a value. These are rejected as they were
+
+fn empty<T>() -> List<T> {
+    nil
+}
+
+// The caller picks `T`, and the function returns values that it didn't get from its arguments
+fn decode<T>(value: Any) -> List<T> {
+    unchecked_cast(value)
+}
+
+fn first<T>(list: List<T>) -> T {
+    assert list is (T, List<T>);
+    list.first
+}
+
+fn first_with<T>(list: List<T>) -> (T, Int) {
+    (first(list), 1)
+}
+
+fn each<T>(_list: List<T>, _function: fn(item: T) -> nil) -> nil {
+    nil
+}
+
+fn map<T, U>(list: List<T>, function: fn(item: T) -> U) -> List<U> {
+    if list is nil {
+        nil
+    } else {
+        [function(list.first), ...map(list.rest, function)]
+    }
+}
+
+fn same<A>(_list: List<A>) -> fn(a: A) -> A {
+    fn(a: A) => a
+}
+
+fn taker<A>(_list: List<A>) -> fn(a: A) -> nil {
+    fn(_a: A) => nil
+}
+
+fn either<A, B>(_first: List<A>, _second: List<B>) -> (A, nil) | (B, nil) {
+    unchecked_cast(nil)
+}
+
+struct Box<T> {
+    value: T,
+}
+
+fn boxed<T>(list: List<T>) -> Box<T> {
+    unchecked_cast(first(list))
+}
+
+// A function that casts can return values of a generic that its arguments hold none of, as it can
+// with the generic written out
+fn witness<T>(value: Any, _like: List<T>) -> List<T> {
+    unchecked_cast(value)
+}
+
+type Callback<T> = (fn(item: T) -> nil) | Any;
+
+fn with_callback<T, U>(_list: List<T>, function: fn(callback: Callback<T>) -> U) -> U {
+    function(fn(_item: T) => nil)
+}
+
+fn main(value: Any) -> Int {
+    // No parameter's type references the generic
+    let _no_arguments = empty();
+    let _only_returned = decode(value);
+
+    // A guard on such a call has nothing to check, so it isn't typed as a list of nothing
+    let _guarded = decode(value) is List<Int>;
+
+    // The call would have no value, and the code after it would be unreachable
+    let _whole_return = first(nil);
+    let _part_of_a_pair = first_with(nil);
+
+    let _in_a_struct = boxed(nil);
+
+    // Each generic alone leaves the call a value, but both as `Never` leave it none
+    let _together = either(nil, nil);
+
+    // An argument that holds something else leaves the generic as it was
+    let _not_a_list = length(5);
+    let _one_of_two = merge_list(nil, 5);
+
+    // As does an argument that failed to compile, or is missing
+    let _unresolved: Int = reverse(undeclared);
+    let _too_few = merge_list([]);
+
+    // The lambda's parameter is the generic
+    let _lambda_parameter = each(nil, fn(item) => nil);
+    let _lambda_result = map(nil, fn(item) => item);
+
+    // The lambda was compiled with the generic in its parameter's type, where values of it flow
+    // out of the argument, so the call's type would name it
+    let _named_in_the_lambda = with_callback(nil, fn(callback) => callback);
+    let _only_in_the_parameter = with_callback(nil, fn(_callback) => 1);
+
+    // Values of the generic flow into the function that's returned
+    let _both_ways = same(nil);
+    let _only_taken = taker(nil);
+
+    // The list is typed as holding nothing, so the guard is reported as unnecessary
+    let _cast = witness(value, nil) is List<Int>;
+
+    // What the generic is inferred as is shown as `Never`
+    let shown: Int = reverse([]);
+    let shown_in_a_pair: Int = (merge_list([], []), length(nil));
+
+    shown + shown_in_a_pair
+}

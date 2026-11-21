@@ -97,9 +97,7 @@ impl RepeatCost<'_> {
             | Hir::InfinityG2 => true,
             Hir::Pair(first, rest) => self.all([*first, *rest]),
             Hir::List(list) => self.all(list.items.iter().copied()),
-            Hir::Struct(initializer) => {
-                self.all(initializer.fields.iter().map(|field| field.value))
-            }
+            Hir::Struct(initializer) => self.all(initializer.values()),
             Hir::FieldAccess(access) => {
                 let counted = match access.kind {
                     FieldKind::Path(_) => true,

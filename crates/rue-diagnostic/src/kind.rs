@@ -204,7 +204,9 @@ pub enum DiagnosticKind {
     #[error("Cannot check if value is of recursive type at runtime")]
     RecursiveTypeCheck,
 
-    #[error("Cannot check if value is of function type at runtime")]
+    #[error(
+        "Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds"
+    )]
     FunctionTypeCheck,
 
     #[error("Cannot check if value is of generic type at runtime")]
@@ -289,6 +291,22 @@ pub enum DiagnosticKind {
 
     #[error("The default value of field `{0}` on struct `{1}` depends on itself")]
     RecursiveFieldDefault(String, String),
+
+    #[error("A struct can only be spread at the start of an initializer, before its fields")]
+    MisplacedStructSpread,
+
+    #[error("Only one struct can be spread in an initializer")]
+    DuplicateStructSpread,
+
+    #[error(
+        "Cannot spread a value of type `{0}` in an initializer of `{1}`, since it isn't a `{1}`"
+    )]
+    StructSpreadType(String, String),
+
+    #[error(
+        "Cannot copy field `{0}` from the spread value, since its type `{1}` isn't assignable to `{2}`; specify the field instead"
+    )]
+    StructSpreadFieldType(String, String, String),
 
     #[error("Type of parameter cannot be inferred, it must be specified explicitly")]
     CannotInferParameterType,

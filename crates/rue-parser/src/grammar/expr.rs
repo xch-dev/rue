@@ -89,6 +89,14 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
                 // Leave anything that can't start a field to the list's recovery, which only
                 // reports the first error, so a missing `}` before more of an enclosing list
                 // doesn't report every element after it
+                if p.at(T![...]) {
+                    p.start(SyntaxKind::StructInitializerSpread);
+                    p.expect(T![...]);
+                    expr(p);
+                    p.finish();
+                    return;
+                }
+
                 if !p.at(SyntaxKind::Ident) {
                     return;
                 }
@@ -2680,6 +2688,95 @@ mod tests {
                   CloseBrace@14..15 "}"
             "#]],
             expect![""],
+        );
+
+        check(
+            expr,
+            "Point { ...point, x: 1 }",
+            expect![[r#"
+                StructInitializerExpr@0..24
+                  PathExpr@0..6
+                    PathSegment@0..6
+                      Ident@0..5 "Point"
+                      Whitespace@5..6 " "
+                  OpenBrace@6..7 "{"
+                  Whitespace@7..8 " "
+                  StructInitializerSpread@8..16
+                    Spread@8..11 "..."
+                    PathExpr@11..16
+                      PathSegment@11..16
+                        Ident@11..16 "point"
+                  Comma@16..17 ","
+                  Whitespace@17..18 " "
+                  StructInitializerField@18..23
+                    Ident@18..19 "x"
+                    Colon@19..20 ":"
+                    Whitespace@20..21 " "
+                    LiteralExpr@21..22
+                      Integer@21..22 "1"
+                    Whitespace@22..23 " "
+                  CloseBrace@23..24 "}"
+            "#]],
+            expect![""],
+        );
+
+        // The spread is parsed wherever it is, so that it's reported when it's compiled
+        check(
+            expr,
+            "Point { x, ...a.b, ...c() }",
+            expect![[r#"
+            StructInitializerExpr@0..27
+              PathExpr@0..6
+                PathSegment@0..6
+                  Ident@0..5 "Point"
+                  Whitespace@5..6 " "
+              OpenBrace@6..7 "{"
+              Whitespace@7..8 " "
+              StructInitializerField@8..9
+                Ident@8..9 "x"
+              Comma@9..10 ","
+              Whitespace@10..11 " "
+              StructInitializerSpread@11..17
+                Spread@11..14 "..."
+                FieldAccessExpr@14..17
+                  PathExpr@14..15
+                    PathSegment@14..15
+                      Ident@14..15 "a"
+                  Dot@15..16 "."
+                  Ident@16..17 "b"
+              Comma@17..18 ","
+              Whitespace@18..19 " "
+              StructInitializerSpread@19..26
+                Spread@19..22 "..."
+                FunctionCallExpr@22..25
+                  PathExpr@22..23
+                    PathSegment@22..23
+                      Ident@22..23 "c"
+                  OpenParen@23..24 "("
+                  CloseParen@24..25 ")"
+                Whitespace@25..26 " "
+              CloseBrace@26..27 "}"
+        "#]],
+            expect![""],
+        );
+
+        check(
+            expr,
+            "Point { ... }",
+            expect![[r#"
+            StructInitializerExpr@0..13
+              PathExpr@0..6
+                PathSegment@0..6
+                  Ident@0..5 "Point"
+                  Whitespace@5..6 " "
+              OpenBrace@6..7 "{"
+              Whitespace@7..8 " "
+              StructInitializerSpread@8..12
+                Spread@8..11 "..."
+                Whitespace@11..12 " "
+              CloseBrace@12..13 "}"
+        "#]],
+            expect!["Expected expression, found `}` at main.rue:1:13"],
         );
 
         check(

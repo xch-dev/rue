@@ -645,12 +645,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
             Hir::List(list) => self.lower_list(env, list.items, list.nil_terminated),
             Hir::Struct(initializer) => {
-                let fields = initializer
-                    .fields
-                    .into_iter()
-                    .map(|field| field.value)
-                    .collect();
-                self.lower_list(env, fields, initializer.nil_terminated)
+                let values = initializer.values().collect();
+                self.lower_list(env, values, initializer.values_nil_terminated())
             }
             Hir::FieldAccess(access) => {
                 let mut lir = self.lower_hir(env, access.value);
@@ -1117,9 +1113,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 .iter()
                 .all(|&item| self.is_small_static(item, budget, path, substitutions)),
             Hir::Struct(initializer) => initializer
-                .fields
-                .iter()
-                .all(|field| self.is_small_static(field.value, budget, path, substitutions)),
+                .values()
+                .all(|value| self.is_small_static(value, budget, path, substitutions)),
             Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => {
                 self.is_small_static(*hir, budget, path, substitutions)
             }
@@ -1910,7 +1905,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             let mut referenced_symbols = IndexMap::new();
 
             for symbol in symbols {
-                referenced_symbols.insert(symbol, self.graph.references(symbol));
+                referenced_symbols.insert(symbol, self.graph.layout_references(symbol));
             }
 
             SymbolGroup::Tree(Environment::tree(referenced_symbols))
@@ -1959,10 +1954,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Hir::Pair(first, rest) => self.is_static_hir(*first) && self.is_static_hir(*rest),
             Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_static_hir(*hir),
             Hir::List(list) => list.items.iter().all(|&item| self.is_static_hir(item)),
-            Hir::Struct(initializer) => initializer
-                .fields
-                .iter()
-                .all(|field| self.is_static_hir(field.value)),
+            Hir::Struct(initializer) => initializer.values().all(|value| self.is_static_hir(value)),
             // Guards that don't use the value at runtime are lowered to a boolean, unless the value
             // may fail, in which case it's evaluated for its effect first
             Hir::Guard(guard) => {
@@ -2037,40 +2029,17 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 !self.is_measured_function(symbol) || self.is_inlined_function(symbol)
             }
             Symbol::Constant(constant) => {
-                if constant.inline {
-                    return true;
-                }
-
-                // As with a binding (see below), a constant that a loop refers to is only
-                // substituted there if it's a literal
-                if self.graph.is_loop_capture(symbol) && !self.db.is_literal_hir(constant.value.hir)
-                {
-                    return false;
-                }
-
-                references <= 1 && self.options.auto_inline && self.can_substitute(symbol)
+                constant.inline
+                    || (self.is_substitution_candidate(symbol, constant.value.hir)
+                        && references <= 1
+                        && self.can_substitute(symbol))
             }
             Symbol::Binding(binding) => {
                 if binding.inline {
                     return true;
                 }
 
-                // The result of a fold for the rest of the list is evaluated once
-                if self.db.is_loop_rest_call(binding.value.hir) {
-                    return false;
-                }
-
-                // A value that a loop refers to from outside of it is only substituted there if
-                // it's a literal, since anything else would be evaluated again for each item.
-                // This can't depend on the arguments of the calls being inlined, since the loop
-                // is lowered once (see `group_symbols`), so a value that's only static with them
-                // isn't substituted either
-                if self.graph.is_loop_capture(symbol) && !self.db.is_literal_hir(binding.value.hir)
-                {
-                    return false;
-                }
-
-                if !self.options.auto_inline {
+                if !self.is_substitution_candidate(symbol, binding.value.hir) {
                     return false;
                 }
 

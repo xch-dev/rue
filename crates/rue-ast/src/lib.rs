@@ -134,6 +134,7 @@ ast_nodes!(
     PathSegment,
     StructInitializerExpr,
     StructInitializerField,
+    StructInitializerSpread,
     LiteralExpr,
     ConstExpr,
     GroupExpr,
@@ -766,6 +767,27 @@ impl AstStructInitializerExpr {
         self.syntax()
             .children()
             .filter_map(AstStructInitializerField::cast)
+    }
+
+    /// The values that the fields which aren't written are copied from (`...base`). Only one is
+    /// allowed, before the fields, which is checked when the initializer is compiled.
+    pub fn spreads(&self) -> impl Iterator<Item = AstStructInitializerSpread> {
+        self.syntax()
+            .children()
+            .filter_map(AstStructInitializerSpread::cast)
+    }
+}
+
+impl AstStructInitializerSpread {
+    pub fn spread(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == T![...])
+    }
+
+    pub fn expr(&self) -> Option<AstExpr> {
+        self.syntax().children().find_map(AstExpr::cast)
     }
 }
 

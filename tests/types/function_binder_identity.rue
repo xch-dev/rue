@@ -56,12 +56,8 @@ fn pinned<U>(saved: U) -> fn(x: Any) -> (U, Pinned2<U>) {
     fn(_x: Any): (U, Pinned2<U>) => (saved, pinned(saved))
 }
 
-fn is_present(f: Id | nil) -> Int {
-    if f is nil {
-        0
-    } else {
-        1
-    }
+fn accept_optional(_f: Id | nil) -> Int {
+    1
 }
 
 fn ll<V>(x: V) -> (V, fn<W>(y: W) -> (W, Int)) {
@@ -102,7 +98,7 @@ test fn instantiate_alias_with_expected_generic() -> Int {
 }
 
 test fn instantiate_alias_with_optional_expected_generic() -> Int {
-    is_present(make_id())
+    accept_optional(make_id())
 }
 
 test fn instance_reached_with_renamed_generics() -> Int {

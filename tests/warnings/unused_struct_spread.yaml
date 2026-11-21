@@ -1,0 +1,144 @@
+tests:
+- name: every_field
+  program: (q 1 2)
+  debug_program: (c (q . 1) (c (q . 2) ()))
+  output: (1 2)
+  runtime_cost: 20
+  byte_cost: 84000
+  total_cost: 84020
+- name: every_field_out_of_order
+  program: (q 1 2)
+  debug_program: (c (q . 1) (c (q . 2) ()))
+  output: (1 2)
+  runtime_cost: 20
+  byte_cost: 84000
+  total_cost: 84020
+- name: only_field
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: no_fields
+  program: ()
+  debug_program: ()
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: every_field_of_call
+  program: (i () (a (i (> 2 ()) (q 4 2 (c 2 ())) (q 8)) 1) (q 1 2))
+  debug_program: (a (q 3 () (a 2 5) (c (q . 1) (c (q . 2) ()))) (c (q 2 (i (> 1 ()) (q 4 1 (c 1 ())) (q 8 (q . "assertion failed at unused_struct_spread.rue:13:5"))) 1) 1))
+  solution: (4)
+  output: (1 2)
+  runtime_cost: 1142
+  byte_cost: 636000
+  total_cost: 637142
+- name: every_field_on_lines
+  program: (c (+ 4 4 4 4 4 4 4 4) (c (+ 10 10 10 10 10 10 10 10) ()))
+  debug_program: (c (+ (+ (+ (+ (+ (+ (+ (f 2) (f 2)) (f 2)) (f 2)) (f 2)) (f 2)) (f 2)) (f 2)) (c (+ (+ (+ (+ (+ (+ (+ (f (r 2)) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) (f (r 2))) ()))
+  solution: ((1 2))
+  output: (8 16)
+  runtime_cost: 6398
+  byte_cost: 588000
+  total_cost: 594398
+- name: other_fields_are_constants
+  program: (c (q . 51) (c 5 ()))
+  debug_program: (c (q . 51) (c 5 ()))
+  solution: ((51 5) 9)
+  output: (51 9)
+  runtime_cost: 218
+  byte_cost: 180000
+  total_cost: 180218
+- name: only_the_discriminant_is_left
+  program: (c () (c 5 ()))
+  debug_program: (c () (c 5 ()))
+  solution: ((() 5) 9)
+  output: (() 9)
+  runtime_cost: 242
+  byte_cost: 156000
+  total_cost: 156242
+- name: only_constants
+  program: (q 51 2)
+  debug_program: (c (q . 51) (c (q . 2) ()))
+  solution: ((51 2))
+  output: (51 2)
+  runtime_cost: 20
+  byte_cost: 84000
+  total_cost: 84020
+- name: constant_without_a_default
+  program: (c (q . 7) (c 5 ()))
+  debug_program: (c (q . 7) (c 5 ()))
+  solution: ((7 5) 9)
+  output: (7 9)
+  runtime_cost: 218
+  byte_cost: 180000
+  total_cost: 180218
+- name: variant_field_is_left
+  program: (c (q . 1) (c 5 14))
+  debug_program: (c (q . 1) (c 5 (r (r 2))))
+  solution: ((1 2 3) 9)
+  output: (1 9 3)
+  runtime_cost: 230
+  byte_cost: 180000
+  total_cost: 180230
+- name: one_field
+  program: (c (q . 1) 6)
+  debug_program: (c (q . 1) (r 2))
+  solution: ((1 2))
+  output: (1 2)
+  runtime_cost: 123
+  byte_cost: 108000
+  total_cost: 108123
+- name: no_fields_written
+  program: "2"
+  debug_program: "2"
+  solution: ((1 2))
+  output: (1 2)
+  runtime_cost: 48
+  byte_cost: 12000
+  total_cost: 12048
+- name: allowed
+  program: (q 1 2)
+  debug_program: (c (q . 1) (c (q . 2) ()))
+  output: (1 2)
+  runtime_cost: 20
+  byte_cost: 84000
+  total_cost: 84020
+- name: expected
+  program: (a (q 16 4 10) (c (q 1 2) 1))
+  debug_program: (a (q 16 (f 2) (f (r 2))) (c (c (q . 1) (c (q . 2) ())) 1))
+  output: "3"
+  runtime_cost: 1090
+  byte_cost: 324000
+  total_cost: 325090
+diagnostics:
+- |-
+  Every field of `Point` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:19:13
+    help: Remove the spread
+- |-
+  Every field of `Point` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:23:13
+    help: Remove the spread
+- |-
+  Every field of `Wrapper` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:27:15
+    help: Remove the spread
+- |-
+  Every field of `Empty` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:32:13
+    help: Remove the spread
+- |-
+  Every field of `Point` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:37:13
+    help: Remove the spread
+- |-
+  Every field of `Point` is specified, so nothing is copied from the spread value at unused_struct_spread.rue:42:9
+    help: Remove the spread
+- |-
+  Every other field of `Spend` is a constant, so nothing is read from the spread value at unused_struct_spread.rue:65:13
+    help: Remove the spread
+- |-
+  Every other field of `Shape::Square` is a constant, so nothing is read from the spread value at unused_struct_spread.rue:69:21
+    help: Remove the spread
+- |-
+  Every field of `Marker` is a constant, so nothing is read from the spread value at unused_struct_spread.rue:79:14
+    help: Remove the spread
+- Every other field of `Tagged` is a constant, so nothing is read from the spread value at unused_struct_spread.rue:84:14

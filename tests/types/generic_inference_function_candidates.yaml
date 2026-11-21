@@ -63,9 +63,9 @@ tests:
   byte_cost: 780000
   total_cost: 781839
 - name: guard_other_candidates
-  program: (a (q 32 2) (c () 1))
-  debug_program: (a (q 2 (q 2 (i (not (l 2)) (q 9 2 ()) ()) 1) (c (a 6 (c () (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q . 2) (q . 2)) ()))
+  program: (q . 1)
+  debug_program: (a (q 2 (q 2 29 2) (c (a 10 (c () (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q . 2) (c (q . 2) (q 1 . 1))) ()))
   output: "1"
-  runtime_cost: 499
-  byte_cost: 228000
-  total_cost: 228499
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020

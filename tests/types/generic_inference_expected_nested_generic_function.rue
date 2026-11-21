@@ -56,13 +56,12 @@ test fn three_levels() -> Int {
 
 test fn union_at_the_inner_level() -> Int {
     let function: fn<T>(a: T) -> (fn<U>(b: U) -> (T, U)) | nil = make();
-    let inner = function(9);
+    let inner: (fn<U>(b: U) -> (Int, U)) | nil = function(9);
+    accept(inner)
+}
 
-    if inner is nil {
-        0
-    } else {
-        1
-    }
+fn accept(_inner: (fn<U>(b: U) -> (Int, U)) | nil) -> Int {
+    1
 }
 
 type Recursive = fn<U>(x: U) -> Recursive;

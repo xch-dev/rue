@@ -1,0 +1,78 @@
+struct Point {
+    x: Int,
+    y: Int,
+    z: Int,
+}
+
+struct Other {
+    x: Int,
+    y: Int,
+    z: Int,
+}
+
+struct Box<T> {
+    id: Int,
+    value: T,
+}
+
+enum Shape {
+    Square { side: Int },
+    Rect { width: Int, height: Int },
+}
+
+// The spread comes before the fields, since they replace what's in it
+test fn spread_after_field(point: Point) -> Point {
+    Point { x: 1, ...point }
+}
+
+test fn spread_between_fields(point: Point) -> Point {
+    Point { x: 1, ...point, y: 2 }
+}
+
+// Only one value can be spread, but the others are still checked
+test fn two_spreads(point: Point) -> Point {
+    Point { ...point, ...missing, x: 1 }
+}
+
+// The value has to be the same struct, even if another one has the same fields
+test fn other_struct(other: Other) -> Point {
+    Point { ...other, x: 1 }
+}
+
+test fn not_a_struct(pair: (Int, (Int, (Int, nil)))) -> Point {
+    Point { ...pair, x: 1 }
+}
+
+// A union of the struct and something else has to be narrowed first
+test fn union(value: Point | nil) -> Point {
+    Point { ...value, x: 1 }
+}
+
+// An enum has to be narrowed to the variant, and to the same one
+test fn enum_value(shape: Shape) -> Shape {
+    Shape::Rect { ...shape, width: 1 }
+}
+
+test fn other_variant(square: Shape::Square) -> Shape {
+    Shape::Rect { ...square, width: 1 }
+}
+
+// Each field that's copied is checked against the field it initializes
+test fn generic_field(box: Box<Int>) -> Box<Bytes> {
+    Box::<Bytes> { ...box, id: 1 }
+}
+
+// The fields that are written are still checked, and nothing is missing
+test fn field_errors(point: Point) -> Point {
+    Point { ...point, x: "1", w: 2, y: 1, y: 2 }
+}
+
+// An unresolved value isn't reported again, and the fields aren't missing
+test fn unresolved_value() -> Point {
+    Point { ...missing, x: 1 }
+}
+
+// The struct being initialized still has to be one
+test fn not_a_struct_type(point: Point) -> Int {
+    Int { ...point }
+}

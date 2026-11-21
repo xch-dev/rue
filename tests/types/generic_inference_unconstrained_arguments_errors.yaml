@@ -1,0 +1,26 @@
+diagnostics:
+- Cannot infer generic `T` for `empty`; specify it explicitly, e.g. `empty::<...>()` at generic_inference_unconstrained_arguments_errors.rue:68:25
+- Cannot infer generic `T` for `decode`; specify it explicitly, e.g. `decode::<...>()` at generic_inference_unconstrained_arguments_errors.rue:69:26
+- Cannot infer generic `T` for `decode`; specify it explicitly, e.g. `decode::<...>()` at generic_inference_unconstrained_arguments_errors.rue:72:20
+- Cannot infer generic `T` for `first`; specify it explicitly, e.g. `first::<...>()` at generic_inference_unconstrained_arguments_errors.rue:75:25
+- Cannot infer generic `T` for `first_with`; specify it explicitly, e.g. `first_with::<...>()` at generic_inference_unconstrained_arguments_errors.rue:76:27
+- Cannot infer generic `T` for `boxed`; specify it explicitly, e.g. `boxed::<...>()` at generic_inference_unconstrained_arguments_errors.rue:78:24
+- Cannot infer generic `A` for `either`; specify it explicitly, e.g. `either::<...>()` at generic_inference_unconstrained_arguments_errors.rue:81:21
+- Cannot infer generic `B` for `either`; specify it explicitly, e.g. `either::<...>()` at generic_inference_unconstrained_arguments_errors.rue:81:21
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at generic_inference_unconstrained_arguments_errors.rue:84:23
+- Cannot assign `5` to `List<{unresolved}>`, since they are incompatible at generic_inference_unconstrained_arguments_errors.rue:84:30
+- Cannot infer generic `T` for `merge_list`; specify it explicitly, e.g. `merge_list::<...>()` at generic_inference_unconstrained_arguments_errors.rue:85:23
+- Cannot assign `5` to `List<{unresolved}>`, since they are incompatible at generic_inference_unconstrained_arguments_errors.rue:85:39
+- Cannot assign `List<{unresolved}>` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_unconstrained_arguments_errors.rue:88:28
+- Undeclared symbol `undeclared` at generic_inference_unconstrained_arguments_errors.rue:88:36
+- Expected 2 arguments, but found 1 at generic_inference_unconstrained_arguments_errors.rue:89:20
+- Cannot infer generic `T` for `merge_list`; specify it explicitly, e.g. `merge_list::<...>()` at generic_inference_unconstrained_arguments_errors.rue:89:20
+- Cannot infer generic `T` for `each`; specify it explicitly, e.g. `each::<...>()` at generic_inference_unconstrained_arguments_errors.rue:92:29
+- Cannot infer generic `T` for `map`; specify it explicitly, e.g. `map::<...>()` at generic_inference_unconstrained_arguments_errors.rue:93:26
+- Cannot infer generic `T` for `with_callback`; specify it explicitly, e.g. `with_callback::<...>()` at generic_inference_unconstrained_arguments_errors.rue:97:32
+- Cannot infer generic `T` for `with_callback`; specify it explicitly, e.g. `with_callback::<...>()` at generic_inference_unconstrained_arguments_errors.rue:98:34
+- Cannot infer generic `A` for `same`; specify it explicitly, e.g. `same::<...>()` at generic_inference_unconstrained_arguments_errors.rue:101:22
+- Cannot infer generic `A` for `taker`; specify it explicitly, e.g. `taker::<...>()` at generic_inference_unconstrained_arguments_errors.rue:102:23
+- Unnecessary type guard from `List<Never>` to `List<Int>`, since they are already compatible types at generic_inference_unconstrained_arguments_errors.rue:105:17
+- Cannot assign `List<Never>` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_unconstrained_arguments_errors.rue:108:22
+- Cannot assign `(List<Never>, Int)` to `Int`, since they are incompatible at generic_inference_unconstrained_arguments_errors.rue:109:32
