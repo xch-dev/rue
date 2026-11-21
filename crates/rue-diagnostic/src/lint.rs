@@ -211,6 +211,7 @@ lints! {
     UnusedImport("unused_import", Warn, "Imports that are never used"),
     UnusedValue("unused_value", Warn, "Values returned by expression statements that are discarded"),
     UnusedStructField("unused_struct_field", Warn, "Struct fields that are never read, in structs whose values are only ever read by field"),
+    UnusedStructSpread("unused_struct_spread", Warn, "Struct initializers that spread a value (`...value`) but specify every field that isn't a constant, so nothing is read from it"),
     UnusedExport("unused_export", Warn, "Exported items of a module that are only used inside of it"),
     EmptyGenerics("empty_generics", Warn, "Empty generic parameter or argument lists"),
     UnnecessaryCast("unnecessary_cast", Warn, "Casts between types that are already compatible"),
@@ -342,6 +343,7 @@ lint_groups! {
         UnusedImport,
         UnusedValue,
         UnusedStructField,
+        UnusedStructSpread,
         UnusedExport,
     ]),
     Style("style", "Code that works, but could be written more simply or idiomatically", [

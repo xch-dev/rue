@@ -58,11 +58,7 @@ fn main(
 
     let conditions = if !(new_owner is nil) && new_owner != current_owner {
         // The new owner DID must approve the transfer.
-        let did_struct = SingletonStruct {
-            mod_hash: singleton_struct.mod_hash,
-            launcher_id: new_owner,
-            launcher_puzzle_hash: singleton_struct.launcher_puzzle_hash,
-        };
+        let did_struct = SingletonStruct { ...singleton_struct, launcher_id: new_owner };
         let did_puzzle_hash = curry_tree_hash(
             singleton_struct.mod_hash,
             [tree_hash(did_struct), solution.new_did_inner_puzzle_hash],

@@ -388,6 +388,7 @@ fn analyze_nodes(
             | AstNodeKind::DebugStmt
             | AstNodeKind::PathSegment
             | AstNodeKind::StructInitializerField
+            | AstNodeKind::StructInitializerSpread
             | AstNodeKind::LiteralExpr
             | AstNodeKind::ConstExpr
             | AstNodeKind::ListItem

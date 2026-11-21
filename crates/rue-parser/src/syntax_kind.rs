@@ -360,6 +360,9 @@ pub enum SyntaxKind {
     #[display("struct initializer field")]
     StructInitializerField,
 
+    #[display("struct initializer spread")]
+    StructInitializerSpread,
+
     #[display("literal expression")]
     LiteralExpr,
 
@@ -699,6 +702,7 @@ impl SyntaxKind {
             SyntaxKind::PathSegment => &[SyntaxKind::PathSegment],
             SyntaxKind::StructInitializerExpr => &[SyntaxKind::StructInitializerExpr],
             SyntaxKind::StructInitializerField => &[SyntaxKind::StructInitializerField],
+            SyntaxKind::StructInitializerSpread => &[SyntaxKind::StructInitializerSpread],
             SyntaxKind::LiteralExpr => &[SyntaxKind::LiteralExpr],
             SyntaxKind::ConstExpr => &[SyntaxKind::ConstExpr],
             SyntaxKind::GroupExpr => &[SyntaxKind::GroupExpr],

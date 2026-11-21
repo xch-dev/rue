@@ -86,9 +86,8 @@ fn wrap_conditions(
 
         return [
             CreateCoin {
+                ...odd_coin,
                 puzzle_hash: state_layer_puzzle_hash(mod_hash, update.state, odd_coin.puzzle_hash),
-                amount: odd_coin.amount,
-                memos: odd_coin.memos,
             },
             ...update.conditions,
         ];

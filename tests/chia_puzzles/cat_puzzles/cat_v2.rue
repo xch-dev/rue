@@ -184,9 +184,8 @@ fn morph_conditions(
 
         let rest = morph_conditions(conditions.rest, cat_info, tail_info);
         let morphed = CreateCoin {
+            ...condition,
             puzzle_hash: cat_puzzle_hash(cat_info, condition.puzzle_hash),
-            amount: condition.amount,
-            memos: condition.memos,
         };
 
         return Morphed {

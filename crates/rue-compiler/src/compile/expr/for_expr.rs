@@ -413,7 +413,20 @@ fn is_lazy(ctx: &Compiler, symbol: SymbolId, body: HirId, first_hir: HirId) -> b
         .filter(|hir| matches!(hir, Hir::Reference(reference) if *reference == symbol))
         .count();
 
-    references <= 1 && direct_uses(ctx, symbol, body, 1) == references
+    // A struct that's updated from the binding reuses the rest of it with one reference, where a
+    // struct that's rebuilt refers to it for each field, and so evaluates it before the body.
+    // The update does the same, so that whether the rest of the list is gone through when a
+    // branch doesn't use the binding doesn't depend on which of the two is written
+    let copied = ctx
+        .hirs_between(first_hir, ctx.next_hir_id())
+        .any(|hir| match hir {
+            Hir::Struct(initializer) => initializer
+                .tail
+                .is_some_and(|tail| tail.reads > 1 && ctx.path_symbol(tail.value) == Some(symbol)),
+            _ => false,
+        });
+
+    references <= 1 && !copied && direct_uses(ctx, symbol, body, 1) == references
 }
 
 /// How many times the function that the node is in evaluates a reference to the symbol in the

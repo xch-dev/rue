@@ -870,3 +870,88 @@ fn test_signature_in_match_arm_with_binding() {
         "#]],
     );
 }
+
+#[test]
+fn test_signature_of_struct_update() {
+    let source = "struct Point {\n    x: Int,\n    y: Int,\n    z: Int,\n}\n\n";
+    let update = |body: &str| {
+        format!("{source}fn main(point: Point, n: Int) -> Point {{\n    Point {{ {body} }}\n}}\n")
+    };
+
+    // The field that the cursor is in
+    check(
+        &update("...point, y: $0n"),
+        expect![[r#"
+        > Point { x: Int, [y: Int], z: Int }
+    "#]],
+    );
+
+    // Otherwise the first field that isn't written, which is the next one to write, though the
+    // spread value provides it until then
+    check(
+        &update("...point, y: n, $0"),
+        expect![[r#"
+        > Point { [x: Int], y: Int, z: Int }
+    "#]],
+    );
+    check(
+        &update("...point, x: n, y: n, $0"),
+        expect![[r#"
+        > Point { x: Int, y: Int, [z: Int] }
+    "#]],
+    );
+
+    // The spread isn't a field, so the next field to write is shown there too
+    check(
+        &update("...po$0int, x: n"),
+        expect![[r#"
+        > Point { x: Int, [y: Int], z: Int }
+    "#]],
+    );
+    check(
+        &update("...$0point"),
+        expect![[r#"
+        > Point { [x: Int], y: Int, z: Int }
+    "#]],
+    );
+
+    // Every field is written, so there's nothing to write next, and the first is shown as it is
+    // without a spread
+    check(
+        &update("...point, x: n, y: n, z: n, $0"),
+        expect![[r#"
+        > Point { [x: Int], y: Int, z: Int }
+    "#]],
+    );
+
+    // A call in the spread value is the innermost one
+    check(
+        &format!(
+            "{source}fn make(n: Int) -> Point {{\n    Point {{ x: n, y: n, z: n }}\n}}\n\nfn main(n: Int) -> Point {{\n    Point {{ ...make($0n), x: 1 }}\n}}\n"
+        ),
+        expect![[r#"
+            > fn make([n: Int]) -> Point
+        "#]],
+    );
+}
+
+#[test]
+fn test_signature_of_unfinished_struct_update() {
+    let source = "struct Point {\n    x: Int,\n    y: Int,\n    z: Int,\n}\n\n";
+
+    // While the fields after the spread are being typed
+    check(
+        &format!("{source}fn main(point: Point) -> Point {{\n    Point {{ ...point, $0\n}}\n"),
+        expect![[r#"
+            > Point { [x: Int], y: Int, z: Int }
+        "#]],
+    );
+
+    // And while the spread value is
+    check(
+        &format!("{source}fn main(point: Point) -> Point {{\n    Point {{ ...$0 }}\n}}\n"),
+        expect![[r#"
+            > Point { [x: Int], y: Int, z: Int }
+        "#]],
+    );
+}

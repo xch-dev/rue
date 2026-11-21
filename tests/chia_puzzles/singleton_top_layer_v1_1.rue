@@ -69,9 +69,8 @@ fn morph_conditions(
 
         return [
             CreateCoin {
+                ...condition,
                 puzzle_hash: singleton_puzzle_hash(singleton_struct, condition.puzzle_hash),
-                amount: condition.amount,
-                memos: condition.memos,
             },
             ...rest,
         ];

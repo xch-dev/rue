@@ -1,0 +1,122 @@
+struct Point {
+    x: Int,
+    y: Int,
+    z: Int,
+}
+
+struct Line {
+    start: Point,
+    end: Point,
+}
+
+struct Box<T> {
+    id: Int,
+    value: T,
+}
+
+struct Options {
+    limit: Int = 10,
+    name: String = "default",
+}
+
+struct Maybe {
+    value: Int | nil,
+    other: Int,
+}
+
+enum Shape {
+    Square { side: Int },
+    Rect { width: Int, height: Int },
+}
+
+fn origin() -> Point {
+    Point { x: 0, y: 0, z: 0 }
+}
+
+// The fields that are written replace the ones in the value that's spread
+test fn update(point: Point) -> Point {
+    Point { ...point, y: 5 }
+}
+
+// The value can be any expression, and the fields can use it too
+test fn update_expression(point: Point) -> Point {
+    Point {
+        ...if point.x > 0 {
+            point
+        } else {
+            origin()
+        },
+        z: point.x + point.y,
+    }
+}
+
+// The field shorthand works after a spread
+test fn update_shorthand(point: Point, x: Int) -> Point {
+    Point { ...point, x }
+}
+
+// A field of a struct is a path, so it can be spread like a binding
+test fn update_nested(line: Line) -> Line {
+    Line { ...line, end: Point { ...line.start, x: line.end.x } }
+}
+
+// The value can have different generic arguments, as long as each field that's copied from it
+// is assignable
+test fn update_generic(box: Box<Int>, value: Bytes) -> Box<Bytes> {
+    Box::<Bytes> { ...box, value }
+}
+
+test fn update_generic_wider(box: Box<Int>) -> Box<Int | nil> {
+    Box::<Int | nil> { ...box, id: 1 }
+}
+
+// A field that's left out is copied from the value, rather than being its default
+test fn update_defaults(options: Options) -> Options {
+    Options { ...options, limit: 5 }
+}
+
+// A value whose type has been narrowed is still the struct, and its fields are copied as what
+// they're narrowed to
+test fn update_narrowed(maybe: Maybe) -> Maybe {
+    if maybe.value is nil {
+        Maybe { ...maybe, other: 0 }
+    } else {
+        Maybe { ...maybe, other: maybe.value }
+    }
+}
+
+test fn update_narrowed_union(value: Point | Int) -> Point {
+    if value is Point {
+        Point { ...value, x: 1 }
+    } else {
+        Point { ...origin(), x: value }
+    }
+}
+
+test fn update_narrowed_union_atom(value: Point | Int) -> Point {
+    update_narrowed_union(value)
+}
+
+// A value that's one variant of an enum can update that variant
+test fn update_variant(shape: Shape) -> Shape {
+    match shape {
+        Shape::Square => Shape::Square { side: shape.side * 2 },
+        Shape::Rect => Shape::Rect { ...shape, width: shape.height },
+    }
+}
+
+// The fields don't have to be in the order they're declared in
+test fn update_out_of_order(point: Point) -> Point {
+    Point { ...point, z: 1, x: 3 }
+}
+
+// A value that isn't a path is evaluated once, before the fields
+test fn update_evaluated_once(n: Int) -> Point {
+    Point {
+        ...{
+            debug "evaluated";
+            Point { x: n, y: n, z: n }
+        },
+        y: 1,
+    }
+}

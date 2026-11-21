@@ -53,11 +53,7 @@ fn list_types(ctx: &mut Compiler, hir: HirId, depth: usize, lines: &mut Vec<Stri
             .collect(),
         Hir::Pair(first, rest) => vec![first, rest],
         Hir::List(list) => list.items,
-        Hir::Struct(initializer) => initializer
-            .fields
-            .into_iter()
-            .map(|field| field.value)
-            .collect(),
+        Hir::Struct(initializer) => initializer.values().collect(),
         Hir::FieldAccess(access) => vec![access.value],
         Hir::Cast(hir) => vec![hir],
         Hir::Guard(guard) => vec![guard.value],

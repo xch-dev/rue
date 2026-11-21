@@ -2597,3 +2597,197 @@ fn main(shape: Shape, limit: Int) -> Int {
         "#]],
     );
 }
+
+#[test]
+fn test_rename_field_in_struct_update() {
+    // A field that's written in shorthand after a spread keeps the binding's name. The fields
+    // that are copied from the spread value aren't written, so there's nothing to rename there
+    let source = with_point(
+        "\nfn main(point: Point, y: Int) -> Int {\n    let moved = Point { ...point, y };\n    let other = Point { ...moved, y: 2 };\n    moved.y + other.y\n}\n",
+    );
+
+    check(
+        &[("main.rue", &source.replacen("y: Int,", "$0y: Int,", 1))],
+        "top",
+        expect![[r#"
+            main.rue:
+            struct Point {
+                x: Int,
+                top: Int,
+            }
+
+            fn main(point: Point, y: Int) -> Int {
+                let moved = Point { ...point, top: y };
+                let other = Point { ...moved, top: 2 };
+                moved.top + other.top
+            }
+        "#]],
+    );
+
+    // A shorthand is renamed as the binding it uses, like one that isn't after a spread, so the
+    // field keeps its name
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("...point, y", "...point, $0y", 1),
+        )],
+        "top",
+        expect![[r#"
+            main.rue:
+            struct Point {
+                x: Int,
+                y: Int,
+            }
+
+            fn main(point: Point, top: Int) -> Int {
+                let moved = Point { ...point, y: top };
+                let other = Point { ...moved, y: 2 };
+                moved.y + other.y
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_copied_field_in_struct_update() {
+    // A field that's only copied from the spread value isn't written anywhere in the update, so
+    // neither spread is edited
+    let source = with_point(
+        "\nfn main(point: Point, y: Int) -> Int {\n    let moved = Point { ...point, y };\n    let other = Point { ...moved, y: 2 };\n    moved.x + other.x\n}\n",
+    );
+
+    check(
+        &[("main.rue", &source.replacen("x: Int,", "$0x: Int,", 1))],
+        "left",
+        expect![[r#"
+            main.rue:
+            struct Point {
+                left: Int,
+                y: Int,
+            }
+
+            fn main(point: Point, y: Int) -> Int {
+                let moved = Point { ...point, y };
+                let other = Point { ...moved, y: 2 };
+                moved.left + other.left
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_binding_in_struct_update() {
+    // The field keeps its name when the binding that a shorthand after a spread uses is renamed
+    let source = with_point(
+        "\nfn main(point: Point, y: Int) -> Point {\n    let x = y + 1;\n    Point { ...point, x }\n}\n",
+    );
+
+    check(
+        &[("main.rue", &source.replacen("let x", "let $0x", 1))],
+        "left",
+        expect![[r#"
+            main.rue:
+            struct Point {
+                x: Int,
+                y: Int,
+            }
+
+            fn main(point: Point, y: Int) -> Point {
+                let left = y + 1;
+                Point { ...point, x: left }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_spread_value_in_struct_update() {
+    let source = with_point(
+        "\nfn main(point: Point, y: Int) -> Point {\n    let first = Point { ...point, y };\n    Point { ...point, x: first.x }\n}\n",
+    );
+
+    // From its declaration
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("main(point", "main($0point", 1),
+        )],
+        "base",
+        expect![[r#"
+            main.rue:
+            struct Point {
+                x: Int,
+                y: Int,
+            }
+
+            fn main(base: Point, y: Int) -> Point {
+                let first = Point { ...base, y };
+                Point { ...base, x: first.x }
+            }
+        "#]],
+    );
+
+    // From inside the update
+    check(
+        &[(
+            "main.rue",
+            &source.replacen("...point, y", "...po$0int, y", 1),
+        )],
+        "base",
+        expect![[r#"
+            main.rue:
+            struct Point {
+                x: Int,
+                y: Int,
+            }
+
+            fn main(base: Point, y: Int) -> Point {
+                let first = Point { ...base, y };
+                Point { ...base, x: first.x }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_rename_in_unfinished_struct_update() {
+    // The spread value is still renamed while the fields after it are being typed
+    check_with_errors(
+        &[(
+            "main.rue",
+            &with_point("\nfn main(point: Point) -> Point {\n    Point { ...po$0int, \n}\n"),
+        )],
+        "base",
+        expect![[r#"
+            main.rue:
+            struct Point {
+                x: Int,
+                y: Int,
+            }
+
+            fn main(base: Point) -> Point {
+                Point { ...base, 
+            }
+        "#]],
+    );
+
+    // A spread without a value has nothing to rename
+    check_with_errors(
+        &[(
+            "main.rue",
+            &with_point("\nfn main(po$0int: Point) -> Point {\n    Point { ... }\n}\n"),
+        )],
+        "base",
+        expect![[r#"
+            main.rue:
+            struct Point {
+                x: Int,
+                y: Int,
+            }
+
+            fn main(base: Point) -> Point {
+                Point { ... }
+            }
+        "#]],
+    );
+}
