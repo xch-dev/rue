@@ -33,6 +33,33 @@ fn is_nil(value: Any) -> Bool {
     value is nil
 }
 
+fn second_is_nil(_first: Int, value: Any) -> Bool {
+    value is nil
+}
+
+fn is_atom(value: Bytes | (Any, Any)) -> Bool {
+    value is Bytes
+}
+
+fn later_guard(f: (fn() -> nil) | nil | (Int, Int)) -> Int {
+    if f is (Int, Int) {
+        return 2;
+    }
+    if f is nil {
+        0
+    } else {
+        1
+    }
+}
+
+struct Opaque {
+    value: Any,
+}
+
+type Chain = (Link, nil);
+
+type Link = Chain | (fn() -> nil);
+
 // The guard has to tell the function apart from `nil`
 test fn guard_on_optional_function() -> Int {
     let f = pick(true);
@@ -83,6 +110,19 @@ test fn guard_after_guard() -> Int {
         0
     } else {
         1
+    }
+}
+
+test fn guard_after_guard_on_parameter() -> Int {
+    later_guard(fn() => nil)
+}
+
+test fn match_second_arm_on_field() -> Int {
+    let pair: ((fn() -> nil) | nil | (Int, Int), Int) = (fn() => nil, 1);
+    match pair.first {
+        (Int, Int) => 2,
+        nil => 0,
+        _ => 1,
     }
 }
 
@@ -174,9 +214,40 @@ test fn allowed() -> Bool {
     f is nil
 }
 
-// Only a cast that's the argument itself is passed on as it is
+test fn cast_to_struct() -> Bool {
+    let opaque = (identity, nil) as Opaque;
+    opaque.value is nil
+}
+
+test fn cast_to_any_or_generic() -> Bool {
+    any_or(identity, 1) is nil
+}
+
+fn any_or<T>(f: fn(x: Int) -> Int, _other: T) -> Any | T {
+    f as Any | T
+}
+
+// The function is erased whichever order the members of the union are in, even though the
+// types are recursive
+test fn cast_recursive_first() -> Bool {
+    let value: (Link, Chain) = (fn() => nil, (fn() => nil, nil));
+    let cast = value as (Any, Chain) | (Link, Any);
+    cast.rest is nil
+}
+
+test fn cast_recursive_second() -> Bool {
+    let value: (Link, Chain) = (fn() => nil, (fn() => nil, nil));
+    let cast = value as (Link, Any) | (Any, Chain);
+    cast.rest is nil
+}
+
+// Only a cast that's the argument itself, and isn't needed, is passed on as it is
 test fn cast_inside_argument() -> Bool {
     is_nil((identity as Any, 1))
+}
+
+test fn cast_needed_by_argument() -> Bool {
+    is_atom(identity as Bytes | (Any, Any))
 }
 
 // Hashing a function is how the puzzle hash of an inner puzzle is found, so passing it where
@@ -205,6 +276,10 @@ test fn pass_to_any_parameter() -> Bool {
 
 test fn pass_cast_to_any_parameter() -> Bool {
     is_nil(pick(false) as Any)
+}
+
+test fn pass_cast_to_second_parameter() -> Bool {
+    second_is_nil(1, pick(false) as Any)
 }
 
 test fn pass_cast_to_generic_parameter() -> Bytes32 {

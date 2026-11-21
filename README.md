@@ -450,7 +450,7 @@ fn main(flag: Bool) -> Int {
 
 To tell whether a function is there, wrap it in a pair or a struct, such as `(fn() -> nil, nil) | nil`, so that the check looks at the wrapper rather than the function.
 
-Passing a function where `Any` is expected isn't reported, with or without a cast written on the argument, since that's how a function is given to code that treats it as an opaque tree. `tree_hash(f)` is the puzzle hash of `f`, which also differs between debug and release builds, as the hash of any program does.
+Passing a function where `Any` is expected isn't reported, since that's how a function is given to code that treats it as an opaque tree, and neither is a cast written on such an argument that it doesn't need. `tree_hash(f)` is the puzzle hash of `f`, which also differs between debug and release builds, as the hash of any program does.
 
 ## Testing
 

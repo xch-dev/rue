@@ -3322,6 +3322,27 @@ fn function_value_observation_relies_on_nested_checks_being_errors() {
 }
 
 #[test]
+fn function_value_observation_skips_unresolved_types() {
+    let source = "\
+fn main(f: (fn() -> nil) | Unknown) -> Bool {
+    let value = f as Any | Missing;
+    f is nil && value is nil
+}
+";
+
+    let (reports, has_errors) = reports(source, |_| {});
+
+    assert_eq!(
+        reports,
+        [
+            "Error 1: Undeclared type `Unknown`",
+            "Error 2: Undeclared type `Missing`"
+        ]
+    );
+    assert!(has_errors);
+}
+
+#[test]
 fn function_value_observation_levels() {
     let source = "\
 fn main(f: (fn() -> nil) | nil) -> Bool {

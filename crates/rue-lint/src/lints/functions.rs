@@ -24,7 +24,7 @@ use crate::{HirLintPass, LintContext, LintInput, MatchArmGuard};
 ///
 /// A function is also assignable to `Any` without a cast, which is how it's passed to a function
 /// that treats it as an opaque tree, such as `tree_hash`. That isn't reported, and neither is a
-/// cast written directly as an argument of a call, which is the same thing.
+/// cast that's written on such an argument anyway, which is the same thing.
 #[derive(Debug)]
 pub(crate) struct FunctionValueObservation<'a> {
     arms: &'a HashMap<HirId, MatchArmGuard>,
@@ -138,29 +138,31 @@ fn check_cast(cx: &mut LintContext<'_>, hir: HirId, value: HirId) {
         return;
     };
 
-    // Passing a function to a parameter that accepts any value doesn't need a cast, so one that's
-    // written there doesn't make the function any more observable than the call already does
-    if let Some(parent) = cx.parent()
-        && let Hir::FunctionCall(call) = db.hir(parent)
-        && call.args.contains(&hir)
-    {
-        return;
-    }
+    let is_argument = cx.parent().is_some_and(
+        |parent| matches!(db.hir(parent), Hir::FunctionCall(call) if call.args.contains(&hir)),
+    );
 
     // An error has already been reported, and the type is compatible with everything
     if cx.contains_unresolved(from) || cx.contains_unresolved(to) {
         return;
     }
 
+    // An argument that's assignable to the type it's cast to could be passed without the cast,
+    // which doesn't make the function any more observable than the call already does
+    if is_argument && cx.is_assignable(from, to) {
+        return;
+    }
+
     let substituted_from = cx.substitute(from);
     let substituted_to = cx.substitute(to);
 
-    if !erases_function(
-        cx.db(),
-        substituted_from,
-        substituted_to,
-        &mut HashMap::new(),
-    ) {
+    let mut erasure = Erasure {
+        db: cx.db(),
+        results: HashMap::new(),
+        recursive: false,
+    };
+
+    if !erasure.erases_function(substituted_from, substituted_to) {
         return;
     }
 
@@ -180,65 +182,85 @@ fn check_cast(cx: &mut LintContext<'_>, hir: HirId, value: HirId) {
     }
 }
 
-/// Whether casting a value from one type to the other leaves a function somewhere that the new
-/// type doesn't say is a function. Both types must have been substituted.
-fn erases_function(
-    db: &Database,
-    from: TypeId,
-    to: TypeId,
-    results: &mut HashMap<(TypeId, TypeId), Option<bool>>,
-) -> bool {
-    match results.get(&(from, to)) {
-        Some(Some(result)) => return *result,
-        // The type is recursive, and is already being checked against the target
-        Some(None) => return false,
-        None => {}
+/// Finds whether casting a value from one type to another leaves a function somewhere that the
+/// new type doesn't say is a function.
+struct Erasure<'a> {
+    db: &'a Database,
+    /// The result for each pair of types, or `None` while it's being worked out.
+    results: HashMap<(TypeId, TypeId), Option<bool>>,
+    /// Whether a pair of types that's still being worked out was reached again, by a recursive
+    /// type, since the last time this was cleared.
+    recursive: bool,
+}
+
+impl Erasure<'_> {
+    /// Both types must have been substituted.
+    fn erases_function(&mut self, from: TypeId, to: TypeId) -> bool {
+        match self.results.get(&(from, to)) {
+            Some(Some(result)) => return *result,
+            // Going around a recursive type again doesn't find anything new
+            Some(None) => {
+                self.recursive = true;
+                return false;
+            }
+            None => {}
+        }
+
+        self.results.insert((from, to), None);
+
+        let recursive = std::mem::take(&mut self.recursive);
+        let result = self.erases_function_inner(from, to);
+
+        // A function that's erased stays erased, but finding none while part of a recursive type
+        // was skipped only holds for this path through it, so it isn't remembered
+        if result || !self.recursive {
+            self.results.insert((from, to), Some(result));
+        } else {
+            self.results.remove(&(from, to));
+        }
+
+        self.recursive |= recursive;
+
+        result
     }
 
-    results.insert((from, to), None);
+    fn erases_function_inner(&mut self, from: TypeId, to: TypeId) -> bool {
+        let db = self.db;
 
-    let result = match db.ty(from) {
-        Type::Ref(id) => erases_function(db, *id, to, results),
-        Type::Alias(alias) => erases_function(db, alias.inner, to, results),
-        Type::Struct(ty) => erases_function(db, ty.inner, to, results),
-        Type::Union(union) => union
-            .types
-            .iter()
-            .any(|&id| erases_function(db, id, to, results)),
-        Type::Function(_) => !members(db, to).into_iter().any(|id| {
-            matches!(
-                db.ty(id),
-                Type::Function(_) | Type::Generic(_) | Type::Unresolved
-            )
-        }),
-        Type::Pair(pair) => {
-            // The pairs that the target could hold this one as, where `Any` holds any pair
-            let pairs: Vec<(TypeId, TypeId)> = members(db, to)
+        match db.ty(from) {
+            Type::Ref(id) => self.erases_function(*id, to),
+            Type::Alias(alias) => self.erases_function(alias.inner, to),
+            Type::Struct(ty) => self.erases_function(ty.inner, to),
+            Type::Union(union) => union.types.iter().any(|&id| self.erases_function(id, to)),
+            Type::Function(_) => !members(db, to)
                 .into_iter()
-                .filter_map(|id| match db.ty(id) {
-                    Type::Pair(pair) => Some((pair.first, pair.rest)),
-                    Type::Any => Some((id, id)),
-                    _ => None,
-                })
-                .collect();
+                .any(|id| matches!(db.ty(id), Type::Function(_))),
+            Type::Pair(pair) => {
+                // The pairs that the target could hold this one as, where `Any` holds any pair
+                let pairs: Vec<(TypeId, TypeId)> = members(db, to)
+                    .into_iter()
+                    .filter_map(|id| match db.ty(id) {
+                        Type::Pair(pair) => Some((pair.first, pair.rest)),
+                        Type::Any => Some((id, id)),
+                        _ => None,
+                    })
+                    .collect();
 
-            // The function is only erased if no member of the target keeps it as one
-            !pairs.is_empty()
-                && pairs.into_iter().all(|(first, rest)| {
-                    erases_function(db, pair.first, first, results)
-                        || erases_function(db, pair.rest, rest, results)
-                })
+                // The function is only erased if no member of the target keeps it as one
+                !pairs.is_empty()
+                    && pairs.into_iter().all(|(first, rest)| {
+                        self.erases_function(pair.first, first)
+                            || self.erases_function(pair.rest, rest)
+                    })
+            }
+            Type::Unresolved
+            | Type::Generic(_)
+            | Type::Any
+            | Type::Never
+            | Type::Atom(_)
+            | Type::Apply(_) => false,
         }
-        Type::Unresolved
-        | Type::Generic(_)
-        | Type::Any
-        | Type::Never
-        | Type::Atom(_)
-        | Type::Apply(_) => false,
-    };
-
-    results.insert((from, to), Some(result));
-    result
+    }
 }
 
 /// The types that a value of the type can be, which are the members of its unions, behind any

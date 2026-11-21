@@ -57,6 +57,22 @@ tests:
   runtime_cost: 1254
   byte_cost: 1092000
   total_cost: 1093254
+- name: guard_after_guard_on_parameter
+  program: (a (q 2 (i (a (i (l 2) (q 2 (i (l 4) () (q 32 (l 6))) 1) ()) 1) (q 1 . 2) (q 32 (not 2))) 1) (c () 1))
+  debug_program: (a (q 2 2 (c (q . 2) (c () (c () ())))) (c (q 2 (i (a (i (l 1) (q 2 (i (not (l (f 1))) (q 32 (l (r 1))) ()) 1) ()) 1) (q 1 . 2) (q 2 (i (a (i (not (l 1)) (q 9 1 ()) ()) 1) () (q 1 . 1)) 1)) 1) ()))
+  output: ()
+  debug_output: "1"
+  runtime_cost: 1254
+  byte_cost: 1092000
+  total_cost: 1093254
+- name: match_second_arm_on_field
+  program: (a (q 2 (i (a (i (l 4) (q 2 (i (l 8) () (q 32 (l 12))) 1) ()) 1) (q 1 . 2) (q 32 (not 4))) 1) (c (c () (q . 1)) 1))
+  debug_program: (a (q 2 (i (a (i (l (f 2)) (q 2 (i (not (l (f (f 2)))) (q 32 (l (r (f 2)))) ()) 1) ()) 1) (q 1 . 2) (q 2 (i (a (i (not (l (f 2))) (q 9 (f 2) ()) ()) 1) () (q 1 . 1)) 1)) 1) (c (c (c (q . 2) (c () (c () ()))) (q . 1)) 1))
+  output: ()
+  debug_output: "1"
+  runtime_cost: 1333
+  byte_cost: 1188000
+  total_cost: 1189333
 - name: match_second_arm
   program: (a (q 2 (i (a (i (l 2) (q 2 (i (l 4) () (q 32 (l 6))) 1) ()) 1) (q 1 . 2) (q 32 (not 2))) 1) (c () 1))
   debug_program: (a (q 2 (i (a (i (l 2) (q 2 (i (not (l (f 2))) (q 32 (l (r 2))) ()) 1) ()) 1) (q 1 . 2) (q 2 (i (a (i (not (l 2)) (q 9 2 ()) ()) 1) () (q 1 . 1)) 1)) 1) (c (c (q . 2) (c () (c () ()))) 1))
@@ -155,6 +171,34 @@ tests:
   runtime_cost: 499
   byte_cost: 228000
   total_cost: 228499
+- name: cast_to_struct
+  program: (a (q 32 4) (c (c (q . 2) ()) 1))
+  debug_program: (a (q 2 (q 2 (i (not (l (f 2))) (q 9 (f 2) ()) ()) 1) (c (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) ()) 1)) (c (q . 2) ()))
+  output: ()
+  runtime_cost: 574
+  byte_cost: 324000
+  total_cost: 324574
+- name: cast_to_any_or_generic
+  program: (a (q 32 2) (c (q . 2) ()))
+  debug_program: (a (q 2 (i (not (l (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 1))))) (q 9 (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 1))) ()) ()) 1) (c (c (q . 2) (q . 2)) ()))
+  output: ()
+  runtime_cost: 475
+  byte_cost: 252000
+  total_cost: 252475
+- name: cast_recursive_first
+  program: (a (q 32 6) (c (c () (c () ())) 1))
+  debug_program: (a (q 2 (q 2 (i (not (l (r 2))) (q 9 (r 2) ()) ()) 1) (c 2 1)) (c (c (c (q . 2) (c () (c () ()))) (c (c (q . 2) (c () (c () ()))) ())) 1))
+  output: ()
+  runtime_cost: 693
+  byte_cost: 372000
+  total_cost: 372693
+- name: cast_recursive_second
+  program: (a (q 32 6) (c (c () (c () ())) 1))
+  debug_program: (a (q 2 (q 2 (i (not (l (r 2))) (q 9 (r 2) ()) ()) 1) (c 2 1)) (c (c (c (q . 2) (c () (c () ()))) (c (c (q . 2) (c () (c () ()))) ())) 1))
+  output: ()
+  runtime_cost: 693
+  byte_cost: 372000
+  total_cost: 372693
 - name: cast_inside_argument
   program: (a (q 32 2) (c (c (q . 2) (q . 1)) 1))
   debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 1))) (c (c (q . 2) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) ()))
@@ -162,6 +206,14 @@ tests:
   runtime_cost: 546
   byte_cost: 348000
   total_cost: 348546
+- name: cast_needed_by_argument
+  program: (not (l (q . 2)))
+  debug_program: (a (q 2 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) (c (c (q . 2) (q 32 (l 1))) ()))
+  output: "1"
+  debug_output: ()
+  runtime_cost: 241
+  byte_cost: 132000
+  total_cost: 132241
 - name: tree_hash_of_function
   program: (a (q 2 2 (c 2 (q . 2))) (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) ()))
   debug_program: (a (q 2 4 (c 4 (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))))) (c (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) (q . 2)) ()))
@@ -204,6 +256,13 @@ tests:
 - name: pass_cast_to_any_parameter
   program: (a (q 32 2) (c () 1))
   debug_program: (a (q 2 6 (a 4 ())) (c (c (q 2 (i 1 (q 4 (q . 2) (c () (c () ()))) ()) 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) ()))
+  output: "1"
+  runtime_cost: 499
+  byte_cost: 228000
+  total_cost: 228499
+- name: pass_cast_to_second_parameter
+  program: (a (q 32 2) (c () 1))
+  debug_program: (a (q 2 6 (c (a 4 ()) (q . 1))) (c (c (q 2 (i 1 (q 4 (q . 2) (c () (c () ()))) ()) 1) (q 2 (i (not (l 2)) (q 9 2 ()) ()) 1)) ()))
   output: "1"
   runtime_cost: 499
   byte_cost: 228000
@@ -324,74 +383,101 @@ tests:
   total_cost: 878142
 diagnostics:
 - |-
-  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:39:8
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:45:8
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:48:6
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:48:8
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:53:5
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:66:8
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:58:5
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:75:6
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:63:5
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:80:5
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:68:5
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:85:5
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:73:5
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:90:5
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:79:8
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:95:5
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:82:8
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:100:5
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:92:9
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:106:8
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:93:9
+  This type guard inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:109:8
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:101:9
+  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:123:9
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:102:9
+  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:124:9
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:109:9
+  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:132:9
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:117:9
+  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:133:9
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:125:9
+  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:141:9
     note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
 - |-
-  Casting `fn(x: Int) -> Int` to `Any` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:132:5
+  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:142:9
+    note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
+- |-
+  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:149:9
+    note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
+- |-
+  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:157:9
+    note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
+- |-
+  This match arm inspects a function value, whose representation depends on how the function is compiled, so the result can differ between debug and release builds at function_value_observation.rue:165:9
+    note: Wrap the function in a pair or a struct, such as `(function, nil)`, so that the check doesn't look at the function itself
+- |-
+  Casting `fn(x: Int) -> Int` to `Any` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:172:5
     note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
 - |-
-  Casting `fn() -> nil | nil` to `Any` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:136:17
+  Casting `fn() -> nil | nil` to `Any` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:176:17
     note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
 - |-
-  Casting `Callback` to `Any` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:142:17
+  Casting `Callback` to `Any` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:182:17
     note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
 - |-
-  Casting `fn(x: Int) -> Int` to `Bytes | (Any, Any)` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:148:17
+  Casting `fn(x: Int) -> Int` to `Bytes | (Any, Any)` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:188:17
     note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
 - |-
-  Casting `List<fn() -> nil>` to `Any` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:154:17
+  Casting `List<fn() -> nil>` to `Any` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:194:17
     note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
 - |-
-  Casting `(fn(x: Int) -> Int, 1)` to `(Any, Int)` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:160:17
+  Casting `(fn(x: Int) -> Int, 1)` to `(Any, Int)` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:200:17
     note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
 - |-
-  Casting `((fn() -> nil, 1), (fn() -> nil, 1))` to `((fn() -> nil, 1) | (Any, 1), Any)` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:167:17
+  Casting `((fn() -> nil, 1), (fn() -> nil, 1))` to `((fn() -> nil, 1) | (Any, 1), Any)` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:207:17
     note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
 - |-
-  Casting `fn(x: Int) -> Int` to `Any` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:179:13
+  Casting `(fn(x: Int) -> Int, nil)` to `Opaque` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:218:18
+    note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
+- |-
+  Casting `fn(x: Int) -> Int` to `Any | T` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:227:5
+    note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
+- |-
+  Casting `(Link, Chain)` to `(Any, Chain) | (Link, Any)` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:234:16
+    note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
+- |-
+  Casting `(Link, Chain)` to `(Link, Any) | (Any, Chain)` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:240:16
+    note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
+- |-
+  Casting `fn(x: Int) -> Int` to `Any` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:246:13
+    note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
+- |-
+  Casting `fn(x: Int) -> Int` to `Bytes | (Any, Any)` lets a function value be inspected as data, but its representation depends on how the function is compiled, which differs between debug and release builds at function_value_observation.rue:250:13
     note: A function can be passed where `Any` is expected without a cast, such as to `tree_hash`
