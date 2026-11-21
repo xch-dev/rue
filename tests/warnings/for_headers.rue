@@ -46,6 +46,25 @@ fn main(xs: List<Int>, ys: List<Int>, rest: Int, y: Int, flag: Bool) -> List<Int
     inline let l = for x in xs, other in ys { x + other };
     inline let m = for x in xs, other in ys fold sum = 0 { sum + x + other };
 
+    // An `inline let` in the body that reads the item of a list that can run out is only
+    // skipped with its failure in a fold. Without one, the loop fails for that item anyway
+    let o = for x in xs, other in ys {
+        inline let next = other + 1;
+        if x == 1 {
+            0
+        } else {
+            next
+        }
+    };
+    let p = for x in xs, other in ys fold sum = 0 {
+        inline let next = other + 1;
+        if x == 1 {
+            100
+        } else {
+            sum + next
+        }
+    };
+
     // Over one list, it can't, unless its body can
     inline let n = for x, others in xs { x + length(others) };
 
@@ -60,6 +79,8 @@ fn main(xs: List<Int>, ys: List<Int>, rest: Int, y: Int, flag: Bool) -> List<Int
         ...h,
         ...i,
         ...j,
+        ...o,
+        p,
         if k {
             1
         } else {

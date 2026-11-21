@@ -438,7 +438,7 @@ fn for_expr(p: &mut Parser, checkpoint: Checkpoint) {
 
         // A `{` after the `,` is the body, with nothing between them, unless it's a struct
         // binding for the item of another list, which is followed by `in`, or by a `,`
-        if p.at_quiet(T!['{']) && p.lookahead_past_group() != T![,] && !p.word_past_group("in") {
+        if p.at_quiet(T!['{']) && !p.past_group_at(T![,], &["in"]) {
             p.expected("binding");
             p.error_unexpected();
             break;

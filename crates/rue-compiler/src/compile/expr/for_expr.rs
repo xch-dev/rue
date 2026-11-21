@@ -193,21 +193,23 @@ pub fn compile_for_expr(
     let function = ctx.alloc_symbol(Symbol::Unresolved);
     let parameters: Vec<SymbolId> = clauses.iter().map(|clause| clause.parameter).collect();
 
-    // The loop ends when the first list does, so the others can run out before it
-    for &parameter in parameters.iter().skip(1) {
-        ctx.insert_unchecked_list(parameter);
-    }
-
     let first_hir = ctx.next_hir_id();
 
-    // Each use of what's left of the lists is a node of its own. A list other than the first
-    // that has run out has no rest, so the call fails for it
+    // Each use of what's left of the lists is a node of its own. The loop ends when the first
+    // list does, so another one can run out before it. It has no rest then, so the call fails
     let rest_call = |ctx: &mut Compiler| {
         let args = parameters
             .iter()
-            .map(|&parameter| {
+            .enumerate()
+            .map(|(index, &parameter)| {
                 let reference = ctx.alloc_hir(Hir::Reference(parameter));
-                ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, reference))
+                let rest = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, reference));
+
+                if index > 0 {
+                    ctx.insert_unchecked_list_read(rest);
+                }
+
+                rest
             })
             .collect();
         let callee = ctx.alloc_hir(Hir::Reference(function));
@@ -241,10 +243,19 @@ pub fn compile_for_expr(
 
     // The item is the first of what's left of its list, and what's after it is the rest, which
     // are cheap to get wherever they're used. A list other than the first that has run out has
-    // no item, so the loop fails there
-    for clause in &clauses {
+    // neither. Without a fold, the call for the rest of the lists always fails then, whatever
+    // the body does. A fold only gets to that call where its body refers to the result, so there
+    // it's getting the item, or the rest, that fails, where the body refers to it
+    for (index, clause) in clauses.iter().enumerate() {
+        let unchecked = index > 0 && fold.is_some();
+
         let reference = ctx.alloc_hir(Hir::Reference(clause.parameter));
         let first = ctx.alloc_hir(Hir::Unary(UnaryOp::First, reference));
+
+        if unchecked {
+            ctx.insert_unchecked_list_read(first);
+        }
+
         declare(
             ctx,
             clause.ast.binding().as_ref(),
@@ -256,6 +267,11 @@ pub fn compile_for_expr(
         if let Some(pattern) = clause.ast.rest() {
             let reference = ctx.alloc_hir(Hir::Reference(clause.parameter));
             let rest = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, reference));
+
+            if unchecked {
+                ctx.insert_unchecked_list_read(rest);
+            }
+
             let ty = if ctx.is_unresolved(clause.item_type) {
                 clause.item_type
             } else {

@@ -13,6 +13,10 @@ diagnostics:
 - Unused binding `rest` at for_header_errors.rue:29:20
 - Undeclared symbol `rest` at for_header_errors.rue:29:49
 - Undeclared symbol `rest` at for_header_errors.rue:30:54
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_header_errors.rue:35:11
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_header_errors.rue:36:11
-- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_header_errors.rue:41:11
+- Undeclared symbol `missing` at for_header_errors.rue:33:28
+- Undeclared symbol `missing` at for_header_errors.rue:34:37
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_header_errors.rue:39:11
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_header_errors.rue:40:11
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_header_errors.rue:45:11
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_header_errors.rue:48:11
+- Cannot infer generic `T` for `length`; specify it explicitly, e.g. `length::<...>()` at for_header_errors.rue:49:11

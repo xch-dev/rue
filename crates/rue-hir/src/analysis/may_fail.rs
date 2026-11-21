@@ -234,7 +234,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             }
             Hir::Unary(op, _) => {
                 // A `for` over several lists takes the item and the rest of each without
-                // checking that they're there, so it fails if a list other than the first has
+                // checking that they're there, which fails if a list other than the first has
                 // run out
                 matches!(op, UnaryOp::G1Negate | UnaryOp::G2Negate)
                     || db.is_unchecked_list_read(hir)

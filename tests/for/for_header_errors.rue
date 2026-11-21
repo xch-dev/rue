@@ -29,6 +29,10 @@ fn main(xs: List<Int>, ys: List<Bytes>, pair: (Int, Int), value: Int) -> Int {
     let k = for x, rest in xs fold sum = length(rest) { sum + x };
     let l = for x, rest in xs { x + length(rest) } + rest;
 
+    // A list that doesn't resolve is the only error, whatever its item and rest are used as
+    let m = for x, rest in missing { x + length(rest) };
+    let n = for x in xs, y, rest in missing { x + y + length(rest) };
+
     length(a)
         + length(b)
         + length(c)
@@ -41,4 +45,6 @@ fn main(xs: List<Int>, ys: List<Bytes>, pair: (Int, Int), value: Int) -> Int {
         + length(j)
         + k
         + l
+        + length(m)
+        + length(n)
 }
