@@ -150,6 +150,7 @@ pub fn compile_function_call_expr(
             results,
             checks,
             mut mappings,
+            unrestored,
         } = infer_call(
             ctx,
             function,
@@ -175,12 +176,14 @@ pub fn compile_function_call_expr(
         // been reported is why nothing did, the generic is treated as one that wasn't inferred,
         // and is left to that error like the others, rather than leaking the caller's generic
         // into what the call returns
-        let stand_ins =
-            deferred_stand_ins(ctx, function, &args, &checks, &mappings, &renamed, reported);
-
-        for generic in &stand_ins {
-            mappings.remove(generic);
-        }
+        let stand_ins = defer_stand_ins(
+            ctx,
+            function,
+            (&args, &checks),
+            (&mut mappings, &unrestored),
+            &renamed,
+            reported,
+        );
 
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {
@@ -492,27 +495,23 @@ fn unconstrained_as_never(
     assignable.then_some(with_never)
 }
 
-/// The renamed generics of a recursive call that are mapped to the caller's generics they were
-/// renamed from, although no argument's type has that generic in it, so that only
-/// `restore_renamed` could have put it there, and that an error is why they weren't inferred, as
-/// `deferred_generics` decides for a generic that isn't inferred. A generic that an argument's
-/// type has, such as `U` when `f: fn(x: T) -> U` is passed on, is inferred from it and is kept.
-fn deferred_stand_ins(
+/// Takes the renamed generics of a recursive call that `restore_renamed` mapped to the caller's
+/// generics they were renamed from, because nothing inferred them, out of the mappings where an
+/// error is why nothing did, as `deferred_generics` decides for a generic that isn't inferred, and
+/// returns them. What the others were inferred as has them as they were before they were restored,
+/// so that they're unresolved there too, rather than the caller's generics.
+fn defer_stand_ins(
     ctx: &mut Compiler,
     function: &FunctionType,
-    args: &[AstExpr],
-    checks: &[(AstExpr, TypeId, TypeId)],
-    mappings: &HashMap<TypeId, TypeId>,
+    (args, checks): (&[AstExpr], &[(AstExpr, TypeId, TypeId)]),
+    (mappings, unrestored): (&mut HashMap<TypeId, TypeId>, &HashMap<TypeId, TypeId>),
     renamed: &HashMap<TypeId, TypeId>,
     reported: usize,
 ) -> Vec<TypeId> {
     let stand_ins: HashMap<TypeId, TypeId> = renamed
         .iter()
-        .filter(|&(copy, generic)| mappings.get(copy) == Some(generic))
-        .filter(|&(_, &generic)| {
-            !checks
-                .iter()
-                .any(|&(_, ty, _)| contains_generic(ctx.types_mut(), ty, generic))
+        .filter(|&(copy, generic)| {
+            !unrestored.contains_key(copy) && mappings.get(copy) == Some(generic)
         })
         .map(|(&copy, &generic)| (copy, generic))
         .collect();
@@ -522,7 +521,7 @@ fn deferred_stand_ins(
     }
 
     // An argument that it would have been inferred from has a part that failed to compile, such
-    // as a lambda that returns what it couldn't, which is why it's only a stand-in
+    // as a lambda that returns what it couldn't
     let from_unresolved: Vec<TypeId> = stand_ins
         .keys()
         .copied()
@@ -534,13 +533,38 @@ fn deferred_stand_ins(
         })
         .collect();
 
-    deferred_generics(
+    let deferred = deferred_generics(
         ctx,
         function,
         args,
         (&stand_ins, &from_unresolved),
         reported,
-    )
+    );
+
+    if deferred.is_empty() {
+        return deferred;
+    }
+
+    let kept: HashMap<TypeId, TypeId> = stand_ins
+        .into_iter()
+        .filter(|(copy, _)| !deferred.contains(copy))
+        .collect();
+
+    for (generic, &ty) in unrestored {
+        if deferred
+            .iter()
+            .any(|&copy| contains_generic(ctx.types_mut(), ty, copy))
+        {
+            let ty = substitute_with_mappings(ctx.types_mut(), ty, &kept);
+            mappings.insert(*generic, ty);
+        }
+    }
+
+    for generic in &deferred {
+        mappings.remove(generic);
+    }
+
+    deferred
 }
 
 /// Whether an argument that the generic would have been inferred from has failed to compile.

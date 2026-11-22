@@ -36,6 +36,10 @@ pub(crate) struct InferredCall {
     pub checks: Vec<(AstExpr, TypeId, TypeId)>,
     /// What the callee's generics were inferred as. A generic that couldn't be inferred is left out.
     pub mappings: HashMap<TypeId, TypeId>,
+    /// The mappings before the renamed generics that weren't inferred were restored to the
+    /// caller's generics they were renamed from (see `restore_renamed`), which leaves those out,
+    /// and has them as they are in what the others were inferred as.
+    pub unrestored: HashMap<TypeId, TypeId>,
 }
 
 /// Compiles the arguments of a call to `function`, inferring its generics from them and from the
@@ -561,7 +565,7 @@ pub(crate) fn infer_call(
     // they are in the lambdas' parameters
     let mut first_unsolved = None;
 
-    let (mappings, solved_checks) = loop {
+    let (mappings, unrestored, solved_checks) = loop {
         if has_own {
             for (i, own) in argument_own.iter().enumerate() {
                 let Some((_, ty, param)) = checks[i].clone().filter(|_| !own.is_empty()) else {
@@ -590,6 +594,7 @@ pub(crate) fn infer_call(
         }
 
         let mut mappings = ctx.solve_call(&solver, order.merged().clone());
+        let mut unrestored = mappings.clone();
         restore_renamed(ctx, &mut mappings, renamed);
 
         let mut solved_checks = checks.clone();
@@ -624,6 +629,7 @@ pub(crate) fn infer_call(
                 );
 
                 // What the vars are inferred as can reference the renamed generics too
+                let alternative_unrestored = alternative_mappings.clone();
                 let restored = restore_renamed(ctx, &mut alternative_mappings, renamed);
 
                 for (_, ty, _) in alternative.iter_mut().flatten() {
@@ -645,6 +651,7 @@ pub(crate) fn infer_call(
                     .any(|&ty| references_generics(ctx, ty, &function.generics))
                 {
                     mappings = alternative_mappings;
+                    unrestored = alternative_unrestored;
                     solved_checks = alternative;
                 } else {
                     solved_checks = instantiated;
@@ -654,14 +661,14 @@ pub(crate) fn infer_call(
         }
 
         if solved {
-            break (mappings, solved_checks);
+            break (mappings, unrestored, solved_checks);
         }
 
         if !with_own {
-            break first_unsolved.unwrap_or((mappings, solved_checks));
+            break first_unsolved.unwrap_or((mappings, unrestored, solved_checks));
         }
 
-        first_unsolved = Some((mappings, solved_checks));
+        first_unsolved = Some((mappings, unrestored, solved_checks));
         with_own = false;
     };
 
@@ -670,11 +677,12 @@ pub(crate) fn infer_call(
     // type to the required type. So its generics are narrowed (see `CallSolver::solve_narrowed`),
     // and that's used if it solves it. A call that's solved isn't narrowed, so that nothing that
     // compiles changes
-    let (mappings, solved_checks) = match required_type {
+    let (mappings, unrestored, solved_checks) = match required_type {
         Some(required_type)
             if !solves_call_as_checked(ctx, function, &solved_checks, &mappings, required_type) =>
         {
             let mut narrowed = ctx.solve_call_narrowed(&solver, order.merged().clone());
+            let narrowed_unrestored = narrowed.clone();
             restore_renamed(ctx, &mut narrowed, renamed);
 
             let mut narrowed_checks = checks.clone();
@@ -696,12 +704,12 @@ pub(crate) fn infer_call(
             if narrowed != mappings
                 && solves_call_as_checked(ctx, function, &narrowed_checks, &narrowed, required_type)
             {
-                (narrowed, narrowed_checks)
+                (narrowed, narrowed_unrestored, narrowed_checks)
             } else {
-                (mappings, solved_checks)
+                (mappings, unrestored, solved_checks)
             }
         }
-        _ => (mappings, solved_checks),
+        _ => (mappings, unrestored, solved_checks),
     };
 
     let mut checks = solved_checks;
@@ -715,6 +723,7 @@ pub(crate) fn infer_call(
         results,
         checks,
         mappings,
+        unrestored,
     }
 }
 

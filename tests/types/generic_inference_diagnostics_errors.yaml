@@ -242,6 +242,11 @@ diagnostics:
 - Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:359:49
 - Cannot assign `List<U>` to `List<Int>`, since they are incompatible at generic_inference_diagnostics_errors.rue:360:29
 - Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:363:23
-- Unused function `recursive_empty` at generic_inference_diagnostics_errors.rue:375:4
-- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:379:37
-- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_diagnostics_errors.rue:380:29
+- Expected 3 arguments, but found 1 at generic_inference_diagnostics_errors.rue:368:33
+- Unknown field `bogus` on type `U` at generic_inference_diagnostics_errors.rue:374:66
+- Unused function `recursive_empty` at generic_inference_diagnostics_errors.rue:385:4
+- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:389:37
+- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_diagnostics_errors.rue:390:29
+- Unused function `recursive_untyped_parameters` at generic_inference_diagnostics_errors.rue:396:4
+- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:401:76
+- Cannot assign `((U, nil), U)` to `(Int, Int)`, since they are incompatible at generic_inference_diagnostics_errors.rue:402:30

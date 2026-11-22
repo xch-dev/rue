@@ -363,6 +363,16 @@ fn recursive_walk<T, U>(list: List<T>, f: fn(x: T) -> U, depth: Int) -> List<U> 
         let unknown = missing;
         let unresolved_argument = recursive_walk(list, unknown, depth - 1);
         let _l: List<Int> = unresolved_argument;
+
+        // So are the missing arguments, where nothing else gives `U` a type
+        let missing_arguments = recursive_walk(list);
+        let _m: List<Int> = missing_arguments;
+
+        // Where `T` is inferred as the caller's `U`, which the lambda's parameter is too, `U` is
+        // still only a stand-in for what the lambda would have returned
+        let caller_list: List<U> = recursive_walk(list, f, depth - 1);
+        let from_caller = recursive_walk(caller_list, fn(y) => y.bogus, depth - 1);
+        let _n: List<Int> = from_caller;
     }
 
     if list is nil {
@@ -381,4 +391,16 @@ fn recursive_empty<T>(depth: Int) -> List<T> {
     }
 
     nil
+}
+
+fn recursive_untyped_parameters<T, U>(f: fn(x: U) -> T, g: fn(y: U) -> Int, depth: Int) -> (T, U) {
+    if depth > 0 {
+        // A known gap: here the lambdas' parameters are compiled as the caller's `U` that stands
+        // for the callee's while the arguments are, so the call infers it as that, and what it
+        // returns still shows it after the error
+        let stood_in = recursive_untyped_parameters(fn(x) => [x], fn(y) => missing, depth - 1);
+        let _s: (Int, Int) = stood_in;
+    }
+
+    recursive_untyped_parameters(f, g, depth)
 }
