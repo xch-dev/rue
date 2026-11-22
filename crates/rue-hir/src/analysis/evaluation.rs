@@ -305,6 +305,8 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
 
     /// Whether creating a closure for the function evaluates the target. That's the case for an
     /// argument of an inlined function that the closure captures, since it's captured by value.
+    /// A call that's inlined rather than building the closure evaluates it too, unless its body
+    /// always does (see `Lowerer::captured_arguments`).
     fn captures_target(&self, function: SymbolId) -> bool {
         matches!(self.db().symbol(self.target), Symbol::Parameter(_))
             && self.cx.captures(function, self.target)

@@ -477,6 +477,46 @@ test fn value_checked_before_a_spread_in_a_fold_without_a_result() -> List<Int> 
     items_or(xs, last)
 }
 
+// A loop captures the arguments of the `inline fn` it's in by value, so they're evaluated when
+// its closure is built. A release build that inlines the loop's call instead still evaluates the
+// ones that may fail there, rather than only at the end of the list, which a fold whose body never
+// uses its result doesn't get to (#573)
+inline fn nested_first_or(xs: List<Int>, value: Int) -> Int {
+    for _x in xs fold _rest = for _y in xs fold _inner = value { 2 } { 1 }
+}
+
+inline fn items_or_last(xs: List<Int>, last: Int) -> List<Int> {
+    for _x in xs fold _rest = [last] { [1] }
+}
+
+test fn argument_checked_before_a_fold_without_a_result() -> Int {
+    let xs = runtime([1, 2]);
+    first_or(xs, positive(xs.first - 1))
+}
+
+test fn argument_checked_before_a_list_in_a_fold_without_a_result() -> List<Int> {
+    let xs = runtime([1, 2]);
+    items_or_last(xs, positive(xs.first - 1))
+}
+
+test fn argument_checked_before_nested_folds_without_a_result() -> Int {
+    let xs = runtime([1, 2]);
+    nested_first_or(xs, positive(xs.first - 1))
+}
+
+// The same arguments, when they pass, give the same values as before
+test fn argument_of_a_fold_without_a_result() -> List<Int> {
+    let xs = runtime([1, 2]);
+    let empty: List<Int> = runtime([]);
+    [
+        first_or(xs, positive(xs.first)),
+        first_or(empty, positive(7)),
+        nested_first_or(xs, positive(xs.first)),
+        nested_first_or(empty, positive(7)),
+        ...items_or_last(empty, positive(7)),
+    ]
+}
+
 // Several lists, and the rest of a list, in the header of a `for` that's spread: the loop ends
 // with the items after it when its first list ends
 test fn several_lists_before_the_last_item() -> List<Int> {
