@@ -439,6 +439,44 @@ test fn value_before_an_inline_spread_in_its_own_argument() -> (List<Int>, Int) 
     )
 }
 
+// A fold whose body never refers to its result doesn't go through the rest of its list, so its
+// value is only evaluated for an empty list. A value that may fail there isn't always
+// evaluated, so it still fails where it's defined: through a function, a binding and a constant
+inline fn first_or(xs: List<Int>, value: Int) -> Int {
+    for _x in xs fold _rest = value { 1 }
+}
+
+inline fn items_or(xs: List<Int>, last: Int) -> List<Int> {
+    for _x in xs fold _rest = [...for y in xs { y }, last] { nil }
+}
+
+fn first_or_through(xs: List<Int>, value: Int) -> Int {
+    first_or(xs, value)
+}
+
+const CHECKED: Int = positive(runtime([0]).first);
+
+test fn value_checked_before_a_fold_without_a_result_in_a_function() -> Int {
+    let xs = runtime([1, 2]);
+    first_or_through(xs, positive(xs.first - 1))
+}
+
+test fn value_checked_before_a_fold_without_a_result_in_a_binding() -> Int {
+    let xs = runtime([1, 2]);
+    let value = positive(xs.first - 1);
+    first_or(xs, value)
+}
+
+test fn value_checked_before_a_fold_without_a_result_in_a_constant() -> Int {
+    first_or(runtime([1, 2]), CHECKED)
+}
+
+test fn value_checked_before_a_spread_in_a_fold_without_a_result() -> List<Int> {
+    let xs = runtime([1, 2]);
+    let last = positive(xs.first - 1);
+    items_or(xs, last)
+}
+
 // The settlement payments puzzle's shape: each payment's coins in front of the rest
 struct Payment {
     puzzle_hash: Bytes32,
