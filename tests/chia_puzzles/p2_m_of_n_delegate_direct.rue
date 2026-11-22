@@ -12,51 +12,17 @@ fn main(
     delegated_puzzle: fn(...solution: Any) -> List<Condition>,
     solution: Any,
 ) -> List<Condition> {
-    assert m == count_selectors(selectors);
-    add_agg_sigs(
-        choose_keys(selectors, public_key_list),
-        tree_hash(delegated_puzzle),
-        delegated_puzzle(...solution),
-    )
-}
-
-fn add_agg_sigs(
-    public_keys: List<PublicKey>,
-    message: Bytes32,
-    conditions: List<Condition>,
-) -> List<Condition> {
-    if public_keys is nil {
-        return conditions;
-    }
-
-    [
-        AggSigUnsafe { public_key: public_keys.first, message },
-        ...add_agg_sigs(public_keys.rest, message, conditions),
-    ]
-}
-
-fn choose_keys(selectors: List<Any>, public_keys: List<PublicKey>) -> List<PublicKey> {
-    if selectors is nil {
-        return nil;
-    }
+    let message = tree_hash(delegated_puzzle);
+    let count = for selector in selectors fold count = 0 { count + (!(selector is nil)) as Int };
+    assert m == count;
 
     // There must be a public key for each selector.
-    inline let public_key_list = unchecked_cast::<(PublicKey, List<PublicKey>)>(public_keys);
-    let rest = choose_keys(selectors.rest, public_key_list.rest);
-
-    if selectors.first is nil {
-        rest
-    } else {
-        [public_key_list.first, ...rest]
+    for selector in selectors, public_key in public_key_list
+        if !(selector is nil)
+        fold conditions = delegated_puzzle(...solution)
+    {
+        [AggSigUnsafe { public_key, message }, ...conditions]
     }
-}
-
-fn count_selectors(selectors: List<Any>) -> Int {
-    if selectors is nil {
-        return 0;
-    }
-
-    count_selectors(selectors.rest) + inline if selectors.first is nil { 0 } else { 1 }
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.

@@ -118,18 +118,14 @@ fn spend_xch_coins(
 
 // The total amount of the positive coins created, which excludes -113 and other magic amounts.
 fn sum_create_coins(conditions: List<Condition>) -> Int {
-    if conditions is nil {
-        return 0;
+    for condition in conditions fold sum = 0 {
+        sum
+            + if condition is CreateCoin && condition.amount > 0 {
+                condition.amount
+            } else {
+                0
+            }
     }
-
-    let condition = conditions.first;
-    let amount = if condition is CreateCoin && condition.amount > 0 {
-        condition.amount
-    } else {
-        0
-    };
-
-    amount + sum_create_coins(conditions.rest)
 }
 
 fn for_each_asset_type(
@@ -242,10 +238,7 @@ fn dedupe(coins: List<ParentAmount>, ids: List<Bytes32>) -> List<ParentAmount> {
 }
 
 fn contains(item: Bytes32, items: List<Bytes32>) -> Bool {
-    if items is nil {
-        return false;
-    }
-    item == items.first || contains(item, items.rest)
+    for other in items fold found = false { item == other || found }
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.

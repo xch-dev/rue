@@ -385,12 +385,12 @@ fn get(json: Json | nil, key: String) -> Json | nil {
 }
 
 fn find(members: List<Member>, key: String) -> Json | nil {
-    if members is nil {
-        nil
-    } else if members.first.key == key {
-        members.first.value
-    } else {
-        find(members.rest, key)
+    for member in members fold found: Json | nil = nil {
+        if member.key == key {
+            member.value
+        } else {
+            found
+        }
     }
 }
 

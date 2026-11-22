@@ -22,12 +22,7 @@ fn main(
 
     [
         AssertMyAmount { amount: my_amount },
-        ...check_for_clawback(
-            puzzle_reveal(...puzzle_solution),
-            clawback_puzzle_hash,
-            my_amount,
-            false,
-        ),
+        ...check_for_clawback(puzzle_reveal(...puzzle_solution), clawback_puzzle_hash, my_amount),
     ]
 }
 
@@ -36,27 +31,20 @@ fn check_for_clawback(
     conditions: List<Condition>,
     clawback_puzzle_hash: Bytes32,
     amount: Int,
-    seen: Bool,
 ) -> List<Condition> {
-    if conditions is nil {
-        assert seen;
-        return nil;
-    }
-
-    let condition = conditions.first;
-
-    assert !(condition is CreateCoin)
-        || (!seen && condition.puzzle_hash == clawback_puzzle_hash && condition.amount == amount);
-
-    [
-        condition,
-        ...check_for_clawback(
-            conditions.rest,
-            clawback_puzzle_hash,
-            amount,
-            seen || condition is CreateCoin,
-        ),
-    ]
+    // Whether a coin is created after the condition
+    let seen = for condition in conditions fold seen = false {
+        if condition is CreateCoin {
+            assert !seen
+                && condition.puzzle_hash == clawback_puzzle_hash
+                && condition.amount == amount;
+            true
+        } else {
+            seen
+        }
+    };
+    assert seen;
+    conditions
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.

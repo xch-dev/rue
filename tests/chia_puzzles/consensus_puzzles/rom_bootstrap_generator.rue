@@ -40,22 +40,15 @@ fn main(
 }
 
 fn run_coin_spends(coin_spends: List<CoinSpend>) -> List<RunCoinSpend> {
-    if coin_spends is nil {
-        return nil;
-    }
-
-    let coin_spend = coin_spends.first;
-
-    [
+    for coin_spend in coin_spends {
         RunCoinSpend {
             parent_coin_info: coin_spend.parent_coin_info,
             puzzle_hash: tree_hash(coin_spend.puzzle),
             amount: coin_spend.amount,
             conditions: coin_spend.puzzle(...coin_spend.solution),
             extras: coin_spend.extras,
-        },
-        ...run_coin_spends(coin_spends.rest),
-    ]
+        }
+    }
 }
 
 // A port of `chialisp_deserialisation.clsp`, which the original includes as compiled CLVM. It

@@ -78,27 +78,21 @@ fn assert_royalties(
     trade_prices: List<TradePrice>,
     my_nft_id: Bytes32,
 ) -> List<Condition> {
-    if trade_prices is nil {
-        return nil;
-    }
+    for trade_price in trade_prices {
+        let (royalty, _) = divmod(trade_price.amount * trade_price_percentage, 10000);
+        let payment = NotarizedPayment {
+            nonce: my_nft_id,
+            payments: [Payment {
+                puzzle_hash: royalty_address,
+                amount: royalty,
+                memos: Memos { value: [royalty_address] },
+            }],
+        };
 
-    let trade_price = trade_prices.first;
-    let (royalty, _) = divmod(trade_price.amount * trade_price_percentage, 10000);
-    let payment = NotarizedPayment {
-        nonce: my_nft_id,
-        payments: [Payment {
-            puzzle_hash: royalty_address,
-            amount: royalty,
-            memos: Memos { value: [royalty_address] },
-        }],
-    };
-
-    [
         AssertPuzzleAnnouncement {
             id: sha256(trade_price.settlement_puzzle_hash + tree_hash(payment)),
-        },
-        ...assert_royalties(royalty_address, trade_price_percentage, trade_prices.rest, my_nft_id),
-    ]
+        }
+    }
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.

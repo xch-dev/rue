@@ -7,18 +7,10 @@ extern fn run(puzzle: Any, solution: Any) -> Any from "../../../run.hex";
 
 // Rejects conditions with the curried opcode.
 fn main(condition_opcode: Int, conditions: List<Condition>) -> List<Condition> {
-    assert check_conditions(condition_opcode, conditions);
-    conditions
-}
-
-fn check_conditions(condition_opcode: Int, conditions: List<Condition>) -> Bool {
-    if conditions is nil {
-        return true;
+    for condition in conditions {
+        assert unchecked_cast::<(Int, Any)>(condition).first != condition_opcode;
     }
-
-    let opcode = unchecked_cast::<(Int, Any)>(conditions.first).first;
-    assert opcode != condition_opcode;
-    check_conditions(condition_opcode, conditions.rest)
+    conditions
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.

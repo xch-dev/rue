@@ -108,15 +108,10 @@ fn assert_stores(
 
 // Checks that each value is in the merkle tree with the given root.
 fn verify_proofs(root: Bytes32, values: List<Bytes32>, proofs: List<MerkleProof>) {
-    if proofs is nil {
-        return;
-    }
-
     // There's a value for each proof.
-    inline let values = unchecked_cast::<(Bytes32, List<Bytes32>)>(values);
-
-    assert root == calculate_merkle_root(proofs.first.path, values.first, proofs.first.hashes);
-    verify_proofs(root, values.rest, proofs.rest);
+    for proof in proofs, value in values {
+        assert root == calculate_merkle_root(proof.path, value, proof.hashes);
+    }
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.

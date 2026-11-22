@@ -103,7 +103,7 @@ fn main(
     let cat_info = CatInfo { mod_hash, mod_hash_hash: tree_hash_atom(mod_hash), asset_id };
 
     // Calculate the inner puzzle hash and conditions.
-    let morph = morph_conditions(inner_puzzle(...inner_solution), cat_info, nil);
+    let morph = morph_conditions(inner_puzzle(...inner_solution), cat_info);
     let inner_puzzle_hash = tree_hash(inner_puzzle);
 
     // Calculate coin ids.
@@ -194,53 +194,100 @@ struct Morph {
 }
 
 // Morph all of the conditions and extract the TAIL info.
-fn morph_conditions(
-    conditions: List<CatCondition>,
-    cat_info: CatInfo,
-    tail_info: TailInfo | nil,
-) -> Morph {
-    // If there are no conditions, return an empty morph.
-    if conditions is nil {
-        return Morph { conditions: nil, sum: 0, tail_info };
+fn morph_conditions(conditions: List<CatCondition>, cat_info: CatInfo) -> Morph {
+    for condition in conditions fold rest = (Morph { conditions: nil, sum: 0, tail_info: nil }) {
+        if condition is RunTail {
+            // The last TAIL that's revealed is the one that's run
+            if !(rest.tail_info is nil) {
+                rest
+            } else {
+                Morph {
+                    ...rest,
+                    tail_info: TailInfo {
+                        tail_puzzle: condition.tail_puzzle,
+                        tail_solution: condition.tail_solution,
+                    },
+                }
+            }
+        } else if condition is CreateCoin {
+            // Morph the condition by wrapping the puzzle hash in the CAT layer.
+            let morphed = CreateCoin {
+                ...condition,
+                puzzle_hash: cat_puzzle_hash(cat_info, condition.puzzle_hash),
+            };
+
+            Morph {
+                conditions: [morphed, ...rest.conditions],
+                sum: rest.sum + condition.amount,
+                tail_info: rest.tail_info,
+            }
+        } else {
+            // If the condition is a coin announcement,
+            // make sure it's not pretending to be part of the ring.
+            assert !(
+                condition is CreateCoinAnnouncement
+                    && (
+                        (condition.message.length == 33) & (condition.message[0] == RING_MORPH_BYTE)
+                    )
+            ),
+                "Created coin announcements must not have the ring morph byte";
+
+            Morph { ...rest, conditions: [condition, ...rest.conditions] }
+        }
     }
+}
 
-    inline let condition = conditions.first;
+fn cat_info() -> CatInfo {
+    let mod_hash = sha256("cat");
+    CatInfo { mod_hash, mod_hash_hash: tree_hash_atom(mod_hash), asset_id: sha256("asset") }
+}
 
-    if condition is RunTail {
-        let rest = morph_conditions(
-            conditions.rest,
-            cat_info,
-            TailInfo { tail_puzzle: condition.tail_puzzle, tail_solution: condition.tail_solution },
-        );
+fn run_tail(name: Bytes) -> RunTail {
+    RunTail { tail_puzzle: unchecked_cast(name), tail_solution: name }
+}
 
-        return Morph { conditions: rest.conditions, sum: rest.sum, tail_info: rest.tail_info };
-    }
+test fn morphs_the_conditions() {
+    let destination = sha256("destination");
+    let morph = morph_conditions(
+        [
+            CreateCoin { puzzle_hash: destination, amount: 3 },
+            ReserveFee { amount: 1 },
+            CreateCoin { puzzle_hash: destination, amount: 4 },
+        ],
+        cat_info(),
+    );
 
-    let morphed = if condition is CreateCoin {
-        // Morph the condition by wrapping the puzzle hash in the CAT layer.
-        let morphed = CreateCoin {
-            ...condition,
-            puzzle_hash: cat_puzzle_hash(cat_info, condition.puzzle_hash),
-        };
+    assert morph.sum == 7;
+    assert morph.tail_info is nil;
+    assert tree_hash(morph.conditions) == tree_hash([
+        CreateCoin {
+            puzzle_hash: cat_puzzle_hash(cat_info(), destination),
+            amount: 3,
+        } as Condition,
+        ReserveFee { amount: 1 },
+        CreateCoin { puzzle_hash: cat_puzzle_hash(cat_info(), destination), amount: 4 },
+    ]);
+}
 
-        (morphed, condition.amount)
-    } else {
-        // If the condition is a coin announcement,
-        // make sure it's not pretending to be part of the ring.
-        assert !(
-            condition is CreateCoinAnnouncement
-                && ((condition.message.length == 33) & (condition.message[0] == RING_MORPH_BYTE))
-        ),
-            "Created coin announcements must not have the ring morph byte";
+// The last TAIL that's revealed is the one that's run, and neither is a condition
+test fn runs_the_last_tail() {
+    let morph = morph_conditions(
+        [run_tail("first"), ReserveFee { amount: 1 }, run_tail("second")],
+        cat_info(),
+    );
 
-        (condition, 0)
-    };
+    assert morph.sum == 0;
+    assert tree_hash(morph.conditions) == tree_hash([ReserveFee { amount: 1 }]);
+    assert !(morph.tail_info is nil)
+        && tree_hash(morph.tail_info.tail_solution) == tree_hash("second");
+}
 
-    let rest = morph_conditions(conditions.rest, cat_info, tail_info);
-
-    Morph {
-        conditions: [morphed.first, ...rest.conditions],
-        sum: rest.sum + morphed.rest,
-        tail_info: rest.tail_info,
-    }
+test fn rejects_a_ring_announcement() -> Morph {
+    morph_conditions(
+        [
+            ReserveFee { amount: 1 },
+            CreateCoinAnnouncement { message: RING_MORPH_BYTE + sha256("ring") },
+        ],
+        cat_info(),
+    )
 }
