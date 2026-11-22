@@ -34,7 +34,8 @@ fn main(xs: List<Int>, pair: (Int, Int), value: Int) -> Int {
         }
     };
 
-    // A body that couldn't be compiled doesn't say what the type is, and the value is as written
+    // A body that couldn't be compiled only has the error that it couldn't, which the fold's
+    // error follows from, so that isn't reported
     let empty = nil;
     let w = for x in xs fold rest = empty { [missing, ...rest] };
 
