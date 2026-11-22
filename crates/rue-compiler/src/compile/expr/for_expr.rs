@@ -17,8 +17,6 @@ use crate::{
 
 /// The result of a fold for the rest of the list.
 struct Accumulator {
-    /// The binding for it in the body.
-    symbol: SymbolId,
     /// The result at the end of the list.
     init: HirId,
     ty: TypeId,
@@ -59,10 +57,11 @@ enum ForKind {
 ///   for the rest of the list, which is what the fold's binding is. At the end of the list, the
 ///   result is the fold's value. The binding is evaluated once, before the body, so a fold goes
 ///   through the whole list, and fails if any item does. It's evaluated where the body refers to
-///   it instead, if that's in one place that's evaluated at most once for the item (see
-///   [`is_single_use`]) and it can't keep the rest of the list from failing, as for any binding
-///   that's referred to once. A body that doesn't get to it stops there then, as
-///   `x == item || found` does once an item matches.
+///   it instead, if that's in one place that's evaluated at most once for the item, and it
+///   can't keep the rest of the list from failing, as for any binding that's referred to once.
+///   An argument of a call counts if the call isn't inlined, or if the body it's inlined into
+///   evaluates it once, which is decided while lowering. A body that doesn't get to it stops
+///   there then, as `x == item || found` does once an item matches.
 /// - With a filter, such as `if x > 0`, the items that don't pass it are left out of the list, or
 ///   skipped by the fold.
 /// - Without a fold, if the body has no value, or the expression is a statement, whose value
@@ -194,8 +193,6 @@ pub fn compile_for_expr(
     let function = ctx.alloc_symbol(Symbol::Unresolved);
     let parameters: Vec<SymbolId> = clauses.iter().map(|clause| clause.parameter).collect();
 
-    let first_hir = ctx.next_hir_id();
-
     // Each use of what's left of the lists is a node of its own. The loop ends when the first
     // list does, so another one can run out before it. It has no rest then, so the call fails,
     // which is what makes a `for` over several lists fail for a list that's too short. That's
@@ -308,7 +305,7 @@ pub fn compile_for_expr(
         ctx.push_scope(scope, body_start);
 
         let rest = rest_call(ctx);
-        let symbol = declare(
+        declare(
             ctx,
             pattern.as_ref(),
             Value::new(rest, ty),
@@ -316,7 +313,7 @@ pub fn compile_for_expr(
             &mut accumulator_statements,
         );
 
-        Accumulator { symbol, init, ty }
+        Accumulator { init, ty }
     });
 
     // The type of an item of the list that the expression is expected to be, if it's one
@@ -376,12 +373,6 @@ pub fn compile_for_expr(
         debug!("Unresolved for body");
         ctx.unresolved()
     };
-
-    if let Some(accumulator) = &accumulator
-        && is_single_use(ctx, accumulator.symbol, body.hir, first_hir)
-    {
-        ctx.set_single_use_loop_rest(accumulator.symbol);
-    }
 
     if accumulator.is_some() {
         ctx.pop_scope(range.end());
@@ -642,72 +633,6 @@ fn declare(
     ctx.pop_declaration();
 
     symbol
-}
-
-/// Whether the body refers to the binding for the result of the rest of the list in one place,
-/// which is evaluated at most once for the item, so that the binding can be evaluated there
-/// rather than once before the body (see `Database::is_single_use_loop_rest`). So it's not in a
-/// lambda or another `for`, which can be evaluated any number of times, nor in a type guard that
-/// uses its value more than once. It's not in the value of a `let` or an argument of a call
-/// either, since a function that's inlined evaluates its argument wherever it refers to its
-/// parameter, and a `let` can be substituted into one. Otherwise each of those would go through
-/// the rest of the list again, for every item.
-fn is_single_use(ctx: &Compiler, symbol: SymbolId, body: HirId, first_hir: HirId) -> bool {
-    let references = ctx
-        .hirs_between(first_hir, ctx.next_hir_id())
-        .filter(|hir| matches!(hir, Hir::Reference(reference) if *reference == symbol))
-        .count();
-
-    references <= 1 && direct_uses(ctx, symbol, body, 1) == references
-}
-
-/// How many times the function that the node is in evaluates a reference to the symbol in the
-/// node at most, where each evaluation of the node counts as `uses`. A reference in a lambda or
-/// another `for` isn't in the function, so it isn't counted.
-fn direct_uses(ctx: &Compiler, symbol: SymbolId, hir: HirId, uses: usize) -> usize {
-    rue_types::grow_stack(|| match ctx.hir(hir) {
-        Hir::Reference(reference) if *reference == symbol => uses,
-        Hir::Guard(guard) => {
-            direct_uses(ctx, symbol, guard.value, uses * guard.value_uses().max(1))
-        }
-        Hir::Block(block) => {
-            let statements: usize = block
-                .statements
-                .iter()
-                .map(|statement| match statement {
-                    // The value is evaluated wherever the binding is substituted
-                    Statement::Let(binding, _) => match ctx.symbol(*binding) {
-                        Symbol::Binding(binding) => {
-                            direct_uses(ctx, symbol, binding.value.hir, uses * 2)
-                        }
-                        _ => 0,
-                    },
-                    statement => statement
-                        .hirs()
-                        .map(|hir| direct_uses(ctx, symbol, hir, uses))
-                        .sum(),
-                })
-                .sum();
-
-            statements
-                + block
-                    .body
-                    .map_or(0, |body| direct_uses(ctx, symbol, body, uses))
-        }
-        // An argument is evaluated wherever a function that's inlined refers to its parameter
-        Hir::FunctionCall(call) => {
-            direct_uses(ctx, symbol, call.function, uses)
-                + call
-                    .args
-                    .iter()
-                    .map(|&arg| direct_uses(ctx, symbol, arg, uses * 2))
-                    .sum::<usize>()
-        }
-        node => node
-            .children()
-            .map(|child| direct_uses(ctx, symbol, child, uses))
-            .sum(),
-    })
 }
 
 /// The type with its literals as the types they're values of, such as `Int` for `0`, in the pairs

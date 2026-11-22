@@ -35,7 +35,7 @@ use std::{
 use indexmap::IndexSet;
 
 use crate::{
-    Database, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
+    Database, FunctionCall, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
     analysis::{AnalysisContext, Evaluation, FunctionFailure, may_fail},
 };
 
@@ -109,6 +109,8 @@ impl Lowerer<'_, '_, '_> {
         match self.db.symbol(symbol) {
             Symbol::Binding(binding) => {
                 self.substitutes_repeat(symbol)
+                    && (!self.db.is_loop_rest_call(binding.value.hir)
+                        || self.is_loop_rest_evaluated_once(symbol))
                     && (!may_fail(self, binding.value.hir) || self.binding_always_evaluated(symbol))
             }
             Symbol::Constant(constant) => {
@@ -348,6 +350,187 @@ impl Lowerer<'_, '_, '_> {
         });
     }
 
+    /// Whether the binding for the result of a fold for the rest of the list (see
+    /// [`Database::is_loop_rest_call`]), which is referenced once, is evaluated in one place that's
+    /// evaluated at most once for the item if it's substituted there. Otherwise it's evaluated
+    /// once, before the body: substituting it somewhere that's evaluated more than once would go
+    /// through the rest of the list again each time, for every item, which is exponential.
+    ///
+    /// That rules out a reference in a lambda or another `for`, in a type guard that uses its
+    /// value more than once, or in the value of a `let`, which can be substituted into any of
+    /// those (see [`Self::direct_uses`]). The argument of a call that's inlined counts as many
+    /// times as the inlined body evaluates it, which this decides from the call as it's lowered.
+    fn is_loop_rest_evaluated_once(&self, symbol: SymbolId) -> bool {
+        let Some((block, index)) = self.graph.let_statement(symbol) else {
+            return false;
+        };
+
+        let Hir::Block(block) = self.db.hir(block) else {
+            return false;
+        };
+
+        let mut functions = Vec::new();
+        let mut uses = 0;
+
+        for statement in &block.statements[index + 1..] {
+            uses += self.statement_uses(symbol, statement, 1, &mut functions);
+        }
+
+        if let Some(body) = block.body {
+            uses += self.direct_uses(symbol, body, 1, &mut functions);
+        }
+
+        uses == self.graph.references(symbol)
+    }
+
+    /// How many times evaluating the node evaluates a reference to the symbol at most, where
+    /// each reference counts as `uses`. A reference in a lambda or another `for` isn't counted,
+    /// since they're evaluated any number of times, so a symbol that's referenced there has
+    /// more references than this counts. The functions whose bodies are being followed, which
+    /// are inlined into the call being walked, are kept in `functions`.
+    fn direct_uses(
+        &self,
+        symbol: SymbolId,
+        hir: HirId,
+        uses: usize,
+        functions: &mut Vec<SymbolId>,
+    ) -> usize {
+        rue_types::grow_stack(|| match self.db.hir(hir) {
+            Hir::Reference(reference) if *reference == symbol => uses,
+            Hir::Lambda(_) => 0,
+            Hir::Guard(guard) => self.direct_uses(
+                symbol,
+                guard.value,
+                uses * guard.value_uses().max(1),
+                functions,
+            ),
+            Hir::Block(block) => {
+                let statements: usize = block
+                    .statements
+                    .iter()
+                    .map(|statement| self.statement_uses(symbol, statement, uses, functions))
+                    .sum();
+
+                statements
+                    + block
+                        .body
+                        .map_or(0, |body| self.direct_uses(symbol, body, uses, functions))
+            }
+            Hir::FunctionCall(call) => {
+                let callee = self.direct_uses(symbol, call.function, uses, functions);
+
+                callee
+                    + call
+                        .args
+                        .iter()
+                        .enumerate()
+                        .map(|(index, &arg)| {
+                            let arg_uses = self.direct_uses(symbol, arg, 1, functions);
+
+                            if arg_uses == 0 {
+                                return 0;
+                            }
+
+                            let times = self.argument_evaluations(call, index, arg, functions);
+                            arg_uses * times * uses
+                        })
+                        .sum::<usize>()
+            }
+            node => node
+                .children()
+                .map(|child| self.direct_uses(symbol, child, uses, functions))
+                .sum(),
+        })
+    }
+
+    /// How many times a statement evaluates a reference to the symbol at most (see
+    /// [`Self::direct_uses`]). The value of a `let` is evaluated wherever the binding is
+    /// substituted, which can be more than once, so a reference there counts twice.
+    fn statement_uses(
+        &self,
+        symbol: SymbolId,
+        statement: &Statement,
+        uses: usize,
+        functions: &mut Vec<SymbolId>,
+    ) -> usize {
+        match statement {
+            Statement::Let(binding, _) => match self.db.symbol(*binding) {
+                Symbol::Binding(binding) => {
+                    self.direct_uses(symbol, binding.value.hir, uses * 2, functions)
+                }
+                _ => 0,
+            },
+            statement => statement
+                .hirs()
+                .map(|hir| self.direct_uses(symbol, hir, uses, functions))
+                .sum(),
+        }
+    }
+
+    /// How many times the argument at the index of the call is evaluated each time the call is,
+    /// as far as walking the result of a fold into it goes (see
+    /// [`Self::is_loop_rest_evaluated_once`]): once if the call isn't inlined, since the argument
+    /// is evaluated at the call, and as many times as the inlined body evaluates its parameter
+    /// otherwise.
+    ///
+    /// The argument of a function that isn't an `inline fn` is only substituted for its
+    /// parameter if that's referenced once, it may not fail or the body always evaluates it,
+    /// and it isn't captured by a loop (see [`Self::lower_inline_call`]). Otherwise it's bound
+    /// at the call, which is no smaller than binding the result before the body, so that counts
+    /// as twice. An `inline fn` always substitutes its argument, so it counts as many times as
+    /// its body evaluates the parameter. A spread parameter isn't followed, and counts twice too.
+    fn argument_evaluations(
+        &self,
+        call: &FunctionCall,
+        index: usize,
+        arg: HirId,
+        functions: &mut Vec<SymbolId>,
+    ) -> usize {
+        let Some(callee) = self.inlined_callee(call.function) else {
+            return 1;
+        };
+
+        let Symbol::Function(function) = self.db.symbol(callee) else {
+            return 1;
+        };
+
+        // A function that's already being followed isn't followed into itself
+        if functions.contains(&callee) {
+            return 2;
+        }
+
+        let fixed = function.fixed_parameters();
+
+        let Some(&parameter) = fixed.get(index) else {
+            return 2;
+        };
+
+        if !call.nil_terminated && index + 1 == call.args.len() {
+            return 2;
+        }
+
+        let references = self.graph.references(parameter);
+
+        if function.kind != FunctionKind::Inline
+            && (references != 1
+                || self.graph.is_loop_capture(parameter)
+                || (may_fail(self, arg) && !self.parameter_always_evaluated(function.body, parameter)))
+        {
+            return 2;
+        }
+
+        functions.push(callee);
+        let evaluations = self.direct_uses(parameter, function.body, 1, functions);
+        functions.pop();
+
+        // A reference that isn't counted is in a lambda or a loop
+        if evaluations != references {
+            return 2;
+        }
+
+        evaluations
+    }
+
     /// Whether the constant's single reference is always evaluated when the program is run, or
     /// fails. Constants that are bound are evaluated at the start of the program, so a reference
     /// in one of their values counts too (see [`Self::find_constant_roots`]).
@@ -416,13 +599,6 @@ impl Lowerer<'_, '_, '_> {
     /// long as that's only once and it can't keep it from failing (see
     /// [`Self::can_substitute`]).
     pub(super) fn is_substitution_candidate(&self, symbol: SymbolId, value: HirId) -> bool {
-        // The result of a fold for the rest of the list is evaluated once, before the body,
-        // unless the body only gets to it in one place, at most once. It's evaluated there then,
-        // like any other binding, so that a body that doesn't get to it stops
-        if self.db.is_loop_rest_call(value) && !self.db.is_single_use_loop_rest(symbol) {
-            return false;
-        }
-
         // A value that a loop refers to from outside of it is only substituted there if it's a
         // literal, since anything else would be evaluated again for each item. This can't depend
         // on the arguments of the calls being inlined, since the loop is lowered once (see

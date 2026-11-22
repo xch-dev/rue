@@ -442,16 +442,16 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at for.rue:10:5"
 - name: list_at_the_end_of_a_fold_statement
-  program: (a (q 3 () (a 4 (c 2 (q 6 5 4))) (q . 5)) (c (c (q 2 (i 3 (q 2 (q 2 21 (c 13 (c 11 2))) (c (a 4 (c 2 7)) 1)) ()) 1) (c (q 2 (i 3 (q 4 (a 6 (- 5 (q . 1))) (a 4 (c 2 7))) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1))) ()))
+  program: (a (q 3 () (a 4 (c 2 (q 6 5 4))) (q . 5)) (c (c (q 2 (i 3 (q 2 10 (c 6 (c 5 (a 4 (c 2 7))))) ()) 1) (c (q 2 (i 3 (q 4 (a 6 (- 5 (q . 1))) (a 4 (c 2 7))) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1))) ()))
   debug_program: (a (q 2 22 (c (c 8 (c 12 30)) (a 10 (c (q . 6) (c (q . 5) (c (q . 4) ())))))) (c (c (c (q 2 (i 3 (q 2 (q 2 21 (c (c 21 29) (c (f 7) 2))) (c (a 4 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1) (q 2 (i 3 (q 4 (a 6 (- (f 3) (q . 1))) (a 4 (c (c 4 6) (r 3)))) ()) 1)) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (c (q 3 (q . 1) (q . 5) (a 4 (c (c 4 (c 10 14)) 3))) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for.rue:10:5"))) 1)))) ()))
   output: "5"
-  runtime_cost: 20244
-  byte_cost: 2364000
-  total_cost: 2384244
+  runtime_cost: 19446
+  byte_cost: 2196000
+  total_cost: 2215446
 - name: list_at_the_end_of_a_fold_statement_fails
-  program: (a (q 3 () (a 4 (c 2 (q 3 3 3))) (q . 5)) (c (c (q 2 (i 3 (q 2 (q 2 21 (c 13 (c 11 2))) (c (a 4 (c 2 7)) 1)) ()) 1) (c (q 2 (i 3 (q 4 (a 6 (- 5 (q . 1))) (a 4 (c 2 7))) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1))) ()))
+  program: (a (q 3 () (a 4 (c 2 (q 3 3 3))) (q . 5)) (c (c (q 2 (i 3 (q 2 10 (c 6 (c 5 (a 4 (c 2 7))))) ()) 1) (c (q 2 (i 3 (q 4 (a 6 (- 5 (q . 1))) (a 4 (c 2 7))) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1))) ()))
   debug_program: (a (q 2 22 (c (c 8 (c 12 30)) (a 10 (c (q . 3) (c (q . 3) (c (q . 3) ())))))) (c (c (c (q 2 (i 3 (q 2 (q 2 21 (c (c 21 29) (c (f 7) 2))) (c (a 4 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1) (q 2 (i 3 (q 4 (a 6 (- (f 3) (q . 1))) (a 4 (c (c 4 6) (r 3)))) ()) 1)) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for.rue:5:5"))) 1) (c (q 3 (q . 1) (q . 5) (a 4 (c (c 4 (c 10 14)) 3))) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for.rue:10:5"))) 1)))) ()))
-  byte_cost: 2364000
+  byte_cost: 2196000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at for.rue:10:5"
 - name: loop_at_the_end_of_a_branch_fails
