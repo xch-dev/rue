@@ -45,7 +45,6 @@ fn main(
             tree_hash(inner_puzzle),
             unchecked_cast::<List<Bytes32>>(new_proposal_vote_id_or_removal_id),
             my_amount,
-            nil,
         );
     }
 
@@ -223,27 +222,19 @@ fn check_not_previously_voted(
     active_votes: List<Bytes32>,
     proposal_inner_puzzle_hash: Bytes32,
 ) -> AssertPuzzleAnnouncement {
-    if active_votes is nil {
-        let proposal_struct = SingletonStruct {
-            mod_hash: singleton_mod_hash,
-            launcher_id: new_vote_id,
-            launcher_puzzle_hash: singleton_launcher_puzzle_hash,
-        };
-        return AssertPuzzleAnnouncement {
-            id: sha256(singleton_puzzle_hash(proposal_struct, proposal_inner_puzzle_hash) + my_id),
-        };
+    for active_vote in active_votes {
+        assert new_vote_id != active_vote;
     }
 
-    assert new_vote_id != active_votes.first;
+    let proposal_struct = SingletonStruct {
+        mod_hash: singleton_mod_hash,
+        launcher_id: new_vote_id,
+        launcher_puzzle_hash: singleton_launcher_puzzle_hash,
+    };
 
-    check_not_previously_voted(
-        singleton_mod_hash,
-        singleton_launcher_puzzle_hash,
-        my_id,
-        new_vote_id,
-        active_votes.rest,
-        proposal_inner_puzzle_hash,
-    )
+    AssertPuzzleAnnouncement {
+        id: sha256(singleton_puzzle_hash(proposal_struct, proposal_inner_puzzle_hash) + my_id),
+    }
 }
 
 // Asserts that each proposal has finished, and recreates the coin without them.
@@ -256,48 +247,37 @@ fn remove_finished_proposals(
     inner_puzzle_hash: Bytes32,
     removal_ids: List<Bytes32>,
     my_amount: Int,
-    unused_votes: List<Bytes32>,
 ) -> List<Condition> {
-    if removal_ids is nil {
-        return [
-            AssertMyAmount { amount: my_amount },
-            CreateCoin {
-                puzzle_hash: lockup_puzzle_hash(
-                    self_hash,
-                    remove_all(unused_votes, active_votes),
-                    inner_puzzle_hash,
-                ),
-                amount: my_amount,
-            },
-        ];
-    }
-
-    let proposal_struct = SingletonStruct {
-        mod_hash: singleton_mod_hash,
-        launcher_id: removal_ids.first,
-        launcher_puzzle_hash: singleton_launcher_puzzle_hash,
-    };
-    let finished_state_puzzle_hash = curry_tree_hash(
-        dao_finished_state_mod_hash,
-        [tree_hash(proposal_struct), tree_hash_atom(dao_finished_state_mod_hash)],
-    );
-
-    [
-        AssertPuzzleAnnouncement {
-            id: sha256(singleton_puzzle_hash(proposal_struct, finished_state_puzzle_hash)),
-        },
-        ...remove_finished_proposals(
-            singleton_mod_hash,
-            singleton_launcher_puzzle_hash,
+    let recreate = CreateCoin {
+        // The ids are removed in the order they're given in, as the original removes them
+        puzzle_hash: lockup_puzzle_hash(
             self_hash,
-            dao_finished_state_mod_hash,
-            active_votes,
+            remove_all(removal_ids, active_votes),
             inner_puzzle_hash,
-            removal_ids.rest,
-            my_amount,
-            [removal_ids.first, ...unused_votes],
         ),
-    ]
+        amount: my_amount,
+    };
+
+    for removal_id in removal_ids
+        fold conditions: List<Condition> = [AssertMyAmount { amount: my_amount }, recreate]
+    {
+        let proposal_struct = SingletonStruct {
+            mod_hash: singleton_mod_hash,
+            launcher_id: removal_id,
+            launcher_puzzle_hash: singleton_launcher_puzzle_hash,
+        };
+        let finished_state_puzzle_hash = curry_tree_hash(
+            dao_finished_state_mod_hash,
+            [tree_hash(proposal_struct), tree_hash_atom(dao_finished_state_mod_hash)],
+        );
+
+        [
+            AssertPuzzleAnnouncement {
+                id: sha256(singleton_puzzle_hash(proposal_struct, finished_state_puzzle_hash)),
+            },
+            ...conditions,
+        ]
+    }
 }
 
 // Removes each item of the first list from the second.
@@ -305,20 +285,18 @@ fn remove_all(items: List<Bytes32>, list: List<Bytes32>) -> List<Bytes32> {
     if items is nil {
         return list;
     }
-    remove(items.first, remove_all(items.rest, list))
+    remove_all(items.rest, remove(items.first, list))
 }
 
-// Removes the first occurrence of the item, or returns nil if it isn't in the list.
+// Removes the first occurrence of the item, and leaves the list as it is if the item isn't in it.
 fn remove(item: Bytes32, list: List<Bytes32>) -> List<Bytes32> {
-    if list is nil {
-        return nil;
+    for first, rest in list fold removed: List<Bytes32> = nil {
+        if first == item {
+            rest
+        } else {
+            [first, ...removed]
+        }
     }
-
-    if list.first == item {
-        return list.rest;
-    }
-
-    [list.first, ...remove(item, list.rest)]
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.
@@ -436,6 +414,52 @@ test fn removes_finished_proposals() -> Any {
         0,
         nil,
     ))
+}
+
+// Only the first vote with a removed id is removed
+test fn removes_the_first_of_a_repeated_proposal() -> Any {
+    check(spend(
+        [sha256("first"), sha256("second"), sha256("first")],
+        nil,
+        nil,
+        [sha256("first")],
+        0,
+        nil,
+    ))
+}
+
+test fn removes_repeated_proposals_in_order() -> Any {
+    check(spend(
+        [sha256("a"), sha256("b"), sha256("a"), sha256("c")],
+        nil,
+        nil,
+        [sha256("c"), sha256("a")],
+        0,
+        nil,
+    ))
+}
+
+// The ids are removed in the order they're given in, so once the votes run out, a later id isn't
+// compared with anything, even if it isn't an atom
+test fn removes_ids_in_order() -> Any {
+    check(spend([sha256("first")], nil, nil, [sha256("first"), (1, 2)], 0, nil))
+}
+
+// Like the original, a removal stops at the first match, so what's after it isn't read. A debug
+// build of the port reads the rest of the list, so it fails on these malformed votes
+test fn stops_at_the_removed_vote() -> Any {
+    check(spend(
+        unchecked_cast([sha256("first") as Any, (1, 2)]),
+        nil,
+        nil,
+        [sha256("first")],
+        0,
+        nil,
+    ))
+}
+
+test fn stops_at_the_removed_vote_before_an_atom() -> Any {
+    check(spend(unchecked_cast((sha256("first"), 5)), nil, nil, [sha256("first")], 0, nil))
 }
 
 test fn leaves_voting_mode() -> Any {

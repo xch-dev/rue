@@ -1,0 +1,28 @@
+// Functions that capture the same functions lay them out in the same tree, whatever order each
+// finds them in, so a call from one to another passes the tree on as it is, as `(c 2 ...)`.
+
+type Tree = Int | List<Tree>;
+
+fn main(tree: Tree) -> Int {
+    size(tree)
+}
+
+fn size(tree: Tree) -> Int {
+    if tree is Int {
+        1
+    } else {
+        sizes(tree)
+    }
+}
+
+fn sizes(trees: List<Tree>) -> Int {
+    if trees is nil {
+        return 0;
+    }
+
+    size(trees.first) + sizes(trees.rest)
+}
+
+test fn sizes_of_trees() -> Int {
+    size([1, [2, 3], [[4], 5]])
+}

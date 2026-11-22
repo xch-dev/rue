@@ -7,23 +7,12 @@ extern fn run(puzzle: Any, solution: Any) -> Any from "../../../run.hex";
 
 // Requires exactly one `CreateCoin` in the conditions.
 fn main(conditions: List<Condition>) -> List<Condition> {
-    assert count_coins(conditions, 0) == 1;
+    // A `Bool` is 1 or nil, which is 0 as an `Int`
+    let coins = for condition in conditions fold count = 0 {
+        count + (condition is CreateCoin) as Int
+    };
+    assert coins == 1;
     conditions
-}
-
-fn count_coins(conditions: List<Condition>, count: Int) -> Int {
-    if conditions is nil {
-        return count;
-    }
-
-    count_coins(
-        conditions.rest,
-        if conditions.first is CreateCoin {
-            count + 1
-        } else {
-            count
-        },
-    )
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.

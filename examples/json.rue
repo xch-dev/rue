@@ -385,12 +385,12 @@ fn get(json: Json | nil, key: String) -> Json | nil {
 }
 
 fn find(members: List<Member>, key: String) -> Json | nil {
-    if members is nil {
-        nil
-    } else if members.first.key == key {
-        members.first.value
-    } else {
-        find(members.rest, key)
+    for member in members fold found: Json | nil = nil {
+        if member.key == key {
+            member.value
+        } else {
+            found
+        }
     }
 }
 
@@ -471,4 +471,10 @@ test fn nested() {
         value,
     )
         == '{"name":"Rue","version":1,"tags":["clvm","chia"],"nested":{"ok":true,"missing":null,"empty":[]}}';
+}
+
+// The first of two members with the same key is the one that's found
+test fn repeated_keys() {
+    let first = get(parse('{"a": 1, "a": 2}'), "a");
+    assert first is Json::Number && first.value == 1;
 }

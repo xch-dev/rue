@@ -1,10 +1,6 @@
 // The number of items in the list.
 export fn length<T>(list: List<T>) -> Int {
-    if list is (T, List<T>) {
-        length(list.rest) + 1
-    } else {
-        0
-    }
+    for _item in list fold length = 0 { length + 1 }
 }
 
 // The list's items in the opposite order.

@@ -98,7 +98,7 @@ fn morph_conditions(
         };
     }
 
-    [condition, ...morph_conditions(singleton, rest, false)]
+    [condition, ...morph_conditions(singleton, rest, has_odd_output)]
 }
 
 test fn tests() {
@@ -127,4 +127,67 @@ test fn tests() {
         AssertMyParentId { parent_id: launcher_id },
         CreateCoin { puzzle_hash: singleton_puzzle_hash(singleton, p2_puzzle_hash), amount: 1 },
     ]);
+}
+
+fn test_singleton() -> Singleton {
+    let launcher_puzzle_hash = sha256("launcher_puzzle");
+    Singleton {
+        mod_hash: sha256("singleton"),
+        launcher_id: sha256("launcher_id"),
+        launcher_puzzle_hash,
+    }
+}
+
+// Conditions after the odd output are kept, and don't make it look like there's no odd output
+test fn keeps_conditions_after_the_odd_output() {
+    let singleton = test_singleton();
+    let conditions = morph_conditions(
+        singleton,
+        [
+            ReserveFee { amount: 1 },
+            CreateCoin { puzzle_hash: sha256("inner"), amount: 1 },
+            CreateCoin { puzzle_hash: sha256("other"), amount: 2 },
+            ReserveFee { amount: 2 },
+        ],
+        false,
+    );
+
+    assert tree_hash(conditions) == tree_hash([
+        ReserveFee { amount: 1 } as Condition,
+        CreateCoin { puzzle_hash: singleton_puzzle_hash(singleton, sha256("inner")), amount: 1 },
+        CreateCoin { puzzle_hash: sha256("other"), amount: 2 },
+        ReserveFee { amount: 2 },
+    ]);
+}
+
+// Melting removes the odd output
+test fn melts() {
+    let conditions = morph_conditions(
+        test_singleton(),
+        [CreateCoin { puzzle_hash: sha256("inner"), amount: -113 }, ReserveFee { amount: 1 }],
+        false,
+    );
+
+    assert tree_hash(conditions) == tree_hash([ReserveFee { amount: 1 }]);
+}
+
+// Two odd outputs are rejected, even with another condition between them
+test fn rejects_two_odd_outputs() -> List<Condition> {
+    morph_conditions(
+        test_singleton(),
+        [
+            CreateCoin { puzzle_hash: sha256("first"), amount: 1 },
+            ReserveFee { amount: 1 },
+            CreateCoin { puzzle_hash: sha256("second"), amount: 3 },
+        ],
+        false,
+    )
+}
+
+test fn rejects_no_odd_output() -> List<Condition> {
+    morph_conditions(
+        test_singleton(),
+        [CreateCoin { puzzle_hash: sha256("even"), amount: 2 }],
+        false,
+    )
 }

@@ -36,14 +36,10 @@ fn run_validators<T>(
     solutions: List<Any>,
     value: T,
 ) -> nil {
-    if validators is nil {
-        return nil;
-    }
-
     // Like the original, this expects a solution for each validator.
-    let solutions = unchecked_cast::<(Any, List<Any>)>(solutions);
-    let _ = validators.first(value, ...solutions.first);
-    run_validators(validators.rest, solutions.rest, value)
+    for validator in validators, solution in solutions {
+        let _ = validator(value, ...solution);
+    }
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.
@@ -121,4 +117,38 @@ test fn rejects_the_delegated_puzzle() -> Any {
 
 test fn reference_rejects_the_delegated_puzzle() -> Any {
     run(reference, failing_delegated_puzzle_validator())
+}
+
+// There must be a solution for each validator
+fn missing_solution() -> Any {
+    [
+        [noisy_validator(), noisy_validator()],
+        nil,
+        3,
+        sha256("delegated_puzzle"),
+        [nil],
+        nil,
+        CONDITIONS,
+    ]
+}
+
+test fn rejects_a_missing_solution() -> Any {
+    run(main, missing_solution())
+}
+
+test fn reference_rejects_a_missing_solution() -> Any {
+    run(reference, missing_solution())
+}
+
+// Solutions after the last validator are ignored
+test fn ignores_extra_solutions() -> Any {
+    check([
+        [noisy_validator()],
+        [equals_validator()],
+        3,
+        sha256("delegated_puzzle"),
+        [nil, nil],
+        [[sha256("delegated_puzzle")], [sha256("other_puzzle")]],
+        CONDITIONS,
+    ])
 }

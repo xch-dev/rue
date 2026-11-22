@@ -128,7 +128,7 @@ impl Lowerer<'_, '_, '_> {
                     )
                     && self.is_measured_function(symbol)
                     && !self.graph.is_closure(symbol)
-                    && !self.dependencies(symbol, false).contains(&symbol)
+                    && !self.is_recursive(symbol, function)
                     && self.fits(function.body, &mut budget)
             })
             .take(MAX_INLINE_CANDIDATES)

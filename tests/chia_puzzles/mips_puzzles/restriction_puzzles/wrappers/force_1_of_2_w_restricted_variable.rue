@@ -32,7 +32,10 @@ fn main(
         new_right_side_member_hash,
     );
 
-    assert check_coins(conditions, fixed_puzzle_hash);
+    for condition in conditions {
+        assert !(condition is CreateCoin) || condition.puzzle_hash == fixed_puzzle_hash;
+    }
+
     conditions
 }
 
@@ -79,16 +82,6 @@ fn fixed_puzzle_hash(
             ),
         ],
     )
-}
-
-fn check_coins(conditions: List<Condition>, fixed_puzzle_hash: Bytes32) -> Bool {
-    if conditions is nil {
-        return true;
-    }
-
-    let condition = conditions.first;
-    assert !(condition is CreateCoin) || condition.puzzle_hash == fixed_puzzle_hash;
-    check_coins(conditions.rest, fixed_puzzle_hash)
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.

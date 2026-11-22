@@ -1,0 +1,57 @@
+tests:
+- name: loop_with_statements
+  program: (a (q 3 () (a 2 (c 2 (q 1 2 3))) (q . 5)) (c (q 2 (i 3 (q 2 (q 2 (i (all (> 2 ()) (> (q . 10) 2)) (q 2 5 (c 5 15)) (q 8)) 1) (c (* 5 (q . 2)) 1)) ()) 1) ()))
+  debug_program: (a (q 2 (q 3 (q . 1) (q . 5) (a 9 (c 9 2))) (c (a 6 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 2 (q 2 (i (> 2 ()) (q 2 (i (> (q . 10) 2) (q 2 5 (c 5 (r 7))) (q 8 (q . "assertion failed at for_lowering.rue:21:9") (q . "too large"))) 1) (q 8 (q . "assertion failed at for_lowering.rue:20:9"))) 1) (c (* (f 3) (q . 2)) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1)) ()))
+  output: "5"
+  runtime_cost: 13012
+  byte_cost: 1644000
+  total_cost: 1657012
+- name: loop_with_statements_fails
+  program: (a (q 3 () (a 2 (c 2 (q 1 2 6))) (q . 5)) (c (q 2 (i 3 (q 2 (q 2 (i (all (> 2 ()) (> (q . 10) 2)) (q 2 5 (c 5 15)) (q 8)) 1) (c (* 5 (q . 2)) 1)) ()) 1) ()))
+  debug_program: (a (q 2 (q 3 (q . 1) (q . 5) (a 9 (c 9 2))) (c (a 6 (c (q . 1) (c (q . 2) (c (q . 6) ())))) 1)) (c (c (q 2 (i 3 (q 2 (q 2 (i (> 2 ()) (q 2 (i (> (q . 10) 2) (q 2 5 (c 5 (r 7))) (q 8 (q . "assertion failed at for_lowering.rue:31:9") (q . "too large"))) 1) (q 8 (q . "assertion failed at for_lowering.rue:30:9"))) 1) (c (* (f 3) (q . 2)) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1)) ()))
+  byte_cost: 1644000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("assertion failed at for_lowering.rue:31:9" "too large")
+- name: loop_ending_with_a_value
+  program: (a (q 3 () (a 4 (c 2 (q 1 ()))) (q . 5)) (c (c (q 2 (i 3 (q 2 (i (> (q . 5) 5) (q 3 () (a 6 5) (a 4 (c 2 7))) (q 8)) 1) ()) 1) (q 2 (i (> 1 ()) (q . 1) (q 8)) 1)) ()))
+  debug_program: (a (q 2 (q 3 (q . 1) (q . 5) (a 9 (c (c 9 29) 2))) (c (a 10 (c (q . 1) (c () ()))) 1)) (c (c (q 2 (i 3 (q 2 (i (> (q . 5) (f 3)) (q 3 (q . 1) (a 4 (c (c 4 6) (r 3))) (a 6 (f 3))) (q 8 (q . "assertion failed at for_lowering.rue:40:9"))) 1) ()) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:10:5"))) 1))) ()))
+  byte_cost: 1788000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at for_lowering.rue:10:5"
+- name: destructuring_in_a_loop
+  program: (a (q 2 2 (c 2 (q 7 8 9))) (c (q 2 (i 3 (q 4 (/ 5 (q . 3)) (a 2 (c 2 7))) ()) 1) ()))
+  debug_program: (a (q 2 4 (c 4 (a 6 (c (q . 7) (c (q . 8) (c (q . 9) ())))))) (c (c (q 2 (i 3 (q 4 (a (q 5 2) (c (divmod (f 3) (q . 3)) 1)) (a 2 (c 2 (r 3)))) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1)) ()))
+  output: (2 2 3)
+  runtime_cost: 5912
+  byte_cost: 948000
+  total_cost: 953912
+- name: destructuring_both_parts_in_a_loop
+  program: (a (q 2 2 (c 2 (q 7 8 9))) (c (q 2 (i 3 (q 4 (a (q 16 (* 4 (q . 10)) 6) (c (divmod 5 (q . 3)) 1)) (a 2 (c 2 7))) ()) 1) ()))
+  debug_program: (a (q 2 4 (c 4 (a 6 (c (q . 7) (c (q . 8) (c (q . 9) ())))))) (c (c (q 2 (i 3 (q 4 (a (q 16 (* (f 2) (q . 10)) (r 2)) (c (divmod (f 3) (q . 3)) 1)) (a 2 (c 2 (r 3)))) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1)) ()))
+  output: (21 22 30)
+  runtime_cost: 12583
+  byte_cost: 1284000
+  total_cost: 1296583
+- name: destructuring_outside_a_loop
+  program: (a (q 2 (q 2 5 (c (c 5 2) (q 1 2))) (c (q 5 . 2) 1)) (c (q 2 (i 3 (q 4 (+ 5 10) (a 4 (c 2 7))) ()) 1) ()))
+  debug_program: (a (q 2 (q 2 13 (c (c 13 2) (a 9 (c (q . 1) (c (q . 2) ()))))) (c (divmod (f (a 4 (c (q . 17) ()))) (q . 3)) 1)) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1) (q 2 (i 3 (q 4 (+ (f 3) (f 6)) (a 4 (c (c 4 6) (r 3)))) ()) 1)) ()))
+  output: (6 7)
+  runtime_cost: 4122
+  byte_cost: 1188000
+  total_cost: 1192122
+- name: function_and_loop_that_call_each_other
+  program: (a (q 2 4 (c 2 (a (q 2 (i (l 2) (q . 2) (q 2 (i 2 (q 8) (q . 2)) 1)) 1) (c (q 1 (a 3) ((c) 5)) 1)))) (c (c (q 2 (i (l 3) (q 2 6 1) (q 1 . 1)) 1) (q 2 (i 3 (q 16 (a 4 (c 2 5)) (a 6 (c 2 7))) ()) 1)) ()))
+  debug_program: (a (q 2 4 (c (c 4 (c 10 30)) (a 22 (c (q . 1) (c (c (q . 2) (c (q . 3) ())) (c (c (c (q . 4) ()) (c (q . 5) ())) ())))))) (c (c (q 2 (i (not (l 3)) (q 1 . 1) (q 2 14 (c (c 4 (c 10 14)) 3))) 1) (c (q 2 (i 3 (q 2 (q 16 (a 9 (c (c 9 (c 21 29)) (f 7))) 2) (c (a 10 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1) (q 2 10 (c (c 4 (c 10 14)) 3))))) ()))
+  output: "5"
+  runtime_cost: 18719
+  byte_cost: 2244000
+  total_cost: 2262719
+- name: function_whose_loop_passes_its_parameter_back
+  program: (a (q 2 4 (c 2 (c (a (q 2 (i (l 2) (q . 2) (q 2 (i 2 (q 8) (q . 2)) 1)) 1) (c (q 1 (a 3) ((c) 5)) 1)) (q . 3)))) (c (c (q 2 (i (l 5) (q 2 6 (c (c 4 (c 6 7)) 5)) (q . 7)) 1) (q 2 (i 3 (q 16 (a 10 (c 2 7)) (a 4 (c (c 4 10) (c 5 14)))) ()) 1)) ()))
+  debug_program: (a (q 2 4 (c (c 4 10) (c (a 14 (c (q . 1) (c (c (q . 2) (c (q . 3) ())) (c (c (c (q . 4) ()) (c (q . 5) ())) ())))) (q . 3)))) (c (c (q 2 (i (not (l 5)) (q . 7) (q 2 6 (c (c 4 (c 6 7)) 5))) 1) (c (q 2 (i 3 (q 2 (q 16 2 (a 9 (c (c 9 21) (c (f 7) 29)))) (c (a 10 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1))) ()))
+  output: "15"
+  runtime_cost: 22030
+  byte_cost: 2676000
+  total_cost: 2698030
+diagnostics:
+- Value returned by statement is unused at for_lowering.rue:41:9

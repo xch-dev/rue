@@ -195,6 +195,38 @@ test fn asserts_a_proof_two_levels_down() -> Any {
     ])
 }
 
+// A store with the given values for the proofs of `a` and `c`
+fn one_store(values: List<Bytes32>) -> Any {
+    [
+        1,
+        [singleton_struct("first")],
+        [sha256("metadata_layer")],
+        [values],
+        [[
+            MerkleProof { path: 0, hashes: [branch("b"), branch("c")] },
+            MerkleProof { path: 1, hashes: [left()] },
+        ]],
+        [Metadata { root: root(), rest: nil }],
+        [1],
+        [sha256("first_inner_puzzle")],
+        [CreateCoin { puzzle_hash: sha256("destination"), amount: 1 }],
+    ]
+}
+
+// There must be a value for each proof
+test fn rejects_a_missing_value() -> Any {
+    run(main, one_store([branch("a")]))
+}
+
+test fn reference_rejects_a_missing_value() -> Any {
+    run(reference, one_store([branch("a")]))
+}
+
+// A value after the last proof isn't read
+test fn ignores_an_extra_value() -> Any {
+    check(one_store([branch("a"), branch("c"), sha256("extra")]))
+}
+
 test fn fails_at_consensus_without_proofs() -> Any {
     check([1, nil, nil, nil, nil, nil, nil, nil, [ReserveFee { amount: 1 }]])
 }

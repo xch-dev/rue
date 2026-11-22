@@ -36,7 +36,7 @@ tests:
   total_cost: 540663
 - name: generic_lambda_beside_an_untyped_lambda_in_a_recursive_call
   program: (a (q 2 2 (c 2 (c (q . 2) (c (q 1 . 1) (q . 1))))) (c (q 2 (i (> 15 ()) (q 3 () (a 2 (c 2 (c (q . 2) (c (q 1 . 5) (- 15 (q . 1)))))) (a 5 (c (a 11 ()) ()))) (q 2 5 (c (a 11 ()) ()))) 1) ()))
-  debug_program: (a (q 2 4 (c (c 6 4) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c () ()))) (q . 1))))) (c (c (q 2 (i (> 15 ()) (q 3 () (a 6 (c (c 4 6) (c (a 4 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))) (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c () ()))) (- 15 (q . 1)))))) (a 5 (c (a 11 ()) ()))) (q 2 5 (c (a 11 ()) ()))) 1) (q . 2)) ()))
+  debug_program: (a (q 2 4 (c (c 4 6) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c () ()))) (q . 1))))) (c (c (q 2 (i (> 15 ()) (q 3 () (a 4 (c (c 4 6) (c (a 6 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))) (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c () ()))) (- 15 (q . 1)))))) (a 5 (c (a 11 ()) ()))) (q 2 5 (c (a 11 ()) ()))) 1) (q . 2)) ()))
   output: "1"
   runtime_cost: 4518
   byte_cost: 1860000

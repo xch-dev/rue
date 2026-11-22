@@ -27,26 +27,21 @@ fn wrap_create_coins(
     hidden_puzzle_hash: Bytes32,
     conditions: List<Condition>,
 ) -> List<Condition> {
-    if conditions is nil {
-        return nil;
+    for condition in conditions {
+        if condition is CreateCoin {
+            let puzzle_hash = curry_tree_hash(
+                this_mod_hash,
+                [
+                    tree_hash_atom(this_mod_hash),
+                    tree_hash_atom(hidden_puzzle_hash),
+                    tree_hash_atom(condition.puzzle_hash),
+                ],
+            );
+            CreateCoin { ...condition, puzzle_hash }
+        } else {
+            condition
+        }
     }
-
-    let condition = conditions.first;
-    let rest = wrap_create_coins(this_mod_hash, hidden_puzzle_hash, conditions.rest);
-
-    if condition is CreateCoin {
-        let puzzle_hash = curry_tree_hash(
-            this_mod_hash,
-            [
-                tree_hash_atom(this_mod_hash),
-                tree_hash_atom(hidden_puzzle_hash),
-                tree_hash_atom(condition.puzzle_hash),
-            ],
-        );
-        return [CreateCoin { ...condition, puzzle_hash }, ...rest];
-    }
-
-    [condition, ...rest]
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.

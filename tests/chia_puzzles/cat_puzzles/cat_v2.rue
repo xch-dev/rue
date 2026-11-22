@@ -96,7 +96,7 @@ fn main(
         coin: CoinTruths { my_id, my_coin: this_coin_info },
     };
 
-    let morphed = morph_conditions(inner_puzzle(...inner_puzzle_solution), cat_info, nil);
+    let morphed = morph_conditions(inner_puzzle(...inner_puzzle_solution), cat_info);
 
     let next_coin_id = coinid(
         next_coin_proof.parent_coin_info,
@@ -158,56 +158,50 @@ fn cat_puzzle_hash(cat_info: CatInfo, inner_puzzle_hash: Bytes32) -> Bytes32 {
 }
 
 // Wraps created coins in the CAT layer, sums their amounts, and takes out the last TAIL reveal.
-fn morph_conditions(
-    conditions: List<Condition>,
-    cat_info: CatInfo,
-    tail_info: TailInfo | nil,
-) -> Morphed {
-    if conditions is nil {
-        return Morphed { conditions: nil, output_sum: 0, tail_info };
-    }
-
-    let condition = conditions.first;
-
-    if condition is CreateCoin {
-        if condition.amount == -113 {
-            let run_tail = unchecked_cast::<RunTail>(condition);
-            return morph_conditions(
-                conditions.rest,
-                cat_info,
-                TailInfo {
+fn morph_conditions(conditions: List<Condition>, cat_info: CatInfo) -> Morphed {
+    for condition in conditions
+        fold rest = (Morphed { conditions: nil, output_sum: 0, tail_info: nil })
+    {
+        if condition is CreateCoin {
+            if condition.amount == -113 {
+                // The last `RunTail` is the one that's run, but each one is read, as in the
+                // original, so that one without a puzzle and a solution fails
+                let run_tail = unchecked_cast::<RunTail>(condition);
+                let tail_info = TailInfo {
                     tail_puzzle: run_tail.tail_puzzle,
                     tail_solution: run_tail.tail_solution,
-                },
+                };
+
+                Morphed {
+                    ...rest,
+                    tail_info: inline if rest.tail_info is nil {
+                        tail_info
+                    } else {
+                        rest.tail_info
+                    },
+                }
+            } else {
+                let morphed = CreateCoin {
+                    ...condition,
+                    puzzle_hash: cat_puzzle_hash(cat_info, condition.puzzle_hash),
+                };
+
+                Morphed {
+                    conditions: [morphed, ...rest.conditions],
+                    output_sum: rest.output_sum + condition.amount,
+                    tail_info: rest.tail_info,
+                }
+            }
+        } else {
+            // Coin announcements can't pretend to be part of the ring.
+            assert !(
+                condition is CreateCoinAnnouncement
+                    && condition.message.length == 33
+                    && condition.message[0] == RING_MORPH_BYTE
             );
+
+            Morphed { ...rest, conditions: [condition, ...rest.conditions] }
         }
-
-        let rest = morph_conditions(conditions.rest, cat_info, tail_info);
-        let morphed = CreateCoin {
-            ...condition,
-            puzzle_hash: cat_puzzle_hash(cat_info, condition.puzzle_hash),
-        };
-
-        return Morphed {
-            conditions: [morphed, ...rest.conditions],
-            output_sum: rest.output_sum + condition.amount,
-            tail_info: rest.tail_info,
-        };
-    }
-
-    // Coin announcements can't pretend to be part of the ring.
-    assert !(
-        condition is CreateCoinAnnouncement
-            && condition.message.length == 33
-            && condition.message[0] == RING_MORPH_BYTE
-    );
-
-    let rest = morph_conditions(conditions.rest, cat_info, tail_info);
-
-    Morphed {
-        conditions: [condition, ...rest.conditions],
-        output_sum: rest.output_sum,
-        tail_info: rest.tail_info,
     }
 }
 
@@ -331,6 +325,30 @@ test fn runs_the_last_tail_revealed() -> Any {
         sha256("not_a_cat"),
         -10,
     ))
+}
+
+// A `RunTail` without a puzzle and a solution fails, though a later one is the one that's run
+fn incomplete_earlier_tail() -> Any {
+    let tail = (1, [ReserveFee { amount: 7 }]);
+    solution(
+        tree_hash(tail),
+        [
+            [51 as Any, nil, -113],
+            CreateCoin { puzzle_hash: sha256("alice"), amount: 90 },
+            [51 as Any, sha256("ignored"), -113, tail, nil],
+        ],
+        nil,
+        sha256("not_a_cat"),
+        -10,
+    )
+}
+
+test fn rejects_an_incomplete_earlier_tail() -> Any {
+    run(main, incomplete_earlier_tail())
+}
+
+test fn reference_rejects_an_incomplete_earlier_tail() -> Any {
+    run(reference, incomplete_earlier_tail())
 }
 
 fn no_lineage_proof() -> Any {

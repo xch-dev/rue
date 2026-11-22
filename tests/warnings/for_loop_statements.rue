@@ -1,0 +1,13 @@
+#![warn(needless_let_return)]
+
+// The statements of a loop's body are in the block that ends with the loop's call for the rest of
+// the list, so a value the body ends with isn't the value of a block: it's reported as unused, and
+// a binding that it refers to isn't reported as returned directly after it's declared
+fn main(xs: List<Int>) -> Int {
+    for x in xs {
+        let doubled = x * 2;
+        doubled
+    }
+
+    0
+}

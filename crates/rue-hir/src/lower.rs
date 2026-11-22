@@ -86,6 +86,9 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// doesn't change while lowering, and finding them walks it, so they're only found once per
     /// symbol rather than each time a symbol is inlined or captured.
     dependencies: RefCell<HashMap<(SymbolId, bool), Dependencies>>,
+    /// Whether each function that's in a cycle calls itself in a way that keeps it from being
+    /// inlined (see [`Self::is_recursive`]), which walks the graph, so it's only found once.
+    recursive: RefCell<HashMap<SymbolId, bool>>,
     /// The round that each run of symbols grouped by value is bound in. A run of let statements is
     /// lowered again each time the function it's in is inlined, and finding the rounds walks
     /// everything the run can reach, so they're only found once per run.
@@ -206,6 +209,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             path: Vec::new(),
             too_deep: None,
             dependencies: RefCell::default(),
+            recursive: RefCell::default(),
             rounds: HashMap::new(),
             substitutions: RefCell::default(),
             path_bindings: RefCell::default(),
@@ -311,6 +315,28 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .expect("debug info is kept while lowering");
         debug.scopes.exit(self.arena.len());
         lir
+    }
+
+    /// Whether the function calls itself in a way that keeps it from being inlined. An `inline fn`
+    /// can't be in a cycle at all, and neither can the entrypoint, which the program is. Another
+    /// function can be inlined if it only gets back to itself through a loop (see
+    /// [`DependencyGraph::calls_itself_outside_loops`]).
+    pub(super) fn is_recursive(&self, symbol: SymbolId, function: &FunctionSymbol) -> bool {
+        if !self.dependencies(symbol, false).contains(&symbol) {
+            return false;
+        }
+
+        if function.kind == FunctionKind::Inline || symbol == self.main {
+            return true;
+        }
+
+        if let Some(&recursive) = self.recursive.borrow().get(&symbol) {
+            return recursive;
+        }
+
+        let recursive = self.graph.calls_itself_outside_loops(symbol);
+        self.recursive.borrow_mut().insert(symbol, recursive);
+        recursive
     }
 
     /// The symbols that the symbol depends on, as given by [`DependencyGraph::dependencies`].
@@ -490,7 +516,23 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         symbol: SymbolId,
         function: &FunctionSymbol,
     ) -> (Vec<SymbolGroup>, SymbolGroup) {
-        let captures = self.lowered_captures(symbol);
+        let mut captures = self.lowered_captures(symbol);
+
+        // The captures of a function that are referenced equally often are laid out in the order
+        // the program reaches them in from its entrypoint, whatever order the function found them
+        // in, so that functions that capture the same symbols, such as a recursive function and a
+        // loop that call each other, have the same tree, which each passes on to the other as it
+        // is. That order follows where a symbol is used, not where it's defined, so the default
+        // value of a struct's field is still laid out as the same value written where it's used.
+        // A function's parameters and a run of let statements stay in the order they're written
+        // in, since nothing else shares their tree, and a recursive call passes on the parameters
+        // it doesn't change where they are
+        if !self.graph.is_closure(symbol) {
+            let order = self.dependencies(self.main, false);
+            captures.sort_by_key(|capture| {
+                (order.get_index_of(capture).unwrap_or(usize::MAX), *capture)
+            });
+        }
 
         let capture_groups = self.group_symbols(
             captures,
@@ -2069,7 +2111,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return false;
                 }
 
-                if self.dependencies(symbol, false).contains(&symbol) {
+                if self.is_recursive(symbol, function) {
                     return false;
                 }
 

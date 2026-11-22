@@ -711,10 +711,17 @@ impl DependencyGraph {
         let mut captures = HashSet::new();
 
         for (&from, dependencies) in &self.dependencies {
-            // The loops and lambdas that the reference is inside of
+            // The loops and lambdas that the reference is inside of. Any symbol that's used as a
+            // value is among the closures, but only a function is one that's called again: a
+            // binding that's destructured is referenced by the bindings for its parts, which
+            // are evaluated where it's defined
             let functions: Vec<SymbolId> = iter::once(from)
                 .chain(self.owners(from))
-                .filter(|symbol| self.loops.contains(symbol) || self.closures.contains(symbol))
+                .filter(|&symbol| {
+                    self.loops.contains(&symbol)
+                        || (self.closures.contains(&symbol)
+                            && matches!(db.symbol(symbol), Symbol::Function(_)))
+                })
                 .collect();
 
             if !functions.iter().any(|symbol| self.loops.contains(symbol)) {
@@ -978,6 +985,61 @@ impl DependencyGraph {
     /// parameter or local of the function or of a lambda inside it.
     pub fn is_defined_in(&self, symbol: SymbolId, function: SymbolId) -> bool {
         self.owners(symbol).any(|owner| owner == function)
+    }
+
+    /// Whether the function can call itself other than through a loop, so that it can't be
+    /// inlined. A loop on the way back to the function is in a cycle, so it calls itself and is
+    /// never inlined. A function that only gets back to itself through loops, such as one whose
+    /// body is a `for` that calls it for each item, can be inlined where it's called without
+    /// inlining itself again.
+    ///
+    /// A loop that captures one of the function's own values, such as a parameter it passes back
+    /// to the function, doesn't count. Inlined into that loop, the function is given its own
+    /// parameter as an argument, which stands for itself, so measuring it goes to the depth limit
+    /// and is dropped, and a function that calls itself after such a loop is measured as a
+    /// candidate that comes out larger (as in `tests/warnings/for_loop_ends.rue`).
+    pub fn calls_itself_outside_loops(&self, symbol: SymbolId) -> bool {
+        let mut visited = HashSet::new();
+        let mut stack: Vec<SymbolId> = self
+            .dependencies
+            .get(&symbol)
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+
+        while let Some(current) = stack.pop() {
+            if current == symbol {
+                return true;
+            }
+
+            if !visited.insert(current) {
+                continue;
+            }
+
+            if self.loops.contains(&current)
+                && !self
+                    .loop_dependencies
+                    .get(&current)
+                    .is_some_and(|captures| {
+                        captures.iter().any(|&capture| {
+                            !self.loops.contains(&capture) && self.is_defined_in(capture, symbol)
+                        })
+                    })
+            {
+                continue;
+            }
+
+            stack.extend(
+                self.dependencies
+                    .get(&current)
+                    .into_iter()
+                    .flatten()
+                    .copied(),
+            );
+        }
+
+        false
     }
 
     pub fn dependencies(&self, symbol: SymbolId, captures_only: bool) -> IndexSet<SymbolId> {

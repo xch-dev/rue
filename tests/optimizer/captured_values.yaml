@@ -215,12 +215,12 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at captured_values.rue:64:5"
 - name: captures_of_a_loop_are_grouped_with_the_rest
-  program: (a (q 2 (q 2 9 (c (c 13 (c 9 2)) (q () 1 2 3))) (c (* (a 14 (c 14 (q 5 . 40))) (q . 3)) 1)) (c (c (q 2 (i (> 5 (q . 3)) (q . 5) (q 2 8 (c (c (c 5 10) (c (c 7 12) (c 8 14))) 7))) 1) (c (q 2 (i 3 (q 16 (a 22 (c 2 7)) 5 (a 12 (c (c (c 22 26) (c 12 30)) (c (+ 8 30) 18)))) ()) 1) (q 2 (i (> 5 7) (q . 5) (q 2 2 (c 2 (c (+ 5 (q . 7)) 7)))) 1))) ()))
-  debug_program: (a (q 2 (q 2 17 (c (c (c 25 21) (c 17 2)) (c () (a 29 (c (q . 1) (c (q . 2) (c (q . 3) ()))))))) (c (* (a 10 (c 10 (c (q . 5) (q . 40)))) (q . 3)) 1)) (c (c (c (q 2 (i (> 5 (q . 3)) (q . 5) (q 2 8 (c (c (c 5 10) (c (c 7 12) (c 8 14))) 7))) 1) (q 2 (i 3 (q 2 (q 16 (+ 2 (f 7)) (a 25 (c (c (c 45 53) (c 25 61)) (c (+ 17 61) 37)))) (c (a 22 (c (c (c 8 12) (c (c 18 26) (c 22 30))) (r 3))) 1)) ()) 1)) (c (q 2 (i (> 5 7) (q . 5) (q 2 2 (c 2 (c (+ 5 (q . 7)) 7)))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1))) ()))
+  program: (a (q 2 (q 2 9 (c (c (c 9 21) (c 29 2)) (q () 1 2 3))) (c (* (a 14 (c 14 (q 5 . 40))) (q . 3)) 1)) (c (c (q 2 (i (> 5 (q . 3)) (q . 5) (q 2 12 (c (c (c 5 8) (c (c 7 12) 6)) 7))) 1) (c (q 2 (i 3 (q 16 (a 26 (c 2 7)) 5 (a 12 (c (c (c 12 26) 14) (c (+ 8 30) 18)))) ()) 1) (q 2 (i (> 5 7) (q . 5) (q 2 2 (c 2 (c (+ 5 (q . 7)) 7)))) 1))) ()))
+  debug_program: (a (q 2 (q 2 17 (c (c (c 17 25) (c 21 2)) (c () (a 29 (c (q . 1) (c (q . 2) (c (q . 3) ()))))))) (c (* (a 10 (c 10 (c (q . 5) (q . 40)))) (q . 3)) 1)) (c (c (c (q 2 (i (> 5 (q . 3)) (q . 5) (q 2 12 (c (c (c 5 8) (c (c 7 12) (c 10 14))) 7))) 1) (q 2 (i 3 (q 2 (q 16 (+ 2 (f 7)) (a 25 (c (c (c 25 53) (c 45 61)) (c (+ 17 61) 37)))) (c (a 26 (c (c (c 8 12) (c (c 18 26) (c 22 30))) (r 3))) 1)) ()) 1)) (c (q 2 (i (> 5 7) (q . 5) (q 2 2 (c 2 (c (+ 5 (q . 7)) 7)))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1))) ()))
   output: "429"
-  runtime_cost: 29514
-  byte_cost: 3612000
-  total_cost: 3641514
+  runtime_cost: 29173
+  byte_cost: 3540000
+  total_cost: 3569173
 diagnostics:
 - |-
   This argument can fail, but `add_scaled_value` is an `inline fn` that doesn't always evaluate its parameter `scale`, so its check can be skipped at captured_values.rue:334:22

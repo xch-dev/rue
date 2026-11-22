@@ -1,0 +1,12 @@
+program: (a (q 2 6 1) (c (c (q 2 (i 3 (q 16 (a 4 (c 2 7)) (a 6 (c 2 (c 5 ())))) (q 1 . 1)) 1) (q 2 4 (c 2 5))) 1))
+debug_program: (a (q 2 6 1) (c (c (q 2 (i 3 (q 2 (q 16 2 (a 13 (c (c 9 13) (c (f 7) ())))) (c (a 4 (c (c 4 6) (r 3))) 1)) (q 1 . 1)) 1) (q 2 4 (c (c 4 6) 5))) 1))
+byte_cost: 1188000
+clvm_error: path into atom
+tests:
+- name: counts_the_nodes
+  program: (a (q 2 2 (c 2 (q () (() ())))) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (a 2 (c 2 5))) (q 1 . 1)) 1) ()))
+  debug_program: (a (q 2 4 (c (c 4 6) (c () (c (c () (c () ())) ())))) (c (c (q 2 6 (c (c 4 6) 3)) (q 2 (i 3 (q 2 (q 16 2 (a 9 (c (c 9 13) (f 7)))) (c (a 6 (c (c 4 6) (r 3))) 1)) (q 1 . 1)) 1)) ()))
+  output: "5"
+  runtime_cost: 8241
+  byte_cost: 1068000
+  total_cost: 1076241
