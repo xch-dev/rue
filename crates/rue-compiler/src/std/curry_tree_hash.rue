@@ -25,10 +25,9 @@ fn update_hash_with_parameter(parameter_hash: Bytes32, environment_hash: Bytes32
 }
 
 fn curried_params_hash(parameters: List<Bytes32>) -> Bytes32 {
-    if parameters is nil {
-        return tree_hash_atom(1 as Bytes);
+    for parameter in parameters fold hash = tree_hash_atom(1 as Bytes) {
+        update_hash_with_parameter(parameter, hash)
     }
-    update_hash_with_parameter(parameters.first, curried_params_hash(parameters.rest))
 }
 
 export fn curry_tree_hash(mod_hash: Bytes32, parameters: List<Bytes32>) -> Bytes32 {

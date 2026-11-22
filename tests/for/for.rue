@@ -511,9 +511,9 @@ test fn attributes() -> Int {
     5
 }
 
-// The result for the rest of the list is evaluated once where it's an argument of a call, or the
-// value of a `let`, since a function that's inlined evaluates its argument wherever it refers to
-// its parameter
+// The result for the rest of the list is evaluated once, before the body, where it's an argument
+// of a call that's inlined into a body that refers to the parameter more than once, or the value
+// of a `let`. A function that's inlined evaluates its argument wherever it refers to its parameter
 inline fn larger(a: Int, b: Int) -> Int {
     if a > b {
         a
@@ -537,6 +537,115 @@ test fn fold_in_a_let_passed_to_an_inline_function() -> Int {
         let next = total + x;
         twice(next) / 2
     }
+}
+
+// Where it's the argument of a call that evaluates it once, it's evaluated there, as in recursion
+// written by hand: a call that isn't inlined, or one that's inlined into a body that refers to the
+// parameter once, through any number of calls that are inlined too
+fn hash_with(item: Int, rest: Bytes32) -> Bytes32 {
+    sha256(item as Bytes + rest)
+}
+
+test fn fold_as_an_argument_used_once() -> Bytes32 {
+    let xs = runtime([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    for x in xs fold hash = sha256(nil) { hash_with(x, hash) }
+}
+
+fn hash_twice_with(item: Int, rest: Bytes32) -> Bytes32 {
+    hash_with(item, hash_with(item, rest))
+}
+
+test fn fold_as_an_argument_of_nested_calls() -> Bytes32 {
+    let xs = runtime([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    for x in xs fold hash = sha256(nil) { hash_twice_with(x, hash) }
+}
+
+// A call that's inlined into a body that refers to the parameter more than once, directly or
+// through another call that's inlined, a lambda, another `for` or a type guard, has the result
+// evaluated before the body, rather than going through the rest of the list again for each
+// reference
+fn doubled(value: Int) -> Int {
+    value + value
+}
+
+inline fn twice_through(value: Int) -> Int {
+    twice(value)
+}
+
+inline fn through_a_lambda(value: Int) -> Int {
+    let get = fn() => value;
+    get() + get()
+}
+
+inline fn through_a_for(value: Int, ys: List<Int>) -> Int {
+    for y in ys fold sum = 0 { sum + y * value }
+}
+
+inline fn has_two_items(value: Any) -> Bool {
+    value is (Int, (Int, nil))
+}
+
+test fn fold_as_an_argument_used_twice() -> (Int, Int) {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    (
+        for x in xs fold total = 0 { doubled(total) + x },
+        for x in xs fold total = 0 { doubled(doubled(total)) + x },
+    )
+}
+
+test fn fold_as_an_argument_used_twice_through_an_inline_function() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    for x in xs fold total = 0 { twice_through(total) + x }
+}
+
+test fn fold_as_an_argument_used_in_a_lambda() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    for x in xs fold total = 0 { through_a_lambda(total) + x }
+}
+
+test fn fold_as_an_argument_used_in_a_for() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    let ys = runtime([1, 2]);
+    for x in xs fold total = 0 { through_a_for(total, ys) + x }
+}
+
+test fn fold_as_an_argument_used_in_a_type_guard() -> Any {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    for x in xs fold result: Any = nil {
+        if has_two_items(result) {
+            x
+        } else {
+            (x, (x, nil))
+        }
+    }
+}
+
+// A result that can fail is only evaluated in the call if the body it's inlined into always gets
+// to it, so a fold still fails for an item after one that doesn't use it
+fn first_if(condition: Bool, value: Int) -> Int {
+    if condition {
+        value
+    } else {
+        0
+    }
+}
+
+test fn fold_as_an_argument_used_some_of_the_time_fails() -> Int {
+    for x in runtime([1, 2, 0]) fold total = 0 {
+        assert x > 0;
+        first_if(x > 1, total)
+    }
+}
+
+// One that can't fail is evaluated where the body uses it, so the fold stops at the first item
+// that doesn't
+fn either(first: Bool, second: Bool) -> Bool {
+    first || second
+}
+
+test fn fold_as_an_argument_stops_early() -> Bool {
+    let xs = runtime([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    for x in xs fold found = false { either(x == 2, found) }
 }
 
 // A body whose value is nil makes a loop, such as a call to a function that returns nothing, or
