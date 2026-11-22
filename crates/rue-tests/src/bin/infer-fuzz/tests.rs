@@ -717,6 +717,47 @@ fn classifies_results() {
 
     let raises = classify_sources(explicit, "fn main() -> Int {\n    raise;\n}\n");
     assert_eq!(raises.category, Category::Unsound);
+
+    // The other way around too: the explicit program raises and the inferred one doesn't
+    let raising = "fn main() -> Int {\n    raise;\n}\n";
+    let finishes = classify_sources(raising, explicit);
+    assert_eq!(finishes.category, Category::Unsound);
+}
+
+/// Two programs that both raise give the same result, whatever the error is: a raise is a failure
+/// however it happens, and which CLVM error it is depends on how the program is laid out. In
+/// #362's final wide run, g3 seed 15604's explicit program raised `first of non-cons` and its
+/// inferred form `path into atom`, from the same failing expression.
+#[test]
+fn programs_that_both_raise_are_inferred_whatever_the_error() {
+    let first_of_atom =
+        "fn main() -> Any {\n    let x: Any = 1;\n    unchecked_cast::<(Int, Int)>(x).first\n}\n";
+    let raise = "fn main() -> Any {\n    raise;\n}\n";
+
+    let both = classify_sources(first_of_atom, raise);
+    assert!(matches!(both.output, Some(Run::Error(_))));
+    assert_eq!(both.category, Category::Inferred);
+
+    let error = |text: &str| Run::Error(text.to_string());
+    let output = |text: &str| Run::Output(text.to_string());
+    assert!(!error("first of non-cons").differs_from(&error("path into atom")));
+    assert!(error("raise ()").differs_from(&output("()")));
+    assert!(output("()").differs_from(&error("raise ()")));
+    assert!(output("1").differs_from(&output("2")));
+    assert!(!output("1").differs_from(&output("1")));
+
+    // So a shrunk candidate that raises differently from the explicit program isn't unsound
+    let explicit = compile(first_of_atom);
+    let Compiled::Ok { run: expected, .. } = &explicit else {
+        unreachable!();
+    };
+    let unsound = Outcome::failed(Category::Unsound, String::new(), 1.0);
+    assert!(!worker::same_failure(&unsound, expected, &compile(raise)));
+    assert!(worker::same_failure(
+        &unsound,
+        expected,
+        &compile("fn main() -> Any {\n    1\n}\n")
+    ));
 }
 
 fn ok(clvm: &str, millis: u64) -> Compiled {
@@ -995,6 +1036,21 @@ fn probes_are_inferred_only_when_their_generic_cant_be_inferred() {
 
     let other = worker::probe_outcome(program, "some", variant, cannot_infer());
     assert_eq!(other.category, Category::Rejected);
+
+    // A lambda in the probe's arguments whose parameter's type is the probe's generic is reported
+    // at the parameter, naming no callee (#582, g5 seed 9117 in #362's final wide run)
+    let parameter = rejected(
+        "CannotInferParameterType",
+        "Type of parameter cannot be inferred, it must be specified explicitly".to_string(),
+    );
+    assert_eq!(
+        worker::probe_outcome(program, "probe", variant, parameter.clone()).category,
+        Category::Inferred
+    );
+    assert_eq!(
+        worker::probe_outcome(program, "some", variant, parameter).category,
+        Category::Rejected
+    );
 
     let incompatible = rejected("IncompatibleType", "Cannot assign `_` to `_`".to_string());
     let incompatible = worker::probe_outcome(program, "probe", variant, incompatible);

@@ -239,7 +239,10 @@ fn shrink_command(
 /// The outcome of a variant, counting a `probe` variant's rejection as inferred when it's that its
 /// probe's generic can't be inferred, which is right, since nothing gives it a type (see
 /// `Generator::probe`). Each of those variants removes only that probe's generic arguments, so
-/// the diagnostic is the probe's. Any other rejection is a failure, as it is for any other variant.
+/// the diagnostic is the probe's. That's `CannotInferGeneric` for the probe's callee, or, for a
+/// lambda in the probe's arguments whose parameter's type is that generic,
+/// `CannotInferParameterType`, which names no callee and is reported at the parameter (#582). Any
+/// other rejection is a failure, as it is for any other variant.
 pub fn probe_outcome(
     program: &Program,
     name: &str,
@@ -248,10 +251,11 @@ pub fn probe_outcome(
 ) -> Outcome {
     let callees = program.probe_callees(variant);
     let expected = outcome.diag.as_ref().is_some_and(|diag| {
-        diag.kind == "CannotInferGeneric"
-            && callees
-                .iter()
-                .any(|callee| diag.message.contains(&format!(" for `{callee}`")))
+        diag.kind == "CannotInferParameterType"
+            || (diag.kind == "CannotInferGeneric"
+                && callees
+                    .iter()
+                    .any(|callee| diag.message.contains(&format!(" for `{callee}`"))))
     });
 
     if name == "probe" && outcome.category == Category::Rejected && expected {
@@ -273,9 +277,11 @@ pub fn same_failure(original: &Outcome, expected: &oracle::Run, stripped: &Compi
             .diag
             .as_ref()
             .is_some_and(|target| diag.same_failure(target)),
-        (Category::Unsound, Compiled::Ok { run, .. }) => run != expected,
+        (Category::Unsound, Compiled::Ok { run, .. }) => run.differs_from(expected),
         // Any leak counts, since shrinking renames nothing but can remove the binding it was in
-        (Category::Leaked, Compiled::Ok { run, leak, .. }) => run == expected && leak.is_some(),
+        (Category::Leaked, Compiled::Ok { run, leak, .. }) => {
+            !run.differs_from(expected) && leak.is_some()
+        }
         (Category::Crashed, Compiled::Panicked { message }) => {
             Some(message) == original.detail.as_ref()
         }
