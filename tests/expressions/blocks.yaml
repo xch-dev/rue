@@ -15,7 +15,7 @@ tests:
   total_cost: 36020
 - name: shadow
   program: (a (q 16 2 (* 2 (q . 34)) 2) (c (q . 42) 1))
-  debug_program: (a (q 16 (+ 2 (a (q 18 6 4) (c (c (q . 34) 2) 1))) 2) (c (q . 42) 1))
+  debug_program: (a (q 16 (+ 2 (a (q 18 4 6) (c (c 2 (q . 34)) 1))) 2) (c (q . 42) 1))
   output: "1512"
   runtime_cost: 2492
   byte_cost: 396000

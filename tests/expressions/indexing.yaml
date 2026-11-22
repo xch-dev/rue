@@ -108,8 +108,8 @@ tests:
   byte_cost: 300000
   clvm_error: path into atom
 - name: string_parts
-  program: (a (q 2 (q 2 (i (all (= 6 (q . 104)) (= 4 (q . "ello")) (= (+ (strlen 6) (strlen 4)) (strlen 5))) () (q 8)) 1) (c (c (substr 2 (q . 1)) (substr 2 () (q . 1))) 1)) (c (q . "hello") 1))
-  debug_program: (a (q 2 (q 2 (i (= 6 (q . 104)) (q 2 (i (= 4 (q . "ello")) (q 2 (i (= (+ (strlen 6) (strlen 4)) (strlen 5)) () (q 8 (q . "assertion failed at indexing.rue:119:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:118:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:117:5"))) 1) (c (c (substr 2 (q . 1)) (substr 2 () (q . 1))) 1)) (c (q . "hello") 1))
+  program: (a (q 2 (q 2 (i (all (= 4 (q . 104)) (= 6 (q . "ello")) (= (+ (strlen 4) (strlen 6)) (strlen 5))) () (q 8)) 1) (c (c (substr 2 () (q . 1)) (substr 2 (q . 1))) 1)) (c (q . "hello") 1))
+  debug_program: (a (q 2 (q 2 (i (= 4 (q . 104)) (q 2 (i (= 6 (q . "ello")) (q 2 (i (= (+ (strlen 4) (strlen 6)) (strlen 5)) () (q 8 (q . "assertion failed at indexing.rue:119:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:118:5"))) 1) (q 8 (q . "assertion failed at indexing.rue:117:5"))) 1) (c (c (substr 2 () (q . 1)) (substr 2 (q . 1))) 1)) (c (q . "hello") 1))
   output: ()
   runtime_cost: 4029
   byte_cost: 1560000

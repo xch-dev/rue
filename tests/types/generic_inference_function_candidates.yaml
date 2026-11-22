@@ -50,7 +50,7 @@ tests:
   total_cost: 252955
 - name: outer_generic
   program: (a (q . 2) (q 1))
-  debug_program: (a (q 2 12 (c (c 10 14) (c (q . 1) (c (q . 2) (c (c (q . 1) 8) (c (q . 1) ())))))) (c (c (c (q 16 2 (q . 1)) (q 2 (q 2 2 (c 11 ())) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) 7)) 1))) (c (q . 2) (q . 2))) ()))
+  debug_program: (a (q 2 12 (c (c 10 14) (c (c (q . 2) (c (c (q . 1) 8) (c (q . 1) ()))) (q . 1)))) (c (c (c (q 16 2 (q . 1)) (q 2 (q 2 2 (c 15 ())) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) 5)) 1))) (c (q . 2) (q . 2))) ()))
   output: "1"
   runtime_cost: 179
   byte_cost: 156000

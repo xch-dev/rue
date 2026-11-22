@@ -73,7 +73,7 @@ tests:
   debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:123:5"
 - name: pure_branches
   program: (q . 4)
-  debug_program: (a (q 2 4 (c 6 (c (c (q . 1) (q . 2)) (q . 1)))) (c (c (q 3 (> 7 (q . 5)) (+ (* (f 5) 7) (q . 1)) (a 2 (r 5))) (q 18 1 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (c (q . 1) (c (q . 1) (q . 2))))) (c (c (q 3 (> 5 (q . 5)) (+ (* (f 7) 5) (q . 1)) (a 2 (r 7))) (q 18 1 1)) ()))
   output: "4"
   runtime_cost: 20
   byte_cost: 36000
@@ -189,13 +189,13 @@ tests:
   debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:384:9"
 - name: nested_reported_once
   program: (a (q 3 () (x) (q . 1)) (c (q 8) (c 1 1)))
-  debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) (q . 1)))) (c (q 2 (q 2 (i 31 (q 3 23 (q . 1) (a (i (> 11 (q . 1)) (q 2 2 5) (q 8 (q . "assertion failed at inline_if_may_raise.rue:403:9"))) 1)) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:405:9") (q . 1)) () (q 2 2 5)) 1)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:408:5"))) 1) (c 1 1))) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) (q . 1)))) (c (q 2 (q 2 (i 23 (q 3 31 (q . 1) (a (i (> 11 (q . 1)) (q 2 2 5) (q 8 (q . "assertion failed at inline_if_may_raise.rue:403:9"))) 1)) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:405:9") (q . 1)) () (q 2 2 5)) 1)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:408:5"))) 1) (c 1 1))) ()))
   byte_cost: 444000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:403:9"
 - name: nested_branch_exits
   program: (q . 1)
-  debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) (q . 1)))) (c (q 2 (i 7 (q 3 5 (q . 1) (q . 2)) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:425:9") (q . 1)) () (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:428:5"))) 1)) 1)) 1) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) (q . 1)))) (c (q 2 (i 5 (q 3 7 (q . 1) (q . 2)) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:425:9") (q . 1)) () (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:428:5"))) 1)) 1)) 1) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
@@ -219,7 +219,7 @@ tests:
   total_cost: 36020
 - name: two_levels_deep
   program: (a (q 2 (q 3 () (a 2 5) (q . 1)) (c (q 2 2 5) (c 1 1))) (c (q 8) (c 1 1)))
-  debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) (c (q . 1) (q . 1))))) (c (q 2 (q 2 (i 63 (q 2 (q 2 (i -65 (q 3 95 (q . 1) (a 2 5)) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:486:13") ()) () (q 2 2 5)) 1)) 1) (c (q 2 2 5) (c 1 1))) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:489:9") (q . 1)) () (q 2 2 5)) 1)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:492:5"))) 1) (c 1 1))) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) (c (q . 1) (q . 1))))) (c (q 2 (q 2 (i 23 (q 2 (q 2 (i -65 (q 3 -1 (q . 1) (a 2 5)) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:486:13") ()) () (q 2 2 5)) 1)) 1) (c (q 2 2 5) (c 1 1))) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:489:9") (q . 1)) () (q 2 2 5)) 1)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:492:5"))) 1) (c 1 1))) ()))
   byte_cost: 828000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:492:5"

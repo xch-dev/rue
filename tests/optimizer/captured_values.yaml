@@ -21,8 +21,8 @@ tests:
   byte_cost: 4116000
   total_cost: 4154820
 - name: lambda_passed_to_fold
-  program: (a (q 2 (q 2 (q 2 43 (c 43 (c 5 (c (c (q . 2) (c (q 1 16 5 11 2) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) ())))) (c (a 9 (c 9 2)) 1)) (c (a 14 (q 1 2 3 4 5 6 7 8)) 1)) (c (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) (c (q 2 (i 5 (q 2 2 (c 2 (c 13 (c 11 (a 11 (c 15 (c 9 ()))))))) (q . 15)) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1))) ()))
-  debug_program: (a (q 2 (q 2 (q 2 43 (c 43 (c 5 (c (c (q . 2) (c (c (q . 1) (q 16 (+ 5 11) 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) ())))) (c (a 9 (c 9 2)) 1)) (c (a 14 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) (c (q . 5) (c (q . 6) (c (q . 7) (c (q . 8) ()))))))))) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (c (q 2 (i (not 5) (q . 15) (q 2 2 (c 2 (c (r 5) (c 11 (a 11 (c 15 (c (f 5) ())))))))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1))) ()))
+  program: (a (q 2 (q 2 (q 2 43 (c 43 (c 5 (c () (c (q . 2) (c (q 1 16 5 11 2) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))))))) (c (a 9 (c 9 2)) 1)) (c (a 14 (q 1 2 3 4 5 6 7 8)) 1)) (c (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) (c (q 2 (i 5 (q 2 2 (c 2 (c 13 (c (a 15 (c 11 (c 9 ()))) 15)))) (q . 11)) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 43 (c 43 (c 5 (c () (c (q . 2) (c (c (q . 1) (q 16 (+ 5 11) 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))))))) (c (a 9 (c 9 2)) 1)) (c (a 14 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) (c (q . 5) (c (q . 6) (c (q . 7) (c (q . 8) ()))))))))) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (c (q 2 (i (not 5) (q . 11) (q 2 2 (c 2 (c (r 5) (c (a 15 (c 11 (c (f 5) ()))) 15))))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1))) ()))
   output: "324"
   runtime_cost: 34894
   byte_cost: 3780000
@@ -36,7 +36,7 @@ tests:
   total_cost: 3618992
 - name: lambda_in_a_lambda
   program: (a (q 2 (q 2 (q 2 43 (c 43 (c 5 (c (q . 2) (c (q 1 16 5 2) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ())))))) (c (a 9 (c 9 2)) 1)) (c (a 14 (q 1 2 3 4 5 6 7 8)) 1)) (c (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) (c (q 2 (i 5 (q 4 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) ()) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1))) ()))
-  debug_program: (a (q 2 (q 2 (q 2 43 (c 43 (c 5 (c (q . 2) (c (c (q . 1) (q 2 5 (c 11 (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 123) (c (q . 1) ()))) ()))) ())))))) (c (a 9 (c 9 2)) 1)) (c (a 22 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) (c (q . 5) (c (q . 6) (c (q . 7) (c (q . 8) ()))))))))) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1) (q 2 3 (c 2 ()))))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 43 (c 43 (c 5 (c (q . 2) (c (c (q . 1) (q 2 5 (c (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 11))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 123) (c (q . 1) ()))) ()))) ())))))) (c (a 9 (c 9 2)) 1)) (c (a 22 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) (c (q . 5) (c (q . 6) (c (q . 7) (c (q . 8) ()))))))))) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1) (q 2 2 (c 3 ()))))) ()))
   output: (37 38 39 40 41 42 43 44)
   runtime_cost: 30992
   byte_cost: 3588000
@@ -92,7 +92,7 @@ tests:
   total_cost: 979098
 - name: lambda_passed_to_a_function_that_calls_it_once
   program: (a (q 2 (q 16 2 (q . 1)) (c (a 2 (c 2 (q 1 2 3 4))) 1)) (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) ()))
-  debug_program: (a (q 2 (q 2 (q 2 59 (c (q . 1) (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))))) (c (a 9 (c 9 2)) 1)) (c (a 10 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1) (q 2 3 (c 2 ())))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 59 (c (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q . 1))) (c (a 9 (c 9 2)) 1)) (c (a 10 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1) (q 2 2 (c 3 ())))) ()))
   output: "11"
   runtime_cost: 7352
   byte_cost: 1140000
@@ -113,7 +113,7 @@ tests:
   total_cost: 2427082
 - name: captured_lambda
   program: (a (q 2 2 (c 2 (c (q 1 2 3 4) (q 18 (+ 2 (q . 1)) (q . 2))))) (c (q 2 (i 5 (q 4 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) ()) 1) ()))
-  debug_program: (a (q 2 (q 2 9 (c 9 (c 6 (c (q . 2) (c (c (q . 1) (q 18 (a 2 (c 5 ())) (q . 2))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ())))))) (c (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (a 6 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ())))))) 1)) (c (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1)) ()))
+  debug_program: (a (q 2 (q 2 9 (c 9 (c 4 (c (q . 2) (c (c (q . 1) (q 18 (a 2 (c 5 ())) (q . 2))) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ())))))) (c (c (a 6 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ())))) 1)) (c (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1)) ()))
   output: (4 6 8 10)
   runtime_cost: 12368
   byte_cost: 1380000
@@ -141,28 +141,28 @@ tests:
   total_cost: 3224869
 - name: captured_small_constant
   program: (a (q 2 2 (c 2 (c (q 1 2 3 4) (q 16 2 (q . 200))))) (c (q 2 (i 5 (q 4 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) ()) 1) ()))
-  debug_program: (a (q 2 (q 2 9 (c 9 (c 6 (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ())))))) (c (c (* (q . 100) (q . 2)) (a 6 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ())))))) 1)) (c (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1)) ()))
+  debug_program: (a (q 2 (q 2 9 (c 9 (c 4 (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ())))))) (c (c (a 6 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (* (q . 100) (q . 2))) 1)) (c (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1)) ()))
   output: (201 202 203 204)
   runtime_cost: 8340
   byte_cost: 1308000
   total_cost: 1316340
 - name: captured_small_call
   program: (a (q 2 2 (c 2 (c (q 1 2 3 4) (q 16 2 (q . 1209600))))) (c (q 2 (i 5 (q 4 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) ()) 1) ()))
-  debug_program: (a (q 2 (q 2 (q 2 19 (c 19 (c 13 (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))))) (c (a 21 4) 1)) (c (c (* (q . 2) (q . 7)) (a 14 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ())))))) 1)) (c (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (c (q 18 1 (q . 86400)) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 19 (c 19 (c 9 (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))))) (c (a 21 6) 1)) (c (c (a 14 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (* (q . 2) (q . 7))) 1)) (c (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (c (q 18 1 (q . 86400)) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1))) ()))
   output: (1209601 1209602 1209603 1209604)
   runtime_cost: 8392
   byte_cost: 1320000
   total_cost: 1328392
 - name: captured_large_value_that_folds
   program: (a (q 2 2 (c 2 (c (q 1 2 3 4) (q 16 2 (q . 83700))))) (c (q 2 (i 5 (q 4 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) ()) 1) ()))
-  debug_program: (a (q 2 (q 2 9 (c 9 (c 6 (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ())))))) (c (c (* (+ (* (+ (q . 1) (q . 2)) (+ (q . 3) (q . 4))) (* (+ (q . 5) (q . 6)) (+ (q . 7) (q . 8)))) (+ (* (+ (q . 9) (q . 10)) (+ (q . 11) (q . 12))) (q . 13))) (a 6 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ())))))) 1)) (c (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1)) ()))
+  debug_program: (a (q 2 (q 2 9 (c 9 (c 4 (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ())))))) (c (c (a 6 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (* (+ (* (+ (q . 1) (q . 2)) (+ (q . 3) (q . 4))) (* (+ (q . 5) (q . 6)) (+ (q . 7) (q . 8)))) (+ (* (+ (q . 9) (q . 10)) (+ (q . 11) (q . 12))) (q . 13)))) 1)) (c (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1)) ()))
   output: (83701 83702 83703 83704)
   runtime_cost: 8392
   byte_cost: 1320000
   total_cost: 1328392
 - name: captured_large_call_that_folds
   program: (a (q 2 2 (c 2 (c (q 1 2 3 4) (q 16 2 (q . 27872))))) (c (q 2 (i 5 (q 4 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) ()) 1) ()))
-  debug_program: (a (q 2 (q 2 9 (c 9 (c 6 (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ())))))) (c (c (a 10 (q . 3)) (a 14 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ())))))) 1)) (c (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (c (q 18 (+ (* (+ 1 (q . 2)) (+ 1 (q . 4))) (* (+ 1 (q . 6)) (+ 1 (q . 8)))) (+ (* (+ 1 (q . 10)) (+ 1 (q . 12))) (q . 13))) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1))) ()))
+  debug_program: (a (q 2 (q 2 9 (c 9 (c 4 (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ())))))) (c (c (a 14 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (a 10 (q . 3))) 1)) (c (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (c (q 18 (+ (* (+ 1 (q . 2)) (+ 1 (q . 4))) (* (+ 1 (q . 6)) (+ 1 (q . 8)))) (+ (* (+ 1 (q . 10)) (+ 1 (q . 12))) (q . 13))) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1))) ()))
   output: (27873 27874 27875 27876)
   runtime_cost: 8340
   byte_cost: 1308000

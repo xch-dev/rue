@@ -1,14 +1,14 @@
 tests:
 - name: tree_params
   program: (q . 300)
-  debug_program: (a (q 2 2 (c (c (q . 4) (q . 3)) (c (q . 2) (q . 1)))) (c (q 16 (+ (+ (* 7 (q . 10)) (* 5 (q . 20))) (* 6 (q . 30))) (* 4 (q . 40))) ()))
+  debug_program: (a (q 2 2 (c (c (q . 1) (q . 2)) (c (q . 3) (q . 4)))) (c (q 16 (+ (+ (* 4 (q . 10)) (* 6 (q . 20))) (* 5 (q . 30))) (* 7 (q . 40))) ()))
   output: "300"
   runtime_cost: 20
   byte_cost: 60000
   total_cost: 60020
 - name: spread_tree_params
   program: (q . 300)
-  debug_program: (a (q 2 2 (c (c (q . 4) (q . 3)) (c (q . 2) (q . 1)))) (c (q 16 (+ (+ (* 7 (q . 10)) (* 5 (q . 20))) (* 6 (q . 30))) (* 4 (q . 40))) ()))
+  debug_program: (a (q 2 2 (c (c (q . 1) (q . 2)) (c (q . 3) (q . 4)))) (c (q 16 (+ (+ (* 4 (q . 10)) (* 6 (q . 20))) (* 5 (q . 30))) (* 7 (q . 40))) ()))
   output: "300"
   runtime_cost: 20
   byte_cost: 60000

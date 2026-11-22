@@ -8,7 +8,7 @@ tests:
   total_cost: 998180
 - name: assignable_to_any_list
   program: (a (q 2 (q 16 (a 9 (c 9 2)) (a 9 (c 9 2))) (c (a 6 (c 6 (q ()))) 1)) (c (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1) (q 2 (i 5 (q 2 2 (c 2 (c 13 (c 9 7)))) (q . 7)) 1)) ()))
-  debug_program: (a (q 2 (q 2 (q 16 (a 19 (c 19 6)) (a 19 (c 19 4))) (c (c 2 2) 1)) (c (a 6 (c 6 (c () ()))) 1)) (c (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1) (q 2 (i (not (not 5)) (q 2 2 (c 2 (c (r 5) (c (f 5) 7)))) (q . 7)) 1)) ()))
+  debug_program: (a (q 2 (q 2 (q 16 (a 19 (c 19 4)) (a 19 (c 19 6))) (c (c 2 2) 1)) (c (a 6 (c 6 (c () ()))) 1)) (c (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1) (q 2 (i (not (not 5)) (q 2 2 (c 2 (c (r 5) (c (f 5) 7)))) (q . 7)) 1)) ()))
   output: ()
   runtime_cost: 3076
   byte_cost: 1956000
@@ -57,14 +57,14 @@ tests:
   total_cost: 780833
 - name: beside_an_inferred_generic
   program: (a (q 2 (q 16 (a 5 (c 5 4)) 6) (c (q () . 5) 1)) (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) ()))
-  debug_program: (a (q 2 (q 16 (a 9 (c 9 (f 2))) (r 2)) (c (a 6 (c (q . 5) ())) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (q 4 3 2)) ()))
+  debug_program: (a (q 2 (q 16 (a 9 (c 9 (f 2))) (r 2)) (c (a 6 (c () (q . 5))) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (q 4 2 3)) ()))
   output: "5"
   runtime_cost: 1880
   byte_cost: 1044000
   total_cost: 1045880
 - name: inside_a_generic_function
   program: (a (q 16 (a 2 (c 2 ())) (q . 2)) (c (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1) ()))
-  debug_program: (a (q 2 10 (c (c 4 14) (c (q . 2) (c (q . 1) ())))) (c (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1) (c (q 2 6 (c 4 (c 5 ()))) (q 16 (a 2 (c 2 7)) 5))) ()))
+  debug_program: (a (q 2 10 (c (c 4 14) (c (q . 2) (c (q . 1) ())))) (c (c (q 2 (i (not (not 3)) (q 16 (a 2 (c 2 (r 3))) (q . 1)) ()) 1) (c (q 2 6 (c 4 (c () 5))) (q 16 (a 2 (c 2 5)) 7))) ()))
   output: "2"
   runtime_cost: 1606
   byte_cost: 876000

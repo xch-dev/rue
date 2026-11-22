@@ -516,7 +516,23 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         symbol: SymbolId,
         function: &FunctionSymbol,
     ) -> (Vec<SymbolGroup>, SymbolGroup) {
-        let captures = self.lowered_captures(symbol);
+        let mut captures = self.lowered_captures(symbol);
+
+        // The captures of a function that are referenced equally often are laid out in the order
+        // the program reaches them in from its entrypoint, whatever order the function found them
+        // in, so that functions that capture the same symbols, such as a recursive function and a
+        // loop that call each other, have the same tree, which each passes on to the other as it
+        // is. That order follows where a symbol is used, not where it's defined, so the default
+        // value of a struct's field is still laid out as the same value written where it's used.
+        // A function's parameters and a run of let statements stay in the order they're written
+        // in, since nothing else shares their tree, and a recursive call passes on the parameters
+        // it doesn't change where they are
+        if !self.graph.is_closure(symbol) {
+            let order = self.dependencies(self.main, false);
+            captures.sort_by_key(|capture| {
+                (order.get_index_of(capture).unwrap_or(usize::MAX), *capture)
+            });
+        }
 
         let capture_groups = self.group_symbols(
             captures,
@@ -1986,17 +2002,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     fn create_group(&self, symbols: Vec<SymbolId>, is_tree: bool) -> SymbolGroup {
         if is_tree {
             let mut referenced_symbols = IndexMap::new();
-
-            // Symbols that are referenced equally often are in the order the program reaches them
-            // in from its entrypoint, whatever order the function found them in, so that functions
-            // that capture the same symbols, such as a recursive function and a loop that call each
-            // other, have the same tree, which each passes on to the other as it is. That order
-            // follows where a symbol is used, not where it's defined, so the default value of a
-            // struct's field is still laid out as the same value written where it's used
-            let order = self.dependencies(self.main, false);
-            let mut symbols = symbols;
-            symbols
-                .sort_by_key(|symbol| (order.get_index_of(symbol).unwrap_or(usize::MAX), *symbol));
 
             for symbol in symbols {
                 referenced_symbols.insert(symbol, self.graph.layout_references(symbol));

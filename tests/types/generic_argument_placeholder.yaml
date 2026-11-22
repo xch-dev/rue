@@ -8,21 +8,21 @@ tests:
   total_cost: 373248
 - name: infer_second
   program: (q . "hello!")
-  debug_program: (a (q 2 (q 14 (r 2) (q . 33)) (c (a 2 (c (q . "hello") (q . 1))) 1)) (c (q 4 3 2) ()))
+  debug_program: (a (q 2 (q 14 (r 2) (q . 33)) (c (a 2 (c (q . 1) (q . "hello"))) 1)) (c (q 4 2 3) ()))
   output: "\"hello!\""
   runtime_cost: 20
   byte_cost: 108000
   total_cost: 108020
 - name: infer_all
   program: (q . 5)
-  debug_program: (a (q 16 (f (a 2 (c (q . 2) (q . 1)))) (r (a 2 (c (q . 4) (q . 3))))) (c (q 4 3 2) ()))
+  debug_program: (a (q 16 (f (a 2 (c (q . 1) (q . 2)))) (r (a 2 (c (q . 3) (q . 4))))) (c (q 4 2 3) ()))
   output: "5"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: explicit_widens_argument
   program: ()
-  debug_program: (a (q 2 (q 5 2) (c (a 2 (c (q . 2) ())) 1)) (c (q 4 3 2) ()))
+  debug_program: (a (q 2 (q 5 2) (c (a 2 (c () (q . 2))) 1)) (c (q 4 2 3) ()))
   output: ()
   runtime_cost: 44
   byte_cost: 12000

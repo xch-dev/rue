@@ -7,26 +7,26 @@ debug_clvm_error: clvm raise ("assertion failed at assert_message.rue:6:5" "a mu
 tests:
 - name: passes
   program: (q 3 3)
-  debug_program: (a (q 4 (a 6 (c (q . 2) (q . 5))) (c (a 4 (c (q . 2) (q . 5))) ())) (c (c (q 2 (i (> 3 2) (q 17 3 2) (q 8 (q . "assertion failed at assert_message.rue:12:5"))) 1) (q 2 (i (> 3 2) (q 17 3 2) (q 8 (q . "assertion failed at assert_message.rue:17:5") (q . "a must be larger"))) 1)) ()))
+  debug_program: (a (q 4 (a 6 (c (q . 5) (q . 2))) (c (a 4 (c (q . 5) (q . 2))) ())) (c (c (q 2 (i (> 2 3) (q 17 2 3) (q 8 (q . "assertion failed at assert_message.rue:12:5"))) 1) (q 2 (i (> 2 3) (q 17 2 3) (q 8 (q . "assertion failed at assert_message.rue:17:5") (q . "a must be larger"))) 1)) ()))
   output: (3 3)
   runtime_cost: 20
   byte_cost: 84000
   total_cost: 84020
 - name: fails_without_message
   program: (x)
-  debug_program: (a (q 2 2 (c (q . 5) (q . 2))) (c (q 2 (i (> 3 2) (q 17 3 2) (q 8 (q . "assertion failed at assert_message.rue:12:5"))) 1) ()))
+  debug_program: (a (q 2 2 (c (q . 2) (q . 5))) (c (q 2 (i (> 2 3) (q 17 2 3) (q 8 (q . "assertion failed at assert_message.rue:12:5"))) 1) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at assert_message.rue:12:5"
 - name: fails_with_message
   program: (x)
-  debug_program: (a (q 2 2 (c (q . 5) (q . 2))) (c (q 2 (i (> 3 2) (q 17 3 2) (q 8 (q . "assertion failed at assert_message.rue:17:5") (q . "a must be larger"))) 1) ()))
+  debug_program: (a (q 2 2 (c (q . 2) (q . 5))) (c (q 2 (i (> 2 3) (q 17 2 3) (q 8 (q . "assertion failed at assert_message.rue:17:5") (q . "a must be larger"))) 1) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("assertion failed at assert_message.rue:17:5" "a must be larger")
 - name: fails_with_values
   program: (x)
-  debug_program: (a (q 2 2 (c (q . 5) (q . 2))) (c (q 2 (i (> 3 2) (q 17 3 2) (q 8 (q . "assertion failed at assert_message.rue:35:5") (c (q . "a must be larger") (c 3 (c 2 (c (- 3 2) ())))))) 1) ()))
+  debug_program: (a (q 2 2 (c (q . 2) (q . 5))) (c (q 2 (i (> 2 3) (q 17 2 3) (q 8 (q . "assertion failed at assert_message.rue:35:5") (c (q . "a must be larger") (c 2 (c 3 (c (- 2 3) ())))))) 1) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("assertion failed at assert_message.rue:35:5" ("a must be larger" 2 5 -3))
@@ -71,19 +71,19 @@ tests:
   debug_clvm_error: Division by zero
 - name: several_fails_first
   program: (x)
-  debug_program: (a (q 2 2 (c () ())) (c (q 2 (i (> 3 ()) (q 2 (i (> 2 ()) (q 2 (i (> 3 2) (q 17 3 2) (q 8 (q . "assertion failed at assert_message.rue:99:5") (c (q . "a must be larger than b") (c 3 (c 2 ()))))) 1) (q 8 (q . "assertion failed at assert_message.rue:98:5"))) 1) (q 8 (q . "assertion failed at assert_message.rue:97:5") (q . "a must be positive"))) 1) ()))
+  debug_program: (a (q 2 2 (c () ())) (c (q 2 (i (> 2 ()) (q 2 (i (> 3 ()) (q 2 (i (> 2 3) (q 17 2 3) (q 8 (q . "assertion failed at assert_message.rue:99:5") (c (q . "a must be larger than b") (c 2 (c 3 ()))))) 1) (q 8 (q . "assertion failed at assert_message.rue:98:5"))) 1) (q 8 (q . "assertion failed at assert_message.rue:97:5") (q . "a must be positive"))) 1) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("assertion failed at assert_message.rue:97:5" "a must be positive")
 - name: several_fails_second
   program: (x)
-  debug_program: (a (q 2 2 (c () (q . 1))) (c (q 2 (i (> 3 ()) (q 2 (i (> 2 ()) (q 2 (i (> 3 2) (q 17 3 2) (q 8 (q . "assertion failed at assert_message.rue:99:5") (c (q . "a must be larger than b") (c 3 (c 2 ()))))) 1) (q 8 (q . "assertion failed at assert_message.rue:98:5"))) 1) (q 8 (q . "assertion failed at assert_message.rue:97:5") (q . "a must be positive"))) 1) ()))
+  debug_program: (a (q 2 2 (c (q . 1) ())) (c (q 2 (i (> 2 ()) (q 2 (i (> 3 ()) (q 2 (i (> 2 3) (q 17 2 3) (q 8 (q . "assertion failed at assert_message.rue:99:5") (c (q . "a must be larger than b") (c 2 (c 3 ()))))) 1) (q 8 (q . "assertion failed at assert_message.rue:98:5"))) 1) (q 8 (q . "assertion failed at assert_message.rue:97:5") (q . "a must be positive"))) 1) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at assert_message.rue:98:5"
 - name: several_fails_third
   program: (x)
-  debug_program: (a (q 2 2 (c (q . 1) (q . 1))) (c (q 2 (i (> 3 ()) (q 2 (i (> 2 ()) (q 2 (i (> 3 2) (q 17 3 2) (q 8 (q . "assertion failed at assert_message.rue:99:5") (c (q . "a must be larger than b") (c 3 (c 2 ()))))) 1) (q 8 (q . "assertion failed at assert_message.rue:98:5"))) 1) (q 8 (q . "assertion failed at assert_message.rue:97:5") (q . "a must be positive"))) 1) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (q . 1))) (c (q 2 (i (> 2 ()) (q 2 (i (> 3 ()) (q 2 (i (> 2 3) (q 17 2 3) (q 8 (q . "assertion failed at assert_message.rue:99:5") (c (q . "a must be larger than b") (c 2 (c 3 ()))))) 1) (q 8 (q . "assertion failed at assert_message.rue:98:5"))) 1) (q 8 (q . "assertion failed at assert_message.rue:97:5") (q . "a must be positive"))) 1) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("assertion failed at assert_message.rue:99:5" ("a must be larger than b" 1 1))

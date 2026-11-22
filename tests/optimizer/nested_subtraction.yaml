@@ -15,7 +15,7 @@ tests:
   total_cost: 12044
 - name: nested_subtraction
   program: ()
-  debug_program: (a (q 2 (i (= (- (a 2 (c (q . 200) (q . 100))) (q . 300)) (- () (q . 400))) (q 2 (i (= (a 2 (c (a 2 (c (q . 300) (q . 200))) (q . 100))) (q . 200)) (q 2 (i (= (- (- (q . 100) (q . 200)) (q . 300)) (- () (q . 400))) (q 2 (i (= (- (q . 100) (- (q . 200) (q . 300))) (q . 200)) (q 2 (i (= (- (- (q . 100) (q . 200)) (q . 300)) (- () (q . 400))) () (q 8 (q . "assertion failed at nested_subtraction.rue:24:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:23:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:22:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:21:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:20:5"))) 1) (c (q 17 3 2) ()))
+  debug_program: (a (q 2 (i (= (- (a 2 (c (q . 100) (q . 200))) (q . 300)) (- () (q . 400))) (q 2 (i (= (a 2 (c (q . 100) (a 2 (c (q . 200) (q . 300))))) (q . 200)) (q 2 (i (= (- (- (q . 100) (q . 200)) (q . 300)) (- () (q . 400))) (q 2 (i (= (- (q . 100) (- (q . 200) (q . 300))) (q . 200)) (q 2 (i (= (- (- (q . 100) (q . 200)) (q . 300)) (- () (q . 400))) () (q 8 (q . "assertion failed at nested_subtraction.rue:24:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:23:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:22:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:21:5"))) 1) (q 8 (q . "assertion failed at nested_subtraction.rue:20:5"))) 1) (c (q 17 2 3) ()))
   output: ()
   runtime_cost: 44
   byte_cost: 12000

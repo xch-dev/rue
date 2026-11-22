@@ -1,15 +1,15 @@
 tests:
 - name: all_in_a_condition
-  program: (a (q 2 2 (c 2 (c 5 (q 5 . 1)))) (c (q 2 (i 5 (q 2 (q 2 (i (all (> 19 31) (> 23 19)) (q 16 2 (q . 1)) (q . 2)) 1) (c (a 2 (c 2 (c 13 7))) 1)) ()) 1) 1))
-  debug_program: (a (q 2 2 (c 2 (c 5 (c (q . 5) (q . 1))))) (c (q 2 (i (not 5) () (q 2 (q 2 (i (a (i (> (f 11) 31) (q 21 23 (f 11)) ()) 1) (q 16 2 (q . 1)) (q . 2)) 1) (c (a 2 (c 2 (c (r 5) (c 11 15)))) 1))) 1) 1))
+  program: (a (q 2 2 (c 2 (c 5 (q 1 . 5)))) (c (q 2 (i 5 (q 2 (q 2 (i (all (> 19 23) (> 31 19)) (q 16 2 (q . 1)) (q . 2)) 1) (c (a 2 (c 2 (c 13 7))) 1)) ()) 1) 1))
+  debug_program: (a (q 2 2 (c 2 (c 5 (c (q . 1) (q . 5))))) (c (q 2 (i (not 5) () (q 2 (q 2 (i (a (i (> (f 11) 23) (q 21 31 (f 11)) ()) 1) (q 16 2 (q . 1)) (q . 2)) 1) (c (a 2 (c 2 (c (r 5) (c 11 15)))) 1))) 1) 1))
   solution: ((0 2 3 9))
   output: "2"
   runtime_cost: 15229
   byte_cost: 1572000
   total_cost: 1587229
 - name: any_and_all_as_values
-  program: (a (q 2 2 (c 2 (c 5 (q 5 . 1)))) (c (q 2 (i 5 (q 4 (any (> 15 9) (> 9 11) (> 15 11)) (c (all (> 9 15) (> 11 9) (> 11 15)) (a 2 (c 2 (c 13 7))))) ()) 1) 1))
-  debug_program: (a (q 2 2 (c 2 (c 5 (c (q . 5) (q . 1))))) (c (q 2 (i (not 5) () (q 4 (a (i (a (i (> 15 (f 5)) (q 1 . 1) (q 21 (f 5) 11)) 1) (q 1 . 1) (q 21 15 11)) 1) (c (a (i (a (i (> (f 5) 15) (q 21 11 (f 5)) ()) 1) (q 21 11 15) ()) 1) (a 2 (c 2 (c (r 5) (c 11 15))))))) 1) 1))
+  program: (a (q 2 2 (c 2 (c 5 (q 1 . 5)))) (c (q 2 (i 5 (q 4 (any (> 11 9) (> 9 15) (> 11 15)) (c (all (> 9 11) (> 15 9) (> 15 11)) (a 2 (c 2 (c 13 7))))) ()) 1) 1))
+  debug_program: (a (q 2 2 (c 2 (c 5 (c (q . 1) (q . 5))))) (c (q 2 (i (not 5) () (q 4 (a (i (a (i (> 11 (f 5)) (q 1 . 1) (q 21 (f 5) 15)) 1) (q 1 . 1) (q 21 11 15)) 1) (c (a (i (a (i (> (f 5) 11) (q 21 15 (f 5)) ()) 1) (q 21 15 11) ()) 1) (a 2 (c 2 (c (r 5) (c 11 15))))))) 1) 1))
   solution: ((0 2 9))
   output: (1 () () 1 1 ())
   runtime_cost: 20936

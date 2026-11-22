@@ -1,7 +1,7 @@
 tests:
 - name: generic_function_argument
   program: (a (q . 2) (q 1))
-  debug_program: (a (q 2 6 (c (q . 1) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (c (c (q . 2) (q 2 3 (c 2 ()))) ()))
+  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 1))) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
   output: "1"
   runtime_cost: 179
   byte_cost: 156000

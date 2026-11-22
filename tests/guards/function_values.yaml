@@ -1,7 +1,7 @@
 tests:
 - name: wrapped_function
   program: (a (q 34 (= (a (q 2 (i 2 (q 2 4 ()) ()) 1) (c (c (q 1 . 5) ()) 1)) (q . 5)) (not 2)) (c () 1))
-  debug_program: (a (q 2 (q 2 (i (= 6 (q . 5)) (q 9 4 ()) ()) 1) (c (c (a 2 ()) (a 2 (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c () ()))) ()))) 1)) (c (q 2 (i (not 1) () (q 2 (f 1) ())) 1) ()))
+  debug_program: (a (q 2 (q 2 (i (= 4 (q . 5)) (q 9 6 ()) ()) 1) (c (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c () ()))) ())) (a 2 ())) 1)) (c (q 2 (i (not 1) () (q 2 (f 1) ())) 1) ()))
   output: "1"
   runtime_cost: 2249
   byte_cost: 948000

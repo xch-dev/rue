@@ -6,8 +6,8 @@ error: Division by zero
     y = ()
   runtime_error.rue:10:5, in divide
     a / b
-    b = ()
     a = 3
+    b = ()
 ===== debug: (6 2) =====
 output: 3
 ===== release: (3 0) =====

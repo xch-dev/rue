@@ -1,5 +1,5 @@
 program: (a (q 2 (i (> 2 (q . 100)) () (q . 2)) 1) (c (q . 21) 1))
-debug_program: (a (q 2 (q 2 (q 2 (i (> 2 (q . 100)) () (q . 2)) 1) (c (a 5 (c (q . 1) (a 2 (c (q . 10) ())))) 1)) (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) 1)) (c (q 2 (q . 2) (c (+ 3 2) 1)) ()))
+debug_program: (a (q 2 (q 2 (q 2 (i (> 2 (q . 100)) () (q . 2)) 1) (c (a 5 (c (a 2 (c (q . 10) ())) (q . 1))) 1)) (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) 1)) (c (q 2 (q . 2) (c (+ 2 3) 1)) ()))
 output: "21"
 runtime_cost: 1078
 byte_cost: 492000
@@ -7,7 +7,7 @@ total_cost: 493078
 tests:
 - name: early_exit
   program: (a (i (= (a (q 2 (i (> 2 (q . 100)) () (q . 2)) 1) (c (q . 21) 1)) (q . 21)) () (q 8)) 1)
-  debug_program: (a (q 2 (i (= (a 4 (c 6 ())) (q . 21)) () (q 8 (q . "assertion failed at unnecessary_return.rue:21:5"))) 1) (c (c (q 2 (q 2 (q 2 (i (> 2 (q . 100)) () (q . 2)) 1) (c (a 5 (c (q . 1) (a 2 (c (q . 10) ())))) 1)) (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) 1)) (q 2 (q . 2) (c (+ 3 2) 1))) ()))
+  debug_program: (a (q 2 (i (= (a 4 (c 6 ())) (q . 21)) () (q 8 (q . "assertion failed at unnecessary_return.rue:21:5"))) 1) (c (c (q 2 (q 2 (q 2 (i (> 2 (q . 100)) () (q . 2)) 1) (c (a 5 (c (a 2 (c (q . 10) ())) (q . 1))) 1)) (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) 1)) (q 2 (q . 2) (c (+ 2 3) 1))) ()))
   output: ()
   runtime_cost: 1495
   byte_cost: 804000

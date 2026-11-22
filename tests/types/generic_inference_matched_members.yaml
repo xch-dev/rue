@@ -195,7 +195,7 @@ tests:
   total_cost: 36020
 - name: hint_from_an_enclosing_call
   program: (a (q 2 (i (l 2) (q . 4) (q 1 . 1)) 1) (c (q 5 . 5) 1))
-  debug_program: (a (q 2 (q 2 (q 2 (i (l 2) (q 5 2) (q 1 . 1)) 1) (c (a 13 (c (a 9 2) (q . 5))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 4 3 2)) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (i (l 2) (q 5 2) (q 1 . 1)) 1) (c (a 13 (c (q . 5) (a 9 2))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 4 2 3)) ()))
   output: "5"
   runtime_cost: 555
   byte_cost: 516000
@@ -251,7 +251,7 @@ tests:
   total_cost: 36020
 - name: field_in_a_provisional_argument
   program: (+ (q 5))
-  debug_program: (a (q 2 (q 2 (q 16 (f 2) ()) (c (a 13 (c (c (a 9 2) ()) (c (q . 5) ()))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 4 3 2)) ()))
+  debug_program: (a (q 2 (q 2 (q 16 (f 2) ()) (c (a 13 (c (c (q . 5) ()) (c (a 9 2) ()))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 4 2 3)) ()))
   byte_cost: 108000
   clvm_error: "InvalidOperatorArg: Requires Int Argument: +"
 - name: nested_call_narrowed_for_a_requirement
@@ -270,7 +270,7 @@ tests:
   total_cost: 36020
 - name: nested_call_narrowed_after_another_argument
   program: (+ (q 5 . 5))
-  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 13 (c (a 9 2) (q . 5))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 4 3 2)) ()))
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 13 (c (q . 5) (a 9 2))) 1)) (c (q . 5) 1)) (c (c (q . 1) (q 4 2 3)) ()))
   byte_cost: 108000
   clvm_error: "InvalidOperatorArg: Requires Int Argument: +"
 - name: narrowed_for_a_member_of_the_expected_type

@@ -1,17 +1,17 @@
 ===== debug =====
-program: (a (q 16 (a 2 (c 11 5)) (a 2 (c 5 11))) (c (q 19 3 2) 1))
+program: (a (q 16 (a 2 (c 5 11)) (a 2 (c 11 5))) (c (q 19 2 3) 1))
 sidecar: 1045 bytes
 files:
   runtime_error.rue
 functions:
   0: main (_ . (x@5: integer . (y@11: integer . _)))
-  1: divide (b@2: integer . a@3: integer)
+  1: divide (a@2: integer . b@3: integer)
 nodes:
-  runtime_error.rue:5:32-7:2  (a (q 16 (a 2 (c 11 5)) (a 2 (c 5 11))) (c (q 19 3 2) 1))
-    runtime_error.rue:6:5-6:32 fn main  (+ (a 2 (c 11 5)) (a 2 (c 5 11)))
-      runtime_error.rue:6:5-6:17  (a 2 (c 11 5))
-      runtime_error.rue:6:20-6:32  (a 2 (c 5 11))
-    runtime_error.rue:10:5-10:10 fn divide  (/ 3 2)
+  runtime_error.rue:5:32-7:2  (a (q 16 (a 2 (c 5 11)) (a 2 (c 11 5))) (c (q 19 2 3) 1))
+    runtime_error.rue:6:5-6:32 fn main  (+ (a 2 (c 5 11)) (a 2 (c 11 5)))
+      runtime_error.rue:6:5-6:17  (a 2 (c 5 11))
+      runtime_error.rue:6:20-6:32  (a 2 (c 11 5))
+    runtime_error.rue:10:5-10:10 fn divide  (/ 2 3)
 ===== release =====
 program: (+ (/ 2 5) (/ 5 2))
 sidecar: 599 bytes

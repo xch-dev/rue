@@ -8,14 +8,14 @@ tests:
   total_cost: 36020
 - name: lambda_waits_for_a_later_lambda
   program: (q . 5)
-  debug_program: (a (q 2 2 (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))) (c (q . 2) (c () (c (q . 1) ())))))) (c (q 2 5 (c 2 ())) ()))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))) (c (q . 1) (c (q . 2) (c () (c (q . 1) ())))))) (c (q 2 2 (c 5 ())) ()))
   output: "5"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: nested_call_waits_for_its_expected_type
   program: (a (q . 2) (q 5))
-  debug_program: (a (q 2 6 (c (q . 5) (a 4 ()))) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q 2 3 (c 2 ()))) ()))
+  debug_program: (a (q 2 6 (c (a 4 ()) (q . 5))) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q 2 2 (c 3 ()))) ()))
   output: "5"
   runtime_cost: 179
   byte_cost: 156000
@@ -36,7 +36,7 @@ tests:
   total_cost: 780996
 - name: nested_call_waits_for_what_its_generics_are_mapped_to
   program: (i () (a (q 2 2 ()) (c (a (q . 2) (c (q 1 5 . 9) ())) ())) (q . 5))
-  debug_program: (a (q 2 14 (c (a 12 (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 4 (q . 5) (q . 9))) (c () ())))) (c () ()))) (a 8 ()))) (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))))) (c (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q 2 3 (c (a 2 ()) ()))) (c (q 2 2 ()) (q 2 7 (c (a 5 (c 2 ())) ())))) ()))
+  debug_program: (a (q 2 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))) (a 12 (c (a 8 ()) (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 4 (q . 5) (q . 9))) (c () ())))) (c () ())))))))) (c (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q 2 2 (c (a 3 ()) ()))) (c (q 2 2 ()) (q 2 5 (c (a 2 (c 7 ())) ())))) ()))
   output: "5"
   runtime_cost: 781
   byte_cost: 612000
@@ -64,21 +64,21 @@ tests:
   total_cost: 36020
 - name: argument_doesnt_widen_an_earlier_ones_expected_type
   program: (q . 7)
-  debug_program: (a (q 2 (q . 2) (c (a 6 (c (q . 7) (c () (c (c (q . 7) (q . 4)) (a 4 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))))))))) 1)) (c (c (q 2 3 (c 2 ())) (q . 2)) ()))
+  debug_program: (a (q 2 (q . 2) (c (a 6 (c (q . 7) (c () (c (c (q . 7) (q . 4)) (a 4 (c (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))) (q . 5))))))) 1)) (c (c (q 2 2 (c 3 ())) (q . 2)) ()))
   output: "7"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: generic_lambda_doesnt_hold_others_up
   program: (a (q 1 . 1) (q 1))
-  debug_program: (a (q 2 14 (c (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c () ()))) (a 10 (c (a 4 (c (q . 5) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))) (c (c (q . 2) (c () (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))) (c (q . 1) ())))))))) (c (c (q 2 5 (c 2 ())) (c (q 2 7 (c (a 5 (c 2 ())) ())) (q 2 3 (c (a 2 ()) ())))) ()))
+  debug_program: (a (q 2 14 (c (a 10 (c (c (q . 2) (c () (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))) (c (q . 1) ()))) (a 4 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 5) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))))) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c () ()))))) (c (c (q 2 2 (c 5 ())) (c (q 2 5 (c (a 2 (c 7 ())) ())) (q 2 2 (c (a 3 ()) ())))) ()))
   output: "1"
   runtime_cost: 151
   byte_cost: 180000
   total_cost: 180151
 - name: lambda_waits_for_what_its_generics_are_mapped_to
   program: (a (q 2 2 (q 1)) (c (q . 2) 1))
-  debug_program: (a (q 2 2 (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 11 ()) (q 2 5 (c 2 ())) (q 2 5 (c 2 ()))) 1) ()))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 1) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 11 ()) (q 2 2 (c 5 ())) (q 2 2 (c 5 ()))) 1) ()))
   output: "1"
   runtime_cost: 433
   byte_cost: 324000
@@ -92,7 +92,7 @@ tests:
   total_cost: 276273
 - name: lambda_waits_for_the_generics_its_own_are_inferred_through
   program: (a (q 2 5 (c (a 2 (q 1)) ())) (c (q . 2) (c (q . 2) 1)))
-  debug_program: (a (q 2 2 (c (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 11 ()) (q 2 5 (c (a 6 (c 4 ())) ())) (q 2 5 (c (a 6 (c 4 ())) ()))) 1) ()))
+  debug_program: (a (q 2 2 (c (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (q . 1) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 11 ()) (q 2 6 (c (a 4 (c 5 ())) ())) (q 2 6 (c (a 4 (c 5 ())) ()))) 1) ()))
   output: "1"
   runtime_cost: 790
   byte_cost: 564000
@@ -106,7 +106,7 @@ tests:
   total_cost: 180151
 - name: argument_doesnt_go_ahead_of_an_earlier_one
   program: (a (q 1 . 8) (q 5))
-  debug_program: (a (q 2 (q . 2) (c (a 14 (c (q . 5) (c (a 10 (c (c (q . 2) (c (c (q . 1) (q 1 . 8)) (c (q . 1) ()))) (a 12 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 8) (c (q . 1) ()))))))) (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))))) 1)) (c (c (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ())))) (c (q . 2) (q 2 5 (c 2 ())))) ()))
+  debug_program: (a (q 2 (q . 2) (c (a 14 (c (a 10 (c (c (q . 2) (c (c (q . 1) (q 1 . 8)) (c (q . 1) ()))) (a 12 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 8) (c (q . 1) ()))))))) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))))) 1)) (c (c (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 3) (c (q . 1) ()))) ()))) ())))) (c (q . 2) (q 2 2 (c 5 ())))) ()))
   output: "8"
   runtime_cost: 151
   byte_cost: 180000

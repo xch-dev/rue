@@ -23,8 +23,8 @@ tests:
   byte_cost: 60000
   total_cost: 60020
 - name: two_captures
-  program: (a (q 4 (q . 2) (c (q 1 16 (* 5 5) (* 2 2)) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (q ()))) ()))) ()))) (c (q 34 . 42) 1))
-  debug_program: (a (q 4 (q . 2) (c (c (q . 1) (q 16 (* 5 5) (* 2 2))) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (c () ()))) ()))) ()))) (c (c (q . 34) (q . 42)) 1))
+  program: (a (q 4 (q . 2) (c (q 1 16 (* 5 5) (* 2 2)) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (q ()))) ()))) ()))) (c (q 42 . 34) 1))
+  debug_program: (a (q 4 (q . 2) (c (c (q . 1) (q 16 (* 5 5) (* 2 2))) (c (c (q . 4) (c (c (q . 1) 6) (c (c (q . 4) (c (c (q . 1) 4) (c () ()))) ()))) ()))) (c (c (q . 42) (q . 34)) 1))
   output: (2 (1 16 (18 5 5) (18 2 2)) (4 (1 . 34) (4 (1 . 42) ())))
   runtime_cost: 1068
   byte_cost: 1380000
@@ -45,8 +45,8 @@ tests:
   byte_cost: 252000
   total_cost: 252955
 - name: adder_non_inline
-  program: (a (q 2 (q 2 (q 16 (a 6 (q 20)) (a 4 (q 30)) (a 6 (q 40)) (a 4 (q 50))) (c (c (a 5 (* 2 (q . 3))) (a 5 (* 2 (q . 2)))) 1)) (c (q . 10) 1)) (c (q 4 (q . 2) (c (q 1 16 2 5) (c (c (q . 4) (c (c (q . 1) 1) (q 1))) ()))) ()))
-  debug_program: (a (q 2 (q 2 (q 16 (+ (+ (a 6 (c (q . 20) ())) (a 4 (c (q . 30) ()))) (a 6 (c (q . 40) ()))) (a 4 (c (q . 50) ()))) (c (c (a 5 (* 2 (q . 3))) (a 5 (* 2 (q . 2)))) 1)) (c (q . 10) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) ()))
+  program: (a (q 2 (q 2 (q 16 (a 4 (q 20)) (a 6 (q 30)) (a 4 (q 40)) (a 6 (q 50))) (c (c (a 5 (* 2 (q . 2))) (a 5 (* 2 (q . 3)))) 1)) (c (q . 10) 1)) (c (q 4 (q . 2) (c (q 1 16 2 5) (c (c (q . 4) (c (c (q . 1) 1) (q 1))) ()))) ()))
+  debug_program: (a (q 2 (q 2 (q 16 (+ (+ (a 4 (c (q . 20) ())) (a 6 (c (q . 30) ()))) (a 4 (c (q . 40) ()))) (a 6 (c (q . 50) ()))) (c (c (a 5 (* 2 (q . 2))) (a 5 (* 2 (q . 3)))) 1)) (c (q . 10) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 16 2 5)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) ()))
   output: "240"
   runtime_cost: 10511
   byte_cost: 2244000
@@ -67,7 +67,7 @@ tests:
   total_cost: 711770
 - name: closure_sequential_captures
   program: (a (q 2 (i (= (a (c (q . 2) (c (q 1 2 (i (all (= 11 (q . 1)) (= 23 (q . 2)) (= 47 (q . 3)) (= 95 (q . 4))) (q 16 5 2) (q 8)) 1) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (q 1))) ()))) ()))) (q 1 2 3 4)) (q . 76)) (q 2 (i (= (a (c (q . 2) (c (q 1 2 (i (all (= 11 (q . 1)) (= 23 (q . 2)) (= 47 (q . 3)) (= 63 (q . 4))) (q 16 5 2) (q 8)) 1) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 6) (q 1))) ()))) ()))) (q 1 2 3 . 4)) (q . 76)) () (q 8)) 1) (q 8)) 1) (q (all . 42)))
-  debug_program: (a (q 2 (q 2 (q 2 (i (= 6 (q . 76)) (q 2 (i (= 4 (q . 76)) () (q 8 (q . "assertion failed at closures.rue:60:5"))) 1) (q 8 (q . "assertion failed at closures.rue:59:5"))) 1) (c (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) (q . 4))))) (a 6 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ())))))) 1)) (c (c (c (q . 2) (c (c (q . 1) 22) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ()))) ()))) (c (q . 2) (c (c (q . 1) 30) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ()))) ())))) 1)) (c (c (q . 34) (c (q . 42) (c (q 2 (i (= 11 (q . 1)) (q 2 (i (= 23 (q . 2)) (q 2 (i (= 47 (q . 3)) (q 2 (i (= 63 (q . 4)) (q 16 5 2) (q 8 (q . "assertion failed at closures.rue:82:5"))) 1) (q 8 (q . "assertion failed at closures.rue:81:5"))) 1) (q 8 (q . "assertion failed at closures.rue:80:5"))) 1) (q 8 (q . "assertion failed at closures.rue:79:5"))) 1) (q 2 (i (= 11 (q . 1)) (q 2 (i (= 23 (q . 2)) (q 2 (i (= 47 (q . 3)) (q 2 (i (= 95 (q . 4)) (q 16 5 2) (q 8 (q . "assertion failed at closures.rue:74:5"))) 1) (q 8 (q . "assertion failed at closures.rue:73:5"))) 1) (q 8 (q . "assertion failed at closures.rue:72:5"))) 1) (q 8 (q . "assertion failed at closures.rue:71:5"))) 1)))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (i (= 4 (q . 76)) (q 2 (i (= 6 (q . 76)) () (q 8 (q . "assertion failed at closures.rue:60:5"))) 1) (q 8 (q . "assertion failed at closures.rue:59:5"))) 1) (c (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (a 6 (c (q . 1) (c (q . 2) (c (q . 3) (q . 4)))))) 1)) (c (c (c (q . 2) (c (c (q . 1) 30) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ()))) ()))) (c (q . 2) (c (c (q . 1) 22) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ()))) ())))) 1)) (c (c (q . 34) (c (q . 42) (c (q 2 (i (= 11 (q . 1)) (q 2 (i (= 23 (q . 2)) (q 2 (i (= 47 (q . 3)) (q 2 (i (= 63 (q . 4)) (q 16 5 2) (q 8 (q . "assertion failed at closures.rue:82:5"))) 1) (q 8 (q . "assertion failed at closures.rue:81:5"))) 1) (q 8 (q . "assertion failed at closures.rue:80:5"))) 1) (q 8 (q . "assertion failed at closures.rue:79:5"))) 1) (q 2 (i (= 11 (q . 1)) (q 2 (i (= 23 (q . 2)) (q 2 (i (= 47 (q . 3)) (q 2 (i (= 95 (q . 4)) (q 16 5 2) (q 8 (q . "assertion failed at closures.rue:74:5"))) 1) (q 8 (q . "assertion failed at closures.rue:73:5"))) 1) (q 8 (q . "assertion failed at closures.rue:72:5"))) 1) (q 8 (q . "assertion failed at closures.rue:71:5"))) 1)))) ()))
   output: ()
   runtime_cost: 9941
   byte_cost: 4692000

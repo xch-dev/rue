@@ -48,14 +48,14 @@ tests:
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: failing_function_value
   program: (a (q 3 () (a 2 (c 5 ())) (q . 1)) (c (q 2 (i (> 2 (q . 10)) (q 8) (q . 2)) 1) 1))
-  debug_program: (a (q 2 6 (c 5 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (c (c (q 2 (i (> 2 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 2)) 1) (q 3 () (a 3 (c 2 ())) (q . 1))) 1))
+  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) 5)) (c (c (q 2 (i (> 2 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 2)) 1) (q 3 () (a 2 (c 3 ())) (q . 1))) 1))
   solution: (50)
   byte_cost: 804000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
 - name: failing_function_value_found_later
   program: (a (q 3 () (i () (a 2 (c 5 ())) (q . 1)) (q . 1)) (c (q 2 (i (> 2 (q . 10)) (q 8) (q . 2)) 1) 1))
-  debug_program: (a (q 2 (q 3 () (a 9 (c 11 (c (q . 2) (c (c (q . 1) 13) (c (q . 1) ()))))) 2) (c (a 4 (c 5 (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))))) 1)) (c (c (q 3 () (a 3 (c 2 ())) (q . 1)) (q 2 (i (> 2 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 2)) 1)) 1))
+  debug_program: (a (q 2 (q 3 () (a 9 (c (c (q . 2) (c (c (q . 1) 13) (c (q . 1) ()))) 11)) 2) (c (a 4 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) 5)) 1)) (c (c (q 3 () (a 2 (c 3 ())) (q . 1)) (q 2 (i (> 2 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 2)) 1)) 1))
   solution: (50)
   byte_cost: 924000
   clvm_error: clvm raise ()

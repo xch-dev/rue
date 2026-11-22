@@ -47,8 +47,8 @@ tests:
   byte_cost: 2244000
   total_cost: 2262719
 - name: function_whose_loop_passes_its_parameter_back
-  program: (a (q 2 4 (c 2 (c (q . 3) (a (q 2 (i (l 2) (q . 2) (q 2 (i 2 (q 8) (q . 2)) 1)) 1) (c (q 1 (a 3) ((c) 5)) 1))))) (c (c (q 2 (i (l 7) (q 2 6 (c (c 4 (c 6 5)) 7)) (q . 5)) 1) (q 2 (i 3 (q 16 (a 10 (c 2 7)) (a 4 (c (c 4 10) (c 14 5)))) ()) 1)) ()))
-  debug_program: (a (q 2 4 (c (c 4 10) (c (q . 3) (a 14 (c (q . 1) (c (c (q . 2) (c (q . 3) ())) (c (c (c (q . 4) ()) (c (q . 5) ())) ()))))))) (c (c (q 2 (i (not (l 7)) (q . 5) (q 2 6 (c (c 4 (c 6 5)) 7))) 1) (c (q 2 (i 3 (q 2 (q 16 2 (a 9 (c (c 9 21) (c 29 (f 7))))) (c (a 10 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1))) ()))
+  program: (a (q 2 4 (c 2 (c (a (q 2 (i (l 2) (q . 2) (q 2 (i 2 (q 8) (q . 2)) 1)) 1) (c (q 1 (a 3) ((c) 5)) 1)) (q . 3)))) (c (c (q 2 (i (l 5) (q 2 6 (c (c 4 (c 6 7)) 5)) (q . 7)) 1) (q 2 (i 3 (q 16 (a 10 (c 2 7)) (a 4 (c (c 4 10) (c 5 14)))) ()) 1)) ()))
+  debug_program: (a (q 2 4 (c (c 4 10) (c (a 14 (c (q . 1) (c (c (q . 2) (c (q . 3) ())) (c (c (c (q . 4) ()) (c (q . 5) ())) ())))) (q . 3)))) (c (c (q 2 (i (not (l 5)) (q . 7) (q 2 6 (c (c 4 (c 6 7)) 5))) 1) (c (q 2 (i 3 (q 2 (q 16 2 (a 9 (c (c 9 21) (c (f 7) 29)))) (c (a 10 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1))) ()))
   output: "15"
   runtime_cost: 22030
   byte_cost: 2676000

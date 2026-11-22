@@ -77,7 +77,7 @@ tests:
   total_cost: 180020
 - name: untyped_lambda_parameter
   program: (q . 10)
-  debug_program: (a (q 2 (q 16 6 4) (c (c (a 2 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) (q 1 . 5) (q 5 2)) 1)) (c (q . 1) ()))))) (a 2 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) (q 1 . 5) (q 5 2)) 1)) (c (q . 1) ())))))) 1)) (c (q 2 3 (c (c 2 ()) ())) ()))
+  debug_program: (a (q 2 (q 16 4 6) (c (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) (q 1 . 5) (q 5 2)) 1)) (c (q . 1) ()))) (q . 5))) (a 2 (c (c (q . 2) (c (c (q . 1) (q 2 (i (not 2) (q 1 . 5) (q 5 2)) 1)) (c (q . 1) ()))) (q . 5)))) 1)) (c (q 2 2 (c (c 3 ()) ())) ()))
   output: "10"
   runtime_cost: 20
   byte_cost: 36000
