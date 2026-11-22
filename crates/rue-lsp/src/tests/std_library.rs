@@ -20,17 +20,17 @@ fn check(source: &str, expect: Expect) {
 fn test_std_function() {
     check(
         r#"
-fn main() -> List<Int> {
-    merge_li$0st([1, 2], [3])
+fn main() -> Int {
+    len$0gth([1, 2])
 }
 "#,
         expect![[r#"
             hover:
-            fn merge_list<T>(a: List<T>, b: List<T>) -> List<T>
+            fn length<T>(list: List<T>) -> Int
             definitions:
             <none>
             references:
-            main.rue:2:4-2:14
+            main.rue:2:4-2:10
         "#]],
     );
 }
@@ -193,15 +193,15 @@ fn test_std_completion() {
         &[(
             "main.rue",
             r#"
-fn main() -> List<Int> {
-    merge_l$0
+fn main() -> Int {
+    leng$0
 }
 "#,
         )],
     );
 
     expect![[r#"
-        merge_list [Function] fn<T>(a: List<T>, b: List<T>) -> List<T>
+        length [Function] fn<T>(list: List<T>) -> Int
     "#]]
     .assert_eq(&project.completions());
 }

@@ -1077,7 +1077,6 @@ fn the_report_counts_probe_variants() {
 fn version_3_variants_dont_leak() {
     for seed in 0..60 {
         let generated = Generator::versioned(seed, 3).generate();
-        let std = generated.program.uses_std();
         for (name, variant) in &generated.variants {
             if name == "probe" {
                 continue;
@@ -1085,7 +1084,7 @@ fn version_3_variants_dont_leak() {
             let source = generated.program.print(variant);
             if let Compiled::Ok {
                 leak: Some(leak), ..
-            } = oracle::compile_with(&source, std)
+            } = compile(&source)
             {
                 panic!("seed {seed}, variant `{name}`: {leak}");
             }
@@ -2025,8 +2024,10 @@ fn version_1_programs_never_change() {
     assert_eq!(programs_hash(1), VERSION_1_HASH, "{:#x}", programs_hash(1));
 }
 
-/// The same as `VERSION_1_HASH`, for generator version 2.
-const VERSION_2_HASH: u64 = 0xccbd_89ce_e4c9_1ebb;
+/// The same as `VERSION_1_HASH`, for generator version 2. This and the later versions' hashes
+/// changed once, when #555 removed `merge_list` from the standard library and the programs that
+/// call it began to declare it. They're the same programs otherwise.
+const VERSION_2_HASH: u64 = 0x02ac_5ebf_1c6a_4bd7;
 
 #[test]
 fn version_2_programs_never_change() {
@@ -2034,7 +2035,7 @@ fn version_2_programs_never_change() {
 }
 
 /// The same as `VERSION_1_HASH`, for generator version 3.
-const VERSION_3_HASH: u64 = 0x37ab_bacb_1f9c_c771;
+const VERSION_3_HASH: u64 = 0x6f7b_a6a4_3e6f_6344;
 
 /// No program declares two functions with the same name, as version 3 once did when its catalog
 /// had two `map_list`s (seed 93).
@@ -2122,10 +2123,7 @@ fn version_3_is_deterministic_and_its_explicit_programs_compile() {
         let explicit = first.program.print(&Variant::default());
         assert_eq!(explicit, second.program.print(&Variant::default()));
         assert_eq!(first.variants, second.variants);
-        if matches!(
-            oracle::compile_with(&explicit, first.program.uses_std()),
-            Compiled::Ok { leak: None, .. }
-        ) {
+        if matches!(compile(&explicit), Compiled::Ok { leak: None, .. }) {
             valid += 1;
         }
         probes += usize::from(!first.program.probes.is_empty());
@@ -2135,7 +2133,7 @@ fn version_3_is_deterministic_and_its_explicit_programs_compile() {
 }
 
 /// The same as `VERSION_1_HASH`, for generator version 4.
-const VERSION_4_HASH: u64 = 0xefd9_3f50_fed1_8316;
+const VERSION_4_HASH: u64 = 0x9b07_ac10_0b21_474b;
 
 #[test]
 fn version_4_programs_never_change() {
@@ -2143,7 +2141,7 @@ fn version_4_programs_never_change() {
 }
 
 /// The same as `VERSION_1_HASH`, for generator version 5.
-const VERSION_5_HASH: u64 = 0x921e_4736_8648_9e23;
+const VERSION_5_HASH: u64 = 0x32b0_056f_7b02_90e3;
 
 #[test]
 fn version_5_programs_never_change() {
@@ -2160,10 +2158,7 @@ fn version_5_is_deterministic_and_its_explicit_programs_compile() {
         let explicit = first.program.print(&Variant::default());
         assert_eq!(explicit, second.program.print(&Variant::default()));
         assert_eq!(first.variants, second.variants);
-        if matches!(
-            oracle::compile_with(&explicit, first.program.uses_std()),
-            Compiled::Ok { leak: None, .. }
-        ) {
+        if matches!(compile(&explicit), Compiled::Ok { leak: None, .. }) {
             valid += 1;
         }
         // A call in `main` that passes an untyped lambda in a pair or list literal
@@ -2212,10 +2207,7 @@ fn version_4_is_deterministic_and_its_explicit_programs_compile() {
         let explicit = first.program.print(&Variant::default());
         assert_eq!(explicit, second.program.print(&Variant::default()));
         assert_eq!(first.variants, second.variants);
-        if matches!(
-            oracle::compile_with(&explicit, first.program.uses_std()),
-            Compiled::Ok { leak: None, .. }
-        ) {
+        if matches!(compile(&explicit), Compiled::Ok { leak: None, .. }) {
             valid += 1;
         }
         // A recursive call that passes an untyped lambda in a pair or list literal
@@ -2404,10 +2396,7 @@ fn version_2_is_deterministic_and_its_explicit_programs_compile() {
         let explicit = first.program.print(&Variant::default());
         assert_eq!(explicit, second.program.print(&Variant::default()));
         assert_eq!(first.variants, second.variants);
-        if matches!(
-            oracle::compile_with(&explicit, first.program.uses_std()),
-            Compiled::Ok { .. }
-        ) {
+        if matches!(compile(&explicit), Compiled::Ok { .. }) {
             valid += 1;
         }
     }
@@ -2587,44 +2576,25 @@ fn the_expected_variant_removes_only_what_the_expected_type_alone_gives() {
     assert!(checked > 20, "only {checked} sites");
 }
 
+/// `merge_list` was the standard library's, and programs only called it, until #555 removed it.
+/// They declare it now, and compile without the standard library.
 #[test]
-fn programs_that_call_std_compile_with_it() {
+fn programs_declare_merge_list() {
     let (seed, generated) = (0..200)
         .map(|seed| (seed, Generator::versioned(seed, 2).generate()))
         .find(|(_, generated)| {
-            generated.program.uses_std()
-                && generated
-                    .program
-                    .print(&Variant::default())
-                    .contains("merge_list::<")
+            generated
+                .program
+                .print(&Variant::default())
+                .contains("merge_list::<")
         })
         .unwrap();
     let explicit = generated.program.print(&Variant::default());
-    assert!(!explicit.contains("fn merge_list"), "seed {seed}");
+    assert!(explicit.contains("fn merge_list<T>("), "seed {seed}");
     assert!(
-        matches!(oracle::compile_with(&explicit, true), Compiled::Ok { .. }),
+        matches!(compile(&explicit), Compiled::Ok { .. }),
         "seed {seed}"
     );
-    assert!(matches!(compile(&explicit), Compiled::Rejected { .. }));
-}
-
-fn std_seed() -> u64 {
-    (0..200)
-        .find(|&seed| Generator::versioned(seed, 2).generate().program.uses_std())
-        .unwrap()
-}
-
-#[test]
-fn workers_compile_version_2_programs_with_std() {
-    let seed = std_seed();
-    let mut out = Vec::new();
-    worker::run_command(&mut out, 2, seed, 0).unwrap();
-    let out = String::from_utf8(out).unwrap();
-    let explicit = out
-        .lines()
-        .find(|line| line.starts_with("explicit "))
-        .unwrap();
-    assert!(explicit.contains("Valid"), "{out}");
 }
 
 #[test]
@@ -2750,31 +2720,6 @@ fn wrapped_calls_with_a_generic_nothing_infers_keep_all_their_arguments() {
     let program = program(vec![make], Some(annotation), wrapped);
     assert_eq!(masks(&program), [[false, false, false]]);
     assert_eq!(legalize(&program, &strip_all(&[0])), Variant::default());
-}
-
-#[test]
-fn shrinking_keeps_functions_from_the_standard_library() {
-    let merge = function(
-        "merge_list",
-        &["T"],
-        &[("a", "List<T>"), ("b", "List<T>")],
-        "List<T>",
-    );
-    let list = Ty::list(Ty::Int);
-    let items = |value| Expr::new(ExprKind::List(vec![int(value, Ty::Int)]), list.clone());
-    let value = call(
-        0,
-        "merge_list",
-        vec![Ty::Int],
-        vec![items(1), items(2)],
-        list.clone(),
-    );
-    let program = program(vec![merge], None, value);
-
-    let (program, _) = shrink::shrink(program, strip_all(&[0]), 100, &mut |program, variant| {
-        program.exprs().iter().any(|expr| variant.strips(expr))
-    });
-    assert_eq!(program.functions.len(), 1);
 }
 
 /// The leak oracle finds nothing in the snapshot tests that compile, whose types are what the

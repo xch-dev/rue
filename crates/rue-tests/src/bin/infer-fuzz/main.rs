@@ -46,9 +46,11 @@
 //!   `report.md` (the summary) and the shrunk reproductions under `clusters/`.
 //! - `--generator N`: the generator version (default 1). A version's programs never change, so
 //!   runs of the same version stay comparable with `--compare`, but the same seed is a different
-//!   program in each version. Version 2
+//!   program in each version. The one exception is #555, which removed `merge_list` from the
+//!   standard library: since then, the programs of versions 2 and up that call it declare it,
+//!   so those seeds of runs from before it aren't comparable with later runs. Version 2
 //!   adds generic structs and aliases, unions of function types, generic structs and literals,
-//!   generic function types in annotations and return types, longer chains and cycles, `std`'s
+//!   generic function types in annotations and return types, longer chains and cycles,
 //!   `merge_list`, and the `expected` variant. Version 3 adds lists, pairs and boxes of untyped
 //!   lambdas, recursive functions that pass them to themselves, lambdas whose bodies call generic
 //!   functions, wider unions in expected types, and the `probe` variant. Version 4 adds

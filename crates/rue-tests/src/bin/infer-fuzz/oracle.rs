@@ -127,14 +127,13 @@ pub fn is_compiling() -> bool {
 }
 
 /// Compiles the source without the standard library, and runs `main` if there are no errors.
-#[cfg(test)]
 pub fn compile(source: &str) -> Compiled {
     compile_with(source, false)
 }
 
 /// Compiles the source, with the standard library if `std` is true. That takes a few
-/// milliseconds longer, and changes which names are in scope, so only programs that call it get
-/// it.
+/// milliseconds longer, and changes which names are in scope, so the generated programs, which
+/// don't call it, are compiled without it.
 pub fn compile_with(source: &str, std: bool) -> Compiled {
     COMPILING.set(true);
     let result = catch_unwind(AssertUnwindSafe(|| compile_inner(source, std)));

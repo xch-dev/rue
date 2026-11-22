@@ -22,7 +22,7 @@ test fn every_std_module_is_exported() -> Int {
         parent_parent_coin_info: tree_hash_atom("hi"),
         parent_amount: 1,
     };
-    let merged = std::utils::merge_list([1], [2]);
+    let length = std::list::length([1, 2]);
     let root = std::merkle::simplify_merkle_proof(
         tree_hash_atom("hi"),
         std::merkle::MerkleProof { path: 0, hashes: [] },
@@ -30,6 +30,7 @@ test fn every_std_module_is_exported() -> Int {
     assert payment.amount == 1;
     assert proof is std::singleton::EveProof;
     assert root != tree_hash_atom("hi");
-    assert std::utils::deep_equal(merged, [1, 2]);
+    assert length == 2;
+    assert std::utils::deep_equal([1, 2], [1, 2]);
     std::conditions::opcodes::CREATE_COIN
 }

@@ -1,10 +1,3 @@
-export fn merge_list<T>(a: List<T>, b: List<T>) -> List<T> {
-    if a is (T, List<T>) {
-        return [a.first, ...merge_list(a.rest, b)];
-    }
-    b
-}
-
 export fn deep_equal(a: Any, b: Any) -> Bool {
     if a is Bytes {
         if b is Bytes {

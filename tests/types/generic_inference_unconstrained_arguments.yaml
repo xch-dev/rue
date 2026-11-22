@@ -15,14 +15,14 @@ tests:
   total_cost: 1959076
 - name: two_arguments
   program: (a (q 2 6 (c 6 (c (q . 1) (a 4 (c 4 (q ())))))) (c (c (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1) (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1)) ()))
-  debug_program: (a (q 2 (q 2 (q 2 27 (c 27 2)) (c (c (q . 1) 2) 1)) (c (a 4 (c 4 (c () ()))) 1)) (c (c (q 2 (i (not (not 5)) (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1)) ()))
+  debug_program: (a (q 2 (q 2 (q 2 43 (c 43 2)) (c (c (q . 1) 2) 1)) (c (a 14 (c 4 (c () ()))) 1)) (c (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (q 2 2 (c 2 (c 5 7))))) ()))
   output: "1"
   runtime_cost: 2894
   byte_cost: 1644000
   total_cost: 1646894
 - name: passed_on
   program: (a (q 16 (a 14 (c 14 (a 10 (c 10 (q ()))))) (a 12 (c 12 (a 10 (c 10 (c (a 8 (c 8 (q ()))) ())))))) (c (c (c (q 2 (i 5 (q 4 9 (a 2 (c 2 (c 13 7)))) (q . 7)) 1) (q 2 (i 3 (q 16 (a 2 (c 2 7)) (q . 1)) ()) 1)) (c (q 2 (i 5 (q 2 2 (c 2 (c 13 (c 9 7)))) (q . 7)) 1) (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1))) ()))
-  debug_program: (a (q 16 (a 22 (c 22 (a 10 (c 10 (c () ()))))) (a 30 (c 12 (a 10 (c 10 (c (a 8 (c 8 (c () ()))) ())))))) (c (c (c (q 2 (i (not (not 5)) (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (q 2 (i 3 (q 2 (q 16 2 (q . 1)) (c (a 2 (c 2 (r 3))) 1)) ()) 1)) (c (q 2 (i (not (not 5)) (q 2 2 (c 2 (c (r 5) (c (f 5) 7)))) (q . 7)) 1) (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (q 2 2 (c 2 3))))) ()))
+  debug_program: (a (q 16 (a 22 (c 22 (a 10 (c 10 (c () ()))))) (a 62 (c 12 (a 10 (c 10 (c (a 46 (c 8 (c () ()))) ())))))) (c (c (c (q 2 (i 5 (q 4 (f 5) (a 2 (c 2 (c (r 5) 7)))) (q . 7)) 1) (q 2 (i 3 (q 2 (q 16 2 (q . 1)) (c (a 2 (c 2 (r 3))) 1)) ()) 1)) (c (q 2 (i (not (not 5)) (q 2 2 (c 2 (c (r 5) (c (f 5) 7)))) (q . 7)) 1) (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (c (q 2 2 (c 2 (c 5 7))) (q 2 2 (c 2 3)))))) ()))
   output: ()
   runtime_cost: 4173
   byte_cost: 3300000
@@ -78,7 +78,7 @@ tests:
   total_cost: 756833
 - name: returned_function_that_never_returns
   program: (q . 1)
-  debug_program: (a (q 2 (q 2 (i () (q 2 2 ()) (q 1 . 1)) 1) (c (a 2 ()) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 2 (i (not (not 2)) (q 5 2) (q 8 (q . "assertion failed at generic_inference_unconstrained_arguments.rue:118:9"))) 1)) (c (c (q . 4) (c (c (q . 1) 1) (c () ()))) ()))) ()))
+  debug_program: (a (q 2 (q 2 (i () (q 2 2 ()) (q 1 . 1)) 1) (c (a 2 ()) 1)) (c (q 4 (q . 2) (c (c (q . 1) (q 2 (i (not (not 2)) (q 5 2) (q 8 (q . "assertion failed at generic_inference_unconstrained_arguments.rue:122:9"))) 1)) (c (c (q . 4) (c (c (q . 1) 1) (c () ()))) ()))) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
@@ -105,4 +105,4 @@ tests:
   byte_cost: 1068000
   total_cost: 1072860
 diagnostics:
-- Condition always evaluates to `false` at generic_inference_unconstrained_arguments.rue:127:8
+- Condition always evaluates to `false` at generic_inference_unconstrained_arguments.rue:131:8

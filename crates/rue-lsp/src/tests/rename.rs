@@ -1416,10 +1416,10 @@ fn test_rename_standard_library() {
     };
 
     check(
-        "fn main() -> List<Int> {\n    merge_li$0st([1, 2], [3])\n}\n",
+        "fn main() -> Int {\n    len$0gth([1, 2])\n}\n",
         expect![[r#"
-            error: `merge_list` is part of the standard library, so it can't be renamed
-            error: `merge_list` is part of the standard library, so it can't be renamed
+            error: `length` is part of the standard library, so it can't be renamed
+            error: `length` is part of the standard library, so it can't be renamed
         "#]],
     );
     check(

@@ -23,7 +23,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::generate::{Generated, Generator};
-use crate::oracle::{self, Category, Compiled, Diag, Outcome, classify, compile_with, millis};
+use crate::oracle::{self, Category, Compiled, Diag, Outcome, classify, compile, millis};
 use crate::program::{Program, Variant};
 use crate::report::{SeedRecord, VariantRecord};
 use crate::shrink;
@@ -108,8 +108,6 @@ fn progress(out: &mut impl Write, stage: &str) -> Result<()> {
 
 pub fn run_command(out: &mut impl Write, version: u32, seed: u64, start: usize) -> Result<()> {
     let generated = Generator::versioned(seed, version).generate();
-    let std = generated.program.uses_std();
-    let compile = |source: &str| compile_with(source, std);
     let explicit_source = generated.program.print(&Variant::default());
 
     if generated.variants.is_empty() {
@@ -169,10 +167,7 @@ fn shrink_command(
     let Generated {
         program, variants, ..
     } = Generator::versioned(seed, version).generate();
-    // Shrinking can remove the call of a function from the standard library
-    let compile_program = |program: &Program, variant: &Variant| {
-        compile_with(&program.print(variant), program.uses_std())
-    };
+    let compile_program = |program: &Program, variant: &Variant| compile(&program.print(variant));
     let variant = variants[index].1.clone();
 
     let explicit = compile_program(&program, &Variant::default());
@@ -197,7 +192,7 @@ fn shrink_command(
             .as_ref()
             .is_none_or(|(last, _)| *last != source)
         {
-            let run = match compile_with(&source, program.uses_std()) {
+            let run = match compile(&source) {
                 Compiled::Ok { run, .. } => Some(run),
                 _ => None,
             };
