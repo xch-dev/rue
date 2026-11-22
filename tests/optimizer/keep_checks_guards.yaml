@@ -13,9 +13,9 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at keep_checks_guards.rue:21:5"
 - name: raise_in_operand
-  program: (i (any (q . 1) (x)) (q . 1) (q . 2))
+  program: (i (x) (q . 1) (q . 2))
   debug_program: (a (q 2 (i (i () (a 2 ()) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (c (q 8 (q . "raise called at keep_checks_guards.rue:26:5") (q . 28271)) ()))
-  byte_cost: 276000
+  byte_cost: 180000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:26:5" 28271)
 - name: binding_only_used_by_guard

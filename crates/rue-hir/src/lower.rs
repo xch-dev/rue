@@ -1430,10 +1430,49 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     /// Evaluates the value for its effect, before returning the result. This is the form that
-    /// expression statements are lowered to, since an inline `if` evaluates both branches.
+    /// bindings and arguments that are never referenced, but may fail, are lowered to, along with
+    /// statements that always raise or fall through, since an inline `if` evaluates both branches.
+    ///
+    /// CLVM evaluates an operator's operands from the last to the first, so `(i () value result)`
+    /// evaluates the result first. Which one is evaluated first only matters if both of them
+    /// fail, since that's the failure that's reported, which in a debug build is the message and
+    /// location of the raise. So in a debug build, a result that always raises, such as the raise
+    /// of a `match` on a value that has no values (#580), comes first, so that the value is
+    /// evaluated before it. A release build keeps the order, since every raise is the same there,
+    /// and the optimizer can only drop a value that turns out not to fail, such as a call that's
+    /// inlined, when it's the first branch. If the value always raises, the result is never
+    /// reached, so it's left out.
     fn effect(&mut self, value: LirId, result: LirId) -> LirId {
+        if self.always_raises(value) {
+            return value;
+        }
+
         let nil = self.arena.alloc(Lir::Atom(vec![]));
-        self.arena.alloc(Lir::If(nil, value, result, true))
+
+        if self.options.debug_symbols && self.always_raises(result) {
+            self.arena.alloc(Lir::If(nil, result, value, true))
+        } else {
+            self.arena.alloc(Lir::If(nil, value, result, true))
+        }
+    }
+
+    /// Whether evaluating the LIR always raises: a raise, an `if` whose condition raises, an
+    /// inline `if` with a branch that raises (since it evaluates both), or any other `if` whose
+    /// branches both raise. A call to a function that always raises can't be seen here, so it
+    /// isn't one.
+    fn always_raises(&self, lir: LirId) -> bool {
+        match self.arena[lir] {
+            Lir::Raise(_) => true,
+            Lir::If(condition, then, otherwise, inline) => {
+                self.always_raises(condition)
+                    || if inline {
+                        self.always_raises(then) || self.always_raises(otherwise)
+                    } else {
+                        self.always_raises(then) && self.always_raises(otherwise)
+                    }
+            }
+            _ => false,
+        }
     }
 
     fn lower_symbol_reference(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
