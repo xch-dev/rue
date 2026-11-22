@@ -35,7 +35,7 @@ use std::{
 use indexmap::IndexSet;
 
 use crate::{
-    Database, FunctionCall, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
+    Database, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId, Statement, Symbol, SymbolId,
     analysis::{AnalysisContext, Evaluation, FunctionFailure, may_fail},
 };
 
@@ -47,6 +47,22 @@ pub(super) struct SavedDecisions {
     symbol: SymbolId,
     substitute: Option<bool>,
     is_path: Option<bool>,
+}
+
+/// The walk of where the result of a fold would be substituted (see
+/// [`Lowerer::is_loop_rest_rebound`]).
+struct Rebinding {
+    /// Whether the result may fail. An inlined call binds an argument that may fail unless its
+    /// body always evaluates the parameter.
+    fails: bool,
+    /// What the result would be substituted for: its binding, a binding whose value it's in, or
+    /// the parameter of the call being followed whose argument it's in.
+    targets: Vec<SymbolId>,
+    /// The functions whose bodies are being followed, which are inlined into the calls, and the
+    /// argument for each of their parameters, innermost last. A function can be followed inside
+    /// of a call to itself, such as an `inline fn` that's called with a lambda that calls it
+    /// again, so the parameters of the inner call hide the outer one's.
+    frames: Vec<(SymbolId, HashMap<SymbolId, HirId>)>,
 }
 
 fn restore(decided: &mut HashMap<SymbolId, bool>, symbol: SymbolId, value: Option<bool>) {
@@ -110,7 +126,7 @@ impl Lowerer<'_, '_, '_> {
             Symbol::Binding(binding) => {
                 self.substitutes_repeat(symbol)
                     && (!self.db.is_loop_rest_call(binding.value.hir)
-                        || self.is_loop_rest_evaluated_once(symbol))
+                        || !self.is_loop_rest_rebound(symbol, binding.value.hir))
                     && (!may_fail(self, binding.value.hir) || self.binding_always_evaluated(symbol))
             }
             Symbol::Constant(constant) => {
@@ -351,16 +367,22 @@ impl Lowerer<'_, '_, '_> {
     }
 
     /// Whether the binding for the result of a fold for the rest of the list (see
-    /// [`Database::is_loop_rest_call`]), which is referenced once, is evaluated in one place that's
-    /// evaluated at most once for the item if it's substituted there. Otherwise it's evaluated
-    /// once, before the body: substituting it somewhere that's evaluated more than once would go
-    /// through the rest of the list again each time, for every item, which is exponential.
+    /// [`Database::is_loop_rest_call`]), which is referenced once, would only be bound again if
+    /// it were substituted there: its reference is in the argument of a call that's inlined into
+    /// a body that binds the argument (see [`Self::lower_inline_call`]), directly or through
+    /// other calls that are inlined. Binding it there is no smaller than binding it before the
+    /// body, and costs more to run, so it's bound before the body then. Otherwise it's evaluated
+    /// in place, as recursion written by hand evaluates it: at a call that isn't inlined, or
+    /// where an inlined body refers to the parameter.
     ///
-    /// That rules out a reference in a lambda or another `for`, in a type guard that uses its
-    /// value more than once, or in the value of a `let`, which can be substituted into any of
-    /// those (see [`Self::direct_uses`]). The argument of a call that's inlined counts as many
-    /// times as the inlined body evaluates it, which this decides from the call as it's lowered.
-    fn is_loop_rest_evaluated_once(&self, symbol: SymbolId) -> bool {
+    /// This only decides which of the two is smaller, since neither goes through the rest of the
+    /// list more than once for the item. A reference that can be evaluated more than once, such
+    /// as one in a lambda, another `for`, a type guard that uses its value more than once, or the
+    /// argument of an `inline fn` that refers to its parameter more than once, is counted as
+    /// more than one, or as repeated, by the dependency graph, so the binding isn't substituted
+    /// there at all (see [`crate::DependencyGraph::is_repeated`]). And any other inlined call
+    /// binds an argument whose parameter is referenced more than once.
+    fn is_loop_rest_rebound(&self, symbol: SymbolId, value: HirId) -> bool {
         let Some((block, index)) = self.graph.let_statement(symbol) else {
             return false;
         };
@@ -369,167 +391,199 @@ impl Lowerer<'_, '_, '_> {
             return false;
         };
 
-        let mut functions = Vec::new();
-        let mut uses = 0;
+        let mut walk = Rebinding {
+            fails: may_fail(self, value),
+            targets: vec![symbol],
+            frames: Vec::new(),
+        };
 
-        for statement in &block.statements[index + 1..] {
-            uses += self.statement_uses(symbol, statement, 1, &mut functions);
-        }
-
-        if let Some(body) = block.body {
-            uses += self.direct_uses(symbol, body, 1, &mut functions);
-        }
-
-        uses == self.graph.references(symbol)
+        self.rebinds_block(&mut walk, &block.statements[index + 1..], block.body)
     }
 
-    /// How many times evaluating the node evaluates a reference to the symbol at most, where
-    /// each reference counts as `uses`. A reference in a lambda or another `for` isn't counted,
-    /// since they're evaluated any number of times, so a symbol that's referenced there has
-    /// more references than this counts. The functions whose bodies are being followed, which
-    /// are inlined into the call being walked, are kept in `functions`.
-    fn direct_uses(
-        &self,
-        symbol: SymbolId,
-        hir: HirId,
-        uses: usize,
-        functions: &mut Vec<SymbolId>,
-    ) -> usize {
+    /// Whether evaluating the node would bind the result again at an inlined call that the
+    /// result is substituted into (see [`Self::is_loop_rest_rebound`]).
+    fn rebinds(&self, walk: &mut Rebinding, hir: HirId) -> bool {
         rue_types::grow_stack(|| match self.db.hir(hir) {
-            Hir::Reference(reference) if *reference == symbol => uses,
-            Hir::Lambda(_) => 0,
-            Hir::Guard(guard) => self.direct_uses(
-                symbol,
-                guard.value,
-                uses * guard.value_uses().max(1),
-                functions,
-            ),
-            Hir::Block(block) => {
-                let statements: usize = block
-                    .statements
-                    .iter()
-                    .map(|statement| self.statement_uses(symbol, statement, uses, functions))
-                    .sum();
-
-                statements
-                    + block
-                        .body
-                        .map_or(0, |body| self.direct_uses(symbol, body, uses, functions))
-            }
-            Hir::FunctionCall(call) => {
-                let callee = self.direct_uses(symbol, call.function, uses, functions);
-
-                callee
-                    + call
-                        .args
-                        .iter()
-                        .enumerate()
-                        .map(|(index, &arg)| {
-                            let arg_uses = self.direct_uses(symbol, arg, 1, functions);
-
-                            if arg_uses == 0 {
-                                return 0;
-                            }
-
-                            let times = self.argument_evaluations(call, index, arg, functions);
-                            arg_uses * times * uses
-                        })
-                        .sum::<usize>()
-            }
-            node => node
-                .children()
-                .map(|child| self.direct_uses(symbol, child, uses, functions))
-                .sum(),
+            Hir::Block(block) => self.rebinds_block(walk, &block.statements, block.body),
+            Hir::FunctionCall(call) => self.rebinds_call(walk, call),
+            node => node.children().any(|child| self.rebinds(walk, child)),
         })
     }
 
-    /// How many times a statement evaluates a reference to the symbol at most (see
-    /// [`Self::direct_uses`]). The value of a `let` is evaluated wherever the binding is
-    /// substituted, which can be more than once, so a reference there counts twice.
-    fn statement_uses(
+    fn rebinds_block(
         &self,
-        symbol: SymbolId,
-        statement: &Statement,
-        uses: usize,
-        functions: &mut Vec<SymbolId>,
-    ) -> usize {
-        match statement {
-            Statement::Let(binding, _) => match self.db.symbol(*binding) {
-                Symbol::Binding(binding) => {
-                    self.direct_uses(symbol, binding.value.hir, uses * 2, functions)
+        walk: &mut Rebinding,
+        statements: &[Statement],
+        body: Option<HirId>,
+    ) -> bool {
+        for statement in statements {
+            let Statement::Let(binding, _) = statement else {
+                if statement.hirs().any(|hir| self.rebinds(walk, hir)) {
+                    return true;
                 }
-                _ => 0,
-            },
-            statement => statement
-                .hirs()
-                .map(|hir| self.direct_uses(symbol, hir, uses, functions))
-                .sum(),
+
+                continue;
+            };
+
+            let Symbol::Binding(symbol) = self.db.symbol(*binding) else {
+                continue;
+            };
+
+            if self.rebinds(walk, symbol.value.hir) {
+                return true;
+            }
+
+            if symbol.inline || !self.mentions(walk, symbol.value.hir) {
+                continue;
+            }
+
+            // A binding that's referenced once is substituted where it's referenced, along with
+            // the result in its value. One that's referenced more than once is bound, which
+            // binds the result again if that's all its value is
+            if self.graph.references(*binding) == 1 {
+                walk.targets.push(*binding);
+            } else if matches!(
+                self.db.hir(self.db.without_casts(symbol.value.hir)),
+                Hir::Reference(reference) if walk.targets.contains(reference)
+            ) {
+                return true;
+            }
         }
+
+        body.is_some_and(|body| self.rebinds(walk, body))
     }
 
-    /// How many times the argument at the index of the call is evaluated each time the call is,
-    /// as far as walking the result of a fold into it goes (see
-    /// [`Self::is_loop_rest_evaluated_once`]): once if the call isn't inlined, since the argument
-    /// is evaluated at the call, and as many times as the inlined body evaluates its parameter
-    /// otherwise.
-    ///
-    /// The argument of a function that isn't an `inline fn` is only substituted for its
-    /// parameter if that's referenced once, it may not fail or the body always evaluates it,
-    /// and it isn't captured by a loop (see [`Self::lower_inline_call`]). Otherwise it's bound
-    /// at the call, which is no smaller than binding the result before the body, so that counts
-    /// as twice. An `inline fn` always substitutes its argument, so it counts as many times as
-    /// its body evaluates the parameter. A spread parameter isn't followed, and counts twice too.
-    fn argument_evaluations(
-        &self,
-        call: &FunctionCall,
-        index: usize,
-        arg: HirId,
-        functions: &mut Vec<SymbolId>,
-    ) -> usize {
-        let Some(callee) = self.inlined_callee(call.function) else {
-            return 1;
+    /// Whether the call binds the result again, or something it's substituted into does. An
+    /// argument that the result is in is evaluated at a call that isn't inlined, and where the
+    /// body refers to the parameter in one that's inlined, unless that binds it.
+    fn rebinds_call(&self, walk: &mut Rebinding, call: &FunctionCall) -> bool {
+        if self.rebinds(walk, call.function) || call.args.iter().any(|&arg| self.rebinds(walk, arg))
+        {
+            return true;
+        }
+
+        // The result is referenced once, so it's in one argument at most
+        let Some(index) = call.args.iter().position(|&arg| self.mentions(walk, arg)) else {
+            return false;
+        };
+
+        let Some(callee) = self.walked_callee(walk, call.function) else {
+            return false;
         };
 
         let Symbol::Function(function) = self.db.symbol(callee) else {
-            return 1;
+            return false;
         };
 
-        // A function that's already being followed isn't followed into itself
-        if functions.contains(&callee) {
-            return 2;
-        }
+        // The items of a spread argument, and the arguments that are put in a list for a rest
+        // parameter, aren't followed to their parameters
+        let spread = !call.nil_terminated && index + 1 == call.args.len();
 
-        let fixed = function.fixed_parameters();
-
-        let Some(&parameter) = fixed.get(index) else {
-            return 2;
+        let Some(&parameter) = function.fixed_parameters().get(index).filter(|_| !spread) else {
+            return true;
         };
-
-        if !call.nil_terminated && index + 1 == call.args.len() {
-            return 2;
-        }
-
-        let references = self.graph.references(parameter);
 
         if function.kind != FunctionKind::Inline
-            && (references != 1
-                || self.graph.is_loop_capture(parameter)
-                || (may_fail(self, arg)
-                    && !self.parameter_always_evaluated(function.body, parameter)))
+            && self.binds_inline_argument(function, parameter, walk.fails)
         {
-            return 2;
+            return true;
         }
 
-        functions.push(callee);
-        let evaluations = self.direct_uses(parameter, function.body, 1, functions);
-        functions.pop();
+        let arguments = function
+            .fixed_parameters()
+            .iter()
+            .copied()
+            .zip(call.args.iter().copied())
+            .collect();
 
-        // A reference that isn't counted is in a lambda or a loop
-        if evaluations != references {
-            return 2;
+        let targets = std::mem::replace(&mut walk.targets, vec![parameter]);
+        walk.frames.push((callee, arguments));
+
+        let rebinds = self.rebinds(walk, function.body);
+
+        walk.frames.pop();
+        walk.targets = targets;
+
+        rebinds
+    }
+
+    /// Whether an inlined call to the function, which isn't an `inline fn`, binds the argument
+    /// for the parameter rather than substituting it (see [`Self::lower_inline_call`]): the
+    /// parameter is referenced more than once or by a loop, or the argument may fail and the
+    /// body doesn't always evaluate it. A parameter that's never referenced has its argument
+    /// evaluated for its effect, which isn't bound either.
+    fn binds_inline_argument(
+        &self,
+        function: &FunctionSymbol,
+        parameter: SymbolId,
+        fails: bool,
+    ) -> bool {
+        let references = self.graph.references(parameter);
+
+        references > 1
+            || self.graph.is_loop_capture(parameter)
+            || (references == 1
+                && fails
+                && !self.parameter_always_evaluated(function.body, parameter))
+    }
+
+    /// The function that a call to the callee is inlined into, as [`Self::inlined_callee`] finds
+    /// it where the call is lowered: a function called by name that's inlined, or a lambda that's
+    /// known there, which can be the argument of a call being followed, such as a lambda that's
+    /// passed to an `inline fn` and called in it. As when lowering (see [`Self::known_lambda`]),
+    /// a lambda isn't inlined inside a call of itself or of a function it depends on.
+    fn walked_callee(&self, walk: &Rebinding, mut callee: HirId) -> Option<SymbolId> {
+        let mut frames = walk.frames.len();
+        let mut followed = false;
+
+        // An argument is written outside of the call it's passed to, so the parameters it
+        // refers to are those of the calls around that one
+        while let Hir::Reference(symbol) = self.db.hir(self.db.without_casts(callee))
+            && let Some((frame, argument)) = walk.frames[..frames]
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(frame, (_, arguments))| Some((frame, *arguments.get(symbol)?)))
+        {
+            callee = argument;
+            frames = frame;
+            followed = true;
         }
 
-        evaluations
+        if !followed
+            && let Hir::Reference(symbol) = self.db.hir(self.db.without_casts(callee))
+            && let Symbol::Function(_) = self.db.symbol(*symbol)
+        {
+            return self.inlined_callee(callee);
+        }
+
+        let lambda = self.known_lambda(callee)?;
+        let dependencies = self.dependencies(lambda, false);
+
+        let reenters = walk
+            .frames
+            .iter()
+            .any(|&(function, _)| function == lambda || dependencies.contains(&function));
+
+        (!reenters).then_some(lambda)
+    }
+
+    /// Whether the node refers to what the result is substituted for, outside of a lambda, which
+    /// captures it.
+    fn mentions(&self, walk: &Rebinding, hir: HirId) -> bool {
+        rue_types::grow_stack(|| match self.db.hir(hir) {
+            Hir::Reference(symbol) => walk.targets.contains(symbol),
+            Hir::Block(block) => {
+                block.statements.iter().any(|statement| match statement {
+                    Statement::Let(binding, _) => matches!(
+                        self.db.symbol(*binding),
+                        Symbol::Binding(binding) if self.mentions(walk, binding.value.hir)
+                    ),
+                    statement => statement.hirs().any(|hir| self.mentions(walk, hir)),
+                }) || block.body.is_some_and(|body| self.mentions(walk, body))
+            }
+            node => node.children().any(|child| self.mentions(walk, child)),
+        })
     }
 
     /// Whether the constant's single reference is always evaluated when the program is run, or

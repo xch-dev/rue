@@ -59,9 +59,10 @@ enum ForKind {
 ///   through the whole list, and fails if any item does. It's evaluated where the body refers to
 ///   it instead, if that's in one place that's evaluated at most once for the item, and it
 ///   can't keep the rest of the list from failing, as for any binding that's referred to once.
-///   An argument of a call counts if the call isn't inlined, or if the body it's inlined into
-///   evaluates it once, which is decided while lowering. A body that doesn't get to it stops
-///   there then, as `x == item || found` does once an item matches.
+///   That includes an argument of a call that isn't inlined, or of one that's inlined into a
+///   body that refers to the parameter once, as recursion written by hand evaluates it, which is
+///   decided while lowering. A body that doesn't get to it stops there then, as
+///   `x == item || found` does once an item matches.
 /// - With a filter, such as `if x > 0`, the items that don't pass it are left out of the list, or
 ///   skipped by the fold.
 /// - Without a fold, if the body has no value, or the expression is a statement, whose value
