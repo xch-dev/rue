@@ -1,82 +1,173 @@
 diagnostics:
-- Unused function `make` at generic_inference_recursive_element_bounds_errors.rue:7:4
-- Unused function `call_without_arguments` at generic_inference_recursive_element_bounds_errors.rue:12:4
-- Cannot assign `Int | T` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:15:26
-- Unused function `lambda_return_type` at generic_inference_recursive_element_bounds_errors.rue:23:4
-- Cannot assign `Int | T` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:26:26
-- Unused function `typed_parameter` at generic_inference_recursive_element_bounds_errors.rue:35:4
-- Cannot assign `Int | T` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:38:26
-- Unused function `union_parameter` at generic_inference_recursive_element_bounds_errors.rue:47:4
-- Cannot assign `T | Int` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:53:38
-- Unused type alias `Callback` at generic_inference_recursive_element_bounds_errors.rue:64:6
-- Unused function `union_of_functions` at generic_inference_recursive_element_bounds_errors.rue:67:4
-- Unused parameter `pair` at generic_inference_recursive_element_bounds_errors.rue:67:26
-- Cannot assign `T | Int` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:73:38
-- Unused function `wrap` at generic_inference_recursive_element_bounds_errors.rue:84:4
-- Unused function `lambda_in_a_call` at generic_inference_recursive_element_bounds_errors.rue:89:4
-- "Cannot assign `(1, fn(value: T) -> Int)` to `(Int, fn(value: Int) -> Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:92:13"
-- Cannot assign `T` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:96:42
-- Unused function `other_generic` at generic_inference_recursive_element_bounds_errors.rue:110:4
-- Cannot assign `T` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:118:38
-- Unused function `expected_generic` at generic_inference_recursive_element_bounds_errors.rue:131:4
-- "Cannot assign `(1, fn(x: T) -> T)` to `(Int, fn(value: Int) -> T)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:133:42"
-- Unused function `passes_on_to_the_caller` at generic_inference_recursive_element_bounds_errors.rue:143:4
-- "Cannot assign `(fn(x: T) -> Int, 1)` to `(fn(value: Int) -> Int, Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:146:40"
-- Unused function `apply` at generic_inference_recursive_element_bounds_errors.rue:152:4
-- Unused function `captured_in_a_binding` at generic_inference_recursive_element_bounds_errors.rue:157:4
-- "Cannot assign `(fn(x: T) -> Int, 1)` to `(fn(value: Int) -> Int, Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:160:13"
-- Unused function `captured_in_a_nested_lambda` at generic_inference_recursive_element_bounds_errors.rue:174:4
-- "Cannot assign `(fn(x: T) -> Int, 1)` to `(fn(value: Int) -> Int, Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:177:13"
-- Unused function `ident` at generic_inference_recursive_element_bounds_errors.rue:185:4
-- Unused function `names_the_callers_generic` at generic_inference_recursive_element_bounds_errors.rue:192:4
-- "Cannot assign `(fn(x: T) -> T, 1)` to `(fn(value: Int) -> T, Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:195:13"
+- Unused function `make` at generic_inference_recursive_element_bounds_errors.rue:9:4
+- Unused function `ident` at generic_inference_recursive_element_bounds_errors.rue:13:4
+- Unused function `call_without_arguments` at generic_inference_recursive_element_bounds_errors.rue:18:4
+- Cannot assign `Int | T` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:21:26
+- Unused function `lambda_return_type` at generic_inference_recursive_element_bounds_errors.rue:29:4
+- Cannot assign `Int | T` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:32:26
+- Unused function `typed_parameter` at generic_inference_recursive_element_bounds_errors.rue:41:4
+- Cannot assign `Int | T` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:44:26
+- Unused function `union_parameter` at generic_inference_recursive_element_bounds_errors.rue:53:4
+- Cannot assign `Int` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:59:38
+- Unused type alias `Callback` at generic_inference_recursive_element_bounds_errors.rue:70:6
+- Unused function `union_of_functions` at generic_inference_recursive_element_bounds_errors.rue:73:4
+- Unused parameter `pair` at generic_inference_recursive_element_bounds_errors.rue:73:26
+- Cannot assign `Int` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:79:38
+- Unused function `wrap` at generic_inference_recursive_element_bounds_errors.rue:90:4
+- Unused function `lambda_in_a_call` at generic_inference_recursive_element_bounds_errors.rue:95:4
+- "Cannot assign `(1, fn(value: T) -> Int)` to `(Int, fn(value: Int) -> Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:98:13"
+- Cannot assign `T` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:102:42
+- Unused function `other_generic` at generic_inference_recursive_element_bounds_errors.rue:116:4
+- Cannot assign `T` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_recursive_element_bounds_errors.rue:124:38
+- Unused function `expected_generic` at generic_inference_recursive_element_bounds_errors.rue:137:4
+- Cannot assign `Int` to `T`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:139:25
+- Unused function `passes_on_to_the_caller` at generic_inference_recursive_element_bounds_errors.rue:149:4
+- Cannot assign `Int` to `T`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:152:57
+- Unused function `apply` at generic_inference_recursive_element_bounds_errors.rue:158:4
+- Unused function `captured_in_a_binding` at generic_inference_recursive_element_bounds_errors.rue:163:4
+- Cannot assign `Int` to `T`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:169:28
+- Unused function `captured_in_a_nested_lambda` at generic_inference_recursive_element_bounds_errors.rue:180:4
+- Cannot assign `Int` to `T`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:183:49
+- Unused function `names_the_callers_generic` at generic_inference_recursive_element_bounds_errors.rue:194:4
+- Binding `y` is returned directly after it's declared at generic_inference_recursive_element_bounds_errors.rue:199:21
+- Cannot assign `Int` to `T`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:199:32
+- Cannot cast `Int` to `T`, since they have different runtime representations at generic_inference_recursive_element_bounds_errors.rue:206:56
+- Cannot assign `Int` to `T`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:207:71
+- Unused function `one_of_two_lambdas_captures` at generic_inference_recursive_element_bounds_errors.rue:217:4
+- Cannot assign `Int` to `T`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:223:74
+- Unused function `renamed_generics_naming_each_other` at generic_inference_recursive_element_bounds_errors.rue:233:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:234:5
+- "Cannot assign `(((fn(a: U) -> U, 1), (fn(b: T) -> T, 1)), nil)` to `List<((fn(a: U) -> T, Int), (fn(b: T) -> U, Int))>`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:238:52"
+- Unused function `make_any` at generic_inference_recursive_element_bounds_errors.rue:248:4
+- Unused function `apply_to` at generic_inference_recursive_element_bounds_errors.rue:252:4
+- Unused function `lambda_in_a_later_call` at generic_inference_recursive_element_bounds_errors.rue:256:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:257:5
+- Type of parameter cannot be inferred, it must be specified explicitly at generic_inference_recursive_element_bounds_errors.rue:263:57
+- Cannot infer generic `M` for `make_any`; specify it explicitly, e.g. `make_any::<...>()` at generic_inference_recursive_element_bounds_errors.rue:263:64
+- Unused function `lambda_in_a_later_block` at generic_inference_recursive_element_bounds_errors.rue:279:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:280:5
+- "Cannot assign `((U, fn(_x: T) -> U), ((U, fn(_w: U) -> 1), 1))` to `((U, fn(a: Int) -> U), ((U, fn(b: U) -> Int), Int))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:285:41"
+- Unused function `returns_the_callers_value` at generic_inference_recursive_element_bounds_errors.rue:292:4
+- "Cannot assign `(1, (fn(_y: T) -> T, fn(_x: T) -> 0))` to `(Int, (fn(a: Int) -> T, fn(b: T) -> Int))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:295:42"
+- Unused function `first_element_passes_on_before_a_reader` at generic_inference_recursive_element_bounds_errors.rue:304:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:305:5
+- "Cannot assign `(fn(x: T) -> (T, V), (fn(y: (T, V) | (5, 6)) -> T | 5, (1, (5, 6))))` to `(fn(a: Int) -> (T, V) | (5, 6), (fn(b: (T, V) | (5, 6)) -> Int, (Int, (T, V) | (5, 6))))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:311:13"
+- Unused function `recursive_upper` at generic_inference_recursive_element_bounds_errors.rue:332:4
+- Unused parameter `pair` at generic_inference_recursive_element_bounds_errors.rue:332:23
+- Cannot assign `T | Int` to `T`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:338:36
+- Unused function `recursive_union_member` at generic_inference_recursive_element_bounds_errors.rue:349:4
+- Unused parameter `pair` at generic_inference_recursive_element_bounds_errors.rue:349:30
+- Cannot assign `Int` to `T`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:355:36
+- Unused function `recursive_union_list` at generic_inference_recursive_element_bounds_errors.rue:366:4
+- Unused parameter `items` at generic_inference_recursive_element_bounds_errors.rue:366:28
+- Cannot assign `nil` to `T`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:372:36
+- Unused function `recursive_union_of_pairs` at generic_inference_recursive_element_bounds_errors.rue:383:4
+- Unused parameter `pair` at generic_inference_recursive_element_bounds_errors.rue:384:5
+- Cannot assign `Int` to `T`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:392:36
+- Unused function `matched_through_a_union` at generic_inference_recursive_element_bounds_errors.rue:403:4
 - |-
-  Binding `y` is returned directly after it's declared at generic_inference_recursive_element_bounds_errors.rue:197:21
-    help: Return the value directly
-- "Cannot assign `(fn(x: T) -> T, 1)` to `(fn(value: Int) -> T, Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:204:46"
+  Cannot assign `(1, (fn(_x: Int) -> 5, "x"))` to `(1 | "x", (fn(a: 1 | "x") -> Int, 1 | "x") | (fn(a: 1 | "x") -> Bytes, Bytes))` without a cast, since they are semantically different at generic_inference_recursive_element_bounds_errors.rue:408:41
+    note: `T` is inferred as `1 | "x"` from the arguments of this call
+- Unused function `call_in_the_body` at generic_inference_recursive_element_bounds_errors.rue:415:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:415:30
+- "Cannot assign `(fn(_x: Int, _y: V) -> (U, V), 1)` to `(fn(a: Int, b: V) -> (Int, V), Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:417:34"
+- Unused function `kept_by_a_union_member` at generic_inference_recursive_element_bounds_errors.rue:424:4
+- Cannot assign `Int` to `U`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:426:16
+- Unused function `kept_by_nil` at generic_inference_recursive_element_bounds_errors.rue:432:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:432:22
+- Cannot assign `nil` to `V`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:436:20
+- Unused function `passes_its_parameter_on` at generic_inference_recursive_element_bounds_errors.rue:443:4
+- Cannot type guard from `Int` to `(Any, Any)`, since they do not overlap at generic_inference_recursive_element_bounds_errors.rue:446:12
+- Unknown field `first` on type `Never` at generic_inference_recursive_element_bounds_errors.rue:447:42
+- Unused function `passes_its_parameter_on_takes_any` at generic_inference_recursive_element_bounds_errors.rue:455:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:455:44
+- Cannot assign `nil` to `Int` without a cast, since they are semantically different at generic_inference_recursive_element_bounds_errors.rue:460:19
+- Unused type alias `Itself` at generic_inference_recursive_element_bounds_errors.rue:467:6
+- Unused function `passes_on_through_an_alias` at generic_inference_recursive_element_bounds_errors.rue:469:4
+- Cannot assign `Itself<Int>` to `2` without a type guard, since the value isn't always a valid `2` at generic_inference_recursive_element_bounds_errors.rue:472:21
+- Unused function `passes_on_beside_one_that_sees_through` at generic_inference_recursive_element_bounds_errors.rue:478:4
+- Cannot assign `U | nil | Int` to `U | nil | 1`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:490:31
+- Unused function `sees_through_to_the_generic` at generic_inference_recursive_element_bounds_errors.rue:496:4
+- Cannot assign `(1, 2) | U | Int` to `(1, 2) | U | 1`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:500:34
+- Unused function `sees_through_in_a_pair` at generic_inference_recursive_element_bounds_errors.rue:513:4
+- Cannot assign `(1, 3)` to `(U, 3) | U | Int`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:518:19
+- Unused function `same_type_twice_before` at generic_inference_recursive_element_bounds_errors.rue:526:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:526:33
+- Cannot assign `Int` to `1` without a type guard, since the value isn't always a valid `1` at generic_inference_recursive_element_bounds_errors.rue:529:21
+- Unused struct `Shadow` at generic_inference_recursive_element_bounds_errors.rue:535:8
+- Unused function `shadowed_by_a_field` at generic_inference_recursive_element_bounds_errors.rue:539:4
+- Cannot type guard from `Int` to `(Any, Any)`, since they do not overlap at generic_inference_recursive_element_bounds_errors.rue:553:12
+- Unknown field `first` on type `Never` at generic_inference_recursive_element_bounds_errors.rue:554:42
+- Unused function `bounds_a_later_argument` at generic_inference_recursive_element_bounds_errors.rue:568:4
+- Unused parameter `e` at generic_inference_recursive_element_bounds_errors.rue:568:34
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:568:40
+- Unused parameter `q` at generic_inference_recursive_element_bounds_errors.rue:568:70
+- Cannot assign `Int` to `5 | 7` without a type guard, since the value isn't always a valid `5 | 7` at generic_inference_recursive_element_bounds_errors.rue:572:25
+- Unused function `bounds_a_later_argument_after_another` at generic_inference_recursive_element_bounds_errors.rue:578:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:579:5
+- Unused parameter `q` at generic_inference_recursive_element_bounds_errors.rue:580:5
+- Cannot assign `Int` to `5 | 7` without a type guard, since the value isn't always a valid `5 | 7` at generic_inference_recursive_element_bounds_errors.rue:590:25
+- Unused function `bounds_a_later_argument_in_a_pair` at generic_inference_recursive_element_bounds_errors.rue:596:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:596:41
+- Unused parameter `q` at generic_inference_recursive_element_bounds_errors.rue:596:71
+- Cannot assign `Int` to `5 | 7` without a type guard, since the value isn't always a valid `5 | 7` at generic_inference_recursive_element_bounds_errors.rue:600:25
+- Unused function `bounds_a_later_match` at generic_inference_recursive_element_bounds_errors.rue:606:4
+- Unused parameter `e` at generic_inference_recursive_element_bounds_errors.rue:606:31
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:606:37
+- Unused parameter `q` at generic_inference_recursive_element_bounds_errors.rue:606:67
+- Cannot assign `Int` to `5 | 7` without a type guard, since the value isn't always a valid `5 | 7` at generic_inference_recursive_element_bounds_errors.rue:619:25
+- Unused function `later_argument_adds` at generic_inference_recursive_element_bounds_errors.rue:625:4
+- Unused parameter `e` at generic_inference_recursive_element_bounds_errors.rue:625:30
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:625:36
+- Unused function `later_argument_adds_to_the_generic` at generic_inference_recursive_element_bounds_errors.rue:629:4
+- Cannot assign `Int` to `5 | 7` without a type guard, since the value isn't always a valid `5 | 7` at generic_inference_recursive_element_bounds_errors.rue:632:21
+- Unused function `first_element_given_the_callers_generic` at generic_inference_recursive_element_bounds_errors.rue:639:4
+- Cannot use `+` operator with `T` and `1` at generic_inference_recursive_element_bounds_errors.rue:642:23
+- Cannot use `+` operator with `T` and `1` at generic_inference_recursive_element_bounds_errors.rue:646:23
+- Unused function `later_argument_widens` at generic_inference_recursive_element_bounds_errors.rue:662:4
+- Unused parameter `p0` at generic_inference_recursive_element_bounds_errors.rue:662:32
+- Unused parameter `p1` at generic_inference_recursive_element_bounds_errors.rue:662:61
 - |-
-  Unnecessary cast from `T` to `T`, since they are compatible with each other at generic_inference_recursive_element_bounds_errors.rue:204:56
-    help: Remove the cast
-- "Cannot assign `(fn(x: T) -> T, 1)` to `(fn(value: Int) -> T, Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:205:50"
-- Unused function `one_of_two_lambdas_captures` at generic_inference_recursive_element_bounds_errors.rue:215:4
-- "Cannot assign `((fn(x: Int) -> Int, fn(y: T) -> Int), 1)` to `((fn(value: Int) -> Int, fn(value: Int) -> Int), Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:221:44"
-- Unused function `second_of` at generic_inference_recursive_element_bounds_errors.rue:227:4
-- Unused function `own_and_standing_in_seen_through` at generic_inference_recursive_element_bounds_errors.rue:238:4
-- Cannot assign `U` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_recursive_element_bounds_errors.rue:246:27
-- Unused function `renamed_generics_naming_each_other` at generic_inference_recursive_element_bounds_errors.rue:257:4
-- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:258:5
-- "Cannot assign `(((fn(a: U) -> U, 1), (fn(b: T) -> T, 1)), nil)` to `List<((fn(a: U) -> T, Int), (fn(b: T) -> U, Int))>`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:262:52"
-- Unused function `spread_after_the_lambda` at generic_inference_recursive_element_bounds_errors.rue:272:4
-- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:272:31
-- Cannot use `+` operator with `T` and `1` at generic_inference_recursive_element_bounds_errors.rue:275:50
-- Unused function `another_callers_generic_rejected` at generic_inference_recursive_element_bounds_errors.rue:284:4
-- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:285:5
+  Cannot assign `(7, (5, fn(x: Int) -> Int))` to `(7 | "ab", (Int, fn(x: 7 | "ab") -> Int))` without a cast, since they are semantically different at generic_inference_recursive_element_bounds_errors.rue:664:40
+    note: `T` is inferred as `7 | "ab"` from the arguments of this call
+- Unused function `later_argument_widens_callee` at generic_inference_recursive_element_bounds_errors.rue:670:4
+- Unused parameter `p0` at generic_inference_recursive_element_bounds_errors.rue:670:39
+- Unused parameter `p1` at generic_inference_recursive_element_bounds_errors.rue:670:68
+- Unused function `later_argument_widens_ordinary` at generic_inference_recursive_element_bounds_errors.rue:674:4
 - |-
-  Cannot assign `(fn(x: Int) -> (Int, Int), (fn(_y: (Int, Int)) -> 2, (1, ((T, 1), nil))))` to `(fn(a: Int) -> (Int, Int) | (T, 1), (fn(a: (Int, Int) | (T, 1)) -> Int, (Int, ((Int, Int) | (T, 1) | Int, nil))))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:291:13
-    note: `V` is inferred as `(Int, Int) | (T, 1)` from the arguments of this call
-- Unused function `make_any` at generic_inference_recursive_element_bounds_errors.rue:301:4
-- Unused function `apply_to` at generic_inference_recursive_element_bounds_errors.rue:305:4
-- Unused function `lambda_in_a_later_call` at generic_inference_recursive_element_bounds_errors.rue:309:4
-- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:310:5
-- Type of parameter cannot be inferred, it must be specified explicitly at generic_inference_recursive_element_bounds_errors.rue:316:57
-- Cannot infer generic `M` for `make_any`; specify it explicitly, e.g. `make_any::<...>()` at generic_inference_recursive_element_bounds_errors.rue:316:64
-- Unused function `lambda_in_a_later_block` at generic_inference_recursive_element_bounds_errors.rue:331:4
-- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:332:5
-- "Cannot assign `((U, fn(_x: T) -> U), ((U, fn(_w: U) -> 1), 1))` to `((U, fn(a: Int) -> U), ((U, fn(b: U) -> Int), Int))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:337:41"
-- Unused function `bounded_by_another_parameter` at generic_inference_recursive_element_bounds_errors.rue:344:4
-- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:345:5
-- Unknown field `rest` on type `V` at generic_inference_recursive_element_bounds_errors.rue:351:54
-- Unused function `returns_the_callers_value` at generic_inference_recursive_element_bounds_errors.rue:360:4
-- "Cannot assign `(1, (fn(_y: T) -> T, fn(_x: Int) -> 0))` to `(Int, (fn(a: Int) -> T, fn(b: T) -> Int))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:363:42"
-- Unused function `first_element_passes_on_before_a_reader` at generic_inference_recursive_element_bounds_errors.rue:372:4
-- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:373:5
-- "Cannot assign `(fn(x: T) -> (T, V), (fn(y: (Int, V) | (5, 6)) -> Int, (1, (5, 6))))` to `(fn(a: Int) -> (T, V) | (5, 6), (fn(b: (T, V) | (5, 6)) -> Int, (Int, (T, V) | (5, 6))))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:379:13"
-- Unused function `solved_with_a_generic_not_its_own` at generic_inference_recursive_element_bounds_errors.rue:390:4
-- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:390:41
-- "Cannot assign `((T, fn(_x: T | 1) -> 0), ((1, fn(_y: Int) -> 0), nil))` to `List<(T | 1, fn(a: T | 1) -> Int)>`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:393:50"
-- Unused function `call_in_a_body_before_a_wider_value` at generic_inference_recursive_element_bounds_errors.rue:402:4
-- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:403:5
+  Cannot assign `(7, (5, fn(x: Int) -> Int))` to `(7 | "ab", (Int, fn(x: 7 | "ab") -> Int))` without a cast, since they are semantically different at generic_inference_recursive_element_bounds_errors.rue:675:34
+    note: `T` is inferred as `7 | "ab"` from the arguments of this call
+- Unused function `later_element_widens` at generic_inference_recursive_element_bounds_errors.rue:678:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:678:31
 - |-
-  Cannot assign `(1, (fn(_x: Int) -> nil, ((5, 5), (fn(x: Int | (5, 5)) -> Int | (5, 5), nil))))` to `(1 | (5, 5), (fn(a: 1 | (5, 5)) -> nil | Int | (5, 5), (1 | (5, 5), (fn(b: 1 | (5, 5)) -> nil | Int | (5, 5), nil))))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:408:13
-    note: `S` is inferred as `nil | Int | (5, 5)` from the arguments of this call
-    note: `W` is inferred as `1 | (5, 5)` from the arguments of this call
+  Cannot assign `(7, (fn(x: Int) -> Int, (1, ((1, 2), nil))))` to `(7 | (1, 2), (fn(a: 7 | (1, 2)) -> Int, (Int, (7 | (1, 2), nil))))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:680:39
+    note: `V` is inferred as `7 | (1, 2)` from the arguments of this call
+- Unused function `later_element_widens_callee` at generic_inference_recursive_element_bounds_errors.rue:686:4
+- Unused parameter `p` at generic_inference_recursive_element_bounds_errors.rue:686:38
+- Unused function `later_element_widens_ordinary` at generic_inference_recursive_element_bounds_errors.rue:690:4
+- |-
+  Cannot assign `(7, (fn(x: Int) -> Int, (1, ((1, 2), nil))))` to `(7 | (1, 2), (fn(a: 7 | (1, 2)) -> Int, (Int, (7 | (1, 2), nil))))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:691:33
+    note: `V` is inferred as `7 | (1, 2)` from the arguments of this call
+- Unused function `widens_under_a_hint` at generic_inference_recursive_element_bounds_errors.rue:694:4
+- |-
+  Cannot assign `(5, fn(x: Int) -> (Int, Int))` to `(5 | (1, 2), fn(x: 5 | (1, 2)) -> (Int, Int))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:696:44
+    note: `T` is inferred as `5 | (1, 2)` from the arguments of this call
+- Unused function `widens_under_a_hint_callee` at generic_inference_recursive_element_bounds_errors.rue:702:4
+- Unused function `widens_under_a_hint_ordinary` at generic_inference_recursive_element_bounds_errors.rue:706:4
+- |-
+  Cannot assign `(5, fn(x: Int) -> (Int, Int))` to `(5 | (1, 2), fn(x: 5 | (1, 2)) -> (Int, Int))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:707:47
+    note: `T` is inferred as `5 | (1, 2)` from the arguments of this call
+- Unused function `widens_with_the_callers_generic` at generic_inference_recursive_element_bounds_errors.rue:714:4
+- Unused parameter `p0` at generic_inference_recursive_element_bounds_errors.rue:714:42
+- Unused parameter `p1` at generic_inference_recursive_element_bounds_errors.rue:714:71
+- |-
+  Cannot assign `((T, 7), (5, fn(x: (T, 7)) -> (T, 7)))` to `((T, 7) | "ab", (Int | (T, 7), fn(x: (T, 7) | "ab") -> Int | (T, 7)))`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:717:50
+    note: `U` is inferred as `Int | (T, 7)` from the arguments of this call
+- Unused function `guard_beside_waiting` at generic_inference_recursive_element_bounds_errors.rue:728:4
+- Unused parameter `p0` at generic_inference_recursive_element_bounds_errors.rue:729:5
+- Unused parameter `p2` at generic_inference_recursive_element_bounds_errors.rue:731:5
+- "Cannot assign `((1, 2), fn(x: T | Int | (1, 2)) -> Any | T | Int)` to `(Any | T | Int | (1, 2), fn(x: Any | T | Int | (1, 2)) -> Any | T | Int)`, since they are incompatible at generic_inference_recursive_element_bounds_errors.rue:737:13"
+- Unused function `guard_beside_waiting_callee` at generic_inference_recursive_element_bounds_errors.rue:753:4
+- Unused parameter `p0` at generic_inference_recursive_element_bounds_errors.rue:753:38
+- Unused parameter `p2` at generic_inference_recursive_element_bounds_errors.rue:753:87
+- Unused function `guard_beside_waiting_ordinary` at generic_inference_recursive_element_bounds_errors.rue:757:4

@@ -210,3 +210,75 @@ fn chained_member_unions_stay_linear() {
     let steps = steps(&chained_member_unions(60));
     assert!(steps < 100_000, "took {steps} steps");
 }
+
+/// A call with `count` untyped lambdas as the elements of one list argument, each of which waits
+/// for the value after the list, since its body applies an operator to its parameter. `recursive`
+/// has the call in the callee's own body, and `pairs` has each lambda as the first element of a
+/// pair with the value it's applied to.
+fn waiting_element_lambdas(count: usize, recursive: bool, pairs: bool) -> String {
+    let elements: Vec<String> = (0..count)
+        .map(|i| {
+            if pairs {
+                format!("(fn(x{i}) => x{i} + {i}, {i})")
+            } else {
+                format!("fn(x{i}) => x{i} + {i}")
+            }
+        })
+        .collect();
+    let elements = elements.join(", ");
+    let element = if pairs {
+        "(fn(x: T) -> U, T)"
+    } else {
+        "fn(x: T) -> U"
+    };
+    let (call, argument) = if recursive {
+        ("wide([ELEMENTS], 5, depth - 1)", "[FIRST]")
+    } else {
+        ("0", "[ELEMENTS]")
+    };
+
+    format!(
+        "
+fn wide<T, U>(elements: List<{element}>, value: T, depth: Int) -> Int {{
+    if depth > 0 {{
+        return {call};
+    }}
+
+    0
+}}
+
+fn main() -> Int {{
+    wide({argument}, 5, 1)
+}}
+"
+    )
+    .replace("ELEMENTS", &elements)
+    .replace(
+        "FIRST",
+        if pairs {
+            "(fn(x: Int) => x, 1)"
+        } else {
+            "fn(x: Int) => x"
+        },
+    )
+}
+
+/// The lambdas that are ready together are compiled against one solve of the call, and their
+/// arguments' candidates are replaced once. Solving the call again for each lambda took time
+/// that grew with the square of their number, as compiling each where it was once did: 400
+/// lambdas in a call that isn't recursive took 29 seconds in release.
+#[test]
+fn waiting_element_lambdas_are_solved_for_together() {
+    for (recursive, pairs, bound) in [
+        (false, false, 45_000),
+        (false, true, 75_000),
+        (true, false, 52_000),
+        (true, true, 100_000),
+    ] {
+        let steps = steps(&waiting_element_lambdas(200, recursive, pairs));
+        assert!(
+            steps < bound,
+            "took {steps} steps (recursive: {recursive}, pairs: {pairs})"
+        );
+    }
+}
