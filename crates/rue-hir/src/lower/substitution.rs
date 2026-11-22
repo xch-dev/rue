@@ -514,7 +514,8 @@ impl Lowerer<'_, '_, '_> {
         if function.kind != FunctionKind::Inline
             && (references != 1
                 || self.graph.is_loop_capture(parameter)
-                || (may_fail(self, arg) && !self.parameter_always_evaluated(function.body, parameter)))
+                || (may_fail(self, arg)
+                    && !self.parameter_always_evaluated(function.body, parameter)))
         {
             return 2;
         }
