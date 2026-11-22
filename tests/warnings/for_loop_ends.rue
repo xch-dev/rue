@@ -1,6 +1,6 @@
 // What a `for` does at the end of its list is always evaluated when the `for` is: the items after
 // one that's spread in a list, and the value of a fold. Its body isn't, since the list can be
-// empty, and neither is the value of a fold that can stop before the end
+// empty
 
 fn check(x: Int) -> Int {
     assert x > 0;
@@ -15,8 +15,11 @@ fn inline_values(xs: List<Int>, k: Int) -> List<Any> {
     inline let fold_value = check(k + 3);
     inline let after_two = check(k + 4);
 
-    // Not always evaluated
+    // A fold whose body doesn't always get to its result still goes through its whole list if
+    // the rest of it may fail, as it may with this value at the end of it
     inline let stopped_fold_value = check(k + 5);
+
+    // Not always evaluated
     inline let in_the_body = check(k + 6);
     inline let in_the_filter = check(k + 7);
     inline let after_a_stopped_fold = check(k + 8);
@@ -50,8 +53,8 @@ fn in_a_fold_value(xs: List<Int>) -> Int {
     for x in xs fold sum = in_a_fold_value(xs) { sum + x }
 }
 
-// It doesn't if the fold can stop before the end of its list, if the call is in the body, or if
-// another path doesn't get to the `for`
+// It isn't reported if the body doesn't always get to the fold's result, if the call is in the
+// body, or if another path doesn't get to the `for`
 fn in_a_stopped_fold_value(xs: List<Int>) -> Bool {
     for x in xs fold found = in_a_stopped_fold_value(xs) { x == 1 || found }
 }

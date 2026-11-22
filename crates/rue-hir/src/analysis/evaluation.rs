@@ -110,8 +110,8 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             // A loop calls itself with the rest of its list until there's nothing left of it,
             // so its call of itself evaluates what the loop does at the end of its list, such as
             // the items after a `for` that's spread in a list, or the value of a fold. That's
-            // only if every item gets to the call, which the body being followed decides: an
-            // item that a fold stops at doesn't. Only the loop's own call with the rest of its
+            // only if every item gets to the call, which the body being followed decides, as
+            // with a fold whose result is `inline`. Only the loop's own call with the rest of its
             // list counts, and not the call of the `for` expression, which can be reached again
             // from inside the loop through a function that calls itself, or an `inline fn`
             Hir::FunctionCall(call)
