@@ -1,6 +1,7 @@
 mod arg_list;
 mod env;
 mod fold;
+mod guards;
 mod ops;
 mod truthy;
 
@@ -10,6 +11,7 @@ mod tests;
 use arg_list::*;
 use env::*;
 use fold::*;
+use guards::*;
 use ops::*;
 use truthy::*;
 
@@ -20,7 +22,8 @@ use id_arena::Arena;
 use crate::{ClvmTarget, DebugTags, Lir, LirId, SpanScopes, stack::grow_stack};
 
 pub fn optimize(arena: &mut Arena<Lir>, lir: LirId, target: ClvmTarget) -> LirId {
-    optimize_node(arena, lir, target, &mut None)
+    let optimized = optimize_node(arena, lir, target, &mut None);
+    drop_implied_guards(arena, optimized, None)
 }
 
 /// Optimizes the LIR like [`optimize`], and carries its tags over to the optimized LIR. A node
@@ -39,7 +42,7 @@ pub fn optimize_with_tags(
     };
     let result = optimize_node(arena, lir, target, &mut Some(&mut trace));
     trace.scopes.apply(arena, start, &mut trace.tags.spans);
-    result
+    drop_implied_guards(arena, result, Some(tags))
 }
 
 /// What the optimizer keeps track of to carry tags over to the nodes it generates.

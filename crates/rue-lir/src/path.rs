@@ -38,6 +38,14 @@ pub fn parent_path(path: &BigUint) -> Option<BigUint> {
     Some(result)
 }
 
+/// Whether the path reads into the value at the other one, so that it fails if that value is an
+/// atom. Path 0 is nil rather than a value in the environment, so nothing is below it.
+pub fn is_below(path: &BigUint, ancestor: &BigUint) -> bool {
+    let depth = ancestor.bits().saturating_sub(1);
+    let mask = (BigUint::from(1u8) << depth) - 1u8;
+    ancestor.bits() > 0 && path.bits() > ancestor.bits() && (path & &mask) == (ancestor & &mask)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,6 +96,34 @@ mod tests {
             let path = BigUint::from(path);
             assert_eq!(parent_path(&first_path(&path)), Some(path.clone()));
             assert_eq!(parent_path(&rest_path(&path)), Some(path));
+        }
+    }
+
+    #[test]
+    fn test_is_below() {
+        let below = |path: u32, ancestor: u32| is_below(&path.into(), &ancestor.into());
+
+        assert!(below(2, 1));
+        assert!(below(3, 1));
+        assert!(below(4, 2));
+        assert!(below(6, 2));
+        assert!(below(10, 2));
+        assert!(below(5, 3));
+        assert!(below(13, 3));
+        assert!(!below(1, 1));
+        assert!(!below(2, 2));
+        assert!(!below(3, 2));
+        assert!(!below(5, 2));
+        assert!(!below(1, 2));
+        assert!(!below(2, 0));
+        assert!(!below(0, 1));
+
+        for path in 2..u32::from(u16::MAX) {
+            let path = BigUint::from(path);
+            let parent = parent_path(&path).unwrap();
+            assert!(is_below(&path, &parent));
+            assert!(is_below(&first_path(&path), &parent));
+            assert!(!is_below(&parent, &path));
         }
     }
 

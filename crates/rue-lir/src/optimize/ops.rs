@@ -672,10 +672,6 @@ pub fn opt_if(
                 };
 
             if !inline {
-                if let Some(guarded) = implied_guard(arena, condition, then, otherwise) {
-                    return guarded;
-                }
-
                 if let Some(merged) = merge_checks(arena, target, condition, then, otherwise) {
                     return merged;
                 }
@@ -750,132 +746,6 @@ fn eager_logic(
     }
 
     None
-}
-
-/// `(a (i x (q . B) (q 8)) 1)` is `B` if `B` fails whenever `x` is nil, and `(a (i (l x) (q . B)
-/// (q 8)) 1)` is `B` if `B` fails whenever `x` is an atom. Both hold when every way through `B`
-/// reads into `x` (see [`fails_on_atom`]), as the fields of a struct are read after `assert value
-/// is Struct`. A list that ends in an atom other than nil fails the same way, since the check
-/// passes for it and reading into the atom fails.
-///
-/// This changes which failure is raised, but not whether the program fails, and a release build
-/// has nothing to tell one failure from another: CLVM has no side effects, and the cost of a spend
-/// that fails doesn't matter. The raise of a debug build has a message, so it's kept there.
-fn implied_guard(
-    arena: &Arena<Lir>,
-    condition: LirId,
-    then: LirId,
-    otherwise: LirId,
-) -> Option<LirId> {
-    if !matches!(&arena[otherwise], Lir::Raise(args) if args.is_empty()) {
-        return None;
-    }
-
-    let guarded = match arena[condition] {
-        Lir::Listp(value) => value,
-        _ => condition,
-    };
-
-    let mut budget = MAX_IMPLIED_GUARD_SIZE;
-    fails_on_atom(arena, then, guarded, &mut budget).then_some(then)
-}
-
-/// How many nodes of a value are looked at to find out whether it reads into the guarded value
-/// (see [`fails_on_atom`]), which bounds the work for each check.
-const MAX_IMPLIED_GUARD_SIZE: usize = 256;
-
-/// Whether evaluating the value always fails if the guarded value is an atom: on every way
-/// through it, it evaluates `(f x)` or `(r x)`, a path below `x` if `x` is a path, or a raise.
-/// Every operand of an operator is evaluated, and so are the condition of an `if` and, if it's
-/// inline, both of its branches. A quoted value isn't evaluated, and neither is the program that
-/// a run evaluates, which reads from the environment it's run with. This is conservative, so it
-/// can return `false` for a value that fails.
-fn fails_on_atom(arena: &Arena<Lir>, value: LirId, guarded: LirId, budget: &mut usize) -> bool {
-    let Some(rest) = budget.checked_sub(1) else {
-        return false;
-    };
-    *budget = rest;
-
-    if let (Lir::Path(path), Lir::Path(guarded)) = (&arena[value], &arena[guarded])
-        && is_below(path, guarded)
-    {
-        return true;
-    }
-
-    let mut any = |values: &[LirId]| {
-        values
-            .iter()
-            .any(|&value| fails_on_atom(arena, value, guarded, budget))
-    };
-
-    match &arena[value] {
-        Lir::Atom(_) | Lir::Path(_) | Lir::Quote(_) => false,
-        Lir::Raise(_) => true,
-        Lir::First(inner) | Lir::Rest(inner) => {
-            same_value(arena, *inner, guarded) || any(&[*inner])
-        }
-        Lir::If(condition, then, otherwise, inline) => {
-            if *inline {
-                any(&[*condition, *then, *otherwise])
-            } else {
-                any(&[*condition]) || (any(&[*then]) && any(&[*otherwise]))
-            }
-        }
-        Lir::Run(callee, env) => any(&[*callee, *env]),
-        Lir::Closure(_, args, _) => any(args),
-        Lir::Listp(inner)
-        | Lir::Not(inner)
-        | Lir::Strlen(inner)
-        | Lir::Lognot(inner)
-        | Lir::PubkeyForExp(inner)
-        | Lir::G1Negate(inner)
-        | Lir::G2Negate(inner) => any(&[*inner]),
-        Lir::Op(..) | Lir::DebugPrint(..) => false,
-        Lir::Cons(a, b)
-        | Lir::Div(a, b)
-        | Lir::Divmod(a, b)
-        | Lir::Mod(a, b)
-        | Lir::Eq(a, b)
-        | Lir::Gt(a, b)
-        | Lir::GtBytes(a, b)
-        | Lir::Ash(a, b)
-        | Lir::Lsh(a, b)
-        | Lir::G1Multiply(a, b)
-        | Lir::G2Multiply(a, b)
-        | Lir::Keccak256Verify(a, b) => any(&[*a, *b]),
-        Lir::Modpow(a, b, c)
-        | Lir::CoinId(a, b, c)
-        | Lir::K1Verify(a, b, c)
-        | Lir::R1Verify(a, b, c) => any(&[*a, *b, *c]),
-        Lir::Substr(a, b, c) => any(&[*a, *b]) || c.is_some_and(|c| any(&[c])),
-        Lir::G1Map(a, b) | Lir::G2Map(a, b) => any(&[*a]) || b.is_some_and(|b| any(&[b])),
-        Lir::Add(args)
-        | Lir::Sub(args)
-        | Lir::Mul(args)
-        | Lir::All(args)
-        | Lir::Any(args)
-        | Lir::Concat(args)
-        | Lir::Logand(args)
-        | Lir::Logior(args)
-        | Lir::Logxor(args)
-        | Lir::G1Add(args)
-        | Lir::G1Subtract(args)
-        | Lir::G2Add(args)
-        | Lir::G2Subtract(args)
-        | Lir::BlsPairingIdentity(args)
-        | Lir::Sha256(args)
-        | Lir::Sha256Inline(args)
-        | Lir::Keccak256(args)
-        | Lir::Keccak256Inline(args) => any(args),
-        Lir::BlsVerify(sig, args) => any(&[*sig]) || any(args),
-    }
-}
-
-/// Whether the path reads into the value at the other path, which fails if that value is an atom.
-fn is_below(path: &BigUint, guarded: &BigUint) -> bool {
-    let depth = guarded.bits().saturating_sub(1);
-    let mask = (BigUint::from(1u8) << depth) - 1u8;
-    guarded.bits() > 0 && path.bits() > guarded.bits() && (path & &mask) == (guarded & &mask)
 }
 
 /// How many nodes a condition can have and still be checked along with the one before it (see
@@ -1647,7 +1517,7 @@ pub fn opt_keccak256_verify(arena: &mut Arena<Lir>, value: LirId, hash: LirId) -
 /// Whether both values are the same expression, so they evaluate to the same result (or both
 /// fail) in the same environment. This is conservative, so it can return `false` for values
 /// that are the same.
-fn same_value(arena: &Arena<Lir>, left: LirId, right: LirId) -> bool {
+pub(super) fn same_value(arena: &Arena<Lir>, left: LirId, right: LirId) -> bool {
     if left == right {
         return true;
     }
