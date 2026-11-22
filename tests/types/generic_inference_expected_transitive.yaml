@@ -22,7 +22,7 @@ tests:
   total_cost: 565491
 - name: through_several_layers
   program: (+ (a (q . 2) (q 5)) (q . 1))
-  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 10 (c 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5)))) 1)) (c (c (q . 2) (c (q 2 2 (c 5 7)) (q 2 2 (c 3 ())))) ()))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 14 (c 10 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5)))) 1)) (c (c (q . 2) (c (q 2 2 (c 3 ())) (q 2 2 (c 5 7)))) ()))
   output: "6"
   runtime_cost: 955
   byte_cost: 252000
@@ -64,14 +64,14 @@ tests:
   total_cost: 252955
 - name: compound_result
   program: (f (a (q 4 2 ()) (q 5)))
-  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5))) 1)) (c (c (q 4 2 ()) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 (q 5 2) (c (a 4 (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (q . 5))) 1)) (c (c (q 2 2 (c 3 ())) (q 4 2 ())) ()))
   output: "5"
   runtime_cost: 305
   byte_cost: 276000
   total_cost: 276305
 - name: instantiated_generic_function
   program: (a (q 6 (a 2 (q 5))) (c (q 4 2 2) ()))
-  debug_program: (a (q 2 (q 6 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5))) 1)) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 (q 6 2) (c (a 4 (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (q . 5))) 1)) (c (c (q 2 2 (c 3 ())) (q 4 2 2)) ()))
   output: "5"
   runtime_cost: 563
   byte_cost: 444000

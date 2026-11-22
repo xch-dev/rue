@@ -32,13 +32,13 @@ tests:
   debug_clvm_error: clvm raise ("assertion failed at assert_message.rue:35:5" ("a must be larger" 2 5 -3))
 - name: fails_with_call
   program: (x)
-  debug_program: (a (q 2 4 (c 6 (c (c (q . 10) ()) (q . 25)))) (c (c (q 2 (q 2 (i (not (> 15 (f 11))) (q 5 11) (q 8 (q . "assertion failed at assert_message.rue:50:5") (c (a 5 11) (c (c (q . "short by") 2) ())))) 1) (c (- 7 (f 5)) 1)) (q 4 (q . "amount") (f 1))) ()))
+  debug_program: (a (q 2 6 (c 4 (c (c (q . 10) ()) (q . 25)))) (c (c (q 4 (q . "amount") (f 1)) (q 2 (q 2 (i (not (> 15 (f 11))) (q 5 11) (q 8 (q . "assertion failed at assert_message.rue:50:5") (c (a 5 11) (c (c (q . "short by") 2) ())))) 1) (c (- 7 (f 5)) 1))) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("assertion failed at assert_message.rue:50:5" (("amount" . 10) ("short by" . 15)))
 - name: passes_with_call
   program: (q . 30)
-  debug_program: (a (q 2 4 (c 6 (c (c (q . 30) ()) (q . 25)))) (c (c (q 2 (q 2 (i (not (> 15 (f 11))) (q 5 11) (q 8 (q . "assertion failed at assert_message.rue:50:5") (c (a 5 11) (c (c (q . "short by") 2) ())))) 1) (c (- 7 (f 5)) 1)) (q 4 (q . "amount") (f 1))) ()))
+  debug_program: (a (q 2 6 (c 4 (c (c (q . 30) ()) (q . 25)))) (c (c (q 4 (q . "amount") (f 1)) (q 2 (q 2 (i (not (> 15 (f 11))) (q 5 11) (q 8 (q . "assertion failed at assert_message.rue:50:5") (c (a 5 11) (c (c (q . "short by") 2) ())))) 1) (c (- 7 (f 5)) 1))) ()))
   output: "30"
   runtime_cost: 20
   byte_cost: 36000

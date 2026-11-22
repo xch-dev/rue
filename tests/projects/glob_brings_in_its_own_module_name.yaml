@@ -1,7 +1,7 @@
 tests:
 - name: glob_imports_can_bring_in_their_own_module_name
   program: (q . 11)
-  debug_program: (a (q 16 (+ 14 10) 4) (c (c (q . 3) (c (q . 1) (q . 7))) ()))
+  debug_program: (a (q 16 (+ 4 14) 10) (c (c (q . 7) (c (q . 3) (q . 1))) ()))
   output: "11"
   runtime_cost: 20
   byte_cost: 36000

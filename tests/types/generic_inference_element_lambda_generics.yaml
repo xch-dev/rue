@@ -105,12 +105,12 @@ tests:
   byte_cost: 2748000
   total_cost: 2756488
 - name: element_of_a_recursive_call_with_the_generics_swapped
-  program: (a (q 2 4 (c (c 6 4) (c (q . 2) (c (c (q 1 . 1) ()) (q 97 . 1))))) (c (c (q 2 (i (> 31 ()) (q 2 6 (c 2 (c 5 (c (c (q . 2) ()) (c 5 ()))))) (q 2 4 (c 4 (c 11 23)))) 1) (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) ()) 1)) ()))
-  debug_program: (a (q 2 4 (c (c 10 (c 4 14)) (c (q . 2) (c (c (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))) ()) (c (q . 97) (q . 1)))))) (c (c (q 2 (i (> 31 ()) (q 2 10 (c (c 4 (c 10 14)) (c 5 (c (c (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 14) (c (q . 1) ()))) ()))) ()) (c 5 ()))))) (q 2 4 (c 4 (c 11 23)))) 1) (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) ()) 1) (q . 1))) ()))
+  program: (a (q 2 6 (c 2 (c (q . 2) (c (c (q 1 . 1) ()) (q 97 . 1))))) (c (c (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) ()) 1) (q 2 (i (> 31 ()) (q 2 6 (c 2 (c 5 (c (c (q . 2) ()) (c 5 ()))))) (q 2 4 (c 4 (c 11 23)))) 1)) ()))
+  debug_program: (a (q 2 10 (c (c 4 (c 10 14)) (c (q . 2) (c (c (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))) ()) (c (q . 97) (q . 1)))))) (c (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) ()) 1) (c (q 2 (i (> 31 ()) (q 2 10 (c (c 4 (c 10 14)) (c 5 (c (c (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 14) (c (q . 1) ()))) ()))) ()) (c 5 ()))))) (q 2 4 (c 4 (c 11 23)))) 1) (q . 1))) ()))
   output: (2)
-  runtime_cost: 5004
-  byte_cost: 2436000
-  total_cost: 2441004
+  runtime_cost: 4897
+  byte_cost: 2364000
+  total_cost: 2368897
 - name: element_reads_a_later_argument
   program: (a (q 2 2 (c 2 (c (c (q 16 2 (q . 1)) ()) (q . 5)))) (c (q 2 (i 5 (q 4 (a 9 (c 7 ())) (a 2 (c 2 (c 13 7)))) ()) 1) ()))
   debug_program: (a (q 2 2 (c 2 (c (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) ()) (q . 5)))) (c (q 2 (i (not (not 5)) (q 4 (a (f 5) (c 7 ())) (a 2 (c 2 (c (r 5) 7)))) ()) 1) ()))
@@ -225,7 +225,7 @@ tests:
   total_cost: 517284
 - name: element_returns_what_a_call_without_arguments_reads
   program: (+ (a (q 1 . 7) (q 5)) (q . 1))
-  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))) (a 4 ())) (q . 5))) 1)) (c (c () (q 2 (f 2) (c 3 ()))) ()))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 4 (c (c (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))) (a 6 ())) (q . 5))) 1)) (c (c (q 2 (f 2) (c 3 ())) ()) ()))
   output: "8"
   runtime_cost: 927
   byte_cost: 276000
@@ -260,7 +260,7 @@ tests:
   total_cost: 564786
 - name: element_returns_what_a_typed_sibling_calls_with
   program: (a (q 1 . 7) (q 5))
-  debug_program: (a (q 2 (q . 2) (c (a 14 (c (c (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (a 5 (a 2 ())) 11)) (c (c (q . 4) (c (c (q . 1) 4) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ()))) ())))) (q . 5))) 1)) (c (c () (c (q . 1) (q 2 (f 2) (c 3 ())))) ()))
+  debug_program: (a (q 2 (q . 2) (c (a 14 (c (c (c (q . 2) (c (c (q . 1) (q 1 . 7)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (a 5 (a 2 ())) 11)) (c (c (q . 4) (c (c (q . 1) 10) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) ())))) (q . 5))) 1)) (c (c (q . 1) (c () (q 2 (f 2) (c 3 ())))) ()))
   output: "7"
   runtime_cost: 151
   byte_cost: 180000
@@ -365,7 +365,7 @@ tests:
   total_cost: 1047607
 - name: element_reads_a_field_of_a_path
   program: (a (q 4 (a 2 (c (c (q 1 . 7) (q 16 2 (q . 1))) (q . 5))) (a 2 (c (c (q 1 . 8) (q 16 2 (q . 1))) (q . 5)))) (c (q 2 6 (c (a 4 (c 3 ())) ())) ()))
-  debug_program: (a (q 2 (q 4 4 6) (c (c (a 4 (c (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (c (q . 4) (c (c (q . 1) 14) (c (q . 1) ()))) ()))) (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ())))) (q . 5))) (a 4 (c (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ()))) (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ())))) (q . 5)))) 1)) (c (c (q 2 (r 2) (c (a (f 2) (c 3 ())) ())) (c (c (q . 8) (q . 2)) (c (q . 7) (q . 1)))) ()))
+  debug_program: (a (q 2 (q 4 4 6) (c (c (a 4 (c (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (c (q . 4) (c (c (q . 1) 10) (c (q . 1) ()))) ()))) (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ())))) (q . 5))) (a 4 (c (c (c (q . 2) (c (c (q . 1) (q 5 2)) (c (c (q . 4) (c (c (q . 1) 14) (c (q . 1) ()))) ()))) (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ())))) (q . 5)))) 1)) (c (c (q 2 (r 2) (c (a (f 2) (c 3 ())) ())) (c (c (q . 7) (q . 1)) (c (q . 8) (q . 2)))) ()))
   output: (8 . 9)
   runtime_cost: 3615
   byte_cost: 1380000

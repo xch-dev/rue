@@ -15,7 +15,7 @@ tests:
   total_cost: 36020
 - name: glob_imports_of_files_in_the_root
   program: (q . 11)
-  debug_program: (a (q 2 8 (c (c 12 (c 10 14)) ())) (c (c (c (q 16 (a 14 10) 4) (q . 1)) (c (q . 5) (q 18 1 (q . 2)))) ()))
+  debug_program: (a (q 2 12 (c (c 8 (c 10 14)) ())) (c (c (c (q . 5) (q 16 (a 14 4) 10)) (c (q . 1) (q 18 1 (q . 2)))) ()))
   output: "11"
   runtime_cost: 20
   byte_cost: 36000

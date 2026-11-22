@@ -1,7 +1,7 @@
 tests:
 - name: issue_case
   program: (a (q 2 2 (q 42)) (c (q 4 2 2) ()))
-  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 42))) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 4 (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (q . 42))) (c (c (q 2 2 (c 3 ())) (q 4 2 2)) ()))
   output: (42 . 42)
   runtime_cost: 532
   byte_cost: 396000
@@ -29,7 +29,7 @@ tests:
   total_cost: 36020
 - name: through_several_layers
   program: (a (q 2 2 (q 6)) (c (q 4 2 2) ()))
-  debug_program: (a (q 2 10 (c 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 6)))) (c (c (q 4 2 2) (c (q 2 2 (c 5 7)) (q 2 2 (c 3 ())))) ()))
+  debug_program: (a (q 2 14 (c 4 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (q . 6)))) (c (c (q 2 2 (c 3 ())) (c (q 4 2 2) (q 2 2 (c 5 7)))) ()))
   output: (6 . 6)
   runtime_cost: 532
   byte_cost: 396000

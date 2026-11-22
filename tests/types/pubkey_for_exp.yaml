@@ -7,8 +7,8 @@ tests:
   byte_cost: 4308000
   total_cost: 5118293
 - name: int_exponent_reduced
-  program: (a (q 2 (i (= (q . 0xb7f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb) (g1_negate 6)) (q 2 (i (= (pubkey_for_exp 4) (point_add)) (q 2 (i (= (pubkey_for_exp (+ 4 (q . 1))) 6) () (q 8)) 1) (q 8)) 1) (q 8)) 1) (q (0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001 . 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb)))
-  debug_program: (a (q 2 (i (= (pubkey_for_exp (- () (q . 1))) (g1_negate 10)) (q 2 (i (= (pubkey_for_exp 4) 14) (q 2 (i (= (pubkey_for_exp (+ 4 (q . 1))) 10) () (q 8 (q . "assertion failed at pubkey_for_exp.rue:17:5"))) 1) (q 8 (q . "assertion failed at pubkey_for_exp.rue:16:5"))) 1) (q 8 (q . "assertion failed at pubkey_for_exp.rue:15:5"))) 1) (c (c (q . 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001) (c (q . 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb) (point_add))) ()))
+  program: (a (q 2 (i (= (q . 0xb7f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb) (g1_negate 4)) (q 2 (i (= (pubkey_for_exp 6) (point_add)) (q 2 (i (= (pubkey_for_exp (+ 6 (q . 1))) 4) () (q 8)) 1) (q 8)) 1) (q 8)) 1) (q (0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb . 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001)))
+  debug_program: (a (q 2 (i (= (pubkey_for_exp (- () (q . 1))) (g1_negate 4)) (q 2 (i (= (pubkey_for_exp 10) 14) (q 2 (i (= (pubkey_for_exp (+ 10 (q . 1))) 4) () (q 8 (q . "assertion failed at pubkey_for_exp.rue:17:5"))) 1) (q 8 (q . "assertion failed at pubkey_for_exp.rue:16:5"))) 1) (q 8 (q . "assertion failed at pubkey_for_exp.rue:15:5"))) 1) (c (c (q . 0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb) (c (q . 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001) (point_add))) ()))
   output: ()
   runtime_cost: 2760701
   byte_cost: 2916000

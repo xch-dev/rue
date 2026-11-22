@@ -22,7 +22,7 @@ tests:
   total_cost: 2860119
 - name: other_functions
   program: (q 5 . 5)
-  debug_program: (a (q 2 (q 4 4 6) (c (c (a 6 (c () (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))))) (a 4 (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))) ()))) 1)) (c (c (q 2 2 (c 3 ())) (q 2 3 (c 2 ()))) ()))
+  debug_program: (a (q 2 (q 4 4 6) (c (c (a 4 (c () (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))))) (a 6 (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))) ()))) 1)) (c (c (q 2 3 (c 2 ())) (q 2 2 (c 3 ()))) ()))
   output: (5 . 5)
   runtime_cost: 20
   byte_cost: 60000
@@ -64,7 +64,7 @@ tests:
   total_cost: 708947
 - name: other_steps
   program: (a (q 4 (a (i (l 4) () (q 2 (i 6 () (q . 4)) 1)) 1) (q (q) 4 . 5)) (c (q 2 . 3) 1))
-  debug_program: (a (q 2 (q 4 (a (i (a (i (not (l (f 4))) (q 2 (i (not (l (r 4))) (q 9 (r 4) ()) ()) 1) ()) 1) (q 5 4) ()) 1) (c (a 45 (c 9 (q . 1))) (c (a 21 (c 9 (q . 4))) 6))) (c (c (a 30 (c 4 (c (c (q . 1) ()) (c (q . 2) (q . 3))))) (a 4 (c () (c (q . 2) (c (c (q . 1) (q 2 (q . 2) (c (q . 5) 1))) (c (q . 1) ())))))) 1)) (c (c (q 2 3 (c 2 ())) (c (q 2 2 (c 3 (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))) (c (q 2 2 (c () (c (q . 2) (c (c (q . 1) (q 4 (q . 1) 2)) (c (q . 1) ()))))) (q 2 (q 2 (q . 2) (c 2 1)) (c (a 2 (c 5 (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 7) (c (q . 1) ()))) ()))))) 1))))) ()))
+  debug_program: (a (q 2 (q 4 (a (i (a (i (not (l (f 4))) (q 2 (i (not (l (r 4))) (q 9 (r 4) ()) ()) 1) ()) 1) (q 5 4) ()) 1) (c (a 45 (c 9 (q . 1))) (c (a 61 (c 9 (q . 4))) 6))) (c (c (a 10 (c 4 (c (c (q . 1) ()) (c (q . 2) (q . 3))))) (a 4 (c () (c (q . 2) (c (c (q . 1) (q 2 (q . 2) (c (q . 5) 1))) (c (q . 1) ())))))) 1)) (c (c (q 2 3 (c 2 ())) (c (q 2 (q 2 (q . 2) (c 2 1)) (c (a 2 (c 5 (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 7) (c (q . 1) ()))) ()))))) 1)) (c (q 2 2 (c () (c (q . 2) (c (c (q . 1) (q 4 (q . 1) 2)) (c (q . 1) ()))))) (q 2 2 (c 3 (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) ()))
   output: (() (1) 4 . 5)
   runtime_cost: 931
   byte_cost: 828000

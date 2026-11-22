@@ -1,0 +1,12 @@
+program: (a (q 2 4 (c 2 5)) (c (c (q 2 (i (l 3) (q 2 6 1) (q 1 . 1)) 1) (q 2 (i 3 (q 16 (a 4 (c 2 5)) (a 6 (c 2 7))) ()) 1)) 1))
+debug_program: (a (q 2 4 (c (c 4 6) 5)) (c (c (q 2 (i (not (l 3)) (q 1 . 1) (q 2 6 (c (c 4 6) 3))) 1) (q 2 (i (not 3) () (q 16 (a 4 (c (c 4 6) (f 3))) (a 6 (c (c 4 6) (r 3))))) 1)) 1))
+byte_cost: 1356000
+clvm_error: path into atom
+tests:
+- name: sizes_of_trees
+  program: (a (q 2 4 (c 2 (q 1 (a 3) ((c) 5)))) (c (c (q 2 (i (l 3) (q 2 6 1) (q 1 . 1)) 1) (q 2 (i 3 (q 16 (a 4 (c 2 5)) (a 6 (c 2 7))) ()) 1)) ()))
+  debug_program: (a (q 2 4 (c (c 4 6) (c (q . 1) (c (c (q . 2) (c (q . 3) ())) (c (c (c (q . 4) ()) (c (q . 5) ())) ()))))) (c (c (q 2 (i (not (l 3)) (q 1 . 1) (q 2 6 (c (c 4 6) 3))) 1) (q 2 (i (not 3) () (q 16 (a 4 (c (c 4 6) (f 3))) (a 6 (c (c 4 6) (r 3))))) 1)) ()))
+  output: "5"
+  runtime_cost: 18188
+  byte_cost: 1572000
+  total_cost: 1590188

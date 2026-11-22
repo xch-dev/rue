@@ -1,7 +1,7 @@
 tests:
 - name: function_matches_the_generic_member
   program: (a (q 16 2 (q . 1)) (q 1))
-  debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q 16 2 (q . 1)) (q . 1)) ()))
+  debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (a 4 (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ())))) 1)) (c (c (q . 1) (q 16 2 (q . 1))) ()))
   output: "2"
   runtime_cost: 955
   byte_cost: 252000
@@ -244,7 +244,7 @@ tests:
   total_cost: 36020
 - name: argument_of_a_concrete_parameter_in_a_provisional_argument
   program: (q . 5)
-  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 29 (c (q . 5) (a 21 (a 9 2)))) 1)) (c (q . 5) 1)) (c (c (q . 1) (c (q . 1) (q . 2))) ()))
+  debug_program: (a (q 2 (q 2 (q 16 2 ()) (c (a 21 (c (q . 5) (a 29 (a 9 2)))) 1)) (c (q . 5) 1)) (c (c (q . 1) (c (q . 2) (q . 1))) ()))
   output: "5"
   runtime_cost: 20
   byte_cost: 36000

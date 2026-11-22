@@ -1,49 +1,49 @@
 tests:
 - name: a_entrypoint
   program: (q . "Hello, world!")
-  debug_program: (a (q 2 4 (c (c 10 14) ())) (c (c (q 14 (a 6 ()) (a 4 ())) (c (q 1 . "world!") (q 1 . "Hello, "))) ()))
+  debug_program: (a (q 2 10 (c (c 4 14) ())) (c (c (q 1 . "world!") (c (q 14 (a 6 ()) (a 4 ())) (q 1 . "Hello, "))) ()))
   output: "\"Hello, world!\""
   runtime_cost: 20
   byte_cost: 192000
   total_cost: 192020
 - name: b_entrypoint
   program: (q . "Hello, world!")
-  debug_program: (a (q 2 4 (c (c 10 14) ())) (c (c (q 14 (a 6 ()) (a 4 ())) (c (q 1 . "world!") (q 1 . "Hello, "))) ()))
+  debug_program: (a (q 2 14 (c (c 4 10) ())) (c (c (q 1 . "world!") (c (q 1 . "Hello, ") (q 14 (a 6 ()) (a 4 ())))) ()))
   output: "\"Hello, world!\""
   runtime_cost: 20
   byte_cost: 192000
   total_cost: 192020
 - name: targeted_import_wins_after_glob
   program: (q . 42)
-  debug_program: (a (q 2 4 (c (c 10 14) (q . 1))) (c (c (q 16 (+ 6 4) 3) (c (q . 1) (q . 40))) ()))
+  debug_program: (a (q 2 14 (c (c 4 10) (q . 1))) (c (c (q . 1) (c (q . 40) (q 16 (+ 6 4) 3))) ()))
   output: "42"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: targeted_import_wins_before_glob
   program: (q . 42)
-  debug_program: (a (q 2 4 (c (c 10 14) (q . 1))) (c (c (q 16 (+ 6 4) 3) (c (q . 1) (q . 40))) ()))
+  debug_program: (a (q 2 14 (c (c 4 10) (q . 1))) (c (c (q . 1) (c (q . 40) (q 16 (+ 6 4) 3))) ()))
   output: "42"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: unused_glob_collisions_are_allowed_in_first_order
   program: (q . 72)
-  debug_program: (a (q 2 8 (c (c 12 (c 10 14)) ())) (c (c (c (q 16 (+ 14 10) 4) (q . 2)) (c (q . 30) (q . 40))) ()))
+  debug_program: (a (q 2 14 (c (c 8 (c 12 10)) ())) (c (c (c (q . 30) (q . 40)) (c (q . 2) (q 16 (+ 10 4) 14))) ()))
   output: "72"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: unused_glob_collisions_are_allowed_in_second_order
   program: (q . 72)
-  debug_program: (a (q 2 8 (c (c 12 (c 10 14)) ())) (c (c (c (q 16 (+ 14 10) 4) (q . 2)) (c (q . 30) (q . 40))) ()))
+  debug_program: (a (q 2 14 (c (c 8 (c 12 10)) ())) (c (c (c (q . 30) (q . 40)) (c (q . 2) (q 16 (+ 10 4) 14))) ()))
   output: "72"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: globbed_declarations_are_used
   program: (q . "used")
-  debug_program: (a (q 2 4 (c 6 (q . "used"))) (c (c (q 2 (i (> 2 ()) (q . 3) (q 8 (q . "assertion failed at import_order.rue:40:9"))) 1) (q . 2)) ()))
+  debug_program: (a (q 2 6 (c 4 (q . "used"))) (c (c (q . 2) (q 2 (i (> 2 ()) (q . 3) (q 8 (q . "assertion failed at import_order.rue:40:9"))) 1)) ()))
   output: "\"used\""
   runtime_cost: 20
   byte_cost: 84000

@@ -8,7 +8,7 @@ tests:
   total_cost: 156179
 - name: instantiate_with_free_generic
   program: (a (q 16 4 6) (c (a (q . 2) (q (q . 2))) 1))
-  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 4 (c 6 (c (q . 1) (q . 2)))) 1)) (c (c (q 2 (q 2 2 (c 7 ())) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (q . 2)) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 6 (c 4 (c (q . 1) (q . 2)))) 1)) (c (c (q . 2) (q 2 (q 2 2 (c 7 ())) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1))) ()))
   output: "3"
   runtime_cost: 1245
   byte_cost: 420000

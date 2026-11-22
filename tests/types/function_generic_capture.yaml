@@ -30,7 +30,7 @@ tests:
   total_cost: 36020
 - name: explicit_generic_arguments
   program: (a (q . 2) (c (a (q 1 . 42) (q (q . 2))) ()))
-  debug_program: (a (q 2 (q 2 4 (c (a 6 (c (c (q . 1) (q . 2)) ())) ())) (c (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (a 4 (q . 42))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))) (q . 2)) ()))
+  debug_program: (a (q 2 (q 2 4 (c (a 6 (c (c (q . 1) (q . 2)) ())) ())) (c (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (a 6 (q . 42))) 1)) (c (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ())))) ()))
   output: "42"
   runtime_cost: 405
   byte_cost: 372000

@@ -43,7 +43,7 @@ tests:
   total_cost: 84702
 - name: left_raises
   program: (all)
-  debug_program: (a (q 2 4 (c 6 (c (q . 1) (q . 1)))) (c (c (q 34 (a 2 5) 7) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1)) ()))
+  debug_program: (a (q 2 6 (c 4 (c (q . 1) (q . 1)))) (c (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1) (q 34 (a 2 5) 7)) ()))
   output: "1"
   runtime_cost: 201
   byte_cost: 36000
@@ -71,7 +71,7 @@ tests:
   total_cost: 36020
 - name: allowed
   program: (all ())
-  debug_program: (a (q 2 4 (c 6 (c () (q . 1)))) (c (c (q 34 5 (a 2 7)) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1)) ()))
+  debug_program: (a (q 2 6 (c 4 (c () (q . 1)))) (c (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1) (q 34 5 (a 2 7))) ()))
   output: ()
   runtime_cost: 545
   byte_cost: 60000

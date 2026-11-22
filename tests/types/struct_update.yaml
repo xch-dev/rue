@@ -73,7 +73,7 @@ tests:
   total_cost: 516400
 - name: update_narrowed_union_atom
   program: (a (i (l 2) (q 4 (q . 1) 6) (q 4 2 (q () ()))) 1)
-  debug_program: (a (q 2 4 (c 6 5)) (c (c (q 2 (i (l 3) (q 4 (q . 1) (r 3)) (q 2 (q 4 7 (r 2)) (c (a 2 ()) 1))) 1) (q 4 () (c () (c () ())))) 1))
+  debug_program: (a (q 2 6 (c 4 5)) (c (c (q 4 () (c () (c () ()))) (q 2 (i (l 3) (q 4 (q . 1) (r 3)) (q 2 (q 4 7 (r 2)) (c (a 2 ()) 1))) 1)) 1))
   solution: (5)
   output: (5 () ())
   runtime_cost: 396

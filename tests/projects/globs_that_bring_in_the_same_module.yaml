@@ -1,7 +1,7 @@
 tests:
 - name: glob_imports_of_the_same_module_are_not_ambiguous
   program: (q . 10)
-  debug_program: (a (q 16 6 4) (c (c (q . 3) (q . 7)) ()))
+  debug_program: (a (q 16 4 6) (c (c (q . 7) (q . 3)) ()))
   output: "10"
   runtime_cost: 20
   byte_cost: 36000

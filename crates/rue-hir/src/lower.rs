@@ -1986,6 +1986,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     fn create_group(&self, symbols: Vec<SymbolId>, is_tree: bool) -> SymbolGroup {
         if is_tree {
             let mut referenced_symbols = IndexMap::new();
+            let mut symbols = symbols;
+
+            // Symbols that are referenced equally often are laid out in the order they were
+            // defined in, rather than the order they were found in, so that functions that
+            // capture the same symbols, such as a recursive function and a loop that calls each
+            // other, have the same tree, which each passes on to the other as it is
+            symbols.sort();
 
             for symbol in symbols {
                 referenced_symbols.insert(symbol, self.graph.layout_references(symbol));

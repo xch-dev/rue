@@ -1,7 +1,7 @@
 tests:
 - name: attributes
   program: (+ (i () (i () (x) ()) (q . 1)) (q . 4))
-  debug_program: (a (q 16 (+ (+ (a 14 (q . 2)) (a 10 ())) (a 12 (q . 1))) (a 8 (q . 1))) (c (c (c (q 2 (i 1 (q 1 . 1) (q 1 . 2)) 1) (q 3 () (i (= 1 ()) (a (i (= 1 ()) () (q 8 (q . "assertion failed at statement_attributes.rue:42:13"))) 1) ()) 1)) (c (q 3 () (a (i ("debug_print" (q . "statement_attributes.rue:28:13") 1) () ()) 1) (q . 2)) (q 2 (i (> 1 (q . 1)) (q 1 . 1) (q . 1)) 1))) ()))
+  debug_program: (a (q 16 (+ (+ (a 8 (q . 2)) (a 12 ())) (a 10 (q . 1))) (a 14 (q . 1))) (c (c (c (q 2 (i (> 1 (q . 1)) (q 1 . 1) (q . 1)) 1) (q 3 () (a (i ("debug_print" (q . "statement_attributes.rue:28:13") 1) () ()) 1) (q . 2))) (c (q 3 () (i (= 1 ()) (a (i (= 1 ()) () (q 8 (q . "assertion failed at statement_attributes.rue:42:13"))) 1) ()) 1) (q 2 (i 1 (q 1 . 1) (q 1 . 2)) 1))) ()))
   byte_cost: 348000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at statement_attributes.rue:42:13"

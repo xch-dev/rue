@@ -40,18 +40,11 @@ tests:
   byte_cost: 1188000
   total_cost: 1192122
 - name: function_and_loop_that_call_each_other
-  program: (a (q 2 4 (c (c 10 4) (a 14 (q 1 (a 3) ((c) 5))))) (c (c (q 2 (i (l 3) (q 2 4 (c (c 6 4) 3)) (q 1 . 1)) 1) (c (q 2 (i 3 (q 16 (a 4 (c (c 6 4) 5)) (a 6 (c 2 7))) ()) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1))) ()))
-  debug_program: (a (q 2 4 (c (c 10 (c 4 30)) (a 22 (c (q . 1) (c (c (q . 2) (c (q . 3) ())) (c (c (c (q . 4) ()) (c (q . 5) ())) ())))))) (c (c (q 2 (i (not (l 3)) (q 1 . 1) (q 2 14 (c (c 4 (c 10 14)) 3))) 1) (c (q 2 (i 3 (q 2 (q 16 (a 9 (c (c 21 (c 9 29)) (f 7))) 2) (c (a 10 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1) (q 2 4 (c (c 10 (c 4 14)) 3))))) ()))
+  program: (a (q 2 4 (c 2 (a (q 2 (i (l 2) (q . 2) (q 2 (i 2 (q 8) (q . 2)) 1)) 1) (c (q 1 (a 3) ((c) 5)) 1)))) (c (c (q 2 (i (l 3) (q 2 6 1) (q 1 . 1)) 1) (q 2 (i 3 (q 16 (a 4 (c 2 5)) (a 6 (c 2 7))) ()) 1)) ()))
+  debug_program: (a (q 2 4 (c (c 4 (c 10 30)) (a 22 (c (q . 1) (c (c (q . 2) (c (q . 3) ())) (c (c (c (q . 4) ()) (c (q . 5) ())) ())))))) (c (c (q 2 (i (not (l 3)) (q 1 . 1) (q 2 14 (c (c 4 (c 10 14)) 3))) 1) (c (q 2 (i 3 (q 2 (q 16 (a 9 (c (c 9 (c 21 29)) (f 7))) 2) (c (a 10 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1) (q 2 10 (c (c 4 (c 10 14)) 3))))) ()))
   output: "5"
-  runtime_cost: 20530
-  byte_cost: 2532000
-  total_cost: 2552530
-- name: function_whose_loop_passes_its_parameter_back
-  program: (a (q 2 4 (c (c 10 4) (c (a 14 (q 1 (a 3) ((c) 5))) (q . 3)))) (c (c (q 2 (i (l 5) (q 2 4 (c (c 6 (c 7 4)) 5)) (q . 7)) 1) (c (q 2 (i 3 (q 16 (a 14 (c 2 7)) (a 4 (c (c 14 4) (c 5 10)))) ()) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1))) ()))
-  debug_program: (a (q 2 4 (c (c 10 4) (c (a 14 (c (q . 1) (c (c (q . 2) (c (q . 3) ())) (c (c (c (q . 4) ()) (c (q . 5) ())) ())))) (q . 3)))) (c (c (q 2 (i (not (l 5)) (q . 7) (q 2 4 (c (c 6 (c 7 4)) 5))) 1) (c (q 2 (i 3 (q 2 (q 16 2 (a 9 (c (c 29 9) (c (f 7) 21)))) (c (a 14 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_lowering.rue:5:5"))) 1))) ()))
-  output: "15"
-  runtime_cost: 22145
-  byte_cost: 2748000
-  total_cost: 2770145
+  runtime_cost: 18719
+  byte_cost: 2244000
+  total_cost: 2262719
 diagnostics:
 - Value returned by statement is unused at for_lowering.rue:41:9

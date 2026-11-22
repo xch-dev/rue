@@ -15,7 +15,7 @@ tests:
   total_cost: 661678
 - name: lambda_parameter_takes_the_expected_bound
   program: (q . 5)
-  debug_program: (a (q 2 (q . 2) (c (a 6 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))))) 1)) (c (c (q . 1) (q . 2)) ()))
+  debug_program: (a (q 2 (q . 2) (c (a 4 (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 2 5)) (c (c (q . 4) (c (c (q . 1) 6) (c (q . 1) ()))) ()))))) 1)) (c (c (q . 2) (q . 1)) ()))
   output: "5"
   runtime_cost: 20
   byte_cost: 36000
@@ -78,7 +78,7 @@ tests:
   total_cost: 36020
 - name: narrower_mapping_kept_without_arguments_or_with_a_lambda
   program: (a (q 16 (i () (a (q 1 . 1) (q 5)) (q . 5)) (q . 16)) (c (q . 2) ()))
-  debug_program: (a (q 2 (q 16 (+ (+ (+ (+ (+ (+ 16 24) 20) 28) 18) 26) 22) 30) (c (c (c (c (a 8 (c (a 42 ()) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) (a 126 (c (q . 5) (a 94 (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ()))))))) (c (a 8 (c (a 46 (a 42 ())) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) (a 8 (c (a 118 (q . 1)) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 12) (c (q . 1) ()))) ())))))))) (c (c (a 8 (c (a 86 ()) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 12) (c (q . 1) ()))) ())))))) (a 8 (c (a 18 ()) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ()))))))) (c (a 8 (c (a 18 ()) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) (a 8 (c (a 38 (c (q . 2) (c (c (q . 1) 58) (c (q . 1) ())))) (c (q . 5) (c (q . 2) (c (c (q . 1) 12) (c (q . 1) ()))))))))) 1)) (c (c (c (q . 2) (q . 2)) (c (c (q . 1) (c (q 1 . 5) (q . 2))) (c (c (q 1 . 5) (c (q . 1) (q . 1))) (c (q . 1) (c (q . 1) (q 3 () (a 3 (c 2 ())) 2)))))) ()))
+  debug_program: (a (q 2 (q 16 (+ (+ (+ (+ (+ (+ 16 24) 20) 28) 18) 26) 22) 30) (c (c (c (c (a 8 (c (a 18 ()) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) (a 86 (c (q . 5) (a 38 (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ()))))))) (c (a 8 (c (a 58 (a 18 ())) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) (a 8 (c (a 118 (q . 1)) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 12) (c (q . 1) ()))) ())))))))) (c (c (a 8 (c (a 46 ()) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 12) (c (q . 1) ()))) ())))))) (a 8 (c (a 42 ()) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ()))))))) (c (a 8 (c (a 42 ()) (c (q . 5) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) (a 8 (c (a 94 (c (q . 2) (c (c (q . 1) 126) (c (q . 1) ())))) (c (q . 5) (c (q . 2) (c (c (q . 1) 12) (c (q . 1) ()))))))))) 1)) (c (c (c (q . 2) (q . 2)) (c (c (q 1 . 5) (c (q . 1) (q . 1))) (c (c (q . 1) (c (q 3 () (a 3 (c 2 ())) 2) (q . 1))) (c (q . 1) (c (q 1 . 5) (q . 2)))))) ()))
   output: "21"
   runtime_cost: 1251
   byte_cost: 588000
@@ -92,14 +92,14 @@ tests:
   total_cost: 2632833
 - name: widened_call_keeps_what_fits_the_narrower_type
   program: (q . 10)
-  debug_program: (a (q 2 (q 16 (f 4) (f 6)) (c (c (a 10 (c (a 30 (c (q . 5) (q . 5))) (c (c (q . 5) (q . 5)) (c (q . 2) (c (c (q . 1) (q 2 2 (f 5))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ())))))) (a 10 (c (a 22 (q . 5)) (c (c (q . 5) (q . 5)) (c (q . 2) (c (c (q . 1) (q 2 2 (f 5))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))))))) 1)) (c (c (q . 1) (c (q . 2) (c (q 4 1 (q . 1)) (q 4 2 3)))) ()))
+  debug_program: (a (q 2 (q 16 (f 4) (f 6)) (c (c (a 10 (c (a 22 (c (q . 5) (q . 5))) (c (c (q . 5) (q . 5)) (c (q . 2) (c (c (q . 1) (q 2 2 (f 5))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ())))))) (a 10 (c (a 30 (q . 5)) (c (c (q . 5) (q . 5)) (c (q . 2) (c (c (q . 1) (q 2 2 (f 5))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))))))) 1)) (c (c (q . 1) (c (q . 2) (c (q 4 2 3) (q 4 1 (q . 1))))) ()))
   output: "10"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: widened_pair_takes_a_value_the_narrower_type_doesnt_hold
   program: (q . 6)
-  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (a 4 (c (q . 6) (q . 2))) (c (c (q . 5) (q . 1)) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))) 1)) (c (c (q 4 2 3) (q . 2)) ()))
+  debug_program: (a (q 2 (q 5 2) (c (a 4 (c (a 6 (c (q . 6) (q . 2))) (c (c (q . 5) (q . 1)) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))) 1)) (c (c (q . 2) (q 4 2 3)) ()))
   output: "6"
   runtime_cost: 20
   byte_cost: 36000
