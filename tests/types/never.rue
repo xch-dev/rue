@@ -113,3 +113,41 @@ test fn match_on_never() -> Int {
     let _function: fn(never: Never) -> Int = match_never;
     5
 }
+
+// A value with no values can be cast to any other type with no values, as before
+type Ints = (Int, Ints);
+type Strings = (String, Strings);
+
+fn recursive_cast(ints: Ints) -> Strings {
+    ints as Strings
+}
+
+fn pair_cast(pair: (Int, Never)) -> (Bytes, Never) {
+    pair as (Bytes, Never)
+}
+
+fn never_cast(never: Never) -> (Int, Never) {
+    never as (Int, Never)
+}
+
+test fn casts_without_values() -> Int {
+    let _recursive: fn(ints: Ints) -> Strings = recursive_cast;
+    let _pair: fn(pair: (Int, Never)) -> (Bytes, Never) = pair_cast;
+    let _never: fn(never: Never) -> (Int, Never) = never_cast;
+    6
+}
+
+// An enum without variants has no values either
+enum Empty {}
+
+fn match_empty(empty: Empty) -> Int {
+    match empty {
+        Int => 1,
+        _ => 2,
+    }
+}
+
+test fn match_on_empty_enum() -> Int {
+    let _function: fn(empty: Empty) -> Int = match_empty;
+    8
+}

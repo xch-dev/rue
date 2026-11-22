@@ -20,7 +20,9 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                     .to_string()
             }
             UnreachableReason::NoValues(ty) => {
-                format!("Unreachable match arm, since the matched value's type `{ty}` has no values")
+                format!(
+                    "Unreachable match arm, since the matched value's type `{ty}` has no values"
+                )
             }
             UnreachableReason::Indistinguishable { members, .. } => format!(
                 "Unreachable match arm, since an earlier arm also handles {members}, which it can't tell apart from its own type at runtime"

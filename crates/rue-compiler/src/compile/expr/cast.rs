@@ -2,6 +2,7 @@ use log::debug;
 use rue_ast::{AstCastExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, Value};
+use rue_types::Comparison;
 
 use crate::{Compiler, compile_expr, compile_type};
 
@@ -21,15 +22,26 @@ pub fn compile_cast_expr(ctx: &mut Compiler, cast: &AstCastExpr) -> Value {
         ctx.unresolved()
     };
 
-    // Nothing can be cast to a type without values, such as `Never`. The cast is unresolved, so
-    // that the code after it isn't reported as unreachable because of the mistake.
+    // Nothing can be cast to a type without values, such as `Never`, from one with values. That's
+    // clearer to say than that they're represented differently, and the cast is unresolved, so
+    // that the code after it isn't reported as unreachable because of the mistake. A value with
+    // an error in it was already reported, so it's only made unresolved.
     if rue_types::is_uninhabited(ctx.types_mut(), ty)
-        && ctx.try_is_assignable(expr.ty, ty) == Ok(false)
+        && !rue_types::is_uninhabited(ctx.types_mut(), expr.ty)
     {
-        let from = ctx.type_name(expr.ty);
-        let to = ctx.type_name(ty);
-        ctx.diagnostic(cast.syntax(), DiagnosticKind::UninhabitedCast(from, to));
-        return ctx.unresolved();
+        if rue_types::contains_unresolved(ctx.types(), expr.ty) {
+            return ctx.unresolved();
+        }
+
+        let builtins = ctx.builtins().types;
+        let comparison = rue_types::compare_limited(ctx.types_mut(), &builtins, expr.ty, ty);
+
+        if comparison == Ok(Comparison::Invalid) {
+            let from = ctx.type_name(expr.ty);
+            let to = ctx.type_name(ty);
+            ctx.diagnostic(cast.syntax(), DiagnosticKind::UninhabitedCast(from, to));
+            return ctx.unresolved();
+        }
     }
 
     ctx.cast_type(cast.syntax(), expr.ty, ty);

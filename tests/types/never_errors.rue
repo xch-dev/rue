@@ -29,6 +29,19 @@ fn cast_to_uninhabited_pair(value: (Int, Int)) -> Int {
     1
 }
 
+enum Empty {}
+
+fn cast_to_empty_enum(value: Any) -> Int {
+    let _empty = value as Empty;
+    1
+}
+
+// The value's error is reported, and the code after the cast isn't reported as unreachable
+fn cast_unresolved() -> Int {
+    let _never = undeclared as Never;
+    1
+}
+
 fn guard(value: Int | Bytes) -> Int {
     if value is Never {
         1
@@ -53,4 +66,6 @@ test fn main() -> Int {
         + call()
         + function_type()()
         + after_call()
+        + cast_to_empty_enum(1)
+        + cast_unresolved()
 }

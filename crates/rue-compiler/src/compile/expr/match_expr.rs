@@ -67,8 +67,6 @@ pub fn compile_match_expr(
     let mut remaining = rue_types::substitute(ctx.types_mut(), scrutinee.ty);
     let substituted = remaining;
     let mut remaining_members = members(ctx, remaining);
-    // A value whose type has no values, such as `Never`, is never matched by any arm
-    let no_values = remaining_members.is_empty();
     let mut catch_all = None;
     let mut branches = Vec::new();
     let mut else_branch = None;
@@ -130,13 +128,14 @@ pub fn compile_match_expr(
             }
         };
 
-        // Once an arm has handled every value that's left, the ones after it are never taken
+        // Once an arm has handled every value that's left, the ones after it are never taken. An
+        // arm that handles the last members is a catch-all, so without one there are no members
+        // left only if the value's type has none, such as `Never`, and then no arm is taken.
         if catch_all.is_some() || remaining_members.is_empty() {
             if !has_error {
                 let reason = match catch_all.clone() {
                     Some(catch_all) => UnreachableReason::CatchAll(catch_all),
-                    None if no_values => UnreachableReason::NoValues(ctx.type_name(scrutinee.ty)),
-                    None => UnreachableReason::Handled,
+                    None => UnreachableReason::NoValues(ctx.type_name(scrutinee.ty)),
                 };
                 report_unreachable(ctx, pattern_srcloc, pattern, reason, &mut indistinguishable);
             }
