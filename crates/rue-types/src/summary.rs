@@ -44,6 +44,15 @@ pub(crate) fn take_work() -> usize {
     WORK.with(|work| work.replace(0))
 }
 
+/// Forgets the work that canonicalizing summaries has done on this thread since it was last taken,
+/// when a comparison starts, so that it's only charged for its own, rather than for what one that
+/// was stopped partway left, or what was done outside of a comparison. That's only what was done
+/// since the last step of a comparison that one starts inside of (see `holds_without_inference`),
+/// which was never charged to that comparison either: the inner one took it.
+pub(crate) fn forget_work() {
+    WORK.with(|work| work.set(0));
+}
+
 /// A binder in a summary's coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum Var {

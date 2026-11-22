@@ -459,3 +459,53 @@ fn reference_after_guarded_reference_is_non_contractive() {
         vec![t0, id]
     );
 }
+
+/// The types substituting makes, in the order they're made, when each of `count` generics is
+/// mapped to a pair of its own: through the mappings substituting is given if `apply` is unset, or
+/// through an application of an alias with those generics otherwise.
+fn substituted_in_order(count: usize, apply: bool) -> Vec<String> {
+    let mut db = Types::new();
+    let BuiltinTypes { int, bytes, .. } = db.builtins;
+    let generics: Vec<TypeId> = (0..count).map(|i| db.generic(&format!("T{i}"))).collect();
+    let list = db.list_of(&generics);
+    let mappings: Vec<(TypeId, TypeId)> = generics
+        .iter()
+        .enumerate()
+        .map(|(i, &generic)| {
+            let item = if i % 2 == 0 { int } else { bytes };
+            let inner = db.pair(item, int);
+            (generic, db.pair(inner, bytes))
+        })
+        .collect();
+
+    let (ty, mappings) = if apply {
+        let alias = db.declare_alias("A", &generics);
+        db.define(alias, list);
+        (db.apply(alias, &mappings), HashMap::new())
+    } else {
+        (list, mappings.into_iter().collect())
+    };
+
+    let before = db.arena.len();
+    substitute_with_mappings(&mut db.arena, ty, &mappings);
+    let made: Vec<TypeId> = db.arena.iter().skip(before).map(|(id, _)| id).collect();
+    made.into_iter()
+        .map(|id| format!("{id:?} {}", stringify(&mut db.arena, id)))
+        .collect()
+}
+
+/// Substituting makes its types in the same order every time, whatever order the `HashMap`s of
+/// the mappings it's given and of an application's arguments iterate in, which `std`'s differs for
+/// each map (and each process). Which types are made first decides the work that comparing them
+/// does later, which decides whether a comparison near the step limit gives up.
+#[test]
+fn substituting_makes_types_in_the_same_order() {
+    for count in [3, 6] {
+        for apply in [false, true] {
+            let first = substituted_in_order(count, apply);
+            for _ in 0..10 {
+                assert_eq!(substituted_in_order(count, apply), first, "{count} {apply}");
+            }
+        }
+    }
+}

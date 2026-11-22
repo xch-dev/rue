@@ -2190,6 +2190,64 @@ fn test_comparison_step_counts() {
     });
 }
 
+/// How much comparing takes doesn't depend on the order a `HashMap` iterates in, which `std`'s
+/// differs for each map (and each process), as it did when substituting visited an application's
+/// arguments and the mappings in that order: the types it made, and so the work that comparing
+/// them did, came in another order, so `corpus_1280` took 3,377 or 3,411 steps, and whether a
+/// comparison near the limit gave up depended on the run. Each repetition here makes its types
+/// and maps again, so they're in another order.
+#[test]
+fn test_step_counts_dont_depend_on_hash_order() {
+    with_large_stack(|| {
+        let limits: Vec<_> = (0..10).map(|_| smallest_step_limit(corpus_1280)).collect();
+        assert!(limits.iter().all(|&limit| limit == limits[0]), "{limits:?}");
+
+        let steps: Vec<usize> = (0..5)
+            .map(|_| {
+                let mut db = Types::new();
+                let (lhs, rhs) = permuted_arguments(&mut db);
+                count_steps(|| compare(&mut db.arena, &db.builtins, lhs, rhs)).1
+            })
+            .collect();
+        assert!(steps.iter().all(|&count| count == steps[0]), "{steps:?}");
+    });
+}
+
+/// A comparison is only charged for the summaries it canonicalizes itself, not for what one that
+/// was stopped partway left uncounted. Here the second case of seed 884's module is stopped by
+/// `give_up_after` after canonicalizing summaries it hadn't counted yet, and the third finishes
+/// within its own limit after it. It took more than 11,000 steps more when that work was counted
+/// towards it.
+#[test]
+fn test_summary_work_isnt_charged_to_the_next_comparison() {
+    with_large_stack(|| {
+        let case = |index: usize| {
+            move |db: &mut Types| {
+                let Module {
+                    db: module, cases, ..
+                } = random_module_with(884, 8, true, NESTING, Targets::Function).unwrap();
+                *db = module;
+                let [lhs, rhs, _, _] = cases[index];
+                (lhs, rhs)
+            }
+        };
+
+        let (limit, result) = smallest_step_limit(case(2));
+
+        let mut db = Types::new();
+        let (lhs, rhs) = case(1)(&mut db);
+        let stopped = give_up_after(|| compare(&mut db.arena, &db.builtins, lhs, rhs));
+        assert_eq!(stopped, None);
+
+        let mut db = Types::new();
+        let (lhs, rhs) = case(2)(&mut db);
+        let after = with_comparison_step_limit(limit, || {
+            compare_limited(&mut db.arena, &db.builtins, lhs, rhs)
+        });
+        assert_eq!(after, Ok(result));
+    });
+}
+
 #[test]
 fn test_check_step_limit() {
     let mut db = Types::new();
