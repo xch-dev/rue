@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use log::debug;
 use rue_ast::{AstExpr, AstLambdaExpr, AstNode};
-use rue_diagnostic::{DiagnosticKind, SpreadTarget};
+use rue_diagnostic::{DiagnosticKind, SpreadTarget, SrcLoc};
 use rue_hir::{FunctionKind, FunctionSymbol, Hir, HirId, ParameterSymbol, Symbol, Value};
 use rue_types::{
     FunctionParameter, FunctionType, Generic, Type, TypeId, Union, contained_generics,
@@ -124,6 +124,56 @@ impl LambdaBody {
     }
 }
 
+/// Keeps an untyped parameter of a lambda for each generic in its type that's of a call the
+/// lambda is an argument of (see `Compiler::push_uninferred_parameter`).
+fn register_uninferred_parameter(
+    ctx: &mut Compiler,
+    inferred_generics: &[TypeId],
+    name: &str,
+    ty: TypeId,
+) {
+    for generic in contained_generics(ctx.types_mut(), ty, inferred_generics.iter().copied()) {
+        ctx.push_uninferred_parameter(generic, name);
+    }
+}
+
+/// How many parameters the function types expected of a lambda have, if there are any and they
+/// all have as many. A function whose last parameter is the rest of its arguments has no number
+/// of them that a lambda can be said to have too many or too few for.
+pub(crate) fn expected_parameter_count(expected_functions: &[FunctionType]) -> Option<usize> {
+    let (first, rest) = expected_functions.split_first()?;
+
+    if expected_functions
+        .iter()
+        .any(|function| !function.nil_terminated)
+    {
+        return None;
+    }
+
+    rest.iter()
+        .all(|function| function.params.len() == first.params.len())
+        .then_some(first.params.len())
+}
+
+/// Where a lambda is reported for having another number of parameters than expected: its first
+/// parameter that's one too many, or all of it if it has too few.
+pub(crate) fn parameter_count_site(
+    ctx: &Compiler,
+    lambda: &AstLambdaExpr,
+    expected: usize,
+) -> SrcLoc {
+    match lambda.parameters().nth(expected) {
+        Some(param) => ctx.srcloc(param.syntax()),
+        None => ctx.srcloc(lambda.syntax()),
+    }
+}
+
+/// Whether a lambda's last parameter is the rest of its arguments, in which case it has no number
+/// of parameters to be too many or too few.
+pub(crate) fn has_rest_parameter(lambda: &AstLambdaExpr) -> bool {
+    lambda.parameters().any(|param| param.spread().is_some())
+}
+
 /// Compiles a lambda, with its untyped parameters wrapped as `wrap` says, if it's given. It returns
 /// the parameters it wrapped.
 pub(crate) fn compile_lambda(
@@ -182,6 +232,21 @@ pub(crate) fn compile_lambda(
 
     let len = expr.parameters().count();
 
+    // A parameter that the function type expected of the lambda doesn't have is one too many,
+    // rather than one that needs a type. That's reported once, for the first of them
+    let first_extra_parameter = expected_parameter_count(&expected_functions)
+        .filter(|&expected| expected < len && !has_rest_parameter(expr))
+        .map(|expected| (expected, parameter_count_site(ctx, expr, expected)));
+    let mut too_many_parameters = false;
+
+    // The untyped parameters, by name and type, if the lambda is an argument of a call whose
+    // generics are being inferred. The ones whose types have those generics, which weren't
+    // inferred by the time the lambda was compiled, are kept for an error about one of them to
+    // say so (see `Compiler::name_uninferred_generics`)
+    let inferred_generics = ctx.inferred_generics();
+    let uninferred_parameters = ctx.uninferred_parameter_count();
+    let mut untyped_parameters = Vec::new();
+
     for (i, param) in expr.parameters().enumerate() {
         let is_spread = if let Some(spread) = param.spread() {
             if i == len - 1 {
@@ -217,7 +282,21 @@ pub(crate) fn compile_lambda(
             }
         } else {
             debug!("Unresolved lambda parameter type due to missing inference");
-            ctx.diagnostic(param.syntax(), DiagnosticKind::CannotInferParameterType);
+
+            match &first_extra_parameter {
+                Some((expected, site)) => {
+                    if !too_many_parameters {
+                        ctx.diagnostic_at(
+                            site.clone(),
+                            DiagnosticKind::LambdaParameterCount(*expected, len),
+                        );
+                    }
+
+                    too_many_parameters = true;
+                }
+                None => ctx.diagnostic(param.syntax(), DiagnosticKind::CannotInferParameterType),
+            }
+
             ctx.unresolved().ty
         };
 
@@ -236,13 +315,42 @@ pub(crate) fn compile_lambda(
 
         let symbol = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol { name: None, ty }));
 
-        if let Some(binding) = param.binding() {
-            create_binding(ctx, symbol, &binding);
-        }
-
         let name = param
             .binding()
             .map_or(String::new(), |binding| binding.syntax().text().to_string());
+
+        // Before the parameter is destructured, which is rejected if it was left as a generic
+        if param.ty().is_none() && !inferred_generics.is_empty() {
+            register_uninferred_parameter(ctx, &inferred_generics, &name, ty);
+            untyped_parameters.push((name.clone(), ty));
+        }
+
+        if let Some(binding) = param.binding() {
+            let count = ctx.diagnostic_count();
+            create_binding(ctx, symbol, &binding);
+
+            // A parameter that can't be destructured because its type wasn't inferred, so it
+            // was left as a generic of a call that the lambda is an argument of, or as a
+            // reference to one, is an error that follows from that
+            if param.ty().is_none() && ctx.diagnostic_count() > count {
+                let mut generics =
+                    contained_generics(ctx.types_mut(), ty, inferred_generics.iter().copied());
+
+                for &(reference, target) in &wrapped {
+                    if contains_generic(ctx.types_mut(), ty, reference) {
+                        generics.extend(contained_generics(
+                            ctx.types_mut(),
+                            target,
+                            inferred_generics.iter().copied(),
+                        ));
+                    }
+                }
+
+                if !generics.is_empty() {
+                    ctx.mark_uninferred_errors_since(count, &generics);
+                }
+            }
+        }
 
         parameters.push(symbol);
         params.push(FunctionParameter::new(name, ty));
@@ -250,6 +358,11 @@ pub(crate) fn compile_lambda(
 
     if matches!(wrap, Some(ParameterWrap::Generics { .. })) {
         make_references(ctx, &wrapped);
+    }
+
+    // The generics that a parameter refers to are in its type from here on
+    for (name, ty) in untyped_parameters {
+        register_uninferred_parameter(ctx, &inferred_generics, &name, ty);
     }
 
     let return_type = expr.ty().map(|ty| compile_type(ctx, &ty));
@@ -290,6 +403,8 @@ pub(crate) fn compile_lambda(
         debug!("Unresolved lambda body");
         ctx.unresolved()
     };
+
+    ctx.truncate_uninferred_parameters(uninferred_parameters);
 
     let early_return_types = ctx
         .pop_return_target()
@@ -415,10 +530,16 @@ fn wrap_parameter(
         }
 
         // It's a generic until every parameter is substituted with it (see `make_references`),
-        // since a mapped type is substituted itself, which would see through a reference
+        // since a mapped type is substituted itself, which would see through a reference. It has
+        // the name of the generic that it stands for, which is what an error shows it as until
+        // then, such as one for a parameter that can't be destructured
         let reference = *references.entry(generic).or_insert_with(|| {
             let target = mappings.get(&generic).copied().unwrap_or(generic);
-            let reference = ctx.alloc_type(Type::Generic(Generic { name: None }));
+            let placeholder = match ctx.ty(generic) {
+                Type::Generic(generic) => generic.clone(),
+                _ => Generic { name: None },
+            };
+            let reference = ctx.alloc_type(Type::Generic(placeholder));
             wrapped.push((reference, target));
             reference
         });

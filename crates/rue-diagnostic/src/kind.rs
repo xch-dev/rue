@@ -162,6 +162,11 @@ pub enum DiagnosticKind {
     #[error("Expected {0} generic arguments, but found {1}")]
     ExpectedGenericArguments(usize, usize),
 
+    #[error(
+        "Missing generic arguments for `{0}`, which aren't inferred from its fields; specify them explicitly, e.g. `{1}`"
+    )]
+    MissingInitializerGenericArguments(String, String),
+
     #[error("Cannot assign `{0}` to `{1}`, since they are incompatible")]
     IncompatibleType(String, String),
 
@@ -311,6 +316,13 @@ pub enum DiagnosticKind {
     #[error("Type of parameter cannot be inferred, it must be specified explicitly")]
     CannotInferParameterType,
 
+    #[error(
+        "Expected a function with {expected}, but the lambda has {found}",
+        expected = parameters(*.0),
+        found = parameters(*.1)
+    )]
+    LambdaParameterCount(usize, usize),
+
     #[error("Cannot disambiguate between multiple functions in type `{0}`")]
     CannotDisambiguateFunctionTypes(String),
 
@@ -444,5 +456,14 @@ fn list_of(kinds: &[String]) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+    }
+}
+
+/// A number of parameters, such as `1 parameter` or `2 parameters`.
+fn parameters(count: usize) -> String {
+    if count == 1 {
+        "1 parameter".to_string()
+    } else {
+        format!("{count} parameters")
     }
 }

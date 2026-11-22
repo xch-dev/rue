@@ -1,16 +1,20 @@
 use std::collections::{HashMap, HashSet};
 
 use log::debug;
-use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode};
-use rue_diagnostic::{DiagnosticKind, SpreadTarget};
+use rue_ast::{AstExpr, AstFunctionCallExpr, AstLambdaExpr, AstNode};
+use rue_diagnostic::{DiagnosticKind, Note, SpreadTarget};
 use rue_hir::{FunctionCall, Hir, Symbol, Value};
-use rue_types::{FunctionType, Type, TypeId, Union, contains_generic, substitute_with_mappings};
+use rue_types::{
+    FunctionType, Type, TypeId, Union, contained_generics, contains_generic,
+    substitute_with_mappings,
+};
 
 use super::builtin::compile_builtin;
 use super::call_inference::{InferredCall, infer_call};
+use super::lambda::{expected_parameter_count, has_rest_parameter, parameter_count_site};
 use crate::{
     Compiler, CompletionContext, SyntaxCall, SyntaxItemKind, compile_expr, compile_path_value,
-    occurs_contravariantly,
+    names_type, occurs_contravariantly,
 };
 
 pub fn compile_function_call_expr(
@@ -113,6 +117,10 @@ pub fn compile_function_call_expr(
     let mut generalized = Vec::new();
 
     let (args, mappings) = if let Some(function) = expected_function {
+        // An error in the call from here on, in its arguments or in how many there are, is what
+        // a generic that isn't inferred is left to, rather than reported as well
+        let reported = ctx.diagnostic_count();
+
         if function.nil_terminated && !nil_terminated {
             ctx.diagnostic(call.syntax(), DiagnosticKind::UnexpectedSpread);
         } else if !function.nil_terminated && nil_terminated && function.params.len() == args.len()
@@ -155,6 +163,8 @@ pub fn compile_function_call_expr(
         );
 
         let mut uninferred = HashMap::new();
+        let mut unreported = Vec::new();
+        let mut from_unresolved = Vec::new();
 
         if let Some(with_never) = unconstrained_as_never(ctx, function, &checks, &mappings) {
             mappings = with_never;
@@ -175,14 +185,10 @@ pub fn compile_function_call_expr(
             }
 
             // An argument that it would have been inferred from has already failed to compile
-            if !from_unresolved_argument(ctx, &checks, generic) {
-                let generic_name = ctx.type_name(generic);
-                let function_name = callee_name(call);
-
-                ctx.diagnostic(
-                    call.syntax(),
-                    DiagnosticKind::CannotInferGeneric(generic_name, function_name),
-                );
+            if from_unresolved_argument(ctx, &checks, generic) {
+                from_unresolved.push(generic);
+            } else {
+                unreported.push(generic);
             }
 
             let unresolved = ctx.unresolved().ty;
@@ -211,6 +217,16 @@ pub fn compile_function_call_expr(
             );
         }
 
+        // What the parameters are shown as in an error if a generic wasn't inferred, which is with
+        // the generic as it's declared, rather than as the placeholder that it is from here on
+        let declared = (!uninferred.is_empty()).then(|| {
+            mappings
+                .iter()
+                .filter(|(generic, _)| !uninferred.contains_key(*generic))
+                .map(|(&generic, &ty)| (generic, ty))
+                .collect::<HashMap<_, _>>()
+        });
+
         // The other generics can be inferred as types with these in them, such as `U` as `T` in
         // `map_list([fn(x) => x], { raise; })`, where nothing gives `T` a type, so they're
         // unresolved there too, rather than leaking out of the call
@@ -231,8 +247,89 @@ pub fn compile_function_call_expr(
         // a generic inconsistently, such as `(Int, fn(x: Bytes32) -> Bytes32)` being passed to
         // a parameter of type `(T, fn(x: T) -> Bytes32)`.
         for (expr, ty, param) in checks {
-            let param = substitute_with_mappings(ctx.types_mut(), param, &mappings);
-            ctx.assign_type(expr.syntax(), ty, param);
+            let to = substitute_with_mappings(ctx.types_mut(), param, &mappings);
+
+            if let AstExpr::LambdaExpr(lambda) = &expr
+                && check_lambda_parameter_count(ctx, lambda, ty, to, reported)
+            {
+                continue;
+            }
+
+            let shown = match &declared {
+                Some(declared) => substitute_with_mappings(ctx.types_mut(), param, declared),
+                None => to,
+            };
+
+            let count = ctx.diagnostic_count();
+            ctx.assign_type_shown_as(expr.syntax(), ty, to, shown);
+
+            if ctx.diagnostic_count() == count {
+                continue;
+            }
+
+            note_inferred_unions(
+                ctx,
+                count,
+                function,
+                param,
+                declared.as_ref().unwrap_or(&mappings),
+            );
+
+            // An argument whose type has one of the callee's generics in it, such as a lambda
+            // that returns its parameter, which was left as the generic, is rejected because
+            // the generic wasn't inferred for it, rather than the other way around
+            let generics = function.generics.iter().copied();
+            let generics = contained_generics(ctx.types_mut(), ty, generics);
+
+            if !generics.is_empty() {
+                ctx.mark_uninferred_errors_since(count, &generics);
+            }
+        }
+
+        // A generic often isn't inferred because of an error that's already been reported: one
+        // in an argument whose parameter has the generic in its type, such as an argument of the
+        // wrong type, or one for the arguments as a whole, such as one that's missing. That error
+        // is what to fix, which specifying the generic wouldn't. An error in another argument
+        // isn't why, and neither is any error for a generic that's only in the return type
+        let deferred = if uninferred.is_empty() {
+            Vec::new()
+        } else {
+            deferred_generics(
+                ctx,
+                function,
+                &args,
+                (&uninferred, &from_unresolved),
+                reported,
+            )
+        };
+
+        // The errors that only show those generics, such as one in the body of a lambda whose
+        // parameter was left as one, follow from that error as well
+        if !deferred.is_empty() {
+            ctx.suppress_uninferred_errors_since(reported, &deferred);
+        }
+
+        for generic in unreported {
+            if deferred.contains(&generic) {
+                continue;
+            }
+
+            // The generic is the callee's, whatever a type in the arguments was left as
+            let scope = ctx.last_scope_id();
+            let generic_name = ctx.type_name_in(scope, generic);
+            let function_name = callee_name(call);
+
+            ctx.diagnostic(
+                call.syntax(),
+                DiagnosticKind::CannotInferGeneric(generic_name, function_name),
+            );
+        }
+
+        // The errors that show this call's generics are its own to report or leave out, rather
+        // than a call's that it's an argument of, which has the same generics if it's a call of
+        // the same function
+        if !function.generics.is_empty() {
+            ctx.settle_uninferred_errors_since(reported, &function.generics);
         }
 
         (results, mappings)
@@ -391,6 +488,184 @@ fn from_unresolved_argument(
     checks.iter().any(|&(_, ty, param)| {
         ctx.is_unresolved(ty) && contains_generic(ctx.types_mut(), param, generic)
     })
+}
+
+/// The generics that weren't inferred because of an error that's been reported since there were
+/// `reported` diagnostics, out of the ones that weren't inferred, in the order they're declared.
+///
+/// A generic isn't inferred because of an error that's in an argument whose parameter has the
+/// generic in its type, or that isn't in any argument, such as the wrong number of them, if a
+/// parameter has it at all. The generics that aren't inferred and that a parameter's type has
+/// together aren't inferred for the same reason: in `map(5, fn(x) => x + 1)`, `U` is what the
+/// lambda returns for a `T`, which the `5` isn't a list of.
+fn deferred_generics(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    args: &[AstExpr],
+    (uninferred, from_unresolved): (&HashMap<TypeId, TypeId>, &[TypeId]),
+    reported: usize,
+) -> Vec<TypeId> {
+    let errors = ctx.errors_since(reported);
+
+    // An argument that couldn't be compiled, such as a binding whose value couldn't be, is one
+    // that an error has been reported for, which can be before the call
+    let from_unresolved = if ctx.has_errors() {
+        from_unresolved
+    } else {
+        &[]
+    };
+
+    if errors.is_empty() && from_unresolved.is_empty() {
+        return Vec::new();
+    }
+
+    let arguments: Vec<_> = args
+        .iter()
+        .map(|arg| ctx.srcloc(arg.syntax()).span)
+        .collect();
+
+    // The generics that weren't inferred in each parameter's type
+    let parameters: Vec<Vec<TypeId>> = function
+        .param_types()
+        .map(|ty| {
+            let generics = uninferred.keys().copied();
+            contained_generics(ctx.types_mut(), ty, generics)
+        })
+        .collect();
+
+    let mut deferred: HashSet<TypeId> = from_unresolved.iter().copied().collect();
+
+    for error in errors {
+        let argument = arguments
+            .iter()
+            .position(|arg| arg.start <= error.start && error.end <= arg.end);
+
+        match argument {
+            Some(index) => deferred.extend(parameters.get(index).into_iter().flatten()),
+            None => deferred.extend(parameters.iter().flatten()),
+        }
+    }
+
+    // Until no parameter has one that is and one that isn't
+    loop {
+        let before = deferred.len();
+
+        for generics in &parameters {
+            if generics.iter().any(|generic| deferred.contains(generic)) {
+                deferred.extend(generics);
+            }
+        }
+
+        if deferred.len() == before {
+            break;
+        }
+    }
+
+    function
+        .generics
+        .iter()
+        .copied()
+        .filter(|generic| deferred.contains(generic))
+        .collect()
+}
+
+/// Reports a lambda that's passed for a function type with a different number of parameters, if
+/// that hasn't been reported while it was compiled (among the diagnostics since there were
+/// `reported` of them), and returns whether that's why it can't be assigned to the type.
+fn check_lambda_parameter_count(
+    ctx: &mut Compiler,
+    lambda: &AstLambdaExpr,
+    ty: TypeId,
+    to: TypeId,
+    reported: usize,
+) -> bool {
+    let functions = rue_types::extract_functions(ctx.types_mut(), to, true);
+    let found = lambda.parameters().count();
+
+    let Some(expected) = expected_parameter_count(&functions) else {
+        return false;
+    };
+
+    if expected == found
+        || has_rest_parameter(lambda)
+        || !matches!(ctx.try_is_assignable(ty, to), Ok(false))
+    {
+        return false;
+    }
+
+    // Where it's reported while the lambda is compiled, too
+    let srcloc = parameter_count_site(ctx, lambda, expected);
+
+    let already_reported = ctx.diagnostics_since(reported).iter().any(|diagnostic| {
+        matches!(diagnostic.kind, DiagnosticKind::LambdaParameterCount(..))
+            && diagnostic.srcloc.span == srcloc.span
+    });
+
+    if !already_reported {
+        ctx.diagnostic_at(
+            srcloc,
+            DiagnosticKind::LambdaParameterCount(expected, found),
+        );
+    }
+
+    true
+}
+
+/// Adds a note to the errors reported since there were `count` diagnostics, for an argument that
+/// can't be assigned to its parameter's type, about each generic in that type that was inferred
+/// as a union. The argument was only compared with what the generic was inferred as from all of
+/// the arguments, so the error doesn't say which generic that is.
+fn note_inferred_unions(
+    ctx: &mut Compiler,
+    count: usize,
+    function: &FunctionType,
+    param: TypeId,
+    inferred: &HashMap<TypeId, TypeId>,
+) {
+    let mut notes = Vec::new();
+
+    for &generic in &function.generics {
+        let Some(&ty) = inferred.get(&generic) else {
+            continue;
+        };
+
+        if !contains_generic(ctx.types_mut(), param, generic) {
+            continue;
+        }
+
+        let semantic = rue_types::unwrap_semantic(ctx.types_mut(), ty, true);
+
+        // A union of every value, which `Any` is, isn't one that the arguments were collected into
+        let any = ctx.builtins().types.recursive_any;
+
+        if !matches!(ctx.ty(semantic), Type::Union(_)) || ctx.is_assignable(any, ty) {
+            continue;
+        }
+
+        let scope = ctx.last_scope_id();
+        let name = ctx.type_name_in(scope, ty);
+
+        // A union can be displayed as one type, such as `Bool`
+        if !name.contains(" | ") {
+            continue;
+        }
+
+        let generic_name = ctx.type_name_in(scope, generic);
+
+        // In a call of a function by itself, the callee's generic is inferred as a type with the
+        // caller's in it, which has the same name
+        if names_type(&name, &generic_name) {
+            continue;
+        }
+
+        notes.push(Note::new(format!(
+            "`{generic_name}` is inferred as `{name}` from the arguments of this call"
+        )));
+    }
+
+    for diagnostic in ctx.diagnostics_since_mut(count) {
+        diagnostic.notes.extend(notes.iter().cloned());
+    }
 }
 
 /// The name of the function being called, without any generic arguments.

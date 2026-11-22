@@ -112,7 +112,7 @@ fn and_does_not_narrow_the_else_branch() {
     // The body's type still includes the pair, so it can't be returned as `Int`
     assert_eq!(
         compiled.errors(),
-        ["2:66 UnguardedAssignment(\"0 | Int | (Int, Int)\", \"Int\")"]
+        ["2:66 UnguardedAssignment(\"Int | (Int, Int)\", \"Int\")"]
     );
     assert_eq!(
         compiled.reference_types("main", "x"),

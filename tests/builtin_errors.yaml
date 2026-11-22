@@ -15,9 +15,9 @@ diagnostics:
 - Expected 1 argument, but found 2 at builtin_errors.rue:29:13
 - Cannot assign `Int` to `List<Int>` without a type guard, since the value isn't always a valid `List<Int>` at builtin_errors.rue:29:17
 - Spread operator cannot be used on this builtin at builtin_errors.rue:30:17
-- Cannot assign `List<true | false>` to `List<Int>` without a cast, since they are semantically different at builtin_errors.rue:31:24
+- Cannot assign `List<Bool>` to `List<Int>` without a cast, since they are semantically different at builtin_errors.rue:31:24
 - Expected 1 argument, but found 0 at builtin_errors.rue:32:13
-- Cannot assign `List<Int>` to `List<true | false>`, since they are incompatible at builtin_errors.rue:33:17
+- Cannot assign `List<Int>` to `List<Bool>`, since they are incompatible at builtin_errors.rue:33:17
 - Spread operator cannot be used on this builtin at builtin_errors.rue:34:17
 - Cannot assign `List<Signature>` to `List<PublicKey>` without a type guard, since the value isn't always a valid `List<PublicKey>` at builtin_errors.rue:35:20
 - Cannot assign `PublicKey` to `List<PublicKey>`, since they are incompatible at builtin_errors.rue:36:27

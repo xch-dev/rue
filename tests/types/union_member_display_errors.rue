@@ -1,0 +1,80 @@
+fn choose<T>(condition: Bool, first: T, second: T) -> T {
+    if condition {
+        first
+    } else {
+        second
+    }
+}
+
+fn ints() -> List<Int> {
+    nil
+}
+
+fn head_or<T>(list: List<T>, default: T) -> T {
+    if list is nil {
+        default
+    } else {
+        list.first
+    }
+}
+
+fn find<T>(list: List<T>, matches: fn(item: T) -> Bool, default: T) -> T {
+    if list is nil {
+        default
+    } else if matches(list.first) {
+        list.first
+    } else {
+        find(list.rest, matches, default)
+    }
+}
+
+fn flags<T>(first: T, second: T) -> List<T> {
+    [first, second]
+}
+
+struct Box<T> {
+    value: T,
+}
+
+// `T` is inferred as a union of both arguments' types, which are the same type, so it's shown once
+fn same_members(condition: Bool, n: Int) -> nil {
+    let pairs: Bytes = choose(condition, (n, n), (n, n));
+    let lists: Bytes = choose(condition, ints(), ints());
+    let boxes: Bytes = choose(condition, Box::<Int> { value: n }, Box::<Int> { value: 1 });
+    let functions: Bytes = choose(condition, (n, fn(x: Int) => x), (n, fn(x: Int) => x + 1));
+    let spreads: Bytes = choose(
+        condition,
+        (n, fn(...x: List<Int>) => n),
+        (n, fn(...x: List<Int>) => n),
+    );
+    let dots: Bytes = choose(condition, ("wait...", n), ("wait...", n));
+    nil
+}
+
+// A member that another member includes isn't shown, such as the `0` of the default
+fn included_members(n: Int, s: Bytes, target: Bytes32, pairs: List<(Bytes32, Int)>) -> nil {
+    let first: Bytes = head_or([(n, s)], (0, "")).first;
+    let found: Bytes = find(pairs, fn(pair) => pair.first == target, (target, 0));
+    nil
+}
+
+// But members that only overlap, or that are of different kinds of atom, are all shown
+fn separate_members(condition: Bool, n: Int, s: Bytes) -> nil {
+    let overlapping: Bytes = choose(condition, (n, 1), (0, n));
+    let kinds: Int = head_or([(n, s)], (0, "")).rest;
+    nil
+}
+
+// `true | false` is shown as `Bool`, on its own and beside other members
+fn bools(condition: Bool, n: Int) -> nil {
+    let both: Int = flags(true, false);
+    let mixed: Bytes = choose(condition, choose(condition, true, n), false);
+    nil
+}
+
+// The members that a match doesn't handle are shown the same way as the type that's matched on
+fn match_members(condition: Bool, n: Int) -> Int {
+    match choose(condition, (choose(condition, true, false), n), n as Bytes) {
+        Bytes => 1,
+    }
+}

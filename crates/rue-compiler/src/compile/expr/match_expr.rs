@@ -345,7 +345,8 @@ pub fn compile_match_expr(
             .into_iter()
             .filter(|arm| !arm.members.is_empty())
         {
-            let ty = ctx.type_name(arm.ty);
+            let scope = ctx.last_scope_id();
+            let ty = ctx.type_name_in(scope, arm.ty);
             let members = format_members(ctx, arm.members);
             ctx.lint_sites_mut()
                 .indistinguishable_match_arms
@@ -634,7 +635,8 @@ fn compile_arm_binding(
 /// out of the diagnostics reported since there were `count` of them, since the value isn't
 /// narrowed to the arm's type there.
 fn note_unnarrowed(ctx: &mut Compiler, count: usize, ty: TypeId) {
-    let name = ctx.type_name(ty);
+    let scope = ctx.last_scope_id();
+    let name = ctx.type_name_in(scope, ty);
     let note = Note::new(format!(
         "Every arm of an `inline match` is evaluated, so the value isn't narrowed to `{name}` before it's destructured"
     ));
@@ -783,9 +785,13 @@ fn member_name_impl(
         return "Any".to_string();
     }
 
+    // The members are named for lints as well as errors, and an error names the type that's
+    // matched on, so a member isn't named as a type that the error is about
+    let scope = ctx.last_scope_id();
+
     // The parts of a recursive type lead back to it, and are named as a whole there
     if !visited.insert(ty) {
-        return ctx.type_name(ty);
+        return ctx.type_name_in(scope, ty);
     }
 
     let name = match ctx.ty(ty).clone() {
@@ -795,13 +801,18 @@ fn member_name_impl(
             let rest = member_name_impl(ctx, builtins, pair.rest, visited);
             format!("({first}, {rest})")
         }
-        Type::Union(union) => union
-            .types
-            .iter()
-            .map(|&member| member_name_impl(ctx, builtins, member, visited))
-            .collect::<Vec<_>>()
-            .join(" | "),
-        _ => ctx.type_name(ty),
+        // The members are displayed as they are in any other union: each of them once, and
+        // `true | false` as `Bool`
+        Type::Union(union) => {
+            let members = union
+                .types
+                .iter()
+                .map(|&member| (member, member_name_impl(ctx, builtins, member, visited)))
+                .collect();
+
+            rue_types::distinct_member_names(ctx.types(), members).join(" | ")
+        }
+        _ => ctx.type_name_in(scope, ty),
     };
 
     visited.remove(&ty);

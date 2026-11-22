@@ -22,6 +22,8 @@ mod cancel_tests;
 #[cfg(test)]
 mod capture_tests;
 #[cfg(test)]
+mod cascade_tests;
+#[cfg(test)]
 mod comparison_limit_tests;
 #[cfg(test)]
 mod const_eval_tests;

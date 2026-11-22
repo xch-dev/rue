@@ -62,7 +62,8 @@ test fn list_past_nil() -> Int {
 }
 
 test fn inferred_from_a_narrowed_value() -> Int {
-    // What's inferred from the narrowed `x` is named as it would be otherwise, `Int | 0`
+    // What's inferred from the narrowed `x` is named as it would be otherwise: `Int | 0`, which is
+    // shown as `Int`
     let result = int_or_bytes_map(
         fn(x) => if x is Int {
             x

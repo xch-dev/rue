@@ -1,0 +1,10 @@
+tests:
+- name: guard_on_an_included_literal
+  program: (a (q 2 (i 2 (q . 4) ()) 1) (c (q 2) 1))
+  debug_program: (a (q 2 (q 2 (i (q . 1) (q . 2) ()) 1) (c (a 2 (c (c (+ (q . 1) (q . 1)) ()) ())) 1)) (c (q 2 (i (not 2) (q . 3) (q 5 2)) 1) ()))
+  output: "2"
+  runtime_cost: 559
+  byte_cost: 420000
+  total_cost: 420559
+diagnostics:
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at union_member_display.rue:12:8
