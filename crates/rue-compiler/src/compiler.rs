@@ -15,11 +15,13 @@ use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Note, Source, SourceKind, SrcLoc,
 };
 use rue_hir::{
-    Builtins, Constraint, Database, Declaration, HirId, ImportId, ImportUser, Item, Items,
-    Mappings, Namespace, Scope, ScopeId, Symbol, SymbolId, TypePath, Value, merge_mappings,
-    replace_type,
+    Builtins, Constraint, Database, DatabaseCheckpoint, Declaration, HirId, ImportId, ImportUser,
+    Item, Items, Mappings, Namespace, Scope, ScopeId, Symbol, SymbolId, TypePath, Value,
+    merge_mappings, replace_type,
 };
-use rue_lint::{EnclosedPreludeReference, ImpreciseNarrowing, LintInput, LintSites};
+use rue_lint::{
+    EnclosedPreludeReference, ImpreciseNarrowing, LintInput, LintSites, LintSitesCheckpoint,
+};
 use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
@@ -43,6 +45,30 @@ struct ExpectedTypeUse {
     /// Whether it's only for the generics of the calls in it that nothing else gives a type (see
     /// `Compiler::with_expected_type_fallback`).
     fallback: bool,
+}
+
+/// What [`Compiler::checkpoint`] saves.
+#[derive(Debug, Clone)]
+pub(crate) struct Checkpoint {
+    db: DatabaseCheckpoint,
+    diagnostics: usize,
+    syntax_items: usize,
+    lint_sites: LintSitesCheckpoint,
+    named_types: usize,
+    unchecked_type_items: usize,
+    pending_defaults: usize,
+    scope_stack: Vec<(TextSize, ScopeId)>,
+    declaration_stack: Vec<Declaration>,
+    return_stack: Vec<(Option<ReturnTarget>, usize)>,
+    return_count: usize,
+    call_frames: Vec<CallFrame>,
+    expected: ExpectedTypeUse,
+    argument_requirement: Option<(TextRange, TypeId)>,
+    undo: usize,
+    uninferred_parameters: usize,
+    named_generics: Vec<NamedGeneric>,
+    first_placeholder: Option<&'static Location<'static>>,
+    cancelled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -121,6 +147,23 @@ pub struct Compiler {
     /// Where the first placeholder for code that couldn't be compiled was made (see
     /// [`Self::unresolved`]), to check that it's covered by an error before generating code.
     first_placeholder: Option<&'static Location<'static>>,
+    /// What was added to the sets and maps that can be added to for something from before a
+    /// checkpoint, in order, for [`Self::restore`] to take out again.
+    undo: Vec<Undo>,
+    /// How many lambdas that feed themselves are being compiled in steps (see
+    /// `compile_lambda_feeding_itself`).
+    feeding_depth: usize,
+}
+
+/// Something added to one of the compiler's sets or maps (see `Compiler::undo`).
+#[derive(Debug, Clone)]
+enum Undo {
+    OverriddenSymbol(SymbolId),
+    /// The type, and what it was recorded for before.
+    NarrowedReference(TypeId, Option<TypeId>),
+    InferredField((TypeId, String)),
+    /// The field whose default value uses another.
+    DefaultUse((TypeId, String)),
 }
 
 /// Says whether a compile should stop partway, because nothing needs its result anymore (for
@@ -308,6 +351,8 @@ impl Compiler {
             cancel: None,
             cancelled: false,
             first_placeholder: None,
+            undo: Vec::new(),
+            feeding_depth: 0,
         };
 
         if options.std {
@@ -445,6 +490,101 @@ impl Compiler {
         diagnostics
     }
 
+    /// Where the compile is, to go back to with [`Self::restore`] after compiling something that
+    /// isn't kept, which takes as long as what was compiled since, not as what was compiled before:
+    /// the diagnostics, the syntax map, the lint sites and what the database records only grow, so
+    /// it's where each of them ends (see `rue_hir::DatabaseCheckpoint`), what's added to the sets and
+    /// maps that hold things from before is taken out again (see `Undo`), and the state that
+    /// compiling an expression changes and puts back, which is only as large as what's being
+    /// compiled, is copied.
+    pub(crate) fn checkpoint(&self) -> Checkpoint {
+        Checkpoint {
+            db: self.db.checkpoint(),
+            diagnostics: self.diagnostics.len(),
+            syntax_items: self.syntax_map.len(),
+            lint_sites: self.lint_sites.checkpoint(),
+            named_types: self.named_types.len(),
+            unchecked_type_items: self.unchecked_type_items.len(),
+            pending_defaults: self.pending_defaults.len(),
+            scope_stack: self.scope_stack.clone(),
+            declaration_stack: self.declaration_stack.clone(),
+            return_stack: self.return_stack.clone(),
+            return_count: self.return_count,
+            call_frames: self.call_frames.clone(),
+            expected: self.expected,
+            argument_requirement: self.argument_requirement,
+            undo: self.undo.len(),
+            uninferred_parameters: self.uninferred_parameters.len(),
+            named_generics: self.named_generics.clone(),
+            first_placeholder: self.first_placeholder,
+            cancelled: self.cancelled,
+        }
+    }
+
+    /// Goes back to the checkpoint (see [`Self::checkpoint`]).
+    pub(crate) fn restore(&mut self, checkpoint: &Checkpoint) {
+        let hirs = self.db.hirs_since(&checkpoint.db);
+        for scope in self.db.scopes_since(&checkpoint.db) {
+            self.registered_scopes.remove(&scope);
+        }
+        self.lint_sites.restore(&checkpoint.lint_sites, &hirs);
+        self.db.restore(&checkpoint.db);
+        self.diagnostics.truncate(checkpoint.diagnostics);
+
+        // What's kept of the errors by where they are in the diagnostics, which are in that order
+        let errors = self
+            .uninferred_errors
+            .partition_point(|error| error.index < checkpoint.diagnostics);
+        self.uninferred_errors.truncate(errors);
+        if !self.suppressed.is_empty() {
+            self.suppressed
+                .retain(|&index| index < checkpoint.diagnostics);
+        }
+        self.uninferred_parameters
+            .truncate(checkpoint.uninferred_parameters);
+        self.named_generics.clone_from(&checkpoint.named_generics);
+        self.syntax_map.truncate(checkpoint.syntax_items);
+        self.named_types.truncate(checkpoint.named_types);
+        self.unchecked_type_items
+            .truncate(checkpoint.unchecked_type_items);
+        self.pending_defaults.truncate(checkpoint.pending_defaults);
+        self.scope_stack.clone_from(&checkpoint.scope_stack);
+        self.declaration_stack
+            .clone_from(&checkpoint.declaration_stack);
+        self.return_stack.clone_from(&checkpoint.return_stack);
+        self.return_count = checkpoint.return_count;
+        self.call_frames.clone_from(&checkpoint.call_frames);
+        self.expected = checkpoint.expected;
+        self.argument_requirement = checkpoint.argument_requirement;
+        for undo in self.undo.split_off(checkpoint.undo).into_iter().rev() {
+            match undo {
+                Undo::OverriddenSymbol(symbol) => {
+                    self.overridden_symbols.remove(&symbol);
+                }
+                Undo::NarrowedReference(narrowed, Some(raw)) => {
+                    self.narrowed_references.insert(narrowed, raw);
+                }
+                Undo::NarrowedReference(narrowed, None) => {
+                    self.narrowed_references.remove(&narrowed);
+                }
+                Undo::InferredField(field) => {
+                    self.inferred_fields.remove(&field);
+                }
+                Undo::DefaultUse(user) => {
+                    if let Some(uses) = self.default_uses.get_mut(&user) {
+                        uses.pop();
+
+                        if uses.is_empty() {
+                            self.default_uses.remove(&user);
+                        }
+                    }
+                }
+            }
+        }
+        self.first_placeholder = checkpoint.first_placeholder;
+        self.cancelled = checkpoint.cancelled;
+    }
+
     /// The number of diagnostics reported so far, which [`Self::diagnostics_since_mut`] takes.
     pub fn diagnostic_count(&self) -> usize {
         self.diagnostics.len()
@@ -543,6 +683,21 @@ impl Compiler {
                 error.settled = true;
             }
         }
+    }
+
+    pub(crate) fn feeding_depth(&self) -> usize {
+        self.feeding_depth
+    }
+
+    pub(crate) fn set_feeding_depth(&mut self, depth: usize) {
+        self.feeding_depth = depth;
+    }
+
+    /// Whether any of the diagnostics reported since there were `count` of them is an error.
+    pub fn has_errors_since(&self, count: usize) -> bool {
+        self.diagnostics[count..]
+            .iter()
+            .any(|diagnostic| diagnostic.severity == DiagnosticSeverity::Error)
     }
 
     pub fn has_errors(&self) -> bool {
@@ -1113,7 +1268,9 @@ impl Compiler {
             narrowed_with_references(self, original, raw, ty);
 
             self.scope_mut(scope).override_symbol_type(symbol, ty);
-            self.overridden_symbols.insert(symbol);
+            if self.overridden_symbols.insert(symbol) {
+                self.undo.push(Undo::OverriddenSymbol(symbol));
+            }
         }
 
         let index = self.scope_stack.len();
@@ -1125,7 +1282,8 @@ impl Compiler {
     /// narrowed in `raw`, which keep the references of untyped lambda parameters' types that the
     /// type sees through (see `narrowed_with_references`). They're the same type.
     pub fn add_narrowed_reference(&mut self, narrowed: TypeId, raw: TypeId) {
-        self.narrowed_references.insert(narrowed, raw);
+        let before = self.narrowed_references.insert(narrowed, raw);
+        self.undo.push(Undo::NarrowedReference(narrowed, before));
     }
 
     /// The type that narrowing gave a value as the parts that make it up before they were
@@ -1711,7 +1869,9 @@ impl Compiler {
 
     /// Marks a struct field whose type was inferred from its default value rather than declared.
     pub fn insert_inferred_field(&mut self, ty: TypeId, name: String) {
-        self.inferred_fields.insert((ty, name));
+        if self.inferred_fields.insert((ty, name.clone())) {
+            self.undo.push(Undo::InferredField((ty, name)));
+        }
     }
 
     pub fn is_inferred_field(&self, ty: TypeId, name: &str) -> bool {
@@ -1739,9 +1899,10 @@ impl Compiler {
     pub(crate) fn record_default_use(&mut self, ty: TypeId, name: &str) {
         if let Some(user) = self.compiling_default.clone() {
             self.default_uses
-                .entry(user)
+                .entry(user.clone())
                 .or_default()
                 .push((ty, name.to_string()));
+            self.undo.push(Undo::DefaultUse(user));
         }
     }
 

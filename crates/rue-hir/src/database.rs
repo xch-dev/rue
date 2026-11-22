@@ -23,6 +23,19 @@ pub struct Test {
     pub symbol: SymbolId,
 }
 
+/// Where a [`Database`] was, to go back to with [`Database::restore`] after compiling something
+/// that isn't kept (see [`Database::checkpoint`]).
+#[derive(Debug, Clone, Copy)]
+pub struct DatabaseCheckpoint {
+    hir: usize,
+    types: usize,
+    symbols: usize,
+    scopes: usize,
+    const_exprs: usize,
+    tests: usize,
+    relevant_declarations: usize,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Database {
     hir: Arena<Hir>,
@@ -76,6 +89,83 @@ pub struct Database {
 impl Database {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Where the database is, so that what's added after it can be undone with
+    /// [`Self::restore`], which takes as long as what was added, not as the database is. The
+    /// arenas only grow: the nodes, types, symbols and scopes made since are left in them, so that
+    /// anything still holding them can use them, but nothing records them anymore. That's the
+    /// types and locations of the nodes, and the declarations among the symbols and types, which
+    /// is what the lints and the language server find things through. A reference made since from
+    /// one of them to a declaration from before stays, since compiling the same code again makes
+    /// it again.
+    pub fn checkpoint(&self) -> DatabaseCheckpoint {
+        DatabaseCheckpoint {
+            hir: self.hir.len(),
+            types: self.types.len(),
+            symbols: self.symbols.len(),
+            scopes: self.scopes.len(),
+            const_exprs: self.const_exprs.len(),
+            tests: self.tests.len(),
+            relevant_declarations: self.relevant_declarations.len(),
+        }
+    }
+
+    /// Goes back to the checkpoint (see [`Self::checkpoint`]).
+    pub fn restore(&mut self, checkpoint: &DatabaseCheckpoint) {
+        for hir in self.hirs_since(checkpoint) {
+            self.hir_types.remove(&hir);
+            self.hir_srclocs.remove(&hir);
+            self.hir_scopes.remove(&hir);
+            self.independent_operands.remove(&hir);
+        }
+
+        let types: Vec<TypeId> = self
+            .types
+            .iter()
+            .skip(checkpoint.types)
+            .map(|(id, _)| id)
+            .collect();
+        for &ty in &types {
+            self.reported_types.remove(&ty);
+            self.declared_by.remove(&Declaration::Type(ty));
+            self.referenced_by.remove(&Declaration::Type(ty));
+        }
+
+        let symbols: Vec<SymbolId> = self
+            .symbols
+            .iter()
+            .skip(checkpoint.symbols)
+            .map(|(id, _)| id)
+            .collect();
+        for &symbol in &symbols {
+            self.declared_by.remove(&Declaration::Symbol(symbol));
+            self.referenced_by.remove(&Declaration::Symbol(symbol));
+            self.single_use_loop_rests.remove(&symbol);
+        }
+
+        self.const_exprs.truncate(checkpoint.const_exprs);
+        self.tests.truncate(checkpoint.tests);
+        self.relevant_declarations
+            .truncate(checkpoint.relevant_declarations);
+    }
+
+    /// The nodes made since the checkpoint.
+    pub fn hirs_since(&self, checkpoint: &DatabaseCheckpoint) -> Vec<HirId> {
+        self.hir
+            .iter()
+            .skip(checkpoint.hir)
+            .map(|(id, _)| id)
+            .collect()
+    }
+
+    /// The scopes made since the checkpoint.
+    pub fn scopes_since(&self, checkpoint: &DatabaseCheckpoint) -> Vec<ScopeId> {
+        self.scopes
+            .iter()
+            .skip(checkpoint.scopes)
+            .map(|(id, _)| id)
+            .collect()
     }
 
     pub fn alloc_hir(&mut self, hir: Hir) -> HirId {

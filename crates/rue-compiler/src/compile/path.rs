@@ -440,10 +440,7 @@ where
                 let srcloc = ctx.srcloc(&name);
 
                 ctx.lint_sites_mut()
-                    .qualified_references
-                    .entry(declaration)
-                    .or_default()
-                    .push(srcloc);
+                    .add_qualified_reference(declaration, srcloc);
             }
         }
 

@@ -1,0 +1,223 @@
+// A lambda whose untyped parameter has the type of the generic it returns, as `acc` has in
+// `fold`'s `fn(acc: A, x: T) -> A`, feeds itself: what it returns is passed back in as the
+// parameter. Its parameter is typed as the least fixpoint of what the other arguments give the
+// generic joined with what the lambda returns, so a seed that's narrower than what the lambda
+// returns, such as `(0, 0)`, `[0]` or `nil`, doesn't reject the call (#362, R4; see
+// `compile_lambda_feeding_itself`)
+
+fn fold<T, A>(list: List<T>, init: A, f: fn(acc: A, x: T) -> A) -> A {
+    if list is nil {
+        return init;
+    }
+
+    fold(list.rest, f(init, list.first), f)
+}
+
+fn iterate<A>(init: A, f: fn(acc: A) -> A) -> A {
+    f(init)
+}
+
+fn iterate_first<A>(f: fn(acc: A) -> A, init: A) -> A {
+    f(init)
+}
+
+struct Stats {
+    sum: Int,
+    count: Int,
+}
+
+// A pair seed, with or without an annotation, joins with what the lambda returns
+test fn pair_seed() -> ((Int, Int), (Int, Int)) {
+    let xs = [1, 2, 3];
+    let counted = fold(xs, (0, 0), fn(acc, x) => (acc.first + x, acc.rest + 1));
+    let annotated: (Int, Int) = fold(xs, (0, 0), fn(acc, x) => (acc.first + x, acc.rest + 1));
+    let check: (Int, Int) = counted;
+    (check, annotated)
+}
+
+// A list seed, or `nil`, that the lambda conses onto is a list of what it conses
+test fn list_seed() -> (List<Int>, (List<Int>, (List<Int>, List<Int>))) {
+    let xs = [1, 2, 3];
+    let reversed = fold(xs, nil, fn(acc, x) => [x, ...acc]);
+    let annotated: List<Int> = fold(xs, nil, fn(acc, x) => [x, ...acc]);
+    let empty: List<Int> = fold(xs, [], fn(acc, x) => [x, ...acc]);
+    let seeded = fold(xs, [0], fn(acc, x) => [x, x, ...acc]);
+    let check: List<Int> = reversed;
+    let seeded_check: List<Int> = seeded;
+    (check, (annotated, (empty, seeded_check)))
+}
+
+// A `nil` seed for a lambda that returns something else joins with it
+test fn nil_seed() -> (Int | nil, (Int | nil, (Int, Int) | nil)) {
+    let xs = [1, 2, 3];
+    let last: Int | nil = fold(xs, nil, fn(_acc, x) => x);
+    let largest: Int | nil = fold(
+        xs,
+        nil,
+        fn(acc, x) => if acc is nil {
+            x
+        } else if x > acc {
+            x
+        } else {
+            acc
+        },
+    );
+    let pair: (Int, Int) | nil = fold(xs, nil, fn(_acc, x) => (x, x));
+    (last, (largest, pair))
+}
+
+// It doesn't depend on where the lambda is, or on `fold`
+test fn other_functions() -> (5 | nil, 5 | nil) {
+    let after = iterate(nil, fn(_acc) => 5);
+    let before = iterate_first(fn(_acc) => 5, nil);
+    (after, before)
+}
+
+// One inside another's lambda
+test fn nested() -> (List<Int>, Int) {
+    let xss = [[1, 2], [3]];
+    let flattened = fold(xss, nil, fn(acc, xs) => fold(xs, acc, fn(inner, x) => [x, ...inner]));
+    let counted = fold(
+        xss,
+        (0, 0),
+        fn(acc, xs) => (acc.first + fold(xs, 0, fn(sum, x) => sum + x), acc.rest + 1),
+    );
+    let check: List<Int> = flattened;
+    (check, counted.first)
+}
+
+// Guards: where what the lambda returns is assignable to what it's given, it's compiled once, as
+// before, with the type the seed gives it, which keeps literals in a pair
+test fn already_a_fixpoint() -> ((0, 0), (Int, Stats)) {
+    let xs = [1, 2, 3];
+    let kept = fold(xs, (0, 0), fn(acc, _x) => acc);
+    let check: (0, 0) = kept;
+    let sum = fold(xs, 0, fn(acc, x) => acc + x);
+    let stats = fold(
+        xs,
+        Stats { sum: 0, count: 0 },
+        fn(acc, x) => Stats { sum: acc.sum + x, count: acc.count + 1 },
+    );
+    (check, (sum, stats))
+}
+
+// The warnings of a lambda that's compiled again are reported once, as the step gives them
+test fn warning_reported_once() -> (Int, Int) {
+    let xs = [1, 2, 3];
+    fold(
+        xs,
+        (0, 0),
+        fn(acc, x) => {
+            let unused = 1;
+            let m = match x {
+                1 => 1,
+                Int => 2,
+                _ => 3,
+            };
+            let n = if x is Int {
+                1
+            } else {
+                2
+            };
+            (acc.first + x + m + n, acc.rest + 1)
+        },
+    )
+}
+
+fn pick<A, B>(a: A, b: B, f: fn(x: A) -> B) -> B {
+    f(a)
+}
+
+fn pick_first<A, B>(f: fn(x: A) -> B, a: A, b: B) -> B {
+    f(a)
+}
+
+// A parameter whose generic is a different one from the return type's doesn't feed itself, even
+// where both are inferred as the same type, so these keep the types they're inferred as
+test fn different_generics() -> (Int, Int) {
+    let r = pick(nil, nil, fn(x) => [1, ...x]);
+    let check: nil | (1, nil) = r;
+    let p = (1, 2);
+    let s = pick(p, p, fn(x) => (x.first + 1, x.rest));
+    let pair: (1, 2) | (Int, 2) = s;
+    let first = pick_first(fn(x) => [1, ...x], nil, nil);
+    let first_check: nil | (1, nil) = first;
+    let total = if check is nil {
+        0
+    } else {
+        check.first
+    };
+    let other = if first_check is nil {
+        0
+    } else {
+        first_check.first
+    };
+    (total + other, pair.first)
+}
+
+struct Counter {
+    count: Int,
+}
+
+// A struct is joined with what's given or returned, rather than taken for the pair it is
+// underneath, which a list of its fields wouldn't hold
+test fn struct_seed() -> (Int, Int) {
+    let from_nil = iterate(nil, fn(_acc) => Counter { count: 1 });
+    let check: nil | Counter = from_nil;
+    let from_struct = iterate(Counter { count: 2 }, fn(_acc) => nil);
+    let other: Counter | nil = from_struct;
+    (
+        if check is nil {
+            0
+        } else {
+            check.count
+        },
+        if other is nil {
+            0
+        } else {
+            other.count
+        },
+    )
+}
+
+fn joins_pairs(a: (Int, nil), b: (Any, Any)) -> (Int, nil) | (Any, Any) {
+    let joined = iterate(a, fn(_acc) => b);
+    let check: (Int, nil) | (Any, Any) = joined;
+    check
+}
+
+fn captures_a_generic<T>(x: T) -> List<Int> {
+    iterate(
+        nil,
+        fn(acc) => {
+            let _unused = x;
+            [1, ...acc]
+        },
+    )
+}
+
+fn returns_the_generic<T>(x: T) -> T {
+    iterate(x, fn(acc) => acc)
+}
+
+// A pair whose rest only holds what was given isn't consed onto it, so it's joined, a generic
+// that's captured without being in what's given or returned doesn't stop a step, and a parameter
+// that's shadowed in the body is still the parameter
+test fn other_steps() -> (Int, (List<Int>, (Int, 5 | nil))) {
+    let joined = joins_pairs((1, nil), (2, 3));
+    let shadowed = iterate(
+        nil,
+        fn(acc) => {
+            let acc = 5;
+            acc
+        },
+    );
+    (
+        if joined is (Int, nil) {
+            joined.first
+        } else {
+            0
+        },
+        (captures_a_generic(true), (returns_the_generic(4), shadowed)),
+    )
+}
