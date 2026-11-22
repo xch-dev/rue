@@ -597,19 +597,22 @@ test fn fold_as_an_argument_of_a_lambda_bound_by_the_call() -> Int {
     for x in xs fold total = 0 { apply(fn(value: Int) => value + value, total) + x }
 }
 
-// So is one that's passed to such a call through a `let` that's substituted there
-test fn fold_as_an_argument_bound_by_the_call_through_a_let() -> (Int, Int) {
+// So is one that's passed to such a call through a `let` that's substituted there. Each test calls
+// the function once, so that it's inlined
+test fn fold_as_an_argument_bound_by_the_call_through_a_let() -> Int {
     let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
-    (
-        for x in xs fold total = 0 {
-            let same = total;
-            doubled_once(same) + x
-        },
-        for x in xs fold total = 0 {
-            inline let same = total;
-            doubled_once(same) + x
-        },
-    )
+    for x in xs fold total = 0 {
+        let same = total;
+        doubled_once(same) + x
+    }
+}
+
+test fn fold_as_an_argument_bound_by_the_call_through_an_inline_let() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    for x in xs fold total = 0 {
+        inline let same = total;
+        doubled_once(same) + x
+    }
 }
 
 // A `let` whose value is the result, and that's referenced more than once, is bound with the
