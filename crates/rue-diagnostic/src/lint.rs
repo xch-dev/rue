@@ -247,6 +247,7 @@ lints! {
     DebugStatement("debug_statement", Allow, "`debug` statements, which shouldn't be left in a release build"),
     UnconditionalRecursion("unconditional_recursion", Warn, "Functions that call themselves on every path, so they never return"),
     NeedlessKeccak256Verify("needless_keccak256_verify", Allow, "`keccak256_verify` calls, which can be written as `assert keccak256(value) == hash` after hard fork 2 (warns by default with `hard_fork_2`)"),
+    BracketedFor("bracketed_for", Warn, "Lists whose only item is a `for` expression, which is a list already, so the brackets make a list with one list in it"),
     BytesIntConfusion("bytes_int_confusion", Warn, "Casts of byte literals to `Int` whose value is negative or not in canonical form"),
     UnknownLint("unknown_lint", Warn, "Lint names in attributes or `Rue.toml` that don't refer to a known lint or group"),
     UnfulfilledLintExpectation("unfulfilled_lint_expectation", Warn, "`expect` attributes whose lint is never reported inside of them"),
@@ -380,6 +381,7 @@ lint_groups! {
         IndistinguishableMatchArm,
         UnconditionalRecursion,
         BytesIntConfusion,
+        BracketedFor,
         PreludeOverEnclosingItem,
     ]),
 }
@@ -707,6 +709,7 @@ mod tests {
                 Lint::IndistinguishableMatchArm,
                 Lint::UnconditionalRecursion,
                 Lint::BytesIntConfusion,
+                Lint::BracketedFor,
                 Lint::PreludeOverEnclosingItem,
             ]
         );

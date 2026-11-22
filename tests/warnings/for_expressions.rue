@@ -14,6 +14,10 @@ fn increment(x: Int) -> Int {
     x + 1
 }
 
+fn length(xs: List<Int>) -> Int {
+    for _x in xs fold count = 0 { count + 1 }
+}
+
 fn positive(x: Int) -> Int {
     assert x > 0;
     x
@@ -73,6 +77,86 @@ fn main(xs: List<Int>, flag: Bool, x: Int) -> List<Int> {
         }
     }
 
+    // A `for` that the body of a loop ends with is a loop too, rather than a list that isn't
+    // used, so the value its body ends with is what isn't used
+    for y in xs { for z in xs { increment(y + z) } }
+
+    // So is one that a branch of an `if` or `match`, or a block, ends with
+    for y in xs {
+        if flag {
+            for z in xs { increment(z) }
+        } else {
+            { for z in xs { increment(y) } }
+        }
+    }
+    for y in xs {
+        match y {
+            1 => for z in xs { increment(z) },
+            _ => {
+                for z in xs {
+                    assert z > 0;
+                }
+            }
+        }
+    }
+
+    // As is one in an expression that's a statement
+    { for y in xs { increment(y) } };
+    if flag {
+        for y in xs { increment(y) }
+    } else {
+        for y in xs {
+            assert y > 0;
+        }
+    };
+
+    // A fold that a loop's body ends with still has a value, as does a branch that isn't a `for`
+    for y in xs { for z in xs fold sum = 0 { sum + y + z } }
+    for y in xs {
+        if flag {
+            for z in xs {
+                assert z > 0;
+            }
+        } else {
+            y
+        }
+    }
+
+    // The body of a fold that's a statement is its result too, so a `for` it ends with is a list,
+    // and only the fold's value isn't used
+    for y in xs fold last: List<Int> = nil { for z in last { increment(y + z) } }
+    for y in xs fold last: List<Int> = nil {
+        if flag {
+            for z in last { increment(z) }
+        } else {
+            [y]
+        }
+    }
+
+    // The body of a fold is its result, so a `for` it ends with is a list
+    let j = for y in xs fold lists: List<List<Int>> = nil { [for z in xs { y + z }, ...lists] };
+    let k = for y in xs fold last: List<Int> = nil {
+        if flag {
+            for z in xs { y + z }
+        } else {
+            last
+        }
+    };
+
+    // The items after a `for` that's spread before them are where its list ends, and the lints
+    // see them there as they do anywhere else
+    let l = [
+        ...for y in xs { y },
+        +x,
+        (x),
+        x == x,
+        ...if flag {
+            xs
+        } else {
+            xs
+        },
+    ];
+
     [
         ...a,
         ...b,
@@ -90,6 +174,15 @@ fn main(xs: List<Int>, flag: Bool, x: Int) -> List<Int> {
             i
         } else {
             0
+        },
+        ...for list in j { length(list) },
+        ...k,
+        ...for y in l {
+            if y is Bool {
+                0
+            } else {
+                y
+            }
         },
     ]
 }

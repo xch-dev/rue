@@ -414,6 +414,30 @@ fn is_whole_expression(node: &SyntaxNode) -> bool {
     }
 }
 
+/// Whether the expression is an operand of a prefix, binary or postfix operator, where an
+/// expression that ends with a block, such as a `for`, needs parentheses: the operator would
+/// otherwise take the end of the block as its operand, or end a statement that the expression
+/// starts.
+pub(crate) fn is_operand(node: &SyntaxNode) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+
+    match parent.kind() {
+        SyntaxKind::PrefixExpr
+        | SyntaxKind::BinaryExpr
+        | SyntaxKind::GuardExpr
+        | SyntaxKind::CastExpr
+        | SyntaxKind::FieldAccessExpr => true,
+        // The value that's called, indexed or sliced comes before the brackets, unlike an
+        // argument, the index or a bound
+        SyntaxKind::FunctionCallExpr | SyntaxKind::IndexExpr | SyntaxKind::SliceExpr => {
+            is_first_expr_of(&parent, node)
+        }
+        _ => false,
+    }
+}
+
 /// An `else` block that only contains an `if` can be written as `else if`.
 fn check_collapsible_if(cx: &mut LintContext<'_>, source: &Source, if_expr: &AstIfExpr) {
     let Some(AstExpr::Block(block)) = if_expr.else_expr() else {

@@ -468,6 +468,63 @@ test fn body_with_a_nil_value() -> Int {
     5
 }
 
+// A `for` that the body of a loop ends with is a loop too, whatever its body's value is, rather
+// than a list that's built and then dropped. So is one that a branch or a block there ends with,
+// and one in an expression that's a statement
+#[allow(unused_value)]
+fn positive_sums(xs: List<Int>, ys: List<Int>) {
+    for x in xs { for y in ys { positive(x + y) } };
+}
+
+#[allow(unused_value)]
+fn positive_in_branches(xs: List<Int>, ys: List<Int>) {
+    for x in xs {
+        if x > 5 {
+            for y in ys { positive(y) }
+        } else {
+            { for y in ys { positive(x + y) } }
+        }
+    }
+
+    { for x in xs { positive(x) } };
+}
+
+test fn loop_at_the_end_of_a_loop() -> Int {
+    positive_sums(runtime([1, 2]), runtime([0, 1]));
+    positive_sums(runtime([3]), runtime([4, 5]));
+    positive_in_branches(runtime([1, 6]), runtime([1, 2]));
+    positive_in_branches(runtime([2]), runtime([3]));
+    5
+}
+
+test fn loop_at_the_end_of_a_loop_fails() -> Int {
+    positive_sums(runtime([1, 2]), runtime([0, -2]));
+    positive_sums(runtime([3]), runtime([4, 5]));
+    5
+}
+
+// The body of a fold that's a statement is still its result, so a `for` it ends with builds its
+// list for the items before it: here each item goes down by one for every item before it
+#[allow(unused_value)]
+fn falling(xs: List<Int>) -> Int {
+    for x in xs fold rest: List<Int> = nil { for y in [x, ...rest] { positive(y - 1) } };
+    5
+}
+
+test fn list_at_the_end_of_a_fold_statement() -> Int {
+    falling(runtime([6, 5, 4]))
+}
+
+test fn list_at_the_end_of_a_fold_statement_fails() -> Int {
+    falling(runtime([3, 3, 3]))
+}
+
+test fn loop_at_the_end_of_a_branch_fails() -> Int {
+    positive_in_branches(runtime([1, 6]), runtime([1, 0]));
+    positive_in_branches(runtime([2]), runtime([3]));
+    5
+}
+
 // A value that an `inline let` outside of the body refers to is captured too
 test fn captured_through_an_inline_let() -> List<Int> {
     let n = positive(2);

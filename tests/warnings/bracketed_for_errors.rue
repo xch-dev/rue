@@ -1,0 +1,17 @@
+// The lint is reported along with the error that the list of one list often is
+
+fn main(xs: List<Int>) -> List<Int> {
+    let a: List<Int> = [for x in xs { x * 2 }];
+
+    // As an operand, the `for` needs parentheses in place of the list
+    let b = [for x in xs { x }] is nil;
+
+    // A list that's an item isn't nil, though nil is a list
+    let c: List<nil> = [for x in xs { x }];
+
+    if b && c is nil {
+        a
+    } else {
+        xs
+    }
+}

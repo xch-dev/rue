@@ -1,0 +1,167 @@
+// What a `for` does at the end of its list is always evaluated when the `for` is: the items after
+// one that's spread in a list, and the value of a fold. Its body isn't, since the list can be
+// empty
+
+fn check(x: Int) -> Int {
+    assert x > 0;
+    x
+}
+
+fn inline_values(xs: List<Int>, k: Int) -> List<Any> {
+    // Always evaluated, so nothing is reported
+    inline let after = check(k);
+    inline let after_before_a_list = check(k + 1);
+    inline let after_a_filter = check(k + 2);
+    inline let fold_value = check(k + 3);
+    inline let after_two = check(k + 4);
+
+    // A fold whose body doesn't always get to its result still goes through its whole list if
+    // the rest of it may fail, as it may with this value at the end of it
+    inline let stopped_fold_value = check(k + 5);
+
+    // Not always evaluated
+    inline let in_the_body = check(k + 6);
+    inline let in_the_filter = check(k + 7);
+    inline let after_a_stopped_fold = check(k + 8);
+
+    [
+        [...for x in xs { x }, after],
+        [0, ...for x in xs { x }, ...[after_before_a_list]],
+        [...for x in xs if x > 1 { x }, after_a_filter],
+        for x in xs fold sum = fold_value { sum + x },
+        [...for x in xs { x }, ...for x in xs { x + 1 }, after_two],
+        for x in xs fold found = stopped_fold_value > 5 { x == 1 || found },
+        [...for x in xs { x + in_the_body }, 0],
+        [...for x in xs if x > in_the_filter { x }, 0],
+        for x in xs fold found = false {
+            x == 1 || [...for y in xs { y }, after_a_stopped_fold] is nil || found
+        },
+    ]
+}
+
+// A function that calls itself in the items after a `for`, or in the value of a fold, calls
+// itself on every path
+fn after_a_for(xs: List<Int>) -> List<Int> {
+    [...for x in xs { x }, ...after_a_for(xs)]
+}
+
+fn after_a_filtered_for(xs: List<Int>, k: Int) -> List<Int> {
+    [k, ...for x in xs if x > k { x }, ...after_a_filtered_for(xs, k - 1)]
+}
+
+fn in_a_fold_value(xs: List<Int>) -> Int {
+    for x in xs fold sum = in_a_fold_value(xs) { sum + x }
+}
+
+// It isn't reported if the body doesn't always get to the fold's result, if the call is in the
+// body, or if another path doesn't get to the `for`
+fn in_a_stopped_fold_value(xs: List<Int>) -> Bool {
+    for x in xs fold found = in_a_stopped_fold_value(xs) { x == 1 || found }
+}
+
+fn in_the_body(xs: List<Int>) -> List<Int> {
+    [...for x in xs { x + in_a_fold_value(in_the_body(xs)) }, 1]
+}
+
+fn after_a_for_in_a_branch(xs: List<Int>) -> List<Int> {
+    if xs is nil {
+        nil
+    } else {
+        [...for x in xs { x }, ...after_a_for_in_a_branch(xs.rest)]
+    }
+}
+
+// A loop in the body of another one: the inner `for` ends with the outer fold's result, and the
+// outer fold's value is where the lists end
+fn nested_inline_values(
+    lists: List<List<Int>>,
+    groups: List<List<List<Int>>>,
+    k: Int,
+) -> List<Any> {
+    // Always evaluated
+    inline let outer_value = check(k);
+    inline let outermost_value = check(k + 1);
+
+    // Not always evaluated, since there may be no list to go through
+    inline let after_the_inner_for = check(k + 2);
+
+    [
+        for xs in lists fold rest: List<Int> = [outer_value] { [...for x in xs { x }, ...rest] },
+        for lists in groups fold outer: List<Int> = [outermost_value] {
+            for xs in lists fold rest: List<Int> = outer { [k, ...for x in xs { x + k }, ...rest] }
+        },
+        for xs in lists fold rest: List<Int> = nil {
+            [...for x in xs { x }, after_the_inner_for, ...rest]
+        },
+    ]
+}
+
+// The result of a fold that's only used in another loop is evaluated before the body, so every
+// item gets to the end of the list, and to the argument after the `for` in the fold's value
+inline fn used_in_an_inner_loop(lists: List<List<Int>>, ys: List<Int>, last: Int) -> List<Int> {
+    for xs in lists fold rest: List<Int> = [...for y in ys { y }, last] {
+        for x in xs fold inner = rest { [x + (rest as Any is nil as Int), ...inner] }
+    }
+}
+
+fn in_an_outer_fold_value(lists: List<List<Int>>) -> List<Int> {
+    for xs in lists fold rest: List<Int> = in_an_outer_fold_value(lists) {
+        [...for x in xs { x }, ...rest]
+    }
+}
+
+fn after_an_inner_for(lists: List<List<Int>>) -> List<Int> {
+    for xs in lists fold rest: List<Int> = nil {
+        [...for x in xs { x }, ...after_an_inner_for(lists), ...rest]
+    }
+}
+
+// The `for` can be reached again from what its loop ends with, through a function that calls
+// itself or an `inline fn` that's called in its own argument. That isn't the loop getting to the
+// end of its list, so a value that only the other branch refers to isn't always evaluated
+fn through_a_function_that_recurses(xs: List<Int>, k: Int) -> Int {
+    inline let checked = check(k);
+
+    if k > 5 {
+        for x in xs fold sum = through_a_function_that_recurses(xs, k - 1) { sum + x }
+    } else {
+        checked
+    }
+}
+
+inline fn joined(xs: List<Int>, rest: List<Int>) -> List<Int> {
+    [...for x in xs { x }, ...rest]
+}
+
+fn through_its_own_argument(xs: List<Int>, k: Int) -> List<Int> {
+    inline let checked = [check(k)];
+    joined(
+        xs,
+        joined(
+            xs,
+            if k > 5 {
+                checked
+            } else {
+                nil
+            },
+        ),
+    )
+}
+
+fn main(xs: List<Int>, k: Int) -> List<Any> {
+    [
+        through_a_function_that_recurses(xs, k),
+        through_its_own_argument(xs, k),
+        nested_inline_values([xs], [[xs]], k),
+        used_in_an_inner_loop([xs], xs, check(k)),
+        in_an_outer_fold_value([xs]),
+        after_an_inner_for([xs]),
+        inline_values(xs, k),
+        after_a_for(xs),
+        after_a_filtered_for(xs, k),
+        in_a_fold_value(xs),
+        in_a_stopped_fold_value(xs),
+        in_the_body(xs),
+        after_a_for_in_a_branch(xs),
+    ]
+}

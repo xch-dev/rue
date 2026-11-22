@@ -1,7 +1,7 @@
 use log::debug;
 use rowan::TextRange;
-use rue_ast::{AstBinding, AstForClause, AstForExpr, AstNode, AstStmtOrExpr};
-use rue_diagnostic::Name;
+use rue_ast::{AstBinding, AstForClause, AstForExpr, AstForFold, AstNode, AstStmtOrExpr};
+use rue_diagnostic::{Name, Note};
 use rue_hir::{
     BindingSymbol, Block, Declaration, ExprStatement, FunctionCall, FunctionKind, FunctionSymbol,
     Hir, HirId, ParameterSymbol, Statement, Symbol, SymbolId, UnaryOp, Value,
@@ -344,14 +344,31 @@ pub fn compile_for_expr(
             ctx.push_mappings(filter.then_map.clone(), body.syntax().text_range().start())
         });
 
-        let value = compile_block(ctx, &body, BlockKind::Expr, expected_body, false);
+        // The value of the body of a statement isn't used, unless it's the result of a fold
+        let kind = if statement && fold.is_none() {
+            BlockKind::Discarded
+        } else {
+            BlockKind::Expr
+        };
+
+        let value = compile_block(ctx, &body, kind, expected_body, false);
 
         if let Some(index) = mappings {
             ctx.revert_mappings(index, body.syntax().text_range().end());
         }
 
         if let Some(accumulator) = &accumulator {
+            let count = ctx.diagnostic_count();
             ctx.assign_type(body.syntax(), value.ty, accumulator.ty);
+
+            if ctx.diagnostic_count() > count
+                && let Some(fold) = &fold
+                && let Some(note) = untyped_nil_note(ctx, fold, accumulator.ty, value.ty)
+            {
+                for diagnostic in ctx.diagnostics_since_mut(count) {
+                    diagnostic.notes.push(note.clone());
+                }
+            }
         }
 
         value
@@ -484,7 +501,107 @@ pub fn compile_for_expr(
         nil_terminated: true,
     }));
 
+    if kind == ForKind::List {
+        ctx.record_list_loop(hir, function);
+    }
+
     Value::new(hir, return_type)
+}
+
+/// Makes the list of a `for` expression end with the rest of the list that it's spread in,
+/// rather than nil, as in `[...for x in xs { x * 2 }, last]`. The function it's compiled to (see
+/// [`compile_for_expr`]) then builds its items in front of the rest directly, so they aren't
+/// copied there afterward:
+///
+/// ```text
+/// if list { (body, self(rest(list))) } else { rest }
+/// ```
+///
+/// The rest is evaluated where the function gets to the end of its list, which is once for each
+/// time the `for` is evaluated, as when it's built before the items are copied in front of it.
+/// It's still evaluated before the body is for any item, since the body's value is put in front
+/// of the result for the rest of the list, which is evaluated first. Only the list that's gone
+/// through and the filter are evaluated before it now, where it was evaluated before them, so
+/// if one of them fails and the rest does too, it's their failure that's raised rather than the
+/// rest's. What the rest refers to is captured by the function, as with what the body refers to,
+/// so a binding that's only used there is evaluated before the list is gone through.
+///
+/// The function's type is changed to the type of the list it now gives. Nothing reads it after
+/// the function is compiled, and it's kept right for whatever does later.
+pub(crate) fn end_list_loop_with(
+    ctx: &mut Compiler,
+    function: SymbolId,
+    rest: HirId,
+    return_type: TypeId,
+) {
+    let Symbol::Function(symbol) = ctx.symbol(function) else {
+        unreachable!("a `for` expression is compiled to a function");
+    };
+
+    let Hir::If(condition, step, _, inline) = ctx.hir(symbol.body).clone() else {
+        unreachable!("the function of a `for` expression is whether there's an item");
+    };
+
+    let Type::Function(mut ty) = ctx.ty(symbol.ty).clone() else {
+        unreachable!("the function of a `for` expression has a function type");
+    };
+
+    let body = ctx.alloc_hir(Hir::If(condition, step, rest, inline));
+
+    ty.ret = return_type;
+    let ty = ctx.alloc_type(Type::Function(ty));
+
+    if let Symbol::Function(symbol) = ctx.symbol_mut(function) {
+        symbol.body = body;
+        symbol.return_type = return_type;
+        symbol.ty = ty;
+    }
+}
+
+/// The note for a body that isn't the type of the fold's result, if that's only nil because the
+/// fold's value is, and it has no type of its own, as with `fold rest = nil { [x, ...rest] }`.
+/// It suggests giving the result a type, which is a list of the body's items if the body is one,
+/// and otherwise the body's type or nil.
+fn untyped_nil_note(
+    ctx: &mut Compiler,
+    fold: &AstForFold,
+    result: TypeId,
+    body: TypeId,
+) -> Option<Note> {
+    let types = ctx.builtins().types;
+
+    if fold.ty().is_some() || ctx.is_unresolved(result) || !ctx.is_assignable(result, types.nil) {
+        return None;
+    }
+
+    let binding = fold.binding()?.syntax().text().to_string();
+    let binding = binding.trim();
+    let init = fold.init()?.syntax().text().to_string();
+    let init = init.trim();
+
+    let any_list = list_of(ctx, types.permissive_any);
+    let item_types = list_item_types(ctx, body);
+
+    // The type is what the body's value is, and nil for the end of the list: a list of the
+    // body's items, if the body is one. A body that couldn't be compiled doesn't say what it is
+    let example = if rue_types::contains_unresolved(ctx.types(), body) {
+        format!("`fold {binding}: T | nil = {init}`, where `T` is the type of the body")
+    } else if item_types.is_empty() || !ctx.is_assignable(body, any_list) {
+        let body = widen_literals(ctx, body);
+        format!("`fold {binding}: {} | nil = {init}`", ctx.type_name(body))
+    } else {
+        let item_types = item_types
+            .into_iter()
+            .map(|ty| widen_literals(ctx, ty))
+            .collect();
+        let item_type = union_of(ctx, item_types);
+        let list = list_of(ctx, item_type);
+        format!("`fold {binding}: {} = {init}`", ctx.type_name(list))
+    };
+
+    Some(Note::new(format!(
+        "The result of the fold is `nil`, which is the type of its value. Give it a type of its own, as in {example}"
+    )))
 }
 
 /// Declares the binding of a pattern for the value, with a let statement for it in the body of the

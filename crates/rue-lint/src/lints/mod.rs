@@ -2,6 +2,7 @@ use rue_diagnostic::Lint;
 
 use crate::{HirLintPass, LintContext, LintInput};
 
+mod brackets;
 mod branches;
 mod casts;
 mod comparisons;
@@ -72,6 +73,10 @@ pub(crate) const INPUT_PASSES: &[InputPass] = &[
     InputPass {
         lints: struct_spreads::LINTS,
         run: struct_spreads::check,
+    },
+    InputPass {
+        lints: brackets::LINTS,
+        run: brackets::check,
     },
 ];
 
