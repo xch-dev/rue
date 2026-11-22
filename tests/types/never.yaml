@@ -157,4 +157,3 @@ diagnostics:
 - |-
   Unreachable code at never.rue:206:5
     note: Any code after this is never evaluated at never.rue:205:5
-- Condition always evaluates to `true` at never.rue:206:8
