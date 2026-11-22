@@ -41,35 +41,10 @@ fn main(
     _reserved: Any,
 ) -> List<List<Any>> {
     let puzzle_prefix = generators.first[start..end];
-    [decompress_entries(
-        decompress_puzzle,
-        decompress_coin_spend_entry,
-        compressed_coin_spend_entries,
-        deserialize,
-        puzzle_prefix,
-    )]
-}
-
-fn decompress_entries(
-    decompress_puzzle: DecompressPuzzle,
-    decompress_coin_spend_entry: DecompressCoinSpendEntry,
-    entries: List<Any>,
-    deserialize: Deserialize,
-    puzzle_prefix: Bytes,
-) -> List<Any> {
-    if entries is nil {
-        return nil;
-    }
-
     [
-        decompress_coin_spend_entry(deserialize, decompress_puzzle, puzzle_prefix, entries.first),
-        ...decompress_entries(
-            decompress_puzzle,
-            decompress_coin_spend_entry,
-            entries.rest,
-            deserialize,
-            puzzle_prefix,
-        ),
+        for entry in compressed_coin_spend_entries {
+            decompress_coin_spend_entry(deserialize, decompress_puzzle, puzzle_prefix, entry)
+        },
     ]
 }
 
