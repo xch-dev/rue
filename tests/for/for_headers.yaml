@@ -65,9 +65,9 @@ tests:
   clvm_error: path into atom
   debug_clvm_error: "InvalidOperatorArg: rest of non-cons"
 - name: shorter_list_in_a_loop
-  program: (a (q 3 () (a 2 (c 2 (q (q 2 3) 10 20))) (q . 5)) (c (q 2 (i 5 (q 3 () (a (i (> 11 9) () (q 8)) 1) (a 2 (c 2 (c 13 15)))) ()) 1) ()))
-  debug_program: (a (q 3 (q . 1) (q . 5) (a 6 (c 6 (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 4 (c (q . 10) (c (q . 20) ()))))))) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 (i 5 (q 3 (q . 1) (a 2 (c 2 (c (r 5) (r 7)))) (a (i (> (f 7) (f 5)) () (q 8 (q . "assertion failed at for_headers.rue:70:9"))) 1)) ()) 1)) ()))
-  byte_cost: 1428000
+  program: (a (q 3 () (a 2 (c 2 (q (q 2 3) 10 20))) (q . 5)) (c (q 2 (i 5 (q 2 (i (> 11 9) (q 2 2 (c 2 (c 13 15))) (q 8)) 1) ()) 1) ()))
+  debug_program: (a (q 3 (q . 1) (q . 5) (a 6 (c 6 (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 4 (c (q . 10) (c (q . 20) ()))))))) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 (i 5 (q 2 (i (> (f 7) (f 5)) (q 2 2 (c 2 (c (r 5) (r 7)))) (q 8 (q . "assertion failed at for_headers.rue:70:9"))) 1) ()) 1)) ()))
+  byte_cost: 1356000
   clvm_error: path into atom
   debug_clvm_error: "InvalidOperatorArg: first of non-cons"
 - name: lists_of_different_types
@@ -132,16 +132,16 @@ tests:
   byte_cost: 1308000
   total_cost: 1312515
 - name: two_lists_in_a_loop
-  program: (a (q 3 () (a 2 (c 2 (q (q 2 3) 10 20 30))) (q . 5)) (c (q 2 (i 5 (q 3 () (a (i (> 11 9) () (q 8)) 1) (a 2 (c 2 (c 13 15)))) ()) 1) ()))
-  debug_program: (a (q 3 (q . 1) (q . 5) (a 6 (c 6 (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 4 (c (q . 10) (c (q . 20) (c (q . 30) ())))))))) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 (i 5 (q 3 (q . 1) (a 2 (c 2 (c (r 5) (r 7)))) (a (i (> (f 7) (f 5)) () (q 8 (q . "assertion failed at for_headers.rue:128:9"))) 1)) ()) 1)) ()))
+  program: (a (q 3 () (a 2 (c 2 (q (q 2 3) 10 20 30))) (q . 5)) (c (q 2 (i 5 (q 2 (i (> 11 9) (q 2 2 (c 2 (c 13 15))) (q 8)) 1) ()) 1) ()))
+  debug_program: (a (q 3 (q . 1) (q . 5) (a 6 (c 6 (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 4 (c (q . 10) (c (q . 20) (c (q . 30) ())))))))) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 (i 5 (q 2 (i (> (f 7) (f 5)) (q 2 2 (c 2 (c (r 5) (r 7)))) (q 8 (q . "assertion failed at for_headers.rue:128:9"))) 1) ()) 1)) ()))
   output: "5"
-  runtime_cost: 5879
-  byte_cost: 1452000
-  total_cost: 1457879
+  runtime_cost: 5441
+  byte_cost: 1380000
+  total_cost: 1385441
 - name: two_lists_in_a_loop_that_fails
-  program: (a (q 3 () (a 2 (c 2 (q (q 2 30) 10 20 30))) (q . 5)) (c (q 2 (i 5 (q 3 () (a (i (> 11 9) () (q 8)) 1) (a 2 (c 2 (c 13 15)))) ()) 1) ()))
-  debug_program: (a (q 3 (q . 1) (q . 5) (a 6 (c 6 (c (a 4 (c (q . 1) (c (q . 2) (c (q . 30) ())))) (a 4 (c (q . 10) (c (q . 20) (c (q . 30) ())))))))) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 (i 5 (q 3 (q . 1) (a 2 (c 2 (c (r 5) (r 7)))) (a (i (> (f 7) (f 5)) () (q 8 (q . "assertion failed at for_headers.rue:135:9"))) 1)) ()) 1)) ()))
-  byte_cost: 1452000
+  program: (a (q 3 () (a 2 (c 2 (q (q 2 30) 10 20 30))) (q . 5)) (c (q 2 (i 5 (q 2 (i (> 11 9) (q 2 2 (c 2 (c 13 15))) (q 8)) 1) ()) 1) ()))
+  debug_program: (a (q 3 (q . 1) (q . 5) (a 6 (c 6 (c (a 4 (c (q . 1) (c (q . 2) (c (q . 30) ())))) (a 4 (c (q . 10) (c (q . 20) (c (q . 30) ())))))))) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 (i 5 (q 2 (i (> (f 7) (f 5)) (q 2 2 (c 2 (c (r 5) (r 7)))) (q 8 (q . "assertion failed at for_headers.rue:135:9"))) 1) ()) 1)) ()))
+  byte_cost: 1380000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at for_headers.rue:135:9"
 - name: same_list_twice
@@ -243,16 +243,16 @@ tests:
   byte_cost: 1908000
   total_cost: 1916104
 - name: rest_in_a_loop
-  program: (a (q 3 () (a 4 (c 2 (q 1 2 3))) (q . 5)) (c (c (q 2 (i 3 (q 3 () (a (i (a (q 2 13 (c (c 13 2) 15)) (c 5 1)) (q 8) ()) 1) (a 4 (c 2 7))) ()) 1) (q 2 (i 3 (q 2 (i (= 5 6) (q 1 . 1) (q 2 4 (c 2 7))) 1) ()) 1)) ()))
-  debug_program: (a (q 3 (q . 1) (q . 5) (a 8 (c (c 8 (c 12 30)) (a 10 (c 22 (c (q . 1) (c (q . 2) (c (q . 3) ())))))))) (c (c (c (q 2 (i 3 (q 3 (q . 1) (a 4 (c (c 4 (c 10 14)) (r 3))) (a (i (not (a 14 (c 10 (c (r 3) (f 3))))) () (q 8 (q . "assertion failed at for_headers.rue:226:9"))) 1)) ()) 1) (q 2 (i 3 (q 2 (q 2 (i (= (f 7) 13) (q 1 . 1) (q . 2)) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) ()) 1)) (c (q 2 2 3) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 2 (c (c 2 7) 5))))) ()))
+  program: (a (q 3 () (a 4 (c 2 (q 1 2 3))) (q . 5)) (c (c (q 2 (i 3 (q 2 (i (a (q 2 13 (c (c 13 2) 15)) (c 5 1)) (q 8) (q 2 4 (c 2 7))) 1) ()) 1) (q 2 (i 3 (q 2 (i (= 5 6) (q 1 . 1) (q 2 4 (c 2 7))) 1) ()) 1)) ()))
+  debug_program: (a (q 3 (q . 1) (q . 5) (a 8 (c (c 8 (c 12 30)) (a 10 (c 22 (c (q . 1) (c (q . 2) (c (q . 3) ())))))))) (c (c (c (q 2 (i 3 (q 2 (i (not (a 14 (c 10 (c (r 3) (f 3))))) (q 2 4 (c (c 4 (c 10 14)) (r 3))) (q 8 (q . "assertion failed at for_headers.rue:226:9"))) 1) ()) 1) (q 2 (i 3 (q 2 (q 2 (i (= (f 7) 13) (q 1 . 1) (q . 2)) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) ()) 1)) (c (q 2 2 3) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 2 (c (c 2 7) 5))))) ()))
   output: "5"
-  runtime_cost: 9772
-  byte_cost: 2340000
-  total_cost: 2349772
+  runtime_cost: 9334
+  byte_cost: 2268000
+  total_cost: 2277334
 - name: rest_in_a_loop_that_fails
-  program: (a (q 3 () (a 4 (c 2 (q 1 2 1))) (q . 5)) (c (c (q 2 (i 3 (q 3 () (a (i (a (q 2 13 (c (c 13 2) 15)) (c 5 1)) (q 8) ()) 1) (a 4 (c 2 7))) ()) 1) (q 2 (i 3 (q 2 (i (= 5 6) (q 1 . 1) (q 2 4 (c 2 7))) 1) ()) 1)) ()))
-  debug_program: (a (q 3 (q . 1) (q . 5) (a 8 (c (c 8 (c 12 30)) (a 10 (c 22 (c (q . 1) (c (q . 2) (c (q . 1) ())))))))) (c (c (c (q 2 (i 3 (q 3 (q . 1) (a 4 (c (c 4 (c 10 14)) (r 3))) (a (i (not (a 14 (c 10 (c (r 3) (f 3))))) () (q 8 (q . "assertion failed at for_headers.rue:233:9"))) 1)) ()) 1) (q 2 (i 3 (q 2 (q 2 (i (= (f 7) 13) (q 1 . 1) (q . 2)) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) ()) 1)) (c (q 2 2 3) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 2 (c (c 2 7) 5))))) ()))
-  byte_cost: 2340000
+  program: (a (q 3 () (a 4 (c 2 (q 1 2 1))) (q . 5)) (c (c (q 2 (i 3 (q 2 (i (a (q 2 13 (c (c 13 2) 15)) (c 5 1)) (q 8) (q 2 4 (c 2 7))) 1) ()) 1) (q 2 (i 3 (q 2 (i (= 5 6) (q 1 . 1) (q 2 4 (c 2 7))) 1) ()) 1)) ()))
+  debug_program: (a (q 3 (q . 1) (q . 5) (a 8 (c (c 8 (c 12 30)) (a 10 (c 22 (c (q . 1) (c (q . 2) (c (q . 1) ())))))))) (c (c (c (q 2 (i 3 (q 2 (i (not (a 14 (c 10 (c (r 3) (f 3))))) (q 2 4 (c (c 4 (c 10 14)) (r 3))) (q 8 (q . "assertion failed at for_headers.rue:233:9"))) 1) ()) 1) (q 2 (i 3 (q 2 (q 2 (i (= (f 7) 13) (q 1 . 1) (q . 2)) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) ()) 1)) (c (q 2 2 3) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 2 (c (c 2 7) 5))))) ()))
+  byte_cost: 2268000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at for_headers.rue:233:9"
 - name: rest_in_a_filter
@@ -403,9 +403,9 @@ tests:
   byte_cost: 1692000
   total_cost: 1699428
 - name: loops_in_a_loop
-  program: (a (q 3 () (a 4 (c (c 6 4) (q (q 2 3) 10 20 30))) (q . 5)) (c (c (q 2 (i 5 (q 3 () (a (i (> 11 9) (q 2 4 (c (c 5 4) 13)) (q 8)) 1) (a 6 (c 2 (c 13 15)))) ()) 1) (q 2 (i 3 (q 3 () (a (i (> 5 8) () (q 8)) 1) (a 6 (c 2 7))) ()) 1)) ()))
-  debug_program: (a (q 3 (q . 1) (q . 5) (a 10 (c (c 14 10) (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 4 (c (q . 10) (c (q . 20) (c (q . 30) ())))))))) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (c (q 2 (i 5 (q 3 (q . 1) (a 6 (c (c 4 6) (c (r 5) (r 7)))) (a (i (> (f 7) (f 5)) (q 2 4 (c (c 5 4) (r 5))) (q 8 (q . "assertion failed at for_headers.rue:418:9"))) 1)) ()) 1) (q 2 (i 3 (q 3 (q . 1) (a 6 (c (c 4 6) (r 3))) (a (i (> (f 3) (f 4)) () (q 8 (q . "assertion failed at for_headers.rue:420:13"))) 1)) ()) 1))) ()))
+  program: (a (q 3 () (a 4 (c (c 6 4) (q (q 2 3) 10 20 30))) (q . 5)) (c (c (q 2 (i 5 (q 2 (i (> 11 9) (q 3 () (a 4 (c (c 5 4) 13)) (a 6 (c 2 (c 13 15)))) (q 8)) 1) ()) 1) (q 2 (i 3 (q 2 (i (> 5 8) (q 2 6 (c 2 7)) (q 8)) 1) ()) 1)) ()))
+  debug_program: (a (q 3 (q . 1) (q . 5) (a 10 (c (c 14 10) (c (a 4 (c (q . 1) (c (q . 2) (c (q . 3) ())))) (a 4 (c (q . 10) (c (q . 20) (c (q . 30) ())))))))) (c (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (c (q 2 (i 5 (q 2 (i (> (f 7) (f 5)) (q 3 (q . 1) (a 6 (c (c 4 6) (c (r 5) (r 7)))) (a 4 (c (c 5 4) (r 5)))) (q 8 (q . "assertion failed at for_headers.rue:418:9"))) 1) ()) 1) (q 2 (i 3 (q 2 (i (> (f 3) (f 4)) (q 2 6 (c (c 4 6) (r 3))) (q 8 (q . "assertion failed at for_headers.rue:420:13"))) 1) ()) 1))) ()))
   output: "5"
-  runtime_cost: 12682
-  byte_cost: 2580000
-  total_cost: 2592682
+  runtime_cost: 12244
+  byte_cost: 2508000
+  total_cost: 2520244

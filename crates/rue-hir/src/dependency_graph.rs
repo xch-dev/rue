@@ -711,10 +711,17 @@ impl DependencyGraph {
         let mut captures = HashSet::new();
 
         for (&from, dependencies) in &self.dependencies {
-            // The loops and lambdas that the reference is inside of
+            // The loops and lambdas that the reference is inside of. Any symbol that's used as a
+            // value is among the closures, but only a function is one that's called again: a
+            // binding that's destructured is referenced by the bindings for its parts, which
+            // are evaluated where it's defined
             let functions: Vec<SymbolId> = iter::once(from)
                 .chain(self.owners(from))
-                .filter(|symbol| self.loops.contains(symbol) || self.closures.contains(symbol))
+                .filter(|&symbol| {
+                    self.loops.contains(&symbol)
+                        || (self.closures.contains(&symbol)
+                            && matches!(db.symbol(symbol), Symbol::Function(_)))
+                })
                 .collect();
 
             if !functions.iter().any(|symbol| self.loops.contains(symbol)) {
@@ -978,6 +985,34 @@ impl DependencyGraph {
     /// parameter or local of the function or of a lambda inside it.
     pub fn is_defined_in(&self, symbol: SymbolId, function: SymbolId) -> bool {
         self.owners(symbol).any(|owner| owner == function)
+    }
+
+    /// Whether the function can call itself other than through a loop. A loop is never inlined,
+    /// so a function that only gets back to itself through one, such as one whose body is a
+    /// `for` that calls it for each item, can be inlined without inlining itself again.
+    pub fn calls_itself_outside_loops(&self, symbol: SymbolId) -> bool {
+        let mut visited = HashSet::new();
+        let mut stack: Vec<SymbolId> = self
+            .dependencies
+            .get(&symbol)
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+
+        while let Some(current) = stack.pop() {
+            if current == symbol {
+                return true;
+            }
+
+            if self.loops.contains(&current) || !visited.insert(current) {
+                continue;
+            }
+
+            stack.extend(self.dependencies.get(&current).into_iter().flatten().copied());
+        }
+
+        false
     }
 
     pub fn dependencies(&self, symbol: SymbolId, captures_only: bool) -> IndexSet<SymbolId> {

@@ -424,12 +424,25 @@ pub fn compile_for_expr(
                 None => ctx.trimmed_srcloc(expr.syntax()),
             };
 
-            ctx.alloc_hir(Hir::Block(Block {
-                statements: vec![Statement::Expr(ExprStatement {
-                    hir: body.hir,
+            // The body's statements come before the call for the rest of the list in one block,
+            // so that the call follows them as it would in recursion written by hand: an
+            // `assert` is then a branch whose other side is the call, rather than a check that's
+            // evaluated before it
+            let (mut statements, value) = match ctx.hir(body.hir) {
+                Hir::Block(block) => (block.statements.clone(), block.body),
+                _ => (Vec::new(), Some(body.hir)),
+            };
+
+            if let Some(value) = value {
+                statements.push(Statement::Expr(ExprStatement {
+                    hir: value,
                     always_nil,
                     srcloc,
-                })],
+                }));
+            }
+
+            ctx.alloc_hir(Hir::Block(Block {
+                statements,
                 body: Some(rest),
             }))
         }

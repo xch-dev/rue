@@ -1,0 +1,85 @@
+// How a `for` is lowered next to recursion written by hand. Each list goes through `runtime`, which
+// the compiler can't fold, so the loops are run.
+
+fn runtime<T>(value: T) -> T {
+    assert value is (Any, Any) || value is nil;
+    value
+}
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+// A loop's statements come before the call for the rest of the list, so an `assert` is a branch
+// whose other side is that call, as in recursion written by hand
+test fn loop_with_statements() -> Int {
+    let xs = runtime([1, 2, 3]);
+    for x in xs {
+        let doubled = x * 2;
+        assert doubled > 0;
+        assert doubled < 10, "too large";
+    }
+    5
+}
+
+test fn loop_with_statements_fails() -> Int {
+    let xs = runtime([1, 2, 6]);
+    for x in xs {
+        let doubled = x * 2;
+        assert doubled > 0;
+        assert doubled < 10, "too large";
+    }
+    5
+}
+
+// A loop whose body ends with a value that isn't used still evaluates it for each item
+test fn loop_ending_with_a_value() -> Int {
+    let xs = runtime([1, 0]);
+    for x in xs {
+        assert x < 5;
+        positive(x)
+    }
+    5
+}
+
+// The parts of a destructured value in a loop are read where they're used, as in a function
+test fn destructuring_in_a_loop() -> List<Int> {
+    for x in runtime([7, 8, 9]) {
+        let (quotient, _) = divmod(x, 3);
+        quotient
+    }
+}
+
+test fn destructuring_both_parts_in_a_loop() -> List<Int> {
+    for x in runtime([7, 8, 9]) {
+        let (quotient, remainder) = divmod(x, 3);
+        quotient * 10 + remainder
+    }
+}
+
+// A destructured value from outside the loop is still captured, and evaluated once
+test fn destructuring_outside_a_loop() -> List<Int> {
+    let (quotient, _) = divmod(runtime([17]).first, 3);
+    for x in runtime([1, 2]) { x + quotient }
+}
+
+// A function and a loop that call each other: the function, whose body is the loop, is inlined
+// where it's called, since it only gets back to itself through the loop
+type Tree = Int | List<Tree>;
+
+fn size(tree: Tree) -> Int {
+    if tree is Int {
+        1
+    } else {
+        sizes(tree)
+    }
+}
+
+fn sizes(trees: List<Tree>) -> Int {
+    for tree in trees fold total = 0 { size(tree) + total }
+}
+
+test fn function_and_loop_that_call_each_other() -> Int {
+    size(runtime([1, [2, 3], [[4], 5]]))
+}
