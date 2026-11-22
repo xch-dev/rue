@@ -1,0 +1,40 @@
+// A lambda that feeds itself is compiled again once its parameter's type is known, and what the
+// first compile found is discarded, so each warning in its body is reported once (#590)
+
+fn fold<T, A>(list: List<T>, init: A, f: fn(acc: A, x: T) -> A) -> A {
+    if list is nil {
+        return init;
+    }
+
+    fold(list.rest, f(init, list.first), f)
+}
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+test fn bracketed_for() -> (Int, Int) {
+    let xs = [1, 2, 3];
+    fold(
+        xs,
+        (0, 0),
+        fn(acc, x) => {
+            let _ys = [for y in xs { y + x }];
+            (acc.first + x, acc.rest + 1)
+        },
+    )
+}
+
+test fn unused_struct_spread() -> (Int, Int) {
+    let xs = [1, 2, 3];
+    let point = Point { x: 0, y: 0 };
+    fold(
+        xs,
+        (0, 0),
+        fn(acc, x) => {
+            let p = Point { ...point, x, y: x + 1 };
+            (acc.first + p.x, acc.rest + p.y)
+        },
+    )
+}

@@ -184,6 +184,8 @@ pub struct LintSitesCheckpoint {
     unreachable_match_arms: usize,
     indistinguishable_match_arms: usize,
     imprecise_narrowings: usize,
+    unused_struct_spreads: usize,
+    bracketed_fors: usize,
     qualified_references: usize,
 }
 
@@ -198,17 +200,37 @@ impl LintSites {
     }
 
     /// Where the sites are: the length of each list, which only grows, and of the order the
-    /// references through modules were added in, which can be for a declaration from before.
+    /// references through modules were added in, which can be for a declaration from before. Every
+    /// field is named here, so that one added later doesn't compile until it's said how it goes
+    /// back (see [`Self::restore`]).
     pub fn checkpoint(&self) -> LintSitesCheckpoint {
+        let Self {
+            empty_imports,
+            field_reads,
+            qualified_references: _,
+            qualified_reference_order,
+            modules,
+            enclosed_prelude_references,
+            unreachable_match_arms,
+            indistinguishable_match_arms,
+            // Keyed by the nodes of `match` expressions that are inlined, which are new
+            inline_match_arms: _,
+            imprecise_narrowings,
+            unused_struct_spreads,
+            bracketed_fors,
+        } = self;
+
         LintSitesCheckpoint {
-            empty_imports: self.empty_imports.len(),
-            field_reads: self.field_reads.len(),
-            modules: self.modules.len(),
-            enclosed_prelude_references: self.enclosed_prelude_references.len(),
-            unreachable_match_arms: self.unreachable_match_arms.len(),
-            indistinguishable_match_arms: self.indistinguishable_match_arms.len(),
-            imprecise_narrowings: self.imprecise_narrowings.len(),
-            qualified_references: self.qualified_reference_order.len(),
+            empty_imports: empty_imports.len(),
+            field_reads: field_reads.len(),
+            modules: modules.len(),
+            enclosed_prelude_references: enclosed_prelude_references.len(),
+            unreachable_match_arms: unreachable_match_arms.len(),
+            indistinguishable_match_arms: indistinguishable_match_arms.len(),
+            imprecise_narrowings: imprecise_narrowings.len(),
+            unused_struct_spreads: unused_struct_spreads.len(),
+            bracketed_fors: bracketed_fors.len(),
+            qualified_references: qualified_reference_order.len(),
         }
     }
 
@@ -226,6 +248,9 @@ impl LintSites {
             .truncate(checkpoint.indistinguishable_match_arms);
         self.imprecise_narrowings
             .truncate(checkpoint.imprecise_narrowings);
+        self.unused_struct_spreads
+            .truncate(checkpoint.unused_struct_spreads);
+        self.bracketed_fors.truncate(checkpoint.bracketed_fors);
         for declaration in self
             .qualified_reference_order
             .split_off(checkpoint.qualified_references)

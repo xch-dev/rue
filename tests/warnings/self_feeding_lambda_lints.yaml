@@ -1,0 +1,23 @@
+tests:
+- name: bracketed_for
+  program: (a (q 2 2 (c 2 (c (q 1 2 3) (c (q ()) (q 4 (+ 4 5) (+ 6 (q . 1))))))) (c (q 2 (i 5 (q 2 2 (c 2 (c 13 (c (a 15 (c 11 (c 9 ()))) 15)))) (q . 11)) 1) ()))
+  debug_program: (a (q 2 (q 2 5 (c 5 (c 2 (c (c () ()) (c (q . 2) (c (c (q . 1) (q 4 (+ (f 2) 5) (+ (r 2) (q . 1)))) (c (q . 1) ()))))))) (c (c (q . 1) (c (q . 2) (c (q . 3) ()))) 1)) (c (q 2 (i (not 5) (q . 11) (q 2 2 (c 2 (c (r 5) (c (a 15 (c 11 (c (f 5) ()))) 15))))) 1) ()))
+  output: (6 . 3)
+  runtime_cost: 9508
+  byte_cost: 1620000
+  total_cost: 1629508
+- name: unused_struct_spread
+  program: (a (q 2 2 (c 2 (c (q 1 2 3) (c (q ()) (q 2 (q 4 (+ 9 4) (+ 13 10)) (c (c 5 (c (+ 5 (q . 1)) ())) 1)))))) (c (q 2 (i 5 (q 2 2 (c 2 (c 13 (c (a 15 (c 11 (c 9 ()))) 15)))) (q . 11)) 1) ()))
+  debug_program: (a (q 2 (q 2 5 (c 5 (c 2 (c (c () ()) (c (q . 2) (c (c (q . 1) (q 2 (q 4 (+ (f 5) (f 2)) (+ (r 5) (f (r 2)))) (c (c 5 (c (+ 5 (q . 1)) ())) 1))) (c (q . 1) ()))))))) (c (c (q . 1) (c (q . 2) (c (q . 3) ()))) 1)) (c (q 2 (i (not 5) (q . 11) (q 2 2 (c 2 (c (r 5) (c (a 15 (c 11 (c (f 5) ()))) 15))))) 1) ()))
+  output: (6 . 9)
+  runtime_cost: 13336
+  byte_cost: 2004000
+  total_cost: 2017336
+diagnostics:
+- |-
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at self_feeding_lambda_lints.rue:23:23
+    help: Remove the brackets
+    help: Spread the `for` into the list with `...`
+- |-
+  Every field of `Point` is specified, so nothing is copied from the spread value at self_feeding_lambda_lints.rue:36:29
+    help: Remove the spread
