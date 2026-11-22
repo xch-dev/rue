@@ -68,7 +68,8 @@ use std::{
 };
 
 use crate::{
-    Database, Hir, HirId, Statement, Symbol, SymbolId, reachable_body, reachable_statements,
+    Database, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId, reachable_body,
+    reachable_statements,
 };
 
 pub(crate) use evaluation::*;
@@ -421,6 +422,15 @@ impl<'a, 'c> Uses<'a, 'c> {
                     && self.visited.insert(*symbol)
                 {
                     self.hir(value);
+                }
+
+                // A loop is defined where it's called, like a lambda, so what its body refers to
+                // is referenced there
+                if let Symbol::Function(function) = db.symbol(*symbol)
+                    && function.kind == FunctionKind::Loop
+                    && self.visited.insert(*symbol)
+                {
+                    self.hir(function.body);
                 }
             }
             Hir::Lambda(lambda) => {

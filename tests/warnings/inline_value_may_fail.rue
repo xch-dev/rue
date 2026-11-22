@@ -374,3 +374,35 @@ test fn tests() -> Int {
 test fn raises() -> Int {
     inline_binding_before_raise(1)
 }
+
+// A loop captures what its body refers to, like a lambda, so an `inline fn` refers to a parameter
+// that only a loop in it does, and a loop that captures a parameter evaluates it when its closure
+// is built
+inline fn fold_or(xs: List<Int>, value: Int) -> Int {
+    for _x in xs fold _rest = value { 1 }
+}
+
+inline fn nested_fold_or(xs: List<Int>, value: Int) -> Int {
+    for _x in xs fold _rest = for _y in xs fold _inner = value { 2 } { 1 }
+}
+
+fn loop_captures(xs: List<Int>, flag: Bool) -> Int {
+    // Warns: the inline binding fails if the argument of `fold_or` does, which the loop captures
+    inline let folded = fold_or(xs, check(1));
+
+    // Doesn't warn: the outer loop captures what the inner one does, so it evaluates the argument
+    let a = nested_fold_or(xs, check(1));
+
+    // Doesn't warn: the loop captures the argument, so it's evaluated when the closure is built
+    let b = fold_or(xs, check(1));
+
+    if flag {
+        folded + a + b
+    } else {
+        a + b
+    }
+}
+
+test fn loops() -> Int {
+    loop_captures([1, 2], true)
+}
