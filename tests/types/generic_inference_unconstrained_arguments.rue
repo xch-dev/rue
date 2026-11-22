@@ -4,6 +4,10 @@
 
 type Opt<T> = (T, nil) | nil;
 
+fn merge<T>(a: List<T>, b: List<T>) -> List<T> {
+    [...a, ...b]
+}
+
 fn sum(list: List<Int>) -> Int {
     if list is nil {
         0
@@ -25,13 +29,13 @@ test fn assignable_to_any_list() -> Int {
 }
 
 test fn two_arguments() -> Int {
-    let merged = merge_list([], nil);
+    let merged = merge([], nil);
     let list: List<Int> = [1, ...merged];
     sum(list)
 }
 
 test fn passed_on() -> Int {
-    sum(reverse([])) + length(reverse(merge_list([], [])))
+    sum(reverse([])) + length(reverse(merge([], [])))
 }
 
 fn branch(condition: Bool) -> Int {

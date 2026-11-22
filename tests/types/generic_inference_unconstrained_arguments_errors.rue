@@ -1,6 +1,10 @@
 // A generic that nothing gives a type is only `Never` when a parameter's type references it, the
 // arguments hold no value of it, and the call still has a value. These are rejected as they were
 
+fn merge<T>(a: List<T>, b: List<T>) -> List<T> {
+    [...a, ...b]
+}
+
 fn empty<T>() -> List<T> {
     nil
 }
@@ -82,11 +86,11 @@ fn main(value: Any) -> Int {
 
     // An argument that holds something else leaves the generic as it was
     let _not_a_list = length(5);
-    let _one_of_two = merge_list(nil, 5);
+    let _one_of_two = merge(nil, 5);
 
     // As does an argument that failed to compile, or is missing
     let _unresolved: Int = reverse(undeclared);
-    let _too_few: Int = merge_list([]);
+    let _too_few: Int = merge([]);
 
     // The lambda's parameter is the generic
     let _lambda_parameter = each(nil, fn(item) => nil);
@@ -106,7 +110,7 @@ fn main(value: Any) -> Int {
 
     // What the generic is inferred as is shown as `Never`
     let shown: Int = reverse([]);
-    let shown_in_a_pair: Int = (merge_list([], []), length(nil));
+    let shown_in_a_pair: Int = (merge([], []), length(nil));
 
     shown + shown_in_a_pair
 }

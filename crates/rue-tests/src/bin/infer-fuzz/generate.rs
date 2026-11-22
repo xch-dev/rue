@@ -199,8 +199,9 @@ const HELPERS: &[Template] = &[
 /// - **2**: adds generic structs and aliases, including a recursive one (`Entry<K, V>`,
 ///   `Maybe<T>`, `Tree<T>`), unions of function types, of generic structs and of literals,
 ///   generic function types in bindings' annotations and functions' return types (#340, #359),
-///   longer chains and cycles of generics, `std`'s `merge_list`, and the `expected` variant,
-///   which removes only the generic arguments that the expected type alone gives.
+///   longer chains and cycles of generics, `merge_list` (the standard library's until #555, so
+///   runs from before then call it without declaring it), and the `expected` variant, which removes only the
+///   generic arguments that the expected type alone gives.
 /// - **3**: adds the shapes that the generics campaign's bugs had and the earlier versions don't
 ///   make (#362): lists, pairs and boxes of untyped lambdas (#485, #489), recursive functions that
 ///   pass them to themselves, lambdas whose bodies call generic functions (so that calls nest in
@@ -477,7 +478,8 @@ const CATALOG_V2: &[Template] = &[
         ],
         "C",
     ),
-    // From the standard library, so it isn't printed, and the program is compiled with it
+    // The standard library's `merge_list` until it was removed (#555). Programs printed it as a
+    // call into the standard library until then, and declare it now, as they do the others
     template(
         "merge_list",
         &["T"],

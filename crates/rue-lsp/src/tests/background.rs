@@ -486,8 +486,8 @@ async fn test_compilers_are_reused_for_the_same_options() {
 
 #[tokio::test]
 async fn test_standard_library_survives_copying_the_compiler() {
-    let source = "fn main() -> List<Int> {\n    merge_list([1, 2], [3])\n}\n";
-    let edited = "fn main() -> List<Int> {\n    merge_list([1], [2, 3])\n}\n";
+    let source = "fn main() -> Int {\n    length([1, 2])\n}\n";
+    let edited = "fn main() -> Int {\n    length([1, 2, 3])\n}\n";
     let project = TempProject::with_manifest(
         Some("[compiler]\nentrypoint = \".\"\n"),
         &[("main.rue", source)],
@@ -495,7 +495,7 @@ async fn test_standard_library_survives_copying_the_compiler() {
     let uri = project.uri("main.rue");
     let hover = json!([{
         "language": "rue",
-        "value": "fn merge_list<T>(a: List<T>, b: List<T>) -> List<T>"
+        "value": "fn length<T>(list: List<T>) -> Int"
     }]);
 
     let mut client = Client::initialized().await;

@@ -48,7 +48,7 @@
 //!   runs of the same version stay comparable with `--compare`, but the same seed is a different
 //!   program in each version. Version 2
 //!   adds generic structs and aliases, unions of function types, generic structs and literals,
-//!   generic function types in annotations and return types, longer chains and cycles, `std`'s
+//!   generic function types in annotations and return types, longer chains and cycles,
 //!   `merge_list`, and the `expected` variant. Version 3 adds lists, pairs and boxes of untyped
 //!   lambdas, recursive functions that pass them to themselves, lambdas whose bodies call generic
 //!   functions, wider unions in expected types, and the `probe` variant. Version 4 adds

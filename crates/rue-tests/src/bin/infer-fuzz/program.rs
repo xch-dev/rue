@@ -688,15 +688,6 @@ impl Program {
         })
     }
 
-    /// Whether the program calls or references a function from the standard library, so it must
-    /// be compiled with it.
-    pub fn uses_std(&self) -> bool {
-        self.exprs().iter().any(|expr| {
-            matches!(&expr.kind, ExprKind::Call { function, .. } | ExprKind::FnRef { function, .. }
-                if is_std(function))
-        })
-    }
-
     /// The program as Rue source, with the generic arguments that the variant strips removed.
     pub fn print(&self, variant: &Variant) -> String {
         let mut out = String::new();
@@ -712,12 +703,7 @@ impl Program {
             }
         }
 
-        // A function from the standard library is in the program only so that calls know its
-        // signature
         for function in self.functions_and_main() {
-            if is_std(&function.name) {
-                continue;
-            }
             print_function(&mut out, function, variant);
             out.push('\n');
         }
@@ -725,13 +711,6 @@ impl Program {
         out.pop();
         out
     }
-}
-
-/// The standard library's generic functions that generator version 2 calls.
-pub const STD_FUNCTIONS: &[&str] = &["merge_list"];
-
-pub fn is_std(name: &str) -> bool {
-    STD_FUNCTIONS.contains(&name)
 }
 
 fn print_function(out: &mut String, function: &Function, variant: &Variant) {
