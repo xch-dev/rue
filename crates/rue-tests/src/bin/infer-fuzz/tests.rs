@@ -758,6 +758,26 @@ fn programs_that_both_raise_are_inferred_whatever_the_error() {
         expected,
         &compile("fn main() -> Any {\n    1\n}\n")
     ));
+
+    // And a shrunk candidate that leaks keeps a leak's failure when it raises differently too
+    let leaking = |run: Run| Compiled::Ok {
+        clvm: String::new(),
+        run,
+        time: Duration::ZERO,
+        fingerprint: String::new(),
+        leak: Some("x: T".to_string()),
+    };
+    let leaked = Outcome::failed(Category::Leaked, String::new(), 1.0);
+    assert!(worker::same_failure(
+        &leaked,
+        expected,
+        &leaking(error("path into atom"))
+    ));
+    assert!(!worker::same_failure(
+        &leaked,
+        expected,
+        &leaking(output("1"))
+    ));
 }
 
 fn ok(clvm: &str, millis: u64) -> Compiled {
