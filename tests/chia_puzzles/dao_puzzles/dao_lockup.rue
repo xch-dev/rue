@@ -288,17 +288,15 @@ fn remove_all(items: List<Bytes32>, list: List<Bytes32>) -> List<Bytes32> {
     remove_all(items.rest, remove(items.first, list))
 }
 
-// Removes the first occurrence of the item, or returns nil if it isn't in the list.
+// Removes the first occurrence of the item, and leaves the list as it is if the item isn't in it.
 fn remove(item: Bytes32, list: List<Bytes32>) -> List<Bytes32> {
-    if list is nil {
-        return nil;
+    for first, rest in list fold removed: List<Bytes32> = nil {
+        if first == item {
+            rest
+        } else {
+            [first, ...removed]
+        }
     }
-
-    if list.first == item {
-        return list.rest;
-    }
-
-    [list.first, ...remove(item, list.rest)]
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.
@@ -445,6 +443,23 @@ test fn removes_repeated_proposals_in_order() -> Any {
 // compared with anything, even if it isn't an atom
 test fn removes_ids_in_order() -> Any {
     check(spend([sha256("first")], nil, nil, [sha256("first"), (1, 2)], 0, nil))
+}
+
+// Like the original, a removal stops at the first match, so what's after it isn't read. A debug
+// build of the port reads the rest of the list, so it fails on these malformed votes
+test fn stops_at_the_removed_vote() -> Any {
+    check(spend(
+        unchecked_cast([sha256("first") as Any, (1, 2)]),
+        nil,
+        nil,
+        [sha256("first")],
+        0,
+        nil,
+    ))
+}
+
+test fn stops_at_the_removed_vote_before_an_atom() -> Any {
+    check(spend(unchecked_cast((sha256("first"), 5)), nil, nil, [sha256("first")], 0, nil))
 }
 
 test fn leaves_voting_mode() -> Any {

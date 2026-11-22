@@ -238,10 +238,7 @@ fn dedupe(coins: List<ParentAmount>, ids: List<Bytes32>) -> List<ParentAmount> {
 }
 
 fn contains(item: Bytes32, items: List<Bytes32>) -> Bool {
-    if items is nil {
-        return false;
-    }
-    item == items.first || contains(item, items.rest)
+    for other in items fold found = false { item == other || found }
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.
