@@ -333,3 +333,27 @@ test fn inline_argument_of_a_captured_value_is_still_evaluated() -> List<Int> {
     let xs = runtime([1, 2, 3]);
     add_scaled_value(positive(total(xs) - 6), total(xs) > 6, xs)
 }
+
+fn climb_to(n: Int, limit: Int) -> Int {
+    if n > limit {
+        n
+    } else {
+        climb_to(n + 7, limit)
+    }
+}
+
+const CLIMBED: Int = climb_to(5, 40) * 3;
+
+fn add_climbed(xs: List<Int>, n: Int) -> Int {
+    if n > 3 {
+        n
+    } else {
+        for x in xs fold sum = 0 { sum + x + add_climbed(xs, n + CLIMBED) }
+    }
+}
+
+// A function with a loop in it captures what the loop needs, in the same order as the rest of
+// what it captures, so that the functions are passed together
+test fn captures_of_a_loop_are_grouped_with_the_rest() -> Int {
+    add_climbed(runtime([1, 2, 3]), 0)
+}

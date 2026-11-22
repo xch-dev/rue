@@ -309,6 +309,26 @@ fn value_in_a_lambda_called_once_is_substituted() {
     }
 }
 
+/// Two calls of the same function, each called once and each passed a lambda, call each lambda
+/// once, so a value that the inner lambda captures is substituted.
+#[test]
+fn value_in_lambdas_passed_to_two_calls_of_the_same_function_is_substituted() {
+    assert!(!is_repeated(
+        "fn main(x: Int) -> Int { apply(fn(z) => apply(fn(w) => w + K, z), x) }"
+    ));
+    assert!(!is_repeated(
+        "fn main(x: Int) -> Int { apply(fn(z) => z + apply(fn(w) => w + K, z), x) }"
+    ));
+
+    // Either lambda called twice is enough to evaluate it more than once
+    assert!(is_repeated(
+        "fn main(x: Int) -> Int { apply_twice(fn(z) => apply(fn(w) => w + K, z), x) }"
+    ));
+    assert!(is_repeated(
+        "fn main(x: Int) -> Int { apply(fn(z) => apply_twice(fn(w) => w + K, z), x) }"
+    ));
+}
+
 /// The scope of a `let` is the function it's in: a lambda that's called once each time the
 /// function runs evaluates the value once for each time it would be bound, however often the
 /// function itself is called. So the value is substituted, and only evaluated where it's needed.

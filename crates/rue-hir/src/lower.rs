@@ -376,6 +376,22 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             );
         }
 
+        // What's added back is in the order it would have without anything left out, so that
+        // the functions are grouped together the same way
+        if let Some(unpruned) = &unpruned {
+            captures = unpruned
+                .iter()
+                .copied()
+                .filter(|capture| captures.contains(capture))
+                .chain(
+                    captures
+                        .iter()
+                        .copied()
+                        .filter(|capture| !unpruned.contains(capture)),
+                )
+                .collect();
+        }
+
         // The argument of an `inline fn` is evaluated wherever its parameter is referenced, and
         // a closure that captures the parameter evaluates the argument when it's built. So a
         // closure in an `inline fn` still captures the parameters that the values it captures

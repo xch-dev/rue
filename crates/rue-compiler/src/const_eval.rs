@@ -261,8 +261,9 @@ fn evaluate_const_expr(
 
     // A constant that's bound and references itself can't be lowered, since its value would
     // have to be bound before itself. It's an error that's reported on its own (see
-    // `check_recursion`), which finds the same cycles. An `inline` one, such as the default value
-    // of a struct's field, is substituted where it's referenced, so it's lowered either way
+    // `check_recursion`), which finds the same cycles. That's also an error for an `inline` one,
+    // but it's substituted where it's referenced, so the expression is still evaluated. Only the
+    // constants count: a function that calls itself and reads one isn't a cycle of the constant
     let constants: Vec<Declaration> = graph
         .dependencies(root, false)
         .into_iter()

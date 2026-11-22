@@ -370,3 +370,38 @@ fn main(x: Int) -> Int { x + const { f(2) } + const { S {}.a } }
         ["`const { f(2) }` = 11", "`const { S {}.a }` = 9"]
     );
 }
+
+/// A function that calls itself, and reads a constant, doesn't keep a const expression from being
+/// evaluated: only a constant that references itself does.
+#[test]
+fn const_expression_that_calls_a_recursive_function_that_reads_a_constant_is_evaluated() {
+    let compiled = compile(
+        "
+const BASE: Int = 5;
+fn f(n: Int) -> Int { if n > 5 { n } else { f(n + BASE) } }
+fn main(x: Int) -> Int { x + const { f(2) } + const { f(1) + f(3) } }
+",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.const_values(),
+        ["`const { f(2) }` = 7", "`const { f(1) + f(3) }` = 14"]
+    );
+}
+
+/// An `inline` constant that references itself is an error, but it's substituted where it's
+/// referenced, so a const expression that reaches it is still evaluated.
+#[test]
+fn const_expression_that_reaches_an_inline_constant_that_references_itself_is_evaluated() {
+    let compiled = compile(
+        "
+inline const K: Int = f(9);
+fn f(n: Int) -> Int { if n > 5 { n } else { K + n } }
+fn main(x: Int) -> Int { x + const { f(2) } }
+",
+    );
+
+    assert_eq!(compiled.errors(), ["2:14 RecursiveConstant(\"K\")"]);
+    assert_eq!(compiled.const_values(), ["`const { f(2) }` = 11"]);
+}

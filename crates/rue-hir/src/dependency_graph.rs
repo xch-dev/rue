@@ -465,13 +465,15 @@ impl DependencyGraph {
             return scope.is_none() && self.references(place) == 0;
         }
 
-        // Nothing is evaluated by itself, but this keeps the walk finite if that changes
+        // The places on the way here, which nothing is evaluated by. This keeps the walk finite
+        // if that changes. A place can be reached again by another way, such as two calls of the
+        // same function that each pass it a lambda, so it's taken off once it's been followed
         if !visiting.insert(place) {
             return false;
         }
 
         // A chain of inline constants, or of calls, is as deep as it's long
-        rue_types::grow_stack(|| match db.symbol(place) {
+        let once = rue_types::grow_stack(|| match db.symbol(place) {
             Symbol::Function(_) => {
                 !self.loops.contains(&place)
                     && self.references(place) == 1
@@ -496,7 +498,9 @@ impl DependencyGraph {
             Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {
                 false
             }
-        })
+        });
+        visiting.remove(&place);
+        once
     }
 
     /// The place that calls a function once each time it's evaluated, if the function is only
@@ -527,7 +531,9 @@ impl DependencyGraph {
 
         // A chain of bindings that are each the one before is as deep as it's long
         let next = *self.sites.get(&symbol)?;
-        let call = rue_types::grow_stack(|| self.call_site(db, next, visiting))?;
+        let call = rue_types::grow_stack(|| self.call_site(db, next, visiting));
+        visiting.remove(&symbol);
+        let call = call?;
 
         let Some(function) = function else {
             return Some(call);
