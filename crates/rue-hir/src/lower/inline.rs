@@ -25,11 +25,13 @@
 //! Const expressions aren't measured at all, since the programs they're lowered to are only
 //! run while compiling (see [`Lowerer::lower_main`]).
 
+use std::collections::HashSet;
+
 use rue_lir::LirId;
 
 use crate::{Environment, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId};
 
-use super::Lowerer;
+use super::{Lowerer, layout::Layout, measure::Trial};
 
 /// How many nodes of HIR the body of a function can have and still be measured. A call takes
 /// about eight bytes, and the function itself a few more, so a body that's repeated in each call
@@ -68,28 +70,61 @@ impl Lowerer<'_, '_, '_> {
             .any(|&parameter| self.graph.references(parameter) > 1)
     }
 
-    /// Lowers the entrypoint, after deciding which of the functions that are measured are inlined
-    /// (see [`Self::is_measured_function`]): each one that makes the program smaller, given the
-    /// ones before it. This is how a program that's run on chain is lowered. A program that's
-    /// only run while compiling, such as a const expression, is lowered with
+    /// Lowers the entrypoint, after deciding how the environments are laid out (see
+    /// [`super::layout`]) and which of the functions that are measured are inlined (see
+    /// [`Self::is_measured_function`]). This is how a program that's run on chain is lowered. A
+    /// program that's only run while compiling, such as a const expression, is lowered with
     /// [`lower_symbol_value`](Self::lower_symbol_value), which doesn't measure anything, since
     /// its size doesn't matter.
+    ///
+    /// The program is lowered with each layout, deciding what to inline for it, and the smallest
+    /// is kept, so it's no larger than with any one of them.
     pub fn lower_main(&mut self, env: &Environment) -> LirId {
+        let mut best: Option<(Trial, Layout, HashSet<SymbolId>)> = None;
+
+        for layout in Layout::CANDIDATES {
+            if !self.is_layout_needed(layout) {
+                continue;
+            }
+
+            self.layout = layout;
+
+            self.inlined_functions.clear();
+
+            let trial = self.lower_main_with_layout(env);
+
+            if best
+                .as_ref()
+                .is_none_or(|(best, ..)| trial.size < best.size)
+            {
+                best = Some((trial, layout, self.inlined_functions.clone()));
+            }
+        }
+
+        let (trial, layout, inlined_functions) = best.expect("the first layout is always lowered");
+
+        // Anything that's lowered after this is laid out the same way, and inlines the same
+        // functions
+        self.layout = layout;
+        self.inlined_functions = inlined_functions;
+        self.prepare_trial();
+
+        self.keep(trial)
+    }
+
+    /// Lowers the entrypoint with the current layout, after deciding which of the functions that
+    /// are measured are inlined: each one that makes the program smaller, given the ones before
+    /// it.
+    fn lower_main_with_layout(&mut self, env: &Environment) -> Trial {
         let main = self.main;
         let candidates = self.inline_candidates();
 
-        self.decide_repeats();
-
-        if candidates.is_empty() {
-            return self.lower_symbol_value(env, main);
-        }
-
+        self.prepare_trial();
         let mut best = self.trial(|this| this.lower_symbol_value(env, main));
 
         for function in candidates {
-            // A value can be a constant with the function inlined, so that's decided again
             self.inlined_functions.insert(function);
-            self.decide_repeats();
+            self.prepare_trial();
             let inlined = self.trial(|this| this.lower_symbol_value(env, main));
 
             if inlined.size < best.size {
@@ -99,7 +134,15 @@ impl Lowerer<'_, '_, '_> {
             }
         }
 
-        self.keep(best)
+        best
+    }
+
+    /// Decides again what depends on which functions are inlined, before the program is lowered
+    /// that way: which values are constants, since a value can be one with a function inlined,
+    /// and what the layout nests, since that depends on what the functions capture.
+    fn prepare_trial(&mut self) {
+        self.decide_repeats();
+        self.prepare_layout();
     }
 
     /// The functions that could make the program smaller if they were inlined into each of their

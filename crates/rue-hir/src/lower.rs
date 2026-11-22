@@ -3,6 +3,7 @@
 mod debug;
 mod eager;
 mod inline;
+mod layout;
 mod measure;
 mod path_binding;
 mod substitution;
@@ -10,7 +11,7 @@ mod substitution;
 pub use debug::*;
 
 use std::{
-    cell::{OnceCell, RefCell},
+    cell::{Cell, OnceCell, RefCell},
     collections::{HashMap, HashSet},
     iter,
     path::{Path, PathBuf},
@@ -18,7 +19,7 @@ use std::{
 };
 
 use id_arena::Arena;
-use indexmap::{IndexMap, IndexSet, set::Slice};
+use indexmap::{IndexSet, set::Slice};
 use rue_diagnostic::SrcLoc;
 use rue_lir::{Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
@@ -31,6 +32,8 @@ use crate::{
 };
 
 use crate::analysis::{FunctionFailure, may_fail};
+
+use layout::{Layout, Nesting, Reordered};
 
 #[derive(Debug, Clone)]
 enum SymbolGroup {
@@ -134,6 +137,16 @@ pub struct Lowerer<'d, 'a, 'g> {
     folded_repeats: HashSet<SymbolId>,
     /// What's recorded for a debug sidecar, if one was requested.
     debug: Option<LoweringDebugInfo>,
+    /// How the environments of the program's functions are laid out (see [`layout`]).
+    layout: Layout,
+    /// The blocks that [`Layout::Nested`] lays out as subtrees, which are found before each way
+    /// of lowering the program is tried, or `None` when the layout doesn't nest anything.
+    nesting: Option<Rc<Nesting>>,
+    /// Whether lowering with [`Layout::Reached`] put a function's captures in another order than
+    /// it found them in, or a function's parameters or a run of let statements in another order
+    /// than the program reaches them in, so that [`Layout::Written`] or
+    /// [`Layout::EverythingReached`] could lower the program differently.
+    reordered: Cell<Reordered>,
 }
 
 /// What a block's statements are followed by.
@@ -224,6 +237,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             missing_paths: None,
             folded_repeats: HashSet::new(),
             debug: None,
+            layout: Layout::CANDIDATES[0],
+            nesting: None,
+            reordered: Cell::default(),
         }
     }
 
@@ -517,22 +533,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         function: &FunctionSymbol,
     ) -> (Vec<SymbolGroup>, SymbolGroup) {
         let mut captures = self.lowered_captures(symbol);
-
-        // The captures of a function that are referenced equally often are laid out in the order
-        // the program reaches them in from its entrypoint, whatever order the function found them
-        // in, so that functions that capture the same symbols, such as a recursive function and a
-        // loop that call each other, have the same tree, which each passes on to the other as it
-        // is. That order follows where a symbol is used, not where it's defined, so the default
-        // value of a struct's field is still laid out as the same value written where it's used.
-        // A function's parameters and a run of let statements stay in the order they're written
-        // in, since nothing else shares their tree, and a recursive call passes on the parameters
-        // it doesn't change where they are
-        if !self.graph.is_closure(symbol) {
-            let order = self.dependencies(self.main, false);
-            captures.sort_by_key(|capture| {
-                (order.get_index_of(capture).unwrap_or(usize::MAX), *capture)
-            });
-        }
+        self.order_captures(symbol, &mut captures);
 
         let capture_groups = self.group_symbols(
             captures,
@@ -1961,17 +1962,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         let mut groups = vec![Vec::new(); last_round + 1];
 
         for (&symbol, round) in symbols.iter().zip(rounds.iter()) {
-            // A loop is lowered once, where the program's functions are, but it's called where
-            // its `for` expression is, which can be inside an inlined call. So what it captures
-            // can't depend on the arguments of the calls being inlined: it always captures a
-            // parameter, and a call inside an inlined call passes it the parameter's argument
-            let is_capture = if for_loop && matches!(self.db.symbol(symbol), Symbol::Parameter(_)) {
-                true
-            } else {
-                self.is_capture(symbol)
-            };
-
-            if is_capture && self.graph.references(symbol) > 0 {
+            if self.is_grouped_capture(symbol, for_loop) {
                 groups[round.unwrap_or(last_round)].push(symbol);
             }
         }
@@ -1981,6 +1972,22 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .filter(|group| !group.is_empty())
             .map(|group| self.create_group(group, is_tree))
             .collect()
+    }
+
+    /// Whether the symbol is bound in a group, rather than inlined or left out because nothing
+    /// references it.
+    fn is_grouped_capture(&self, symbol: SymbolId, for_loop: bool) -> bool {
+        // A loop is lowered once, where the program's functions are, but it's called where its
+        // `for` expression is, which can be inside an inlined call. So what it captures can't
+        // depend on the arguments of the calls being inlined: it always captures a parameter, and
+        // a call inside an inlined call passes it the parameter's argument
+        let is_capture = if for_loop && matches!(self.db.symbol(symbol), Symbol::Parameter(_)) {
+            true
+        } else {
+            self.is_capture(symbol)
+        };
+
+        is_capture && self.graph.references(symbol) > 0
     }
 
     /// The rounds that the symbols are bound in when they're grouped by value, as given by
@@ -2001,13 +2008,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     fn create_group(&self, symbols: Vec<SymbolId>, is_tree: bool) -> SymbolGroup {
         if is_tree {
-            let mut referenced_symbols = IndexMap::new();
-
-            for symbol in symbols {
-                referenced_symbols.insert(symbol, self.graph.layout_references(symbol));
-            }
-
-            SymbolGroup::Tree(Environment::tree(referenced_symbols))
+            SymbolGroup::Tree(self.layout_tree(symbols))
         } else {
             SymbolGroup::Sequential(symbols)
         }

@@ -1,0 +1,30 @@
+// The loop in `add_scaled` captures a subset of what `add_scaled` does, and they call each
+// other. The captures they share are laid out as the loop's tree inside of the function's, so
+// the function passes the loop its environment as it is, as `(c 1 7)`, rather than rebuilding
+// the loop's tree from its own.
+
+fn main(xs: List<Int>, n: Int) -> Int {
+    add_scaled(xs, n)
+}
+
+fn scale(n: Int) -> Int {
+    if n > 100 {
+        n
+    } else {
+        scale(n * 3)
+    }
+}
+
+const SCALE: Int = scale(5);
+
+fn add_scaled(xs: List<Int>, n: Int) -> Int {
+    if n > 3 {
+        n
+    } else {
+        for x in xs fold sum = 0 { sum + x + add_scaled(xs, n + SCALE) }
+    }
+}
+
+test fn adds_scaled_values() -> Int {
+    add_scaled([1, 2, 3], 0)
+}

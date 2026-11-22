@@ -219,7 +219,7 @@ tests:
   total_cost: 36020
 - name: two_levels_deep
   program: (a (q 2 (q 3 () (a 2 5) (q . 1)) (c (q 2 2 5) (c 1 1))) (c (q 8) (c 1 1)))
-  debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) (c (q . 1) (q . 1))))) (c (q 2 (q 2 (i 23 (q 2 (q 2 (i -65 (q 3 -1 (q . 1) (a 2 5)) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:486:13") ()) () (q 2 2 5)) 1)) 1) (c (q 2 2 5) (c 1 1))) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:489:9") (q . 1)) () (q 2 2 5)) 1)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:492:5"))) 1) (c 1 1))) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 1) (c (q . 1) (q . 1))))) (c (q 2 (q 2 (i 63 (q 2 (q 2 (i -65 (q 3 95 (q . 1) (a 2 5)) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:486:13") ()) () (q 2 2 5)) 1)) 1) (c (q 2 2 5) (c 1 1))) (q 2 (i ("debug_print" (q . "inline_if_may_raise.rue:489:9") (q . 1)) () (q 2 2 5)) 1)) 1) (c (q 2 (i (> 2 (q . 2)) (q . 2) (q 8 (q . "assertion failed at inline_if_may_raise.rue:492:5"))) 1) (c 1 1))) ()))
   byte_cost: 828000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at inline_if_may_raise.rue:492:5"
