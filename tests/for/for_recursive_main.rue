@@ -1,0 +1,12 @@
+// The entrypoint is the program, so it isn't inlined, though it only gets back to itself through
+// its loop. The same holds for an exported function that's compiled as its own program.
+
+type Tree = List<Tree>;
+
+fn main(trees: Tree) -> Int {
+    for tree in trees fold total = 1 { total + main(tree) }
+}
+
+test fn counts_the_nodes() -> Int {
+    main([[], [[], []]])
+}

@@ -86,6 +86,9 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// doesn't change while lowering, and finding them walks it, so they're only found once per
     /// symbol rather than each time a symbol is inlined or captured.
     dependencies: RefCell<HashMap<(SymbolId, bool), Dependencies>>,
+    /// Whether each function that's in a cycle calls itself in a way that keeps it from being
+    /// inlined (see [`Self::is_recursive`]), which walks the graph, so it's only found once.
+    recursive: RefCell<HashMap<SymbolId, bool>>,
     /// The round that each run of symbols grouped by value is bound in. A run of let statements is
     /// lowered again each time the function it's in is inlined, and finding the rounds walks
     /// everything the run can reach, so they're only found once per run.
@@ -206,6 +209,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             path: Vec::new(),
             too_deep: None,
             dependencies: RefCell::default(),
+            recursive: RefCell::default(),
             rounds: HashMap::new(),
             substitutions: RefCell::default(),
             path_bindings: RefCell::default(),
@@ -311,6 +315,28 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .expect("debug info is kept while lowering");
         debug.scopes.exit(self.arena.len());
         lir
+    }
+
+    /// Whether the function calls itself in a way that keeps it from being inlined. An `inline fn`
+    /// can't be in a cycle at all, and neither can the entrypoint, which the program is. Another
+    /// function can be inlined if it only gets back to itself through a loop (see
+    /// [`DependencyGraph::calls_itself_outside_loops`]).
+    pub(super) fn is_recursive(&self, symbol: SymbolId, function: &FunctionSymbol) -> bool {
+        if !self.dependencies(symbol, false).contains(&symbol) {
+            return false;
+        }
+
+        if function.kind == FunctionKind::Inline || symbol == self.main {
+            return true;
+        }
+
+        if let Some(&recursive) = self.recursive.borrow().get(&symbol) {
+            return recursive;
+        }
+
+        let recursive = self.graph.calls_itself_outside_loops(symbol);
+        self.recursive.borrow_mut().insert(symbol, recursive);
+        recursive
     }
 
     /// The symbols that the symbol depends on, as given by [`DependencyGraph::dependencies`].
@@ -2069,15 +2095,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return false;
                 }
 
-                // An `inline fn` can't be in a cycle at all. Another function can be inlined if it
-                // only gets back to itself through a loop
-                let recursive = if function.kind == FunctionKind::Inline {
-                    self.dependencies(symbol, false).contains(&symbol)
-                } else {
-                    self.graph.calls_itself_outside_loops(symbol)
-                };
-
-                if recursive {
+                if self.is_recursive(symbol, function) {
                     return false;
                 }
 
