@@ -65,3 +65,17 @@ test fn rejects_more_selectors_than_keys() -> Any {
 test fn reference_rejects_more_selectors_than_keys() -> Any {
     run(reference, [2, [pubkey_for_exp(1)], [1, 1], 1, nil])
 }
+
+// A selector that doesn't sign still needs a key
+test fn rejects_an_unselected_selector_without_a_key() -> Any {
+    run(main, [1, [pubkey_for_exp(1)], [1, nil], 1, nil])
+}
+
+test fn reference_rejects_an_unselected_selector_without_a_key() -> Any {
+    run(reference, [1, [pubkey_for_exp(1)], [1, nil], 1, nil])
+}
+
+// Keys after the last selector are ignored
+test fn ignores_keys_after_the_selectors() -> Any {
+    check([1, public_keys(), [nil, 1], 1, nil])
+}

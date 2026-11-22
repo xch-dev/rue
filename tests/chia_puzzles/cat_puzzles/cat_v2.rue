@@ -164,18 +164,21 @@ fn morph_conditions(conditions: List<Condition>, cat_info: CatInfo) -> Morphed {
     {
         if condition is CreateCoin {
             if condition.amount == -113 {
-                // The last `RunTail` is the one that's run
-                if !(rest.tail_info is nil) {
-                    rest
-                } else {
-                    let run_tail = unchecked_cast::<RunTail>(condition);
-                    Morphed {
-                        ...rest,
-                        tail_info: TailInfo {
-                            tail_puzzle: run_tail.tail_puzzle,
-                            tail_solution: run_tail.tail_solution,
-                        },
-                    }
+                // The last `RunTail` is the one that's run, but each one is read, as in the
+                // original, so that one without a puzzle and a solution fails
+                let run_tail = unchecked_cast::<RunTail>(condition);
+                let tail_info = TailInfo {
+                    tail_puzzle: run_tail.tail_puzzle,
+                    tail_solution: run_tail.tail_solution,
+                };
+
+                Morphed {
+                    ...rest,
+                    tail_info: inline if rest.tail_info is nil {
+                        tail_info
+                    } else {
+                        rest.tail_info
+                    },
                 }
             } else {
                 let morphed = CreateCoin {
@@ -322,6 +325,30 @@ test fn runs_the_last_tail_revealed() -> Any {
         sha256("not_a_cat"),
         -10,
     ))
+}
+
+// A `RunTail` without a puzzle and a solution fails, though a later one is the one that's run
+fn incomplete_earlier_tail() -> Any {
+    let tail = (1, [ReserveFee { amount: 7 }]);
+    solution(
+        tree_hash(tail),
+        [
+            [51 as Any, nil, -113],
+            CreateCoin { puzzle_hash: sha256("alice"), amount: 90 },
+            [51 as Any, sha256("ignored"), -113, tail, nil],
+        ],
+        nil,
+        sha256("not_a_cat"),
+        -10,
+    )
+}
+
+test fn rejects_an_incomplete_earlier_tail() -> Any {
+    run(main, incomplete_earlier_tail())
+}
+
+test fn reference_rejects_an_incomplete_earlier_tail() -> Any {
+    run(reference, incomplete_earlier_tail())
 }
 
 fn no_lineage_proof() -> Any {

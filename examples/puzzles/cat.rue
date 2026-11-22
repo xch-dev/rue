@@ -197,17 +197,16 @@ struct Morph {
 fn morph_conditions(conditions: List<CatCondition>, cat_info: CatInfo) -> Morph {
     for condition in conditions fold rest = (Morph { conditions: nil, sum: 0, tail_info: nil }) {
         if condition is RunTail {
-            // The last TAIL that's revealed is the one that's run
-            if !(rest.tail_info is nil) {
-                rest
-            } else {
-                Morph {
-                    ...rest,
-                    tail_info: TailInfo {
-                        tail_puzzle: condition.tail_puzzle,
-                        tail_solution: condition.tail_solution,
-                    },
-                }
+            // The last TAIL that's revealed is the one that's run, but each one is read, so that
+            // one without a puzzle and a solution fails
+            let tail_info = TailInfo {
+                tail_puzzle: condition.tail_puzzle,
+                tail_solution: condition.tail_solution,
+            };
+
+            Morph {
+                ...rest,
+                tail_info: inline if rest.tail_info is nil { tail_info } else { rest.tail_info },
             }
         } else if condition is CreateCoin {
             // Morph the condition by wrapping the puzzle hash in the CAT layer.
@@ -288,6 +287,14 @@ test fn rejects_a_ring_announcement() -> Morph {
             ReserveFee { amount: 1 },
             CreateCoinAnnouncement { message: RING_MORPH_BYTE + sha256("ring") },
         ],
+        cat_info(),
+    )
+}
+
+// A TAIL without a puzzle and a solution fails, though a later one is the one that's run
+test fn rejects_an_incomplete_earlier_tail() -> Morph {
+    morph_conditions(
+        [unchecked_cast::<RunTail>([51 as Any, nil, -113]), run_tail("second")],
         cat_info(),
     )
 }

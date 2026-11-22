@@ -249,7 +249,7 @@ fn remove_finished_proposals(
     my_amount: Int,
 ) -> List<Condition> {
     let recreate = CreateCoin {
-        // Removing each id from the first match on gives the same list in any order
+        // The ids are removed in the order they're given in, as the original removes them
         puzzle_hash: lockup_puzzle_hash(
             self_hash,
             remove_all(removal_ids, active_votes),
@@ -285,7 +285,7 @@ fn remove_all(items: List<Bytes32>, list: List<Bytes32>) -> List<Bytes32> {
     if items is nil {
         return list;
     }
-    remove(items.first, remove_all(items.rest, list))
+    remove_all(items.rest, remove(items.first, list))
 }
 
 // Removes the first occurrence of the item, or returns nil if it isn't in the list.
@@ -415,6 +415,35 @@ test fn removes_finished_proposals() -> Any {
         0,
         nil,
     ))
+}
+
+// Only the first vote with a removed id is removed
+test fn removes_the_first_of_a_repeated_proposal() -> Any {
+    check(spend(
+        [sha256("first"), sha256("second"), sha256("first")],
+        nil,
+        nil,
+        [sha256("first")],
+        0,
+        nil,
+    ))
+}
+
+test fn removes_repeated_proposals_in_order() -> Any {
+    check(spend(
+        [sha256("a"), sha256("b"), sha256("a"), sha256("c")],
+        nil,
+        nil,
+        [sha256("c"), sha256("a")],
+        0,
+        nil,
+    ))
+}
+
+// The ids are removed in the order they're given in, so once the votes run out, a later id isn't
+// compared with anything, even if it isn't an atom
+test fn removes_ids_in_order() -> Any {
+    check(spend([sha256("first")], nil, nil, [sha256("first"), (1, 2)], 0, nil))
 }
 
 test fn leaves_voting_mode() -> Any {

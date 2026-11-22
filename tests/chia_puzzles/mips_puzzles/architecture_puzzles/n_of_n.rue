@@ -22,8 +22,13 @@ fn approve(
     delegated_puzzle_hash: Bytes32,
 ) -> List<Condition> {
     // Like the original, this expects a solution for each member.
-    for member in members, solution in member_solutions fold conditions: List<Condition> = nil {
-        [...member(delegated_puzzle_hash, ...solution), ...conditions]
+    let solutions = unchecked_cast::<(Any, List<Any>)>(member_solutions);
+    let conditions = members.first(delegated_puzzle_hash, ...solutions.first);
+
+    if members.rest is (Member, List<Member>) {
+        [...conditions, ...approve(members.rest, solutions.rest, delegated_puzzle_hash)]
+    } else {
+        conditions
     }
 }
 
