@@ -52,6 +52,18 @@ fn else_if(value: Int) -> Int {
     }
 }
 
+// Only the first condition of an `if` and `else` chain is always evaluated, so the code after one
+// whose later condition never finishes is still reachable
+fn else_if_statement(value: Int) -> Int {
+    if value > 1 {
+        debug 1;
+    } else if fail() {
+        debug 2;
+    }
+
+    value
+}
+
 fn match_guard(value: Int) -> Int {
     match value {
         _ if fail() => 1,
@@ -100,6 +112,10 @@ test fn else_if_skips_the_condition() -> Int {
 
 test fn else_if_raises() -> Int {
     else_if(0)
+}
+
+test fn else_if_statement_passes() -> Int {
+    else_if_statement(2)
 }
 
 test fn match_guard_raises() -> Int {

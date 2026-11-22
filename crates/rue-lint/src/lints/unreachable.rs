@@ -91,8 +91,9 @@ impl HirLintPass for UnreachableCode {
 ///
 /// This includes a `let` whose value never finishes, since a value that may fail is evaluated
 /// whenever its let statement is, even if it's never referenced. An `inline let` isn't included,
-/// since its value is only evaluated where it's referenced. An `if` statement or `assert` whose
-/// condition never finishes doesn't either, since the condition is always evaluated.
+/// since its value is only evaluated where it's referenced. An `if` statement, `assert` or `if`
+/// and `else` chain whose first condition never finishes is included, since that condition is
+/// always evaluated.
 fn diverges(cx: &mut LintContext<'_>, statement: &Statement) -> bool {
     let hir = match statement {
         Statement::Return(..) | Statement::Raise(..) => return true,

@@ -42,6 +42,15 @@ tests:
   byte_cost: 180000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at never_condition.rue:6:5" "failed")
+- name: else_if_statement_passes
+  program: (q . 2)
+  debug_program: (a (q 2 4 (c 6 (q . 2))) (c (c (q 3 () (a (i (> 3 (q . 1)) (q 2 (i ("debug_print" (q . "never_condition.rue:59:9") (q . 1)) () ()) 1) (q 2 (i (a 2 ()) (q 2 (i ("debug_print" (q . "never_condition.rue:61:9") (q . 2)) () ()) 1) ()) 1)) 1) 3) (q 8 (q . "raise called at never_condition.rue:6:5") (q . "failed"))) ()))
+  output: "2"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+  print_messages:
+  - "1"
 - name: match_guard_raises
   program: (i (x) (q . 1) (q . 2))
   debug_program: (a (q 2 4 (c 6 (q . 1))) (c (c (q 2 (i (a 2 ()) (q 1 . 1) (q 1 . 2)) 1) (q 8 (q . "raise called at never_condition.rue:6:5") (q . "failed"))) ()))
@@ -56,7 +65,7 @@ tests:
   debug_clvm_error: clvm raise ("raise called at never_condition.rue:6:5" "failed")
 - name: constant_passes
   program: (q . 3)
-  debug_program: (a (q 2 2 (q . 3)) (c (q 2 (i (q . 1) (q . 1) (q 8 (q . "assertion failed at never_condition.rue:73:5"))) 1) ()))
+  debug_program: (a (q 2 2 (q . 3)) (c (q 2 (i (q . 1) (q . 1) (q 8 (q . "assertion failed at never_condition.rue:85:5"))) 1) ()))
   output: "3"
   runtime_cost: 20
   byte_cost: 36000
@@ -74,4 +83,4 @@ diagnostics:
 - |-
   Unreachable code at never_condition.rue:34:5
     note: Any code after this is never evaluated at never_condition.rue:30:5
-- Condition always evaluates to `true` at never_condition.rue:73:12
+- Condition always evaluates to `true` at never_condition.rue:85:12
