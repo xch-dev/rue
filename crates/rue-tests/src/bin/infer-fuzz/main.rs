@@ -24,8 +24,9 @@
 //! nothing but an expected type's `Any` gives a type to, as
 //! `let f: (fn<T>(a: T) -> T) | Any = make_from_lambda(fn(x) => x);`. Rejecting it with
 //! `CannotInferGeneric`, or with `CannotInferParameterType` for a lambda parameter whose type is
-//! that generic, is right, so it counts as inferred, and compiling it must not leak a generic. A probe whose generic no parameter depends on, such as `pair_fn()`, compiles, since
-//! the generic is generalized over the annotation's `T`.
+//! that generic, is right, so it counts as inferred, and compiling it must not leak a generic.
+//! A probe whose generic no parameter depends on, such as `pair_fn()`, compiles, since the
+//! generic is generalized over the annotation's `T`.
 //! Failures are grouped by category and the first diagnostic, and a few of each group are shrunk
 //! to a small reproduction.
 //!
