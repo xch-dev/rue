@@ -477,6 +477,59 @@ test fn value_checked_before_a_spread_in_a_fold_without_a_result() -> List<Int> 
     items_or(xs, last)
 }
 
+// Several lists, and the rest of a list, in the header of a `for` that's spread: the loop ends
+// with the items after it when its first list ends
+test fn several_lists_before_the_last_item() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let ys = runtime([10, 20, 30]);
+    [0, ...for a in xs, b in ys { a + b }, 99]
+}
+
+test fn several_lists_with_a_filter() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let ys = runtime([10, 20, 30]);
+    [...for a in xs, b in ys if a != 2 { a * b }, ...ys]
+}
+
+test fn several_lists_with_a_longer_second_list() -> List<Int> {
+    let xs = runtime([1, 2]);
+    let ys = runtime([10, 20, 30]);
+    [...for a in xs, b in ys { a + b }, 99]
+}
+
+test fn several_lists_with_a_shorter_second_list_fails() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let ys = runtime([10, 20]);
+    [...for a in xs, b in ys { a + b }, 99]
+}
+
+test fn several_lists_with_a_shorter_second_list_fails_before_the_item_after() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let ys = runtime([10, 20]);
+    [...for a in xs, b in ys { a + b }, small(xs.first + 100)]
+}
+
+test fn rest_of_the_list() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    [...for x, rest in xs { x + length(rest) }, 99]
+}
+
+test fn rest_of_the_second_list() -> List<Int> {
+    let xs = runtime([1, 2]);
+    let points: List<(Int, Int)> = runtime([(1, 2), (3, 4)]);
+    [...for a in xs, (x, y), others in points { a + x + y + length(others) }, ...xs]
+}
+
+fn length<T>(xs: List<T>) -> Int {
+    for _x in xs fold count = 0 { count + 1 }
+}
+
+test fn several_lists_in_a_fold() -> List<Int> {
+    let lists = runtime([[1, 2], [3]]);
+    let ys = runtime([10, 20]);
+    for xs in lists fold rest: List<Int> = nil { [...for a in xs, b in ys { a + b }, ...rest] }
+}
+
 // The settlement payments puzzle's shape: each payment's coins in front of the rest
 struct Payment {
     puzzle_hash: Bytes32,
