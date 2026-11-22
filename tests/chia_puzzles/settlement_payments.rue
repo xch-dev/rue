@@ -71,3 +71,29 @@ test fn rejects_a_zero_payment() -> Any {
 test fn reference_rejects_a_zero_payment() -> Any {
     run(reference, zero_payment())
 }
+
+// The zero payment is the second payment of the second notarized payment, so each loop gets past
+// a payment it accepts before it fails.
+fn later_zero_payment() -> Any {
+    [
+        NotarizedPayment {
+            nonce: sha256("first"),
+            payments: [Payment { puzzle_hash: sha256("alice"), amount: 100, memos: nil }],
+        },
+        NotarizedPayment {
+            nonce: sha256("second"),
+            payments: [
+                Payment { puzzle_hash: sha256("bob"), amount: 50, memos: nil },
+                Payment { puzzle_hash: sha256("carol"), amount: 0, memos: nil },
+            ],
+        },
+    ]
+}
+
+test fn rejects_a_later_zero_payment() -> Any {
+    run(main, later_zero_payment())
+}
+
+test fn reference_rejects_a_later_zero_payment() -> Any {
+    run(reference, later_zero_payment())
+}
