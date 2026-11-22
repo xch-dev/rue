@@ -987,9 +987,15 @@ impl DependencyGraph {
         self.owners(symbol).any(|owner| owner == function)
     }
 
-    /// Whether the function can call itself other than through a loop. A loop is never inlined,
-    /// so a function that only gets back to itself through one, such as one whose body is a
-    /// `for` that calls it for each item, can be inlined without inlining itself again.
+    /// Whether the function can call itself other than through a loop, so that it can't be
+    /// inlined. A loop on the way back to the function is in a cycle, so it calls itself and is
+    /// never inlined. A function that only gets back to itself through loops, such as one whose
+    /// body is a `for` that calls it for each item, can be inlined where it's called without
+    /// inlining itself again.
+    ///
+    /// Inlining it can still go too deep where its loop passes one of its parameters back to it
+    /// as it is, since the parameter then stands for itself. That's only measured, and dropped
+    /// for going past the depth limit (see `Lowerer::trial`), so the function is called instead.
     pub fn calls_itself_outside_loops(&self, symbol: SymbolId) -> bool {
         let mut visited = HashSet::new();
         let mut stack: Vec<SymbolId> = self
@@ -1009,7 +1015,13 @@ impl DependencyGraph {
                 continue;
             }
 
-            stack.extend(self.dependencies.get(&current).into_iter().flatten().copied());
+            stack.extend(
+                self.dependencies
+                    .get(&current)
+                    .into_iter()
+                    .flatten()
+                    .copied(),
+            );
         }
 
         false

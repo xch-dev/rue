@@ -83,3 +83,17 @@ fn sizes(trees: List<Tree>) -> Int {
 test fn function_and_loop_that_call_each_other() -> Int {
     size(runtime([1, [2, 3], [[4], 5]]))
 }
+
+// A function whose loop passes one of its parameters back to it as it is can't be inlined into the
+// loop, where the parameter would stand for itself, so it's called
+fn count_leaves(tree: Tree, weight: Int) -> Int {
+    if tree is Int {
+        weight
+    } else {
+        for item in tree fold total = 0 { total + count_leaves(item, weight) }
+    }
+}
+
+test fn function_whose_loop_passes_its_parameter_back() -> Int {
+    count_leaves(runtime([1, [2, 3], [[4], 5]]), 3)
+}

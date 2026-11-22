@@ -1960,6 +1960,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     fn create_group(&self, symbols: Vec<SymbolId>, is_tree: bool) -> SymbolGroup {
         if is_tree {
             let mut referenced_symbols = IndexMap::new();
+
             for symbol in symbols {
                 referenced_symbols.insert(symbol, self.graph.layout_references(symbol));
             }
@@ -2068,10 +2069,15 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     return false;
                 }
 
-                if self.dependencies(symbol, false).contains(&symbol)
-                    && (function.kind == FunctionKind::Inline
-                        || self.graph.calls_itself_outside_loops(symbol))
-                {
+                // An `inline fn` can't be in a cycle at all. Another function can be inlined if it
+                // only gets back to itself through a loop
+                let recursive = if function.kind == FunctionKind::Inline {
+                    self.dependencies(symbol, false).contains(&symbol)
+                } else {
+                    self.graph.calls_itself_outside_loops(symbol)
+                };
+
+                if recursive {
                     return false;
                 }
 
