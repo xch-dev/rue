@@ -161,6 +161,16 @@ struct Site {
     usage: Usage,
 }
 
+/// The state of the walk that finds how often places are evaluated (see
+/// [`DependencyGraph::is_evaluated_once`]).
+#[derive(Debug, Default)]
+struct Walk {
+    /// The places and bindings on the way to the one being followed.
+    path: HashSet<SymbolId>,
+    /// Whether each place is evaluated at most once each time the scope is, once it's known.
+    results: HashMap<(SymbolId, Option<SymbolId>), bool>,
+}
+
 /// What's done with the value of a reference or a lambda expression, which decides how many
 /// times a function that it's the value of can be called.
 #[derive(Debug, Clone, Copy)]
@@ -395,9 +405,18 @@ impl DependencyGraph {
     /// [`Self::is_repeated`]). An `inline` one is always substituted, and one that's referenced
     /// more than once is bound unless it's only a path.
     fn find_repeated(&mut self, db: &Database) {
+        let mut walk = Walk::default();
         let mut repeated = HashSet::new();
 
-        for (&symbol, site) in &self.sites {
+        // The answers don't depend on the order, but they're found in the same one each run
+        let mut sites: Vec<(SymbolId, Site)> = self
+            .sites
+            .iter()
+            .map(|(&symbol, &site)| (symbol, site))
+            .collect();
+        sites.sort_unstable_by_key(|&(symbol, _)| symbol);
+
+        for (symbol, site) in sites {
             if self.references(symbol) != 1 {
                 continue;
             }
@@ -421,7 +440,7 @@ impl DependencyGraph {
                 | Symbol::Builtin(_) => continue,
             };
 
-            if !self.is_evaluated_once(db, site.place, scope, &mut HashSet::new())
+            if !self.is_evaluated_once(db, site.place, scope, &mut walk)
                 && !is_cheap_to_repeat(db, self, value)
             {
                 repeated.insert(symbol);
@@ -454,7 +473,7 @@ impl DependencyGraph {
         db: &Database,
         place: SymbolId,
         scope: Option<SymbolId>,
-        visiting: &mut HashSet<SymbolId>,
+        walk: &mut Walk,
     ) -> bool {
         if scope == Some(place) {
             return true;
@@ -465,10 +484,14 @@ impl DependencyGraph {
             return scope.is_none() && self.references(place) == 0;
         }
 
+        if let Some(&once) = walk.results.get(&(place, scope)) {
+            return once;
+        }
+
         // The places on the way here, which nothing is evaluated by. This keeps the walk finite
         // if that changes. A place can be reached again by another way, such as two calls of the
         // same function that each pass it a lambda, so it's taken off once it's been followed
-        if !visiting.insert(place) {
+        if !walk.path.insert(place) {
             return false;
         }
 
@@ -478,8 +501,8 @@ impl DependencyGraph {
                 !self.loops.contains(&place)
                     && self.references(place) == 1
                     && self.sites.get(&place).is_some_and(|&site| {
-                        self.call_site(db, site, visiting)
-                            .is_some_and(|call| self.is_evaluated_once(db, call, scope, visiting))
+                        self.call_site(db, site, walk)
+                            .is_some_and(|call| self.is_evaluated_once(db, call, scope, walk))
                     })
             }
             Symbol::Binding(BindingSymbol { inline: true, .. })
@@ -488,10 +511,10 @@ impl DependencyGraph {
                     && self
                         .sites
                         .get(&place)
-                        .is_some_and(|site| self.is_evaluated_once(db, site.place, scope, visiting))
+                        .is_some_and(|site| self.is_evaluated_once(db, site.place, scope, walk))
             }
             Symbol::Binding(_) | Symbol::Constant(_) => match self.owners.get(&place) {
-                Some(&owner) => self.is_evaluated_once(db, owner, scope, visiting),
+                Some(&owner) => self.is_evaluated_once(db, owner, scope, walk),
                 // A constant of the program
                 None => scope.is_none(),
             },
@@ -499,7 +522,12 @@ impl DependencyGraph {
                 false
             }
         });
-        visiting.remove(&place);
+        walk.path.remove(&place);
+
+        // A place that's found not to be evaluated once because the walk came back to it is on
+        // the way back to itself, so that's the answer from anywhere. The answers are kept, so
+        // that a place that many lambdas are passed through is only followed once
+        walk.results.insert((place, scope), once);
         once
     }
 
@@ -512,12 +540,7 @@ impl DependencyGraph {
     /// once, and the call it ends up in is evaluated once each time that function is. Anything
     /// else could call it any number of times, such as `map(xs, g)`, whose parameter is called
     /// and passed on.
-    fn call_site(
-        &self,
-        db: &Database,
-        site: Site,
-        visiting: &mut HashSet<SymbolId>,
-    ) -> Option<SymbolId> {
+    fn call_site(&self, db: &Database, site: Site, walk: &mut Walk) -> Option<SymbolId> {
         let (symbol, function) = match site.usage {
             Usage::Called => return Some(site.place),
             Usage::Bound(binding) => (binding, None),
@@ -525,14 +548,14 @@ impl DependencyGraph {
             Usage::Other => return None,
         };
 
-        if self.references(symbol) != 1 || !visiting.insert(symbol) {
+        if self.references(symbol) != 1 || !walk.path.insert(symbol) {
             return None;
         }
 
         // A chain of bindings that are each the one before is as deep as it's long
         let next = *self.sites.get(&symbol)?;
-        let call = rue_types::grow_stack(|| self.call_site(db, next, visiting));
-        visiting.remove(&symbol);
+        let call = rue_types::grow_stack(|| self.call_site(db, next, walk));
+        walk.path.remove(&symbol);
         let call = call?;
 
         let Some(function) = function else {
@@ -540,7 +563,7 @@ impl DependencyGraph {
         };
 
         // The function calls its parameter once, each time it's called from where the argument is
-        self.is_evaluated_once(db, call, Some(function), visiting)
+        self.is_evaluated_once(db, call, Some(function), walk)
             .then_some(site.place)
     }
 

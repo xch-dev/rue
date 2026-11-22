@@ -1,6 +1,8 @@
 //! Tests for when a value that's only referenced once is bound rather than substituted, since the
 //! reference can be evaluated more than once, and for the order that inline values are captured in.
 
+use std::fmt::Write;
+
 use clvmr::{Allocator, ChiaDialect, error::EvalErr, run_program};
 use rue_clvm::{assemble, disassemble_value};
 use rue_lir::ClvmTarget;
@@ -327,6 +329,36 @@ fn value_in_lambdas_passed_to_two_calls_of_the_same_function_is_substituted() {
     assert!(is_repeated(
         "fn main(x: Int) -> Int { apply(fn(z) => apply_twice(fn(w) => w + K, z), x) }"
     ));
+}
+
+/// A lambda that's passed through a long chain of functions, each of which passes it on in two
+/// lambdas, is followed once for each function, rather than once for each way through the chain,
+/// which there are two to the power of its length of.
+#[test]
+fn lambdas_passed_through_a_long_chain_are_followed_once() {
+    const LENGTH: usize = 64;
+
+    let mut items = String::new();
+
+    for i in 0..LENGTH {
+        let next = i + 1;
+        writeln!(
+            items,
+            "fn h{i}(p: fn(x: Int) -> Int, x: Int) -> Int {{ h{next}(fn(a) => h{next}(fn(b) => p(b), a), x) }}"
+        )
+        .unwrap();
+    }
+
+    write!(
+        items,
+        "fn h{LENGTH}(p: fn(x: Int) -> Int, x: Int) -> Int {{ p(x) }}
+fn main(x: Int) -> Int {{ h0(fn(y) => y + K, x) }}"
+    )
+    .unwrap();
+
+    // Each lambda is called once each time the function it's passed to is, and the outer one is
+    // only called once from `main`, so the constant is evaluated once
+    assert!(!is_repeated(&items));
 }
 
 /// The scope of a `let` is the function it's in: a lambda that's called once each time the
