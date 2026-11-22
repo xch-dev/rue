@@ -42,12 +42,12 @@ tests:
   byte_cost: 2772000
   total_cost: 2793116
 - name: warning_reported_once
-  program: (a (q 2 2 (c 2 (c (q 1 2 3) (c (q ()) (q 4 (+ 4 5 (i (= 5 (q . 1)) (q . 1) (q . 2)) (q . 1)) (+ 6 (q . 1))))))) (c (q 2 (i 5 (q 2 2 (c 2 (c 13 (c (a 15 (c 11 (c 9 ()))) 15)))) (q . 11)) 1) ()))
-  debug_program: (a (q 2 (q 2 5 (c 5 (c 2 (c (c () ()) (c (q . 2) (c (c (q . 1) (q 2 (q 4 (+ (+ (+ (f 5) 11) 4) 6) (+ (r 5) (q . 1))) (c (c (a (i (= 5 (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (a (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) 1))) (c (q . 1) ()))))))) (c (c (q . 1) (c (q . 2) (c (q . 3) ()))) 1)) (c (q 2 (i (not 5) (q . 11) (q 2 2 (c 2 (c (r 5) (c (a 15 (c 11 (c (f 5) ()))) 15))))) 1) ()))
-  output: (14 . 3)
-  runtime_cost: 12304
-  byte_cost: 1932000
-  total_cost: 1944304
+  program: (a (q 2 (q 2 5 (c 5 (c (q 1 2 3) (c (q ()) (c (q . 2) (c (q 1 2 (q 4 (+ 19 23 (i (= 23 (q . 1)) (q . 1) (q . 2)) 4 (a (i 5 (q . 9) ()) 1) (q . 1)) (+ 27 10)) (c (c 11 (q 1)) 1)) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))))))) (c () 1)) (c (q 2 (i 5 (q 2 2 (c 2 (c 13 (c (a 15 (c 11 (c 9 ()))) 15)))) (q . 11)) 1) ()))
+  debug_program: (a (q 2 (q 2 5 (c 5 (c 6 (c (c () ()) (c (q . 2) (c (c (q . 1) (q 2 (q 4 (+ (+ (+ (+ (+ (f 11) 23) 10) 22) (f 4)) 30) (+ (r 11) (f (r 4)))) (c (c (c 11 (c (q . 1) ())) (c (a (i (= 11 (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (c (a (i (q . 1) (q 1 . 1) (q 1 . 2)) 1) (a (i (not 2) () (q 5 2)) 1)))) 1))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))))))) (c (c () (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (q 2 (i (not 5) (q . 11) (q 2 2 (c 2 (c (r 5) (c (a 15 (c 11 (c (f 5) ()))) 15))))) 1) ()))
+  output: (20 . 3)
+  runtime_cost: 17993
+  byte_cost: 3180000
+  total_cost: 3197993
 - name: different_generics
   program: (a (q 2 (q 4 (+ (a (i 4 (q . 8) ()) 1) (a (i 6 (q . 10) ()) 1)) (f (c (+ 9 (q . 1)) 13))) (c (q (q) 1) 1)) (c (q 1 . 2) 1))
   debug_program: (a (q 2 (q 2 (q 2 (q 4 (+ 10 14) (f 4)) (c (c 14 (c (a (i (not 4) () (q 5 4)) 1) (a (i (not 10) () (q 5 10)) 1))) 1)) (c (c 10 (c 14 (a 9 (c 4 (c (c (q . 2) (c (c (q . 1) (q 4 (+ (f 2) (q . 1)) (r 2))) (c (q . 1) ()))) 4))))) 1)) (c (c (c (q . 1) (q . 2)) (c (a 4 (c () (c (c (q . 2) (c (c (q . 1) (q 4 (q . 1) 2)) (c (q . 1) ()))) ()))) (a 6 (c (c (q . 2) (c (c (q . 1) (q 4 (q . 1) 2)) (c (q . 1) ()))) (c () ()))))) 1)) (c (c (q 2 5 (c 2 ())) (q 2 2 (c 5 ()))) ()))
@@ -70,14 +70,22 @@ tests:
   byte_cost: 828000
   total_cost: 828931
 diagnostics:
-- Unused binding `unused` at generic_inference_self_feeding_lambdas.rue:111:17
+- Unused binding `unused` at generic_inference_self_feeding_lambdas.rue:122:17
 - |-
-  Unreachable match arm, since an earlier arm handles every value that's left at generic_inference_self_feeding_lambdas.rue:115:17
-    note: This arm handles every value that's left at generic_inference_self_feeding_lambdas.rue:114:17
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at generic_inference_self_feeding_lambdas.rue:117:24
-- Unused parameter `b` at generic_inference_self_feeding_lambdas.rue:127:21
-- Unused parameter `b` at generic_inference_self_feeding_lambdas.rue:131:45
-- Binding `check` is returned directly after it's declared at generic_inference_self_feeding_lambdas.rue:185:5
+  Unreachable match arm, since an earlier arm handles every value that's left at generic_inference_self_feeding_lambdas.rue:126:17
+    note: This arm handles every value that's left at generic_inference_self_feeding_lambdas.rue:125:17
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at generic_inference_self_feeding_lambdas.rue:128:24
 - |-
-  Binding `acc` is returned directly after it's declared at generic_inference_self_feeding_lambdas.rue:211:13
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at generic_inference_self_feeding_lambdas.rue:133:23
+    help: Remove the brackets
+    help: Spread the `for` into the list with `...`
+- |-
+  Every field of `Stats` is specified, so nothing is copied from the spread value at generic_inference_self_feeding_lambdas.rue:134:35
+    help: Remove the spread
+- Match arm `SameShapeA` also handles `SameShapeB`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at generic_inference_self_feeding_lambdas.rue:137:17
+- Unused parameter `b` at generic_inference_self_feeding_lambdas.rue:144:21
+- Unused parameter `b` at generic_inference_self_feeding_lambdas.rue:148:45
+- Binding `check` is returned directly after it's declared at generic_inference_self_feeding_lambdas.rue:202:5
+- |-
+  Binding `acc` is returned directly after it's declared at generic_inference_self_feeding_lambdas.rue:228:13
     help: Return the value directly

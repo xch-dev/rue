@@ -205,10 +205,9 @@ impl LintSites {
     /// back (see [`Self::restore`]).
     pub fn checkpoint(&self) -> LintSitesCheckpoint {
         let Self {
+            // Only grow, so they go back to where they ended
             empty_imports,
             field_reads,
-            qualified_references: _,
-            qualified_reference_order,
             modules,
             enclosed_prelude_references,
             unreachable_match_arms,
@@ -218,6 +217,9 @@ impl LintSites {
             imprecise_narrowings,
             unused_struct_spreads,
             bracketed_fors,
+            // What's added after the checkpoint in the order is taken out of the references
+            qualified_reference_order,
+            qualified_references: _,
         } = self;
 
         LintSitesCheckpoint {

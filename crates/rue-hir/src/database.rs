@@ -106,8 +106,16 @@ impl Database {
     /// goes back (see [`Self::restore`]).
     pub fn checkpoint(&self) -> DatabaseCheckpoint {
         let Self {
-            hir,
+            // Only grow, so they go back to where they ended
             const_exprs,
+            tests,
+            relevant_declarations,
+            // Only grow, and are kept on purpose (see `restore`)
+            hir,
+            scopes,
+            imports: _,
+            symbols,
+            types,
             // Keyed by the nodes, types and symbols made since, which `restore` clears
             hir_types: _,
             reported_types: _,
@@ -115,18 +123,15 @@ impl Database {
             independent_operands: _,
             hir_scopes: _,
             unchecked_list_reads: _,
-            // Only added to while compiling items, which a lambda's body has none of
+            // Only added to while compiling items and imports, which a lambda's body has none of
             default_fields: _,
             default_field_uses: _,
             enums: _,
             enum_members: _,
             reference_targets: _,
-            // Only grow, and are kept on purpose (see `restore`)
-            scopes,
-            imports: _,
-            symbols,
-            types,
-            relevant_declarations,
+            relevant_imports: _,
+            shared_bindings: _,
+            ambiguous_alternatives: _,
             // Keyed by the declarations made since, which `restore` clears, or a reference from one
             // of them to a declaration from before, which compiling the same code makes again
             declared_by: _,
@@ -134,13 +139,9 @@ impl Database {
             // A reference through an import from one of the declarations made since, which is
             // made again in the same way, and the imports and modules that paths go through,
             // which are sets that compiling the same code adds the same members to
-            relevant_imports: _,
             import_references: _,
-            shared_bindings: _,
-            ambiguous_alternatives: _,
             ambiguous_modules: _,
             imports_through_ambiguous_names: _,
-            tests,
         } = self;
 
         DatabaseCheckpoint {
