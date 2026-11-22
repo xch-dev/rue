@@ -1,7 +1,7 @@
 tests:
 - name: and_assert
   program: (all () (x))
-  debug_program: (a (q 2 4 (c 6 (c () ()))) (c (c (q 34 5 (a 2 7)) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (c () ()))) (c (c (q 34 7 (a 2 5)) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1)) ()))
   byte_cost: 108000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at bool_operator_may_raise.rue:63:5"
@@ -18,19 +18,19 @@ tests:
   debug_clvm_error: clvm raise ("raise called at bool_operator_may_raise.rue:31:17" "zero")
 - name: chained
   program: (all (all ()) (x))
-  debug_program: (a (q 2 4 (c 6 (c () (c (q . 1) ())))) (c (c (q 34 (all 5 11) (a 2 15)) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (c () (c (q . 1) ())))) (c (c (q 34 (all 15 11) (a 2 5)) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1)) ()))
   byte_cost: 156000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at bool_operator_may_raise.rue:63:5"
 - name: nested_short_circuit
   program: (all () (x))
-  debug_program: (a (q 2 4 (c 6 (c () (c (q . 1) ())))) (c (c (q 34 5 (a (i 11 (q 2 2 15) ()) 1)) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (c () (c (q . 1) ())))) (c (c (q 34 15 (a (i 11 (q 2 2 5) ()) 1)) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1)) ()))
   byte_cost: 108000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at bool_operator_may_raise.rue:63:5"
 - name: chained_twice
   program: (all () (x))
-  debug_program: (a (q 2 6 (c 4 (c () (c () (q . 1))))) (c (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1) (q 34 (all 5 (a 2 11)) (a 2 15))) ()))
+  debug_program: (a (q 2 6 (c 4 (c (q . 1) (c () ())))) (c (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1) (q 34 (all 15 (a 2 11)) (a 2 5))) ()))
   byte_cost: 108000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at bool_operator_may_raise.rue:63:5"
@@ -43,14 +43,14 @@ tests:
   total_cost: 84702
 - name: left_raises
   program: (all)
-  debug_program: (a (q 2 6 (c 4 (c (q . 1) (q . 1)))) (c (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1) (q 34 (a 2 5) 7)) ()))
+  debug_program: (a (q 2 4 (c 6 (c (q . 1) (q . 1)))) (c (c (q 34 (a 2 7) 5) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1)) ()))
   output: "1"
   runtime_cost: 201
   byte_cost: 36000
   total_cost: 36201
 - name: division
   program: (all)
-  debug_program: (a (q 2 2 (c (q . 1) (q . 1))) (c (q 34 2 (> (/ (q . 10) 3) (q . 1))) ()))
+  debug_program: (a (q 2 2 (c (q . 1) (q . 1))) (c (q 34 3 (> (/ (q . 10) 2) (q . 1))) ()))
   output: "1"
   runtime_cost: 201
   byte_cost: 36000
@@ -71,7 +71,7 @@ tests:
   total_cost: 36020
 - name: allowed
   program: (all ())
-  debug_program: (a (q 2 6 (c 4 (c () (q . 1)))) (c (c (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1) (q 34 5 (a 2 7))) ()))
+  debug_program: (a (q 2 4 (c 6 (c (q . 1) ()))) (c (c (q 34 7 (a 2 5)) (q 2 (i (> 1 ()) (q 1 . 1) (q 8 (q . "assertion failed at bool_operator_may_raise.rue:63:5"))) 1)) ()))
   output: ()
   runtime_cost: 545
   byte_cost: 60000

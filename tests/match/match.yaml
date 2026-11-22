@@ -71,8 +71,8 @@ tests:
   byte_cost: 204000
   total_cost: 204142
 - name: recursive_alias
-  program: (a (q 2 4 (c 2 5)) (c (c (q 2 (i (l 3) (q 16 (a 6 (c (a 4 (c 2 5)) (a 4 (c 2 7)))) (q . 1)) ()) 1) (q 2 (i (> 2 3) (q . 2) (q . 3)) 1)) 1))
-  debug_program: (a (q 2 4 (c (c 4 6) 5)) (c (c (q 2 (i (not (l 3)) () (q 16 (q . 1) (a 6 (c (a 4 (c (c 4 6) (f 3))) (a 4 (c (c 4 6) (r 3))))))) 1) (q 2 (i (> 2 3) (q . 2) (q . 3)) 1)) 1))
+  program: (a (q 2 4 (c 2 5)) (c (c (q 2 (i (l 3) (q 16 (a 6 (c (a 4 (c 2 7)) (a 4 (c 2 5)))) (q . 1)) ()) 1) (q 2 (i (> 3 2) (q . 3) (q . 2)) 1)) 1))
+  debug_program: (a (q 2 4 (c (c 4 6) 5)) (c (c (q 2 (i (not (l 3)) () (q 16 (q . 1) (a 6 (c (a 4 (c (c 4 6) (r 3))) (a 4 (c (c 4 6) (f 3))))))) 1) (q 2 (i (> 3 2) (q . 3) (q . 2)) 1)) 1))
   solution: (((1 . 2) . 3))
   output: "2"
   runtime_cost: 7047

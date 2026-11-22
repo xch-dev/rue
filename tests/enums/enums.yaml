@@ -36,7 +36,7 @@ tests:
   total_cost: 12044
 - name: variants_are_types
   program: (a (q 2 (i (= 4 (q . 1)) (q 16 10 10) (q 8)) 1) (c (q 1 4) 1))
-  debug_program: (a (q 2 (q 2 (i (= (f 4) (q . 1)) (q 16 (f (r 6)) (f (r 5))) (q 8 (q . "assertion failed at enums.rue:125:5"))) 1) (c (c 2 2) 1)) (c (c (q . 1) (c (q . 4) ())) 1))
+  debug_program: (a (q 2 (q 2 (i (= (f 6) (q . 1)) (q 16 (f (r 4)) (f (r 5))) (q 8 (q . "assertion failed at enums.rue:125:5"))) 1) (c (c 2 2) 1)) (c (c (q . 1) (c (q . 4) ())) 1))
   output: "8"
   runtime_cost: 1495
   byte_cost: 660000

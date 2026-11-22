@@ -1,21 +1,21 @@
 tests:
 - name: parent_imports_use_the_parent_named_import
   program: (q . 8)
-  debug_program: (a (q 16 (a 14 (c 4 ())) 10) (c (c (q . 1) (c (q . 7) (q . 2))) ()))
+  debug_program: (a (q 16 (a 10 (c 14 ())) 4) (c (c (q . 7) (c (q . 2) (q . 1))) ()))
   output: "8"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: parent_import_paths_use_the_parent_named_import
   program: (q . 50)
-  debug_program: (a (q 16 (a 14 (c 4 ())) 10) (c (c (q . 20) (c (q . 30) (q . 2))) ()))
+  debug_program: (a (q 16 (a 10 (c 14 ())) 4) (c (c (q . 30) (c (q . 2) (q . 20))) ()))
   output: "50"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: parent_imports_use_the_parent_glob_import
   program: (q . 8)
-  debug_program: (a (q 16 (a 14 (c 4 ())) 10) (c (c (q . 1) (c (q . 7) (q . 2))) ()))
+  debug_program: (a (q 16 (a 10 (c 14 ())) 4) (c (c (q . 7) (c (q . 2) (q . 1))) ()))
   output: "8"
   runtime_cost: 20
   byte_cost: 36000

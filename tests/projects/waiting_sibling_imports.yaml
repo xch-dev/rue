@@ -1,7 +1,7 @@
 tests:
 - name: glob_imports_that_wait_for_each_other_resolve
   program: (q . 8)
-  debug_program: (a (q 16 4 6) (c (c (q . 7) (q . 1)) ()))
+  debug_program: (a (q 16 6 4) (c (c (q . 1) (q . 7)) ()))
   output: "8"
   runtime_cost: 20
   byte_cost: 36000

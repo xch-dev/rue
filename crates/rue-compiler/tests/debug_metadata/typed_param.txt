@@ -1,22 +1,22 @@
 ===== debug =====
-program: (a (q 2 2 (c (c 5 11) (c 23 (c 47 95)))) (c (q 2 (i 15 (q 2 (i (not (= 6 (sha256 4))) (q 2 (i (> (q . 5) (strlen 11)) (q . 5) (q 8 (q . "assertion failed at typed_param.rue:11:5"))) 1) (q 8 (q . "assertion failed at typed_param.rue:10:5"))) 1) (q 8 (q . "assertion failed at typed_param.rue:9:5"))) 1) 1))
+program: (a (q 2 2 (c (c 23 47) (c 5 (c 11 95)))) (c (q 2 (i 15 (q 2 (i (not (= 11 (sha256 5))) (q 2 (i (> (q . 5) (strlen 6)) (q . 4) (q 8 (q . "assertion failed at typed_param.rue:11:5"))) 1) (q 8 (q . "assertion failed at typed_param.rue:10:5"))) 1) (q 8 (q . "assertion failed at typed_param.rue:9:5"))) 1) 1))
 sidecar: 2919 bytes
 files:
   typed_param.rue
 functions:
   0: main (_ . (owner@5: bytes48 . (target@11: bytes32 . (amount@23: integer . (memo@47: atom . (enabled@95: atom . _))))))
-  1: validate ((owner@4: bytes48 . target@6: bytes32) . (amount@5: integer . (memo@11: atom . enabled@15: atom)))
+  1: validate ((amount@4: integer . memo@6: atom) . (owner@5: bytes48 . (target@11: bytes32 . enabled@15: atom)))
 nodes:
-  typed_param.rue:4:93-6:2  (a (q 2 2 (c (c 5 11) (c 23 (c 47 95)))) (c (q 2 (i 15 (q...
-    typed_param.rue:5:5-5:51 fn main  (a 2 (c (c 5 11) (c 23 (c 47 95))))
-    typed_param.rue:9:5-9:20 fn validate  (a (i 15 (q 2 (i (not (= 6 (sha256 4))) (q 2 (i (> (q . 5...
-      typed_param.rue:10:5-10:45  (a (i (not (= 6 (sha256 4))) (q 2 (i (> (q . 5) (strlen 1...
-        typed_param.rue:10:12-10:44  (not (= 6 (sha256 4)))
-          typed_param.rue:10:22-10:44  (sha256 4)
-        typed_param.rue:11:5-11:28  (a (i (> (q . 5) (strlen 11)) (q . 5) (q 8 (q . "assertio...
-          typed_param.rue:11:12-11:27  (> (q . 5) (strlen 11))
+  typed_param.rue:4:93-6:2  (a (q 2 2 (c (c 23 47) (c 5 (c 11 95)))) (c (q 2 (i 15 (q...
+    typed_param.rue:5:5-5:51 fn main  (a 2 (c (c 23 47) (c 5 (c 11 95))))
+    typed_param.rue:9:5-9:20 fn validate  (a (i 15 (q 2 (i (not (= 11 (sha256 5))) (q 2 (i (> (q . ...
+      typed_param.rue:10:5-10:45  (a (i (not (= 11 (sha256 5))) (q 2 (i (> (q . 5) (strlen ...
+        typed_param.rue:10:12-10:44  (not (= 11 (sha256 5)))
+          typed_param.rue:10:22-10:44  (sha256 5)
+        typed_param.rue:11:5-11:28  (a (i (> (q . 5) (strlen 6)) (q . 4) (q 8 (q . "assertion...
+          typed_param.rue:11:12-11:27  (> (q . 5) (strlen 6))
             typed_param.rue:11:26-11:27  (q . 5)
-            typed_param.rue:11:12-11:23  (strlen 11)
+            typed_param.rue:11:12-11:23  (strlen 6)
 ===== release =====
 program: (a (i (all 47 (not (= 5 (sha256 2))) (> (q . 5) (strlen 23))) (q . 11) (q 8)) 1)
 sidecar: 1690 bytes

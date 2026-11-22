@@ -1,5 +1,5 @@
 program: (a (q 2 (q 16 (* 4 (q . 2)) 6 5 (q . 4)) (c (c 2 2) 1)) (c (+ 2 (q . 1)) 1))
-debug_program: (a (q 2 (q 2 (q 16 (+ (+ (+ 2 (r 5)) (a 43 (c 19 ()))) 91) 123) (c (* (f 2) (q . 2)) 1)) (c (c 4 4) 1)) (c (c (+ 2 (q . 1)) (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (c (a (q . 2) (c (q . 1) 1)) (a (q . 2) (c (q . 2) 1))))) 1))
+debug_program: (a (q 2 (q 2 (q 16 (+ (+ (+ 2 (r 5)) (a 123 (c 19 ()))) 91) 43) (c (* (f 2) (q . 2)) 1)) (c (c 4 4) 1)) (c (c (+ 2 (q . 1)) (c (a (q . 2) (c (q . 2) 1)) (c (a (q . 2) (c (q . 1) 1)) (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ())))))) 1))
 byte_cost: 756000
 clvm_error: path into atom
 diagnostics:

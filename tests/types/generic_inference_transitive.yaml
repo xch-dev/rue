@@ -1,7 +1,7 @@
 tests:
 - name: map_identity
   program: (+ (a (q . 2) (q 42)) (q . 1))
-  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 42))) 1)) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (q . 42) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q . 2) (q 2 3 (c 2 ()))) ()))
   output: "43"
   runtime_cost: 955
   byte_cost: 252000
@@ -15,21 +15,21 @@ tests:
   total_cost: 252955
 - name: generics_declared_out_of_order
   program: (+ (a (q . 2) (q 42)) (q . 1))
-  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 42))) 1)) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (q . 42) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q . 2) (q 2 3 (c 2 ()))) ()))
   output: "43"
   runtime_cost: 955
   byte_cost: 252000
   total_cost: 252955
 - name: chain_of_three
   program: (a (q 16 (a 2 (c (a 2 (q 42)) ())) (q . 1)) (c (q . 2) ()))
-  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 42)))) 1)) (c (c (q . 2) (q 2 5 (c (a 2 (c 7 ())) ()))) ()))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (q . 42) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))) 1)) (c (c (q . 2) (q 2 7 (c (a 5 (c 2 ())) ()))) ()))
   output: "43"
   runtime_cost: 1491
   byte_cost: 564000
   total_cost: 565491
 - name: cycle_between_generics
   program: (a (q 16 (a 2 (q 42)) (q . 1)) (c (q . 2) ()))
-  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 42) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))) 1)) (c (c (q . 2) (q 2 2 (c 5 ()))) ()))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (q . 42) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))))) 1)) (c (c (q . 2) (q 2 5 (c 2 ()))) ()))
   output: "43"
   runtime_cost: 1209
   byte_cost: 420000
@@ -57,7 +57,7 @@ tests:
   total_cost: 421209
 - name: cycle_of_four
   program: (a (q 16 (a 2 (c (a 2 (c (a 2 (q 42)) ())) ())) (q . 1)) (c (q . 2) ()))
-  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 42) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))))) 1)) (c (c (q . 2) (q 2 5 (c (a 6 (c (a 4 (c 11 ())) ())) ()))) ()))
+  debug_program: (a (q 2 (q 16 2 (q . 1)) (c (a 6 (c (c (q . 42) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))))) 1)) (c (c (q . 2) (q 2 11 (c (a 5 (c (a 6 (c 4 ())) ())) ()))) ()))
   output: "43"
   runtime_cost: 1773
   byte_cost: 708000
@@ -77,16 +77,16 @@ tests:
   byte_cost: 252000
   total_cost: 252955
 - name: recursive_call_with_swapped_generics
-  program: (a (q 16 (f (a 2 (c 2 (c (q . 3) (c (q . 42) (sha256 (q . "hello"))))))) (q . 1)) (c (q 2 (i 5 (q 2 (q 4 6 4) (c (a 2 (c 2 (c (- 5 (q . 1)) (c 15 11)))) 1)) (q . 7)) 1) ()))
-  debug_program: (a (q 2 (q 16 (f 2) (q . 1)) (c (a 2 (c 2 (c (q . 3) (c (q . 42) (sha256 (q . "hello")))))) 1)) (c (q 2 (i (= 5 ()) (q 4 11 15) (q 2 (q 4 (r 2) (f 2)) (c (a 2 (c 2 (c (- 5 (q . 1)) (c 15 11)))) 1))) 1) ()))
+  program: (a (q 16 (f (a 2 (c 2 (c (q . 42) (c (sha256 (q . "hello")) (q . 3)))))) (q . 1)) (c (q 2 (i 15 (q 2 (q 4 6 4) (c (a 2 (c 2 (c 11 (c 5 (- 15 (q . 1)))))) 1)) (q 4 5 11)) 1) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (q . 1)) (c (a 2 (c 2 (c (q . 42) (c (sha256 (q . "hello")) (q . 3))))) 1)) (c (q 2 (i (= 15 ()) (q 4 5 11) (q 2 (q 4 (r 2) (f 2)) (c (a 2 (c 2 (c 11 (c 5 (- 15 (q . 1)))))) 1))) 1) ()))
   output: "43"
-  runtime_cost: 7994
-  byte_cost: 1656000
-  total_cost: 1663994
+  runtime_cost: 8117
+  byte_cost: 1728000
+  total_cost: 1736117
 - name: recursive_call_with_generics_in_scope
-  program: (a (q 16 (f (a 2 (c 2 (c (q . 3) (c (q . 42) (sha256 (q . "hello"))))))) (q . 1)) (c (q 2 (i 5 (q 4 11 (f (a 2 (c 2 (c (- 5 (q . 1)) (c 15 (q . 1))))))) (q . 7)) 1) ()))
-  debug_program: (a (q 2 (q 16 (f 2) (q . 1)) (c (a 2 (c 2 (c (q . 3) (c (q . 42) (sha256 (q . "hello")))))) 1)) (c (q 2 (i (= 5 ()) (q 4 11 15) (q 2 (q 4 23 (f 2)) (c (a 2 (c 2 (c (- 5 (q . 1)) (c 15 (q . 1))))) 1))) 1) ()))
+  program: (a (q 16 (f (a 2 (c 2 (c (sha256 (q . "hello")) (q 3 . 42))))) (q . 1)) (c (q 2 (i 11 (q 4 15 (f (a 2 (c 2 (c (q . 1) (c (- 11 (q . 1)) 5)))))) (q 4 15 5)) 1) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (q . 1)) (c (a 2 (c 2 (c (sha256 (q . "hello")) (c (q . 3) (q . 42))))) 1)) (c (q 2 (i (= 11 ()) (q 4 15 5) (q 2 (q 4 31 (f 2)) (c (a 2 (c 2 (c (q . 1) (c (- 11 (q . 1)) 5)))) 1))) 1) ()))
   output: "43"
-  runtime_cost: 7217
+  runtime_cost: 7269
   byte_cost: 1560000
-  total_cost: 1567217
+  total_cost: 1567269

@@ -14,7 +14,7 @@ tests:
   debug_clvm_error: clvm raise ("raise called at never.rue:5:5" "negative")
 - name: function_type
   program: (q . 1)
-  debug_program: (a (q 2 10 (c 14 (c (q . 1) (c (q . 2) (c (c (q . 1) (q 2 2 (q . "unused"))) (c (c (q . 4) (c (c (q . 1) 4) (c () ()))) ())))))) (c (c (q 8 (q . "raise called at never.rue:5:5") 1) (c (q 2 (i 5 (q 1 . 1) (q 2 2 7)) 1) (q 2 1 ()))) ()))
+  debug_program: (a (q 2 10 (c 14 (c (c (q . 2) (c (c (q . 1) (q 2 2 (q . "unused"))) (c (c (q . 4) (c (c (q . 1) 4) (c () ()))) ()))) (q . 1)))) (c (c (q 8 (q . "raise called at never.rue:5:5") 1) (c (q 2 (i 7 (q 1 . 1) (q 2 2 5)) 1) (q 2 1 ()))) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000

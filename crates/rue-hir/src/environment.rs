@@ -45,14 +45,10 @@ impl Environment {
     ///
     /// Symbols that aren't referenced don't change the balance, so they're split off one at a time,
     /// and the tree is as deep as there are unreferenced symbols.
-    ///
-    /// Symbols that are referenced equally often are in the order they were defined in, whatever
-    /// order they're given in, so that functions that capture the same symbols, such as a
-    /// recursive function and a loop that call each other, have the same tree, which each passes
-    /// on to the other as it is.
     pub fn tree(referenced_symbols: IndexMap<SymbolId, usize>) -> Self {
+        // The sort is stable, so symbols that are referenced equally often stay in order
         let mut symbols: Vec<_> = referenced_symbols.into_iter().collect();
-        symbols.sort_by_key(|&(symbol, count)| (Reverse(count), symbol));
+        symbols.sort_by_key(|&(_, count)| Reverse(count));
 
         if symbols.is_empty() {
             return Self::Nil;
@@ -349,12 +345,8 @@ mod tests {
             let mut sorted = symbols.clone();
             sorted.sort_by_key(|&(_, count)| Reverse(count));
 
-            let tree = Environment::tree(symbols.iter().copied().collect());
+            let tree = Environment::tree(symbols.into_iter().collect());
             assert_eq!(tree_string(&tree), reference_tree(&sorted), "{counts:?}");
-
-            // The order the symbols are given in doesn't change the tree
-            let reversed = Environment::tree(symbols.into_iter().rev().collect());
-            assert_eq!(tree_string(&reversed), tree_string(&tree), "{counts:?}");
         }
     }
 

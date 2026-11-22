@@ -1,5 +1,5 @@
 program: (c (sha256 (q . "hello")) (q . "hello"))
-debug_program: (a (q 4 (a 10 (q . "hello")) (a 14 (c 4 (q . "hello")))) (c (c (q . 1) (c (q 11 1) (q 2 2 3))) ()))
+debug_program: (a (q 4 (a 14 (q . "hello")) (a 4 (c 10 (q . "hello")))) (c (c (q 2 2 3) (c (q . 1) (q 11 1))) ()))
 output: (0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824 . "hello")
 runtime_cost: 643
 byte_cost: 300000

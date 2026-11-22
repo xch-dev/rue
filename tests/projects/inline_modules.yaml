@@ -22,7 +22,7 @@ tests:
   total_cost: 96020
 - name: inline_modules_in_subdirectories_use_super
   program: (q . 111)
-  debug_program: (a (q 2 12 (c (c 8 (c 10 14)) ())) (c (c (c (q . 1) (q 16 (+ 4 10) 14)) (c (q . 10) (q . 100))) ()))
+  debug_program: (a (q 2 8 (c (c 12 (c 10 14)) ())) (c (c (c (q 16 (+ 14 10) 4) (q . 100)) (c (q . 10) (q . 1))) ()))
   output: "111"
   runtime_cost: 20
   byte_cost: 36000

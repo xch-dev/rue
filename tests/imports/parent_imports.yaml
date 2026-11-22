@@ -1,7 +1,7 @@
 tests:
 - name: parent_imports_use_what_the_parent_imports
   program: (q . 18)
-  debug_program: (a (q 16 (+ (a 14 (c 8 ())) (a 10 (q . 10))) 12) (c (c (c (q . 1) (q . 7)) (c (q . 1) (q . 2))) ()))
+  debug_program: (a (q 16 (+ (a 10 (c 14 ())) (a 12 (q . 10))) 8) (c (c (c (q . 7) (q . 1)) (c (q . 2) (q . 1))) ()))
   output: "18"
   runtime_cost: 20
   byte_cost: 36000

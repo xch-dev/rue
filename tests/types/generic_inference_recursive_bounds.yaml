@@ -1,7 +1,7 @@
 tests:
 - name: expected_bound_through_another_generic
   program: (a (q . 2) (q 1))
-  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 1))) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 6 (c (q . 1) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (c (c (q . 2) (q 2 3 (c 2 ()))) ()))
   output: "1"
   runtime_cost: 179
   byte_cost: 156000
@@ -42,8 +42,8 @@ tests:
   byte_cost: 1332000
   total_cost: 1335454
 - name: guard_held_only
-  program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 2) (c (q . 1) (q . 2)))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (q . 2) (c () (q 1 . 1)))))) (q 2 11 (c 23 ()))) 1) ()))
-  debug_program: (a (q 2 4 (c (c 4 6) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (c (c (q 2 (i (> 5 ()) (q 2 (q . 2) (c (a 4 (c (c 4 6) (c (- 5 (q . 1)) (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (c () (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))))) 1)) (q 2 11 (c 23 ()))) 1) (q . 2)) ()))
+  program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 1) (c (q . 2) (q . 2)))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c () (c (q . 2) (q 1 . 1)))))) (q 2 23 (c 11 ()))) 1) ()))
+  debug_program: (a (q 2 4 (c (c 4 6) (c (q . 1) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (c (c (q 2 (i (> 5 ()) (q 2 (q . 2) (c (a 4 (c (c 4 6) (c (- 5 (q . 1)) (c () (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))))) 1)) (q 2 23 (c 11 ()))) 1) (q . 2)) ()))
   output: ()
   runtime_cost: 3950
   byte_cost: 1620000
