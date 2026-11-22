@@ -221,7 +221,12 @@ const HELPERS: &[Template] = &[
 ///   beside them (`element_value`). Lambdas whose parameter is an `Int` sometimes return
 ///   `x - 1`, and the recursion guard's call with other generic arguments is sometimes bound
 ///   with an annotation, which gives it an expected type.
-pub const VERSIONS: [u32; 4] = [1, 2, 3, 4];
+/// - **5**: makes the calls that aren't recursive pass the same literals (`element_value`), so
+///   that untyped lambdas are elements of pairs and lists in ordinary calls, as in
+///   `feed_pair((fn(x) => x - 1, 5))`, where the rest of the pair is all that gives the lambda's
+///   parameter its type. Lambdas with an `Int` parameter return `x - 1` half of the time, which
+///   can't be compiled with a generic as the parameter's type.
+pub const VERSIONS: [u32; 5] = [1, 2, 3, 4, 5];
 
 /// Functions that generator version 4 adds to the catalog, which take pairs, nested pairs and
 /// lists that hold functions next to values of their generics, as the recursive functions of the
@@ -684,6 +689,9 @@ pub struct Generator {
     lambdas: u32,
     /// The sites of the calls that version 3's probe bindings make (see [`VERSIONS`]).
     probes: BTreeSet<SiteId>,
+    /// Whether the expression being built is inside a literal that version 5 passes to a call
+    /// that isn't recursive (see `call_to`).
+    in_literal: bool,
 }
 
 /// How deep expressions are built in `main`, and in function bodies.
@@ -707,6 +715,7 @@ impl Generator {
             calls: true,
             lambdas: 0,
             probes: BTreeSet::new(),
+            in_literal: false,
         }
     }
 
@@ -1649,6 +1658,18 @@ impl Generator {
             .map(|(name, ty)| {
                 if name == "depth" {
                     Expr::new(ExprKind::Int(self.rng.int(1, 2)), Ty::Int)
+                } else if self.version >= 5
+                    && !self.in_literal
+                    && ty.contains_fn()
+                    && !matches!(ty, Ty::Fn(..))
+                    && self.rng.chance(70)
+                {
+                    // Version 5 passes literals with lambdas in them, as a recursive call does. A
+                    // call inside one doesn't, so that they don't nest without end
+                    self.in_literal = true;
+                    let value = self.element_value(&ty.subst(&generic_args), scope);
+                    self.in_literal = false;
+                    value
                 } else {
                     self.expr(
                         &ty.subst(&generic_args),
@@ -1757,7 +1778,11 @@ impl Generator {
             .find(|(_, ty)| *ty == Ty::Int)
             .map(|(name, _)| name.clone());
         let body = match int_param {
-            Some(name) if self.version >= 4 && *ret == Ty::Int && self.rng.chance(25) => {
+            Some(name)
+                if self.version >= 4
+                    && *ret == Ty::Int
+                    && self.rng.chance(if self.version >= 5 { 50 } else { 25 }) =>
+            {
                 Expr::new(ExprKind::Decrement(name), Ty::Int)
             }
             _ => {

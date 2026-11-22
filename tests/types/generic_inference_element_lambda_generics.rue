@@ -608,7 +608,7 @@ fn apply_boxed<T, U>(function: Box<fn(a: T) -> U>, value: T) -> U {
 
 // Guard: the type expected of `apply_first(...)` is only a hint, since it's in a lambda's body in
 // `apply_boxed`'s argument, so the call isn't solved again to narrow the lambda's `x`, and the
-// lambda is compiled where it is, as before, so `T` is narrowed to `5` through its return type
+// lambda is compiled where it is, so `T` is narrowed to `5` through its return type
 // (infer-fuzz generator 3, seed 408)
 test fn element_under_a_hinted_expected_type() -> Int {
     let result = apply_boxed(
@@ -630,8 +630,8 @@ test fn element_reads_a_field_of_its_parameter_under_an_expected_type() -> (Int,
 }
 
 // Guard: a binding with the parameter's name shadows it, so the field it reads isn't the
-// parameter's, and the lambda is compiled where it is, as before, which a lambda whose return type
-// another element reads needs (see `element_returns_what_a_sibling_reads`)
+// parameter's, and the lambda is compiled where it is, with the generic, as one that doesn't read
+// a field of its parameter is
 test fn element_reads_a_field_of_a_shadowing_binding() -> Int {
     two_steps(
         (
@@ -679,4 +679,405 @@ test fn element_reads_a_field_of_a_path() -> (Int, Int) {
 test fn element_reads_a_field_of_a_parameter_that_has_a_type_already() -> (5, Int) {
     let result: (5, Int) = self_feeding((1, fn(p) => (p.first, 2)), (5, 3));
     result
+}
+
+// A lambda whose body can't be compiled with the generic its parameter would be where it is, since
+// it reads a field of it or has it as an operator's operand, always waits, at least for the rest
+// of its argument, which can give the generic its type: compiled where it is it's rejected, so
+// waiting can't change a lambda that compiled. A lambda whose body can use the generic, as
+// `fn(_x) => (5, nil)` and `fn(x) => (x, nil)` can, is still compiled where it is (see
+// `element_adds_to_what_it_reads`).
+// - a pair's first element gets its parameter from the rest of its pair, as it does in a recursive
+//   call, and in a list of pairs, and in a pair inside a pair
+// - a field of a parameter whose type is a pair that comes after the lambda
+// - a prefix operator and a comparison
+fn apply_pair<T, U>(pair: (fn(x: T) -> U, T)) -> U {
+    pair.first(pair.rest)
+}
+
+fn apply_pairs<T, U>(pairs: List<(fn(x: T) -> U, T)>) -> List<U> {
+    if pairs is ((fn(x: T) -> U, T), List<(fn(x: T) -> U, T)>) {
+        [apply_pair(pairs.first), ...apply_pairs(pairs.rest)]
+    } else {
+        nil
+    }
+}
+
+fn apply_inner_pair<T, U>(pair: (Int, (fn(x: T) -> U, T))) -> U {
+    pair.rest.first(pair.rest.rest)
+}
+
+test fn first_element_of_a_pair() -> Int {
+    apply_pair((fn(x) => x + 1, 5))
+}
+
+test fn first_elements_in_a_list_of_pairs() -> List<Int> {
+    apply_pairs([(fn(x) => x + 1, 5), (fn(y) => y * 2, 6)])
+}
+
+test fn first_element_of_a_pair_in_a_pair() -> Int {
+    apply_inner_pair((1, (fn(x) => x + 1, 5)))
+}
+
+test fn first_element_reads_a_field_of_a_later_pair() -> Int {
+    apply_pair((fn(x) => x.first + x.rest, (1, 2)))
+}
+
+test fn first_element_with_a_prefix_operator() -> Int {
+    apply_pair((fn(x) => -x, 5))
+}
+
+test fn first_element_with_a_comparison() -> Bool {
+    apply_pair((fn(x) => x == 5, 5))
+}
+
+fn first_element_in_a_recursive_call<T, U>(pair: (fn(x: T) -> U, T), depth: Int) -> U {
+    if depth > 0 {
+        let inner = first_element_in_a_recursive_call((fn(x) => x + 1, 5), depth - 1);
+        let _k: Int = inner;
+    }
+
+    pair.first(pair.rest)
+}
+
+test fn first_element_in_an_ordinary_call_as_in_a_recursive_one() -> Int {
+    first_element_in_a_recursive_call((fn(x) => x + 1, 5), 1)
+}
+
+// - a lambda whose return type adds to the generic its parameter reads, which is compiled where
+//   it is otherwise, waits for `5` where `x + 1` can't be compiled there
+// - before a spread whose type has the generic its return type adds to
+// - next to an element whose expected type has the generic its return type adds to
+test fn element_returns_what_its_parameter_reads() -> Bool {
+    let result = self_feeding((1, fn(x) => x + 1), 5);
+    result == 6
+}
+
+fn map_list_from<T, U>(functions: List<fn(x: T) -> U>, value: T) -> List<U> {
+    map_list(functions, value)
+}
+
+test fn element_before_a_spread_that_reads_its_return_type() -> List<Int> {
+    let rest = [fn(x: Int) => x * 2];
+    map_list_from([fn(x) => x + 1, ...rest], 5)
+}
+
+fn with_value_of_return<T, U>(pair: (fn(x: T) -> U, U), value: T) -> U {
+    pair.first(value)
+}
+
+test fn element_before_a_value_of_its_return_type() -> Int {
+    with_value_of_return((fn(x) => x + 1, 0), 5)
+}
+
+// Guards, each compiled where it is:
+// - a lambda that only passes its parameter on is compiled with the generic
+// - a parameter that's shadowed where the body uses an operator isn't the generic's value there
+// - beside a pair that the parameter's type can't be followed into, a lambda that can be
+//   compiled where it is still is
+test fn first_element_passes_its_parameter_on() -> (Int, Int) {
+    apply_pair((fn(x) => (x, 1), 5))
+}
+
+struct Shadowing {
+    x: Int,
+}
+
+test fn first_element_with_a_shadowed_parameter() -> Int {
+    apply_pair((
+        fn(x) => {
+            let y = x;
+            let { x } = Shadowing { x: 1 };
+            let _z = x + 1;
+            y
+        },
+        5,
+    ))
+}
+
+test fn first_element_beside_a_pair() -> ((Int, Int), Int) {
+    apply_pair((fn(x) => (x, 1), (1, 2)))
+}
+
+// A guard on the parameter gives it a type that has what the body uses, so the lambda is
+// compiled where it is, with the generic: `x` is `Int` in the first branch for any `T`
+test fn first_element_with_a_guard() -> Int {
+    apply_pair((
+        fn(x) => if x is Int {
+            x + 1
+        } else {
+            0
+        },
+        5,
+    ))
+}
+
+// A lambda that only passes its parameter on is compiled where it is, so the call's `V` holds
+// anything, which a guard for a pair on it overlaps
+fn apply_to_first<U, V>(pair: (fn(a: U) -> (V, Int), U)) -> V {
+    pair.first(pair.rest).first
+}
+
+test fn first_element_passes_a_pair_on() -> Int {
+    let r = apply_to_first((fn(x) => x, (1, 2)));
+
+    if r is (Any, Any) {
+        1
+    } else {
+        2
+    }
+}
+
+// Two values of the same type give a lambda that waits that type, and not a union of it with
+// itself, whose function couldn't be called
+fn second_then<U, V>(pair: (U, fn(a: U) -> V), other: U) -> V {
+    pair.rest(other)
+}
+
+test fn second_element_after_the_same_type_twice() -> Int {
+    let g: fn(a: Int) -> Int = fn(a) => a + 1;
+    let r = second_then(((g, 1), fn(x) => x.first), (g, 1));
+    r(1)
+}
+
+// A lambda that waits is compiled after the waiting lambdas that return what it reads, wherever
+// they are: `y` is what `fn(x) => x + 1` returns of the `5` after the pair, so it waits for the
+// `5` too, though nothing after the pair gives `U` a type itself
+test fn waiting_element_reads_what_a_waiting_element_returns() -> Int {
+    two_steps((fn(x) => x + 1, fn(y) => y * 2), 5)
+}
+
+fn two_steps_reversed<T, U>(pair: (fn(y: U) -> Int, fn(x: T) -> U), value: T) -> Int {
+    pair.first(pair.rest(value))
+}
+
+test fn waiting_element_before_the_one_that_returns_what_it_reads() -> Int {
+    two_steps_reversed((fn(y) => y * 2, fn(x) => x + 1), 5)
+}
+
+fn two_arguments<T, U>(
+    first: (fn(x: T) -> U, nil),
+    second: (fn(y: U) -> Int, nil),
+    value: T,
+) -> Int {
+    second.first(first.first(value))
+}
+
+test fn waiting_elements_in_two_arguments() -> Int {
+    two_arguments([fn(x) => x + 1], [fn(y) => y * 2], 5)
+}
+
+fn two_steps_in_pair<T, U>(pair: (fn(x: T) -> U, (fn(y: U) -> Int, T))) -> Int {
+    pair.rest.first(pair.first(pair.rest.rest))
+}
+
+// With nothing after the pair, both are ready at once, and the one that returns what the other
+// reads is still compiled first
+test fn waiting_element_after_one_that_returns_what_it_reads() -> Int {
+    two_steps_in_pair((fn(x) => x + 1, (fn(y) => y * 2, 5)))
+}
+
+fn three_steps<A, B, C>(
+    functions: (fn(z: B) -> C, (fn(y: A) -> B, fn(w: C) -> Int)),
+    value: A,
+) -> Int {
+    functions.rest.rest(functions.first(functions.rest.first(value)))
+}
+
+test fn waiting_elements_in_a_chain() -> Int {
+    three_steps((fn(z) => z * 2, (fn(y) => y + 1, fn(w) => w - 1)), 5)
+}
+
+fn value_then_steps<T, U>(pair: (T, (fn(x: T) -> U, fn(y: U) -> Int)), other: T) -> Int {
+    pair.rest.rest(pair.rest.first(other)) + pair.rest.rest(pair.rest.first(pair.first))
+}
+
+// A lambda whose parameter an element before it gives a type is compiled where it is when
+// another element reads what it returns, though the `7` after the pair can still add to `T`:
+// waiting, it would leave `fn(y) => y + 1`, or the call that's inferred from `U`, without it
+test fn element_after_a_value_before_one_that_reads_its_return() -> Int {
+    value_then_steps((5, (fn(x) => x + 1, fn(y) => y + 1)), 7)
+}
+
+fn value_then_call<T, U>(pair: (T, (fn(x: T) -> U, U)), other: T) -> U {
+    pair.rest.first(other)
+}
+
+fn make_one<X>() -> X {
+    unchecked_cast(1)
+}
+
+test fn element_after_a_value_before_a_call_that_reads_its_return() -> Int {
+    value_then_call((5, (fn(x) => x + 1, make_one())), 7)
+}
+
+// The items after a lambda in a list give its parameter a type as the rest of a pair does
+test fn first_item_of_a_list() -> Int {
+    apply_pair([fn(x) => x.first + 1, 1, 2])
+}
+
+fn apply_to_first_with<U, V>(pair: (fn(a: U) -> (V, Int), U), other: U) -> V {
+    let _other = other;
+    pair.first(pair.rest).first
+}
+
+// Guard: beside a pair that the parameter's type can't be followed into, a lambda that only
+// passes its parameter on is compiled where it is, with the generic, though an argument after
+// the pair adds to `U`, so the call's `V` holds anything, which a guard for a pair on it overlaps
+test fn first_element_beside_a_pair_before_a_later_argument() -> Int {
+    let r = apply_to_first_with((fn(x) => x, (1, 2)), (3, 4));
+
+    if r is (Any, Any) {
+        1
+    } else {
+        2
+    }
+}
+
+// Guard: the `x` that the body applies an operator to is the binding's, so the lambda is
+// compiled where it is, with the generic, and passes the pair on as one that holds anything
+test fn first_element_with_a_shadowed_parameter_passes_a_pair_on() -> Int {
+    let r = apply_to_first((
+        fn(x) => {
+            let y = x;
+            let { x } = Shadowing { x: 1 };
+            let _z = x + 1;
+            y
+        },
+        (1, 2),
+    ));
+
+    if r is (Any, Any) {
+        1
+    } else {
+        2
+    }
+}
+
+// A `match` on the parameter gives it a type that has what the body uses, as a guard does, so
+// the lambda is compiled where it is, with the generic, and the arm for anything else is reached
+test fn first_element_with_a_match() -> Int {
+    apply_pair((
+        fn(x) => match x {
+            Int => x + 1,
+            _ => 0,
+        },
+        5,
+    ))
+}
+
+struct Optional {
+    a: Int | nil,
+    b: Int,
+}
+
+fn fold_with<T>(functions: List<fn(x: T) -> T>, value: T) -> T {
+    if functions is (fn(x: T) -> T, List<fn(x: T) -> T>) {
+        fold_with(functions.rest, functions.first(value))
+    } else {
+        value
+    }
+}
+
+// A lambda that reads a field of its parameter waits whatever else its body has, a guard or a
+// `match` among it: the guard is on the field, which the generic doesn't have
+test fn element_reads_a_field_beside_a_guard() -> List<Int> {
+    map_list(
+        [
+            fn(x) => if x.a is nil {
+                x.b
+            } else {
+                x.a + x.b
+            },
+        ],
+        Optional { a: 1, b: 2 },
+    )
+}
+
+test fn element_reads_a_field_beside_a_match() -> Int {
+    let r = fold_with(
+        [
+            fn(x) => match x.b {
+                2 => Optional { a: nil, b: 5 },
+                _ => x,
+            },
+        ],
+        Optional { a: 1, b: 2 },
+    );
+    r.b
+}
+
+struct Point {
+    a: Int,
+    b: Int,
+}
+
+struct Wrapper {
+    value: Int,
+}
+
+// The parameter's name as a field's name doesn't shadow it
+test fn element_with_a_field_named_as_its_parameter() -> (Int, Int) {
+    let point = fold_with([fn(a) => Point { a: a.b, b: a.a }], Point { a: 1, b: 2 });
+    let wrapper = fold_with(
+        [fn(value) => Wrapper { value: value.value + 1 }],
+        Wrapper { value: 4 },
+    );
+    (point.a, wrapper.value)
+}
+
+fn apply_first_of_two<T, U>(functions: (fn(x: T) -> U, Int), value: T, other: T) -> U {
+    let _other = other;
+    functions.first(value)
+}
+
+// Declared: two values of the same type give a lambda that waits that one type, whose literals
+// are widened as the lambda's parameter is, as they are for one value. The `1` here was kept as
+// the union of the two values was. Writing `let result: 1 = ...` keeps it
+test fn waiting_element_after_two_values_of_the_same_type() -> Int {
+    let result = apply_first_of_two((fn(x) => x.first, 0), (1, 2), (1, 2));
+    let wider: Int = result;
+    let kept: 1 = apply_first_of_two((fn(x) => x.first, 0), (1, 2), (1, 2));
+    wider + kept
+}
+
+// A first element that waits for the value after its pair has it as its parameter's type, and so
+// does one in its body that's passed to the same function: `x` and `y` are both `Int`
+test fn first_element_feeds_itself_in_its_own_body() -> Int {
+    self_feeding((1, fn(x) => self_feeding((1, fn(y) => x + y), 5)), 5)
+}
+
+fn guarded_then_step<T, U>(pair: (fn(x: T) -> U, fn(y: U) -> Int), value: T) -> Int {
+    pair.rest(pair.first(value))
+}
+
+// A lambda that waits because it reads a field of its parameter doesn't give what it returns a
+// type for the lambda after it, even with a guard on its parameter: `y` waits for it too
+test fn element_after_a_guarded_field_reader() -> Int {
+    let value: Point | nil = Point { a: 1, b: 2 };
+    guarded_then_step(
+        (
+            fn(x) => if x is nil {
+                0
+            } else {
+                x.a
+            },
+            fn(y) => y + 1,
+        ),
+        value,
+    )
+}
+
+// A guard on the parameter itself gives it a type that has the field the body reads, so the lambda
+// is compiled where it is, with the generic: the guard for a pair overlaps it, and the `5` after it
+// takes the other branch
+test fn first_element_guards_its_parameter_before_reading_a_field() -> Int {
+    apply_pair((
+        fn(x) => if x is (Int, Int) {
+            x.first
+        } else {
+            0
+        },
+        5,
+    ))
 }

@@ -165,10 +165,7 @@ diagnostics:
     note: `T` is a generic of the function that's called, since the types of the parameters `x` and `y` weren't inferred here; specify their types explicitly
 - Unused binding `inner_error` at generic_inference_diagnostics_errors.rue:252:9
 - Expected 2 arguments, but found 1 at generic_inference_diagnostics_errors.rue:252:23
-- Cannot infer generic `T` for `self_feeding`; specify it explicitly, e.g. `self_feeding::<...>()` at generic_inference_diagnostics_errors.rue:252:49
-- |-
-  Cannot use `+` operator with `T` and `1` at generic_inference_diagnostics_errors.rue:252:75
-    note: `T` is a generic of the function that's called, since the types of the parameters `a` and `x` weren't inferred here; specify their types explicitly
+- Type of parameter cannot be inferred, it must be specified explicitly at generic_inference_diagnostics_errors.rue:252:69
 - Unused binding `declared` at generic_inference_diagnostics_errors.rue:253:9
 - "Cannot assign `7` to `(Int, fn(value: T) -> T)`, since they are incompatible at generic_inference_diagnostics_errors.rue:253:62"
 - Unused function `string_type` at generic_inference_diagnostics_errors.rue:258:4
@@ -190,61 +187,53 @@ diagnostics:
 - Unused binding `anything` at generic_inference_diagnostics_errors.rue:273:9
 - "Cannot assign `fn(x: Int) -> 1` to `fn(value: Any | 1) -> Int`, since they are incompatible at generic_inference_diagnostics_errors.rue:273:33"
 - Unused function `uninferred_parameter` at generic_inference_diagnostics_errors.rue:279:4
-- Unused binding `operator` at generic_inference_diagnostics_errors.rue:280:9
+- Unused binding `compound` at generic_inference_diagnostics_errors.rue:280:9
 - |-
   Cannot use `+` operator with `T` and `1` at generic_inference_diagnostics_errors.rue:280:46
     note: `T` is a generic of the function that's called, since the type of the parameter `x` wasn't inferred here; specify the parameter's type explicitly
-- Unused binding `compound` at generic_inference_diagnostics_errors.rue:281:9
+- Unused binding `argument` at generic_inference_diagnostics_errors.rue:283:9
+- Cannot infer generic `T` for `call`; specify it explicitly, e.g. `call::<...>()` at generic_inference_diagnostics_errors.rue:283:20
 - |-
-  Cannot use `+` operator with `T` and `1` at generic_inference_diagnostics_errors.rue:281:46
+  Cannot use `+` operator with `T` and `1` at generic_inference_diagnostics_errors.rue:283:34
     note: `T` is a generic of the function that's called, since the type of the parameter `x` wasn't inferred here; specify the parameter's type explicitly
-- Unused binding `argument` at generic_inference_diagnostics_errors.rue:284:9
-- Cannot infer generic `T` for `call`; specify it explicitly, e.g. `call::<...>()` at generic_inference_diagnostics_errors.rue:284:20
+- Unused binding `field` at generic_inference_diagnostics_errors.rue:284:9
+- Cannot infer generic `T` for `call`; specify it explicitly, e.g. `call::<...>()` at generic_inference_diagnostics_errors.rue:284:17
 - |-
-  Cannot use `+` operator with `T` and `1` at generic_inference_diagnostics_errors.rue:284:34
+  Unknown field `first` on type `T` at generic_inference_diagnostics_errors.rue:284:33
     note: `T` is a generic of the function that's called, since the type of the parameter `x` wasn't inferred here; specify the parameter's type explicitly
-- Unused binding `field` at generic_inference_diagnostics_errors.rue:285:9
-- Cannot infer generic `T` for `call`; specify it explicitly, e.g. `call::<...>()` at generic_inference_diagnostics_errors.rue:285:17
+- Unused binding `list` at generic_inference_diagnostics_errors.rue:285:9
+- Cannot infer generic `T` for `map`; specify it explicitly, e.g. `map::<...>()` at generic_inference_diagnostics_errors.rue:285:16
 - |-
-  Unknown field `first` on type `T` at generic_inference_diagnostics_errors.rue:285:33
+  Cannot use `+` operator with `T` and `1` at generic_inference_diagnostics_errors.rue:285:34
     note: `T` is a generic of the function that's called, since the type of the parameter `x` wasn't inferred here; specify the parameter's type explicitly
-- Unused binding `list` at generic_inference_diagnostics_errors.rue:286:9
-- Cannot infer generic `T` for `map`; specify it explicitly, e.g. `map::<...>()` at generic_inference_diagnostics_errors.rue:286:16
+- Unused binding `unrelated` at generic_inference_diagnostics_errors.rue:288:9
+- Unused binding `y` at generic_inference_diagnostics_errors.rue:292:21
+- Cannot assign `1` to `Bytes` without a cast, since they are semantically different at generic_inference_diagnostics_errors.rue:292:32
+- Unused binding `same_name` at generic_inference_diagnostics_errors.rue:298:9
+- Unused binding `y` at generic_inference_diagnostics_errors.rue:302:21
+- Cannot assign `T` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_diagnostics_errors.rue:302:30
+- Unused binding `typed` at generic_inference_diagnostics_errors.rue:310:9
+- Unknown field `first` on type `Int` at generic_inference_diagnostics_errors.rue:310:50
+- Unused binding `leaked` at generic_inference_diagnostics_errors.rue:313:9
+- Cannot infer generic `T` for `with_number`; specify it explicitly, e.g. `with_number::<...>()` at generic_inference_diagnostics_errors.rue:313:18
+- "Cannot assign `(fn(x: T) -> T, \"text\")` to `(fn(value: T) -> T, Int)` without a cast, since they are semantically different at generic_inference_diagnostics_errors.rue:313:30"
+- Unused binding `lint` at generic_inference_diagnostics_errors.rue:316:9
+- Unused binding `number` at generic_inference_diagnostics_errors.rue:321:21
+- Match arm `(First, Any)` also handles `(First | Second, T)`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at generic_inference_diagnostics_errors.rue:322:21
 - |-
-  Cannot use `+` operator with `T` and `1` at generic_inference_diagnostics_errors.rue:286:34
-    note: `T` is a generic of the function that's called, since the type of the parameter `x` wasn't inferred here; specify the parameter's type explicitly
-- Unused binding `unrelated` at generic_inference_diagnostics_errors.rue:289:9
-- Unused binding `y` at generic_inference_diagnostics_errors.rue:293:21
-- Cannot assign `1` to `Bytes` without a cast, since they are semantically different at generic_inference_diagnostics_errors.rue:293:32
-- Unused binding `same_name` at generic_inference_diagnostics_errors.rue:299:9
-- Unused binding `y` at generic_inference_diagnostics_errors.rue:303:21
-- Cannot assign `T` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_diagnostics_errors.rue:303:30
-- Unused binding `typed` at generic_inference_diagnostics_errors.rue:311:9
-- Unknown field `first` on type `Int` at generic_inference_diagnostics_errors.rue:311:50
-- Unused binding `leaked` at generic_inference_diagnostics_errors.rue:314:9
-- Cannot infer generic `T` for `with_number`; specify it explicitly, e.g. `with_number::<...>()` at generic_inference_diagnostics_errors.rue:314:18
-- "Cannot assign `(fn(x: T) -> T, \"text\")` to `(fn(value: T) -> T, Int)` without a cast, since they are semantically different at generic_inference_diagnostics_errors.rue:314:30"
-- Unused binding `lint` at generic_inference_diagnostics_errors.rue:317:9
-- Unused binding `number` at generic_inference_diagnostics_errors.rue:322:21
-- Match arm `(First, Any)` also handles `(First | Second, T)`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at generic_inference_diagnostics_errors.rue:323:21
+  Unreachable match arm, since an earlier arm handles every value that's left at generic_inference_diagnostics_errors.rue:323:21
+    note: This arm handles every value that's left at generic_inference_diagnostics_errors.rue:322:21
+- Unused binding `other` at generic_inference_diagnostics_errors.rue:325:21
+- Cannot assign `T` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_diagnostics_errors.rue:325:34
+- Unused binding `longer_name` at generic_inference_diagnostics_errors.rue:333:9
+- Unused binding `wrong` at generic_inference_diagnostics_errors.rue:337:21
+- Cannot assign `Thing` to `Int`, since they are incompatible at generic_inference_diagnostics_errors.rue:337:34
+- Unused binding `destructured` at generic_inference_diagnostics_errors.rue:345:9
 - |-
-  Unreachable match arm, since an earlier arm handles every value that's left at generic_inference_diagnostics_errors.rue:324:21
-    note: This arm handles every value that's left at generic_inference_diagnostics_errors.rue:323:21
-- Unused binding `other` at generic_inference_diagnostics_errors.rue:326:21
-- Cannot assign `T` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_inference_diagnostics_errors.rue:326:34
-- Unused binding `longer_name` at generic_inference_diagnostics_errors.rue:334:9
-- Unused binding `wrong` at generic_inference_diagnostics_errors.rue:338:21
-- Cannot assign `Thing` to `Int`, since they are incompatible at generic_inference_diagnostics_errors.rue:338:34
-- Unused binding `destructured` at generic_inference_diagnostics_errors.rue:346:9
-- |-
-  Cannot destructure type `T` into a pair at generic_inference_diagnostics_errors.rue:346:44
+  Cannot destructure type `T` into a pair at generic_inference_diagnostics_errors.rue:345:44
     note: `T` is a generic of the function that's called, since the type of the parameter `(a, b)` wasn't inferred here; specify the parameter's type explicitly
-- Unused binding `destructured_argument` at generic_inference_diagnostics_errors.rue:347:9
-- Cannot infer generic `T` for `call`; specify it explicitly, e.g. `call::<...>()` at generic_inference_diagnostics_errors.rue:347:33
-- Cannot destructure type `T` into a pair at generic_inference_diagnostics_errors.rue:347:41
-- Unused binding `a` at generic_inference_diagnostics_errors.rue:347:42
-- Unused binding `b` at generic_inference_diagnostics_errors.rue:347:45
-- Unused binding `both_parameters` at generic_inference_diagnostics_errors.rue:351:9
-- |-
-  Cannot use `+` operator with `T` and `1` at generic_inference_diagnostics_errors.rue:351:79
-    note: `T` is a generic of the function that's called, since the types of the parameters `x` and `y` weren't inferred here; specify their types explicitly
+- Unused binding `destructured_argument` at generic_inference_diagnostics_errors.rue:346:9
+- Cannot infer generic `T` for `call`; specify it explicitly, e.g. `call::<...>()` at generic_inference_diagnostics_errors.rue:346:33
+- Cannot destructure type `T` into a pair at generic_inference_diagnostics_errors.rue:346:41
+- Unused binding `a` at generic_inference_diagnostics_errors.rue:346:42
+- Unused binding `b` at generic_inference_diagnostics_errors.rue:346:45

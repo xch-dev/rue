@@ -277,7 +277,6 @@ fn inferred_union(any: Any) -> nil {
 // An error in a lambda's body about a parameter whose type wasn't inferred says so, since it shows
 // the generic of the function that's called
 fn uninferred_parameter<T>(outer: T, thing: Thing, either: First | Second) -> nil {
-    let operator = self_feeding((1, fn(x) => x + 1), 5);
     let compound = self_feeding((1, fn(x) => (x, 1).first + 1), 5);
 
     // The call says that the generic can't be inferred as well, which is why the body is rejected
@@ -345,9 +344,5 @@ fn uninferred_parameter<T>(outer: T, thing: Thing, either: First | Second) -> ni
     // A parameter that's destructured is one that an error is about, too
     let destructured = self_feeding((1, fn((a, b)) => (a, b)), 5);
     let destructured_argument = call(fn((a, b)) => 1);
-
-    // Lambdas that are passed to the same function, one in the other, can both have parameters
-    // that were left as the generic, which is the same one
-    let both_parameters = self_feeding((1, fn(x) => self_feeding((1, fn(y) => x + 1), 5)), 5);
     nil
 }

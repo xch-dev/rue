@@ -2142,6 +2142,47 @@ fn version_4_programs_never_change() {
     assert_eq!(programs_hash(4), VERSION_4_HASH, "{:#x}", programs_hash(4));
 }
 
+/// The same as `VERSION_1_HASH`, for generator version 5.
+const VERSION_5_HASH: u64 = 0x921e_4736_8648_9e23;
+
+#[test]
+fn version_5_programs_never_change() {
+    assert_eq!(programs_hash(5), VERSION_5_HASH, "{:#x}", programs_hash(5));
+}
+
+#[test]
+fn version_5_is_deterministic_and_its_explicit_programs_compile() {
+    let mut valid = 0;
+    let mut shaped = 0;
+    for seed in 0..40 {
+        let first = Generator::versioned(seed, 5).generate();
+        let second = Generator::versioned(seed, 5).generate();
+        let explicit = first.program.print(&Variant::default());
+        assert_eq!(explicit, second.program.print(&Variant::default()));
+        assert_eq!(first.variants, second.variants);
+        if matches!(
+            oracle::compile_with(&explicit, first.program.uses_std()),
+            Compiled::Ok { leak: None, .. }
+        ) {
+            valid += 1;
+        }
+        // A call in `main` that passes an untyped lambda in a pair or list literal
+        let main = &first.program.main;
+        shaped += usize::from(
+            main.lets
+                .iter()
+                .map(|binding| &binding.value)
+                .chain([&main.body])
+                .any(holds_untyped_lambda),
+        );
+    }
+    assert!(valid >= 38, "only {valid} of 40 explicit programs compile");
+    assert!(
+        shaped >= 15,
+        "only {shaped} of 40 programs pass untyped lambdas in pairs or lists in `main`"
+    );
+}
+
 /// Whether the expression is a pair or list literal with an untyped lambda as one of its items,
 /// or has one inside it.
 fn holds_untyped_lambda(expr: &Expr) -> bool {
