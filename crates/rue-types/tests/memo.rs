@@ -1430,7 +1430,13 @@ impl Generator<'_> {
     }
 
     fn function(&mut self, depth: usize, generics: &[TypeId]) -> TypeId {
-        let own: Vec<TypeId> = (0..self.rng.below(3)).map(|_| self.db.generic()).collect();
+        let count = self.rng.below(3);
+        self.function_with(depth, generics, count)
+    }
+
+    /// A function type with `count` generics of its own (see `function`).
+    fn function_with(&mut self, depth: usize, generics: &[TypeId], count: usize) -> TypeId {
+        let own: Vec<TypeId> = (0..count).map(|_| self.db.generic()).collect();
         let scope: Vec<TypeId> = generics.iter().chain(&own).copied().collect();
 
         // Usually the function's own generics are its parameters or return type, which is what
@@ -1609,6 +1615,20 @@ struct Module {
     cases: Vec<[TypeId; 4]>,
 }
 
+/// Where the generic being inferred is in a case's target (see `random_module`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Targets {
+    /// `(T, rhs)` or `T | rhs`.
+    PairOrUnion,
+    /// Inside a function type with as many parameters as the first type, which is a generic
+    /// function, such as `fn(p0: T, p1: (T, rhs)) -> rhs` or `fn(p0: rhs) -> T`, or the generic
+    /// function twice, `(F, F)`, against `(fn(params) -> X, fn(params) -> T)` with the same
+    /// parameters, where the second comparison of them can be reused from the first (#419).
+    /// Instantiating it puts bounds on `T` through its own generics, in an order that the memo
+    /// must keep.
+    Function,
+}
+
 /// Generates a random module from the seed, and the cases to compare in it: two types, and a target
 /// with a generic being inferred, such as a parameter of type `(T, rhs)`. Returns `None` if the
 /// module is skipped (see `Generator::module`).
@@ -1617,6 +1637,23 @@ fn random_module(
     queries: usize,
     contractive_only: bool,
     nesting: usize,
+) -> Option<Module> {
+    random_module_with(
+        seed,
+        queries,
+        contractive_only,
+        nesting,
+        Targets::PairOrUnion,
+    )
+}
+
+/// `random_module`, with the generic being inferred where `targets` says.
+fn random_module_with(
+    seed: u64,
+    queries: usize,
+    contractive_only: bool,
+    nesting: usize,
+    targets: Targets,
 ) -> Option<Module> {
     let mut db = Types::new();
     let mut generator = Generator {
@@ -1634,13 +1671,64 @@ fn random_module(
 
     let cases = (0..queries)
         .map(|_| {
-            let lhs = generator.query();
+            let lhs = match targets {
+                Targets::PairOrUnion => generator.query(),
+                Targets::Function => {
+                    let count = 1 + generator.rng.below(2);
+                    generator.function_with(1, &[], count)
+                }
+            };
             let rhs = generator.query();
             let generic = generator.db.generic();
-            let target = if generator.rng.chance(50) {
-                generator.db.pair(generic, rhs)
-            } else {
-                generator.db.union(vec![generic, rhs])
+            let target = match targets {
+                Targets::PairOrUnion if generator.rng.chance(50) => generator.db.pair(generic, rhs),
+                Targets::PairOrUnion => generator.db.union(vec![generic, rhs]),
+                Targets::Function => {
+                    // As many parameters as the generic function has, so that the comparison gets
+                    // to them, each `T`, `rhs`, `(T, rhs)` or another type, and the return type
+                    // `T` or `rhs`, with `T` in at least one of them
+                    let Type::Function(function) = &generator.db.arena[lhs] else {
+                        unreachable!();
+                    };
+                    let count = function.params.len();
+                    let mut params: Vec<TypeId> = (0..count)
+                        .map(|_| match generator.rng.below(4) {
+                            0 => generic,
+                            1 => rhs,
+                            2 => generator.db.pair(generic, rhs),
+                            _ => generator.query(),
+                        })
+                        .collect();
+                    let ret = if generator.rng.chance(50) {
+                        generic
+                    } else {
+                        rhs
+                    };
+
+                    // Half of them compare the generic function twice, with a function first that
+                    // has the same parameters, so the second comparison of each parameter can be
+                    // reused from the first while the generic is inferred, as in
+                    // `test_instance_comparisons_arent_memoized_while_inferring`
+                    if generator.rng.chance(50) {
+                        let first_ret = if generator.rng.chance(50) {
+                            generator.db.builtins.permissive_any
+                        } else {
+                            generator.query()
+                        };
+                        let first = generator.db.function(vec![], params.clone(), first_ret);
+                        let second = generator.db.function(vec![], params, generic);
+                        let target = generator.db.pair(first, second);
+                        let lhs = generator.db.pair(lhs, lhs);
+                        return [lhs, rhs, target, generic];
+                    }
+
+                    if ret != generic && !params.contains(&generic) {
+                        let index = generator.rng.below(count);
+                        params[index] = generic;
+                    }
+
+                    generator.db.function(vec![], params, ret)
+                }
             };
 
             [lhs, rhs, target, generic]
@@ -1658,11 +1746,28 @@ fn differential(
     contractive_only: bool,
     nesting: usize,
 ) -> Summary {
+    differential_with(
+        seeds,
+        queries,
+        contractive_only,
+        nesting,
+        Targets::PairOrUnion,
+    )
+}
+
+/// `differential`, with the generic being inferred where `targets` says.
+fn differential_with(
+    seeds: impl IntoIterator<Item = u64>,
+    queries: usize,
+    contractive_only: bool,
+    nesting: usize,
+    targets: Targets,
+) -> Summary {
     let mut summary = Summary::default();
 
     for seed in seeds {
         let Some(Module { mut db, cases, .. }) =
-            random_module(seed, queries, contractive_only, nesting)
+            random_module_with(seed, queries, contractive_only, nesting, targets)
         else {
             summary.skipped_modules += 1;
             continue;
@@ -1770,6 +1875,22 @@ fn test_memo_differential() {
     // rejects, so the comparisons must keep working when they're given such a type directly.
     let summary = with_large_stack(|| differential([4706], 8, false, NESTING));
     assert_eq!(summary.cases, 5, "{summary:?}");
+}
+
+/// The generic being inferred inside a function type that a generic function is compared with,
+/// so the candidates come through the instance of its own generics, in the order the comparison
+/// puts bounds on them, which the memo must keep (#419). `results` compares the candidates' order
+/// as well as what they are. Memoizing comparisons that refer to an instance while inferring, which
+/// `test_instance_comparisons_arent_memoized_while_inferring` pins by hand, fails this at seed 87.
+#[test]
+fn test_memo_differential_function_targets() {
+    let summary =
+        with_large_stack(|| differential_with(0..400, 4, true, NESTING, Targets::Function));
+    println!("{summary:?}");
+
+    assert!(summary.cases > 1_100, "{summary:?}");
+    assert_eq!(summary.gave_up_with_memo, 0, "{summary:?}");
+    assert!(summary.gave_up_iterating <= 2, "{summary:?}");
 }
 
 /// The usual percentage of generic function types' parameters and return types that nest their
@@ -1907,6 +2028,19 @@ fn test_alike_members_stay_ruled_out() {
     });
 }
 
+/// A larger run of `test_memo_differential_function_targets`, with both nestings:
+/// `cargo test --release -p rue-types --test memo -- --ignored --nocapture`
+#[test]
+#[ignore = "slow"]
+fn test_memo_differential_function_targets_large() {
+    for nesting in [NESTING, HEAVY_NESTING] {
+        let summary = with_large_stack(move || {
+            differential_with(1_000..11_000, 8, true, nesting, Targets::Function)
+        });
+        println!("nesting {nesting}: {summary:?}");
+    }
+}
+
 /// A larger run of `test_memo_differential`, which takes a few minutes in release builds:
 /// `cargo test --release -p rue-types --test memo -- --ignored --nocapture`
 #[test]
@@ -1999,6 +2133,60 @@ fn test_comparison_step_limit() {
         // Comparing again afterwards isn't affected
         let result = compare_limited(&mut db.arena, &db.builtins, r, copy);
         assert_eq!(result, Ok(Comparison::Assign));
+    });
+}
+
+/// The least step limit that the comparison finishes within: how many steps it's counted as taking.
+fn smallest_step_limit(build: impl Fn(&mut Types) -> (TypeId, TypeId)) -> (usize, Comparison) {
+    let compare_within = |limit| {
+        let mut db = Types::new();
+        let (lhs, rhs) = build(&mut db);
+        with_comparison_step_limit(limit, || {
+            compare_limited(&mut db.arena, &db.builtins, lhs, rhs)
+        })
+    };
+
+    let mut high = 1;
+    while compare_within(high).is_err() {
+        high *= 2;
+    }
+
+    let mut low = 0;
+    while low < high {
+        let middle = usize::midpoint(low, high);
+        if compare_within(middle).is_ok() {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+
+    assert_eq!(compare_within(low - 1), Err(TooComplex));
+    (low, compare_within(low).unwrap())
+}
+
+/// What a comparison is counted as taking towards its step limit (#386), beyond a step for each
+/// comparison (which `test_comparison_step_limit` pins): the constraints of a summary that's
+/// reused, each pair of an instance's bounds that's checked, and the picks of union members that
+/// are tried. Leaving out any of those doesn't change a result, only how soon a comparison gives
+/// up, so they're pinned by the least limit that these finish within: without the summaries'
+/// constraints they take 91 and 132, without the pairs of bounds 89 and 130, and without the picks
+/// `alike_members` takes 70. A change to how much a comparison does changes these too, which is
+/// what they're for: update them if it's meant.
+///
+/// The work of reusing and storing memoized results, and of canonicalizing summaries, counts too,
+/// but no comparison here or in the differentials' modules changes without it.
+#[test]
+fn test_comparison_step_counts() {
+    with_large_stack(|| {
+        assert_eq!(
+            smallest_step_limit(alike_members),
+            (101, Comparison::Invalid)
+        );
+        assert_eq!(
+            smallest_step_limit(|db| many_bounded_unions(db, 24)),
+            (178, Comparison::Assign)
+        );
     });
 }
 
