@@ -483,8 +483,9 @@ impl Lowerer<'_, '_, '_> {
             return true;
         };
 
+        // The result is never trivial, since it's a call
         if function.kind != FunctionKind::Inline
-            && self.binds_inline_argument(function, parameter, walk.fails)
+            && self.binds_inline_argument(function, parameter, || false, || walk.fails)
         {
             return true;
         }
@@ -508,23 +509,26 @@ impl Lowerer<'_, '_, '_> {
     }
 
     /// Whether an inlined call to the function, which isn't an `inline fn`, binds the argument
-    /// for the parameter rather than substituting it (see [`Self::lower_inline_call`]): the
-    /// parameter is referenced more than once or by a loop, or the argument may fail and the
-    /// body doesn't always evaluate it. A parameter that's never referenced has its argument
-    /// evaluated for its effect, which isn't bound either.
-    fn binds_inline_argument(
+    /// for the parameter before the body, like a let statement, rather than substituting it where
+    /// the body refers to the parameter (see [`Self::lower_inline_call`]). It's evaluated for its
+    /// effect instead if the parameter is never referenced.
+    ///
+    /// That's the case for an argument whose parameter is referenced more than once, or by a
+    /// loop, which evaluates it for each item, unless it's as cheap to evaluate each time (see
+    /// [`Self::is_trivial_argument`]). And for one that may fail, unless the body always
+    /// evaluates the parameter, so that it's still evaluated at the call.
+    pub(super) fn binds_inline_argument(
         &self,
         function: &FunctionSymbol,
         parameter: SymbolId,
-        fails: bool,
+        is_trivial: impl FnOnce() -> bool,
+        may_fail: impl FnOnce() -> bool,
     ) -> bool {
-        let references = self.graph.references(parameter);
+        let repeated = (self.graph.references(parameter) > 1
+            || self.graph.is_loop_capture(parameter))
+            && !is_trivial();
 
-        references > 1
-            || self.graph.is_loop_capture(parameter)
-            || (references == 1
-                && fails
-                && !self.parameter_always_evaluated(function.body, parameter))
+        repeated || (may_fail() && !self.parameter_always_evaluated(function.body, parameter))
     }
 
     /// The function that a call to the callee is inlined into, as [`Self::inlined_callee`] finds
