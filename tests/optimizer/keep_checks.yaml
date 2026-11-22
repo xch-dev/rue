@@ -864,10 +864,10 @@ tests:
   byte_cost: 300000
   total_cost: 301970
 - name: unused_binding_reading_referenced_inline_constant_is_evaluated
-  program: (a (i 2 (q 3 () (+ (x) 2) (q . 1)) (q 8)) 1)
+  program: (i () (+ (x) 2) (q . 1))
   debug_program: (a (q 2 (i (= 5 ()) (q 2 2 (q . 3)) (q 3 () (+ (a 2 (q . 3)) 5) (q . 1))) 1) (c (q 2 (i (not (= 1 (q . 3))) (q . 1) (q 8 (q . "assertion failed at keep_checks.rue:1418:5"))) 1) 1))
   solution: (1)
-  byte_cost: 468000
+  byte_cost: 228000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at keep_checks.rue:1418:5"
 - name: constant_read_by_inline_constant_in_branch_is_kept

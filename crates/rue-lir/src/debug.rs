@@ -23,6 +23,28 @@ pub struct DebugTags {
     pub labels: HashMap<LirId, usize>,
 }
 
+impl DebugTags {
+    /// Tags the node that another one became with the function or label that it's the root of,
+    /// unless it already has one.
+    pub(crate) fn inherit_roots(&mut self, from: LirId, to: LirId) {
+        for tags in [&mut self.functions, &mut self.labels] {
+            if let Some(&tag) = tags.get(&from) {
+                tags.entry(to).or_insert(tag);
+            }
+        }
+    }
+
+    /// Tags the node that another one became with its span as well as its roots (see
+    /// [`Self::inherit_roots`]), unless it already has them.
+    pub(crate) fn inherit(&mut self, from: LirId, to: LirId) {
+        if let Some(&span) = self.spans.get(&from) {
+            self.spans.entry(to).or_insert(span);
+        }
+
+        self.inherit_roots(from, to);
+    }
+}
+
 /// The tags of the CLVM generated from tagged LIR. Only pairs are tagged: atoms that have the same
 /// small value share a [`NodePtr`], so one can't be told apart from another, and they take the
 /// location of the pair they're in instead.
@@ -190,6 +212,80 @@ mod tests {
         // The folded sum keeps its span, and the untagged node takes the span of the node it's in
         assert_eq!(tags.spans.get(&args[1]), Some(&1));
         assert_eq!(tags.spans.get(&concat), Some(&2));
+    }
+
+    #[test]
+    fn dropped_checks_keep_tags() {
+        // `(c (a (i (l 2) (q . 4) (q 8)) 1) 6)`, where the check is dropped since `4` reads into 2
+        let mut arena = Arena::new();
+        let list = arena.alloc(Lir::Path(2u8.into()));
+        let listp = arena.alloc(Lir::Listp(list));
+        let first = arena.alloc(Lir::Path(4u8.into()));
+        let raise = arena.alloc(Lir::Raise(vec![]));
+        let check = arena.alloc(Lir::If(listp, first, raise, false));
+        let rest = arena.alloc(Lir::Path(13u8.into()));
+        let body = arena.alloc(Lir::Cons(check, rest));
+
+        let mut tags = DebugTags {
+            spans: HashMap::from([(check, 1), (body, 2)]),
+            functions: HashMap::from([(body, 0)]),
+            labels: HashMap::new(),
+        };
+
+        let plain = optimize(&mut arena, body, ClvmTarget::default());
+        let optimized = optimize_with_tags(&mut arena, body, ClvmTarget::default(), &mut tags);
+
+        let mut allocator = Allocator::new();
+        let plain = codegen(&arena, &mut allocator, plain, CodegenOptions::default()).unwrap();
+        let program =
+            codegen(&arena, &mut allocator, optimized, CodegenOptions::default()).unwrap();
+        assert_eq!(
+            rue_clvm::disassemble_program(&allocator, program),
+            rue_clvm::disassemble_program(&allocator, plain)
+        );
+        assert_eq!(
+            rue_clvm::disassemble_program(&allocator, program),
+            "(c 4 13)"
+        );
+
+        // The pair that's rebuilt around the read is still the function, with its span
+        assert_ne!(optimized, body);
+        assert_eq!(tags.functions.get(&optimized), Some(&0));
+        assert_eq!(tags.spans.get(&optimized), Some(&2));
+    }
+
+    #[test]
+    fn checks_that_are_left_keep_tags() {
+        // `(a (i (all 2 5 11) (q . 4) (q 8)) 1)`, where `2` is dropped since `4` reads into it
+        let mut arena = Arena::new();
+        let checks = [2u8, 5, 11].map(|path| arena.alloc(Lir::Path(path.into())));
+        let all = arena.alloc(Lir::All(checks.to_vec()));
+        let first = arena.alloc(Lir::Path(4u8.into()));
+        let raise = arena.alloc(Lir::Raise(vec![]));
+        let check = arena.alloc(Lir::If(all, first, raise, false));
+
+        let mut tags = DebugTags {
+            spans: HashMap::from([(all, 1), (check, 2)]),
+            ..DebugTags::default()
+        };
+
+        let optimized = optimize_with_tags(&mut arena, check, ClvmTarget::default(), &mut tags);
+
+        let mut allocator = Allocator::new();
+        let program =
+            codegen(&arena, &mut allocator, optimized, CodegenOptions::default()).unwrap();
+        assert_eq!(
+            rue_clvm::disassemble_program(&allocator, program),
+            "(a (i (all 5 11) (q . 4) (q 8)) 1)"
+        );
+
+        // The checks that are left are a new `all`, with the span of the one it replaces
+        let Lir::If(condition, ..) = arena[optimized] else {
+            panic!("expected if");
+        };
+        assert_ne!(condition, all);
+        assert_eq!(tags.spans.get(&condition), Some(&1));
+        assert_eq!(tags.spans.get(&optimized), Some(&2));
     }
 
     #[test]

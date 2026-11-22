@@ -1,0 +1,84 @@
+// In a release build, a check that fails is dropped when everything after it reads into the value
+// it checks, since reading into an atom fails as well. A debug build keeps the check, so its message
+// is the one that's raised.
+
+struct Point {
+    x: Int,
+    y: Int,
+}
+
+fn sum(point: Point | nil) -> Int {
+    assert point is Point;
+    point.x + point.y
+}
+
+fn first(list: Any) -> Any {
+    assert list is (Any, Any);
+    list.first
+}
+
+fn first_or_rest(list: Any, pick_first: Bool) -> Any {
+    assert list is (Any, Any);
+    if pick_first {
+        list.first
+    } else {
+        list.rest
+    }
+}
+
+fn rest(list: Any) -> Any {
+    assert list is (Any, Any);
+    list.rest
+}
+
+// The check is kept when only one branch reads into the value
+fn first_or_zero(list: Any, pick_first: Bool) -> Any {
+    assert list is (Any, Any);
+    if pick_first {
+        list.first
+    } else {
+        0
+    }
+}
+
+test fn reads_a_struct(point: Point | nil) -> Int {
+    sum(point)
+}
+
+test fn reads_nil(point: Point | nil) -> Int {
+    sum(point)
+}
+
+test fn reads_a_pair(list: Any) -> Any {
+    first(list)
+}
+
+test fn reads_an_atom(list: Any) -> Any {
+    first(list)
+}
+
+test fn reads_in_both_branches(list: Any, pick_first: Bool) -> Any {
+    first_or_rest(list, pick_first)
+}
+
+test fn reads_in_both_branches_of_an_atom(list: Any, pick_first: Bool) -> Any {
+    first_or_rest(list, pick_first)
+}
+
+test fn reads_in_one_branch(list: Any, pick_first: Bool) -> Any {
+    first_or_zero(list, pick_first)
+}
+
+test fn keeps_the_check_in_the_other_branch(list: Any, pick_first: Bool) -> Any {
+    first_or_zero(list, pick_first)
+}
+
+// Each check is dropped, but the two reads aren't turned into the pair they're read from, which
+// wouldn't fail for an atom
+test fn reads_a_pair_twice(list: Any) -> (Any, Any) {
+    (first(list), rest(list))
+}
+
+test fn reads_an_atom_twice(list: Any) -> (Any, Any) {
+    (first(list), rest(list))
+}

@@ -1517,7 +1517,7 @@ pub fn opt_keccak256_verify(arena: &mut Arena<Lir>, value: LirId, hash: LirId) -
 /// Whether both values are the same expression, so they evaluate to the same result (or both
 /// fail) in the same environment. This is conservative, so it can return `false` for values
 /// that are the same.
-fn same_value(arena: &Arena<Lir>, left: LirId, right: LirId) -> bool {
+pub(super) fn same_value(arena: &Arena<Lir>, left: LirId, right: LirId) -> bool {
     if left == right {
         return true;
     }
