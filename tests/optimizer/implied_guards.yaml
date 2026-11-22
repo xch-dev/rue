@@ -1,0 +1,60 @@
+tests:
+- name: reads_a_struct
+  program: (q . 3)
+  debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) ()))) (c (q 2 (i (not (not 1)) (q 16 (f 1) (f (r 1))) (q 8 (q . "assertion failed at implied_guards.rue:11:5"))) 1) ()))
+  output: "3"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: reads_nil
+  program: (+ 4 10)
+  debug_program: (a (q 2 2 5) (c (q 2 (i (not (not 1)) (q 16 (f 1) (f (r 1))) (q 8 (q . "assertion failed at implied_guards.rue:11:5"))) 1) 1))
+  solution: (())
+  byte_cost: 84000
+  clvm_error: path into atom
+  debug_clvm_error: clvm raise "assertion failed at implied_guards.rue:11:5"
+- name: reads_a_pair
+  program: "4"
+  debug_program: (a (q 2 2 5) (c (q 2 (i (l 1) (q 5 1) (q 8 (q . "assertion failed at implied_guards.rue:16:5"))) 1) 1))
+  solution: ((1 . 2))
+  output: "1"
+  runtime_cost: 52
+  byte_cost: 12000
+  total_cost: 12052
+- name: reads_an_atom
+  program: "4"
+  debug_program: (a (q 2 2 5) (c (q 2 (i (l 1) (q 5 1) (q 8 (q . "assertion failed at implied_guards.rue:16:5"))) 1) 1))
+  solution: (5)
+  byte_cost: 12000
+  clvm_error: path into atom
+  debug_clvm_error: clvm raise "assertion failed at implied_guards.rue:16:5"
+- name: reads_in_both_branches
+  program: (a (i 5 (q . 4) (q . 6)) 1)
+  debug_program: (a (q 2 2 (c 5 11)) (c (q 2 (i (l 2) (q 2 (i 3 (q 5 2) (q 6 2)) 1) (q 8 (q . "assertion failed at implied_guards.rue:21:5"))) 1) 1))
+  solution: ((1 . 2) ())
+  output: "2"
+  runtime_cost: 313
+  byte_cost: 228000
+  total_cost: 228313
+- name: reads_in_both_branches_of_an_atom
+  program: (a (i 5 (q . 4) (q . 6)) 1)
+  debug_program: (a (q 2 2 (c 5 11)) (c (q 2 (i (l 2) (q 2 (i 3 (q 5 2) (q 6 2)) 1) (q 8 (q . "assertion failed at implied_guards.rue:21:5"))) 1) 1))
+  solution: (5 1)
+  byte_cost: 228000
+  clvm_error: path into atom
+  debug_clvm_error: clvm raise "assertion failed at implied_guards.rue:21:5"
+- name: reads_in_one_branch
+  program: (a (i (l 2) (q 2 (i 5 (q . 4) ()) 1) (q 8)) 1)
+  debug_program: (a (q 2 2 (c 5 11)) (c (q 2 (i (l 2) (q 2 (i 3 (q 5 2) ()) 1) (q 8 (q . "assertion failed at implied_guards.rue:31:5"))) 1) 1))
+  solution: ((1 . 2) ())
+  output: ()
+  runtime_cost: 606
+  byte_cost: 492000
+  total_cost: 492606
+- name: keeps_the_check_in_the_other_branch
+  program: (a (i (l 2) (q 2 (i 5 (q . 4) ()) 1) (q 8)) 1)
+  debug_program: (a (q 2 2 (c 5 11)) (c (q 2 (i (l 2) (q 2 (i 3 (q 5 2) ()) 1) (q 8 (q . "assertion failed at implied_guards.rue:31:5"))) 1) 1))
+  solution: (5 ())
+  byte_cost: 492000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise "assertion failed at implied_guards.rue:31:5"

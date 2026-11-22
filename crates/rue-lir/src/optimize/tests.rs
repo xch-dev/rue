@@ -639,14 +639,15 @@ fn test_checks_are_kept_apart() {
         expect!["(a (i 2 (q 2 (i 5 (q 16 2 5) (q 1 . 1)) 1) (q 8)) 1)"],
     );
 
-    // An inline `if` evaluates the raise either way
+    // An inline `if` evaluates the raise either way, so it isn't merged, and since it always
+    // fails, the check in front of it is dropped (see `test_guard_implied_by_its_value_is_dropped`)
     let second = arena.alloc(Lir::If(b, result, fail, true));
     let lir = arena.alloc(Lir::If(a, second, fail, false));
     check(
         &mut arena,
         lir,
         THREE_ATOM_ENVS,
-        expect!["(a (i 2 (q 3 5 (+ 2 5) (x)) (q 8)) 1)"],
+        expect!["(i 5 (+ 2 5) (x))"],
     );
 }
 
@@ -1356,4 +1357,124 @@ fn fuzz_optimizer_differential() {
             }
         }
     }
+}
+
+// Lists, including ones that end in an atom other than nil, and atoms that aren't lists
+const LIST_ENVS: &[&str] = &[
+    "()",
+    "(())",
+    "(5)",
+    "(0x00)",
+    "((1))",
+    "((1 2))",
+    "((1 . 5))",
+    "(((1 . 2) 3) 7)",
+];
+
+#[test]
+fn test_guard_implied_by_its_value_is_dropped() {
+    // `(a (i x (q . B) (q 8)) 1)` is `B` when `B` reads into `x`, which fails if `x` is nil
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let first = arena.alloc(Lir::First(x));
+    let rest = arena.alloc(Lir::Rest(x));
+    let sum = arena.alloc(Lir::Add(vec![first, rest]));
+    let fail = raise(&mut arena);
+    let lir = arena.alloc(Lir::If(x, first, fail, false));
+    check(&mut arena, lir, LIST_ENVS, expect!["4"]);
+
+    // `(l x)` fails for every atom, and so does reading into it
+    let listp = arena.alloc(Lir::Listp(x));
+    let lir = arena.alloc(Lir::If(listp, sum, fail, false));
+    check(&mut arena, lir, LIST_ENVS, expect!["(+ 4 6)"]);
+
+    // Reading further into `x` fails too
+    let deeper = path(&mut arena, 10);
+    let lir = arena.alloc(Lir::If(x, deeper, fail, false));
+    check(&mut arena, lir, LIST_ENVS, expect!["10"]);
+
+    // Every branch of an `if` that's taken reads into it
+    let y = path(&mut arena, 5);
+    let branches = arena.alloc(Lir::If(y, first, rest, false));
+    let lir = arena.alloc(Lir::If(x, branches, fail, false));
+    check(&mut arena, lir, LIST_ENVS, expect!["(a (i 5 (q . 4) (q . 6)) 1)"]);
+
+    // So does the condition of one, whatever its branches are
+    let nil = atom(&mut arena, &[]);
+    let one = atom(&mut arena, &[1]);
+    let picked = arena.alloc(Lir::If(first, y, nil, false));
+    let lir = arena.alloc(Lir::If(x, picked, fail, false));
+    check(&mut arena, lir, LIST_ENVS, expect!["(a (i 4 (q . 5) ()) 1)"]);
+
+    // A branch that fails anyway counts as reading into it, which is what a check after the
+    // guard is, so the guard is dropped and the check is kept
+    let checked = arena.alloc(Lir::If(y, first, fail, false));
+    let lir = arena.alloc(Lir::If(x, checked, fail, false));
+    check(&mut arena, lir, LIST_ENVS, expect!["(a (i 5 (q . 4) (q 8)) 1)"]);
+
+    // The guarded value doesn't have to be a path, as long as it's the same expression
+    let call = arena.alloc(Lir::Run(x, y));
+    let call_first = arena.alloc(Lir::First(call));
+    let again = arena.alloc(Lir::Run(x, y));
+    let lir = arena.alloc(Lir::If(again, call_first, fail, false));
+    check(
+        &mut arena,
+        lir,
+        &["((q . 5) ())", "((q . 5) (1 2))", "((q) ())", "((q . 7) (1 . 3))"],
+        expect!["(f (a 2 5))"],
+    );
+
+    // An `if` that picks between constants is inline, and still reads into it
+    let eager = arena.alloc(Lir::If(first, one, nil, true));
+    let lir = arena.alloc(Lir::If(x, eager, fail, false));
+    check(&mut arena, lir, LIST_ENVS, expect!["(i 4 (q . 1) ())"]);
+}
+
+#[test]
+fn test_guard_that_is_not_implied_is_kept() {
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let y = path(&mut arena, 5);
+    let first = arena.alloc(Lir::First(x));
+    let fail = raise(&mut arena);
+
+    // A value that doesn't read into it
+    let lir = arena.alloc(Lir::If(x, y, fail, false));
+    check(&mut arena, lir, LIST_ENVS, expect!["(a (i 2 (q . 5) (q 8)) 1)"]);
+
+    // Reading into the value next to it, or into the environment around it
+    let next = arena.alloc(Lir::First(y));
+    let lir = arena.alloc(Lir::If(x, next, fail, false));
+    check(&mut arena, lir, LIST_ENVS, expect!["(a (i 2 (q . 9) (q 8)) 1)"]);
+    let env = path(&mut arena, 1);
+    let around = arena.alloc(Lir::First(env));
+    let around = arena.alloc(Lir::Cons(around, y));
+    let lir = arena.alloc(Lir::If(x, around, fail, false));
+    check(&mut arena, lir, LIST_ENVS, expect!["(a (i 2 (q 4 2 5) (q 8)) 1)"]);
+
+    // Only one of the branches of an `if` reads into it
+    let one_branch = arena.alloc(Lir::If(y, first, y, false));
+    let lir = arena.alloc(Lir::If(x, one_branch, fail, false));
+    check(
+        &mut arena,
+        lir,
+        LIST_ENVS,
+        expect!["(a (i 2 (q 2 (i 5 (q . 4) (q . 5)) 1) (q 8)) 1)"],
+    );
+
+    // The raise of a debug build has a message, which has to be kept
+    let message = atom(&mut arena, b"x is nil");
+    let debug_fail = arena.alloc(Lir::Raise(vec![message]));
+    let lir = arena.alloc(Lir::If(x, first, debug_fail, false));
+    check(
+        &mut arena,
+        lir,
+        LIST_ENVS,
+        expect![[r#"(a (i 2 (q . 4) (q 8 (q . "x is nil"))) 1)"#]],
+    );
+
+    // A guard that passes for nil, such as `(not x)`, only fails for values that can be read into
+    let not_x = not(&mut arena, x);
+    let lir = arena.alloc(Lir::If(not_x, first, fail, false));
+    check(&mut arena, lir, LIST_ENVS, expect!["(a (i 2 (q 8) (q . 4)) 1)"]);
 }
