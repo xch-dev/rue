@@ -1735,6 +1735,7 @@ pub(crate) fn compare_impl(
         }
 
         ctx.steps = 0;
+        summary::forget_work();
 
         let result =
             compare_from_empty_stack(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic);

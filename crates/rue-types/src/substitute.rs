@@ -41,6 +41,57 @@ pub(crate) fn substitute_instances(
     ctx.instances
 }
 
+/// The mappings, in the order of the generics they're for. Most have one or none, which are in
+/// that order already, and most others only a few, which are sorted in place, so only a larger
+/// map is collected into a `Vec` to be sorted.
+fn sorted_by_generic(mappings: &HashMap<TypeId, TypeId>) -> SortedByGeneric<'_> {
+    let len = mappings.len();
+
+    if len <= 1 {
+        return SortedByGeneric::Map(mappings.iter());
+    }
+
+    let mut iter = mappings.iter();
+
+    if len <= SMALL_MAPPINGS {
+        let first = iter.next().unwrap();
+        let mut items = [first; SMALL_MAPPINGS];
+
+        for (slot, item) in items[1..].iter_mut().zip(iter) {
+            *slot = item;
+        }
+
+        items[..len].sort_unstable_by_key(|&(&generic, _)| generic);
+        return SortedByGeneric::Small(items.into_iter().take(len));
+    }
+
+    let mut sorted: Vec<_> = iter.collect();
+    sorted.sort_unstable_by_key(|&(&generic, _)| generic);
+    SortedByGeneric::Sorted(sorted.into_iter())
+}
+
+/// How many mappings `sorted_by_generic` sorts in place.
+const SMALL_MAPPINGS: usize = 4;
+
+/// See `sorted_by_generic`.
+enum SortedByGeneric<'a> {
+    Map(std::collections::hash_map::Iter<'a, TypeId, TypeId>),
+    Small(std::iter::Take<std::array::IntoIter<(&'a TypeId, &'a TypeId), SMALL_MAPPINGS>>),
+    Sorted(std::vec::IntoIter<(&'a TypeId, &'a TypeId)>),
+}
+
+impl<'a> Iterator for SortedByGeneric<'a> {
+    type Item = (&'a TypeId, &'a TypeId);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Map(iter) => iter.next(),
+            Self::Small(iter) => iter.next(),
+            Self::Sorted(iter) => iter.next(),
+        }
+    }
+}
+
 fn substitute_in(
     arena: &mut Arena<Type>,
     ctx: &mut SubstitutionContext,
@@ -53,10 +104,11 @@ fn substitute_in(
         trace!("Substituting {name}");
     }
 
-    // The mapped types belong to the caller's scope, so they're substituted without the mappings
+    // The mapped types belong to the caller's scope, so they're substituted without the mappings,
+    // in the order of their generics, since the order types are made in decides the work that
+    // comparing them later does (and a `HashMap`'s order differs from one process to the next)
     let (empty_scope, empty) = ctx.scope(BTreeMap::new(), HashMap::new());
-    let mappings: HashMap<TypeId, TypeId> = mappings
-        .iter()
+    let mappings: HashMap<TypeId, TypeId> = sorted_by_generic(mappings)
         .map(|(&generic, &ty)| {
             let ty = substitute_impl(arena, ty, &empty, empty_scope, ctx);
             (generic, ty)
@@ -196,7 +248,8 @@ fn substitute_impl_inner(
             let mut bindings = BTreeMap::new();
             let mut new_map = HashMap::new();
 
-            for (&generic, &arg) in &apply.generics {
+            // In the order of their generics, as in `substitute_in`
+            for (&generic, &arg) in sorted_by_generic(&apply.generics) {
                 let (binding, ty) = substitute_argument(arena, arg, map, scope, ctx);
                 bindings.insert(generic, binding);
                 new_map.insert(generic, ty);
