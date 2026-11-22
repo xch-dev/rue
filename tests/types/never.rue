@@ -201,6 +201,17 @@ test fn unused_binding_before_raising_branches(flag: Bool) -> Int {
     }
 }
 
+test fn unused_binding_before_raising_condition() -> Int {
+    let _never = fail("unused");
+    if {
+        raise "condition";
+    } {
+        1
+    } else {
+        2
+    }
+}
+
 // A value that may fail but doesn't is still followed by the raise after it
 test fn unused_binding_that_returns_before_raise() -> Int {
     let _value = checked(5);

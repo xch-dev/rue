@@ -1457,9 +1457,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     /// Whether evaluating the LIR always raises: a raise, an `if` whose condition raises, an
-    /// inline `if` with a branch that raises (since it evaluates both), any other `if` whose
-    /// branches both raise, or a run whose environment or quoted body raises. A call to a function
-    /// that always raises can't be seen here, so it isn't one.
+    /// inline `if` with a branch that raises (since it evaluates both), or any other `if` whose
+    /// branches both raise. A call to a function that always raises can't be seen here, so it
+    /// isn't one.
     fn always_raises(&self, lir: LirId) -> bool {
         match self.arena[lir] {
             Lir::Raise(_) => true,
@@ -1470,10 +1470,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     } else {
                         self.always_raises(then) && self.always_raises(otherwise)
                     }
-            }
-            Lir::Run(body, env) => {
-                self.always_raises(env)
-                    || matches!(self.arena[body], Lir::Quote(body) if self.always_raises(body))
             }
             _ => false,
         }

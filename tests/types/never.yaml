@@ -111,12 +111,18 @@ tests:
   byte_cost: 36000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at never.rue:5:5" "unused")
-- name: unused_binding_that_returns_before_raise
+- name: unused_binding_before_raising_condition
   program: (x)
-  debug_program: (a (q 3 () (x (q . "raise called at never.rue:207:5") (q . "after")) (a 4 (c 6 (q . 5)))) (c (c (q 2 (i (> () 3) (q 2 2 (q . "negative")) (q . 3)) 1) (q 8 (q . "raise called at never.rue:5:5") 1)) ()))
+  debug_program: (a (q 3 () (a (i (x (q . "raise called at never.rue:207:9") (q . "condition")) (q 1 . 1) (q 1 . 2)) 1) (a 2 (q . "unused"))) (c (q 8 (q . "raise called at never.rue:5:5") 1) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at never.rue:207:5" "after")
+  debug_clvm_error: clvm raise ("raise called at never.rue:5:5" "unused")
+- name: unused_binding_that_returns_before_raise
+  program: (x)
+  debug_program: (a (q 3 () (x (q . "raise called at never.rue:218:5") (q . "after")) (a 4 (c 6 (q . 5)))) (c (c (q 2 (i (> () 3) (q 2 2 (q . "negative")) (q . 3)) 1) (q 8 (q . "raise called at never.rue:5:5") 1)) ()))
+  byte_cost: 36000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at never.rue:218:5" "after")
 diagnostics:
 - Binding `int` is returned directly after it's declared at never.rue:59:5
 - Condition always evaluates to `false` at never.rue:68:8
@@ -148,3 +154,7 @@ diagnostics:
 - |-
   Unreachable code at never.rue:197:5
     note: Any code after this is never evaluated at never.rue:196:5
+- |-
+  Unreachable code at never.rue:206:5
+    note: Any code after this is never evaluated at never.rue:205:5
+- Condition always evaluates to `true` at never.rue:206:8
