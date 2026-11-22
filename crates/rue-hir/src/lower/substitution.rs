@@ -527,7 +527,9 @@ impl Lowerer<'_, '_, '_> {
     /// Any other function binds an argument whose parameter is referenced more than once, or by
     /// a loop, which evaluates it for each item, unless it's as cheap to evaluate each time (see
     /// [`Self::is_trivial_argument`]). And one that may fail, unless the body always evaluates
-    /// the parameter, so that it's still evaluated at the call.
+    /// the parameter, so that it's still evaluated at the call. An argument that's evaluated at
+    /// the call of the only loop that uses it isn't bound (see [`Self::loop_call_argument`]),
+    /// unless it may fail and the body doesn't always call the loop.
     pub(super) fn binds_inline_argument(
         &self,
         function: &FunctionSymbol,
@@ -553,8 +555,8 @@ impl Lowerer<'_, '_, '_> {
     /// The loop that the argument for the parameter is evaluated at the call of, when a call to
     /// the function is inlined, if there is one. That's a parameter that's only referenced inside
     /// of one loop, which captures it (see [`crate::DependencyGraph::sole_loop`]), and that the
-    /// body calls once, as with `item` in
-    /// `fn contains(list: List<Bytes>, item: Bytes) -> Bool { for x in list fold found = false { x == item || found } }`.
+    /// body calls once, as with `item` in a `contains` whose body is
+    /// `for x in list fold found = false { x == item || found }`.
     /// The call evaluates what the loop captures, so the argument is evaluated there, as it is
     /// for an `inline fn` and as a binding that's only used by a loop is (see
     /// [`Self::loop_call_substitution`]). The loop reads it from what it's called with, so it's

@@ -232,7 +232,7 @@ test fn in_a_function_called_several_times() -> List<Bool> {
 }
 
 // An argument that may fail is still evaluated at the call when the loop it's captured by isn't
-// always called, so the second call fails even though it doesn't scale the list
+// always called
 fn scale_some(xs: List<Int>, k: Int, scaled: Bool) -> List<Int> {
     if scaled {
         for x in xs { x * k }
@@ -243,11 +243,12 @@ fn scale_some(xs: List<Int>, k: Int, scaled: Bool) -> List<Int> {
 
 test fn argument_of_a_loop_called_some_of_the_time() -> (List<Int>, List<Int>) {
     (
-        scale_some(runtime([1, 2]), positive(2) + 1, true),
-        scale_some(runtime([3]), positive(4) + 1, false),
+        scale_some(runtime([1, 2]), positive(runtime([2]).first) + 1, true),
+        scale_some(runtime([3]), positive(runtime([4]).first) + 1, false),
     )
 }
 
+// The second call fails, even though it doesn't scale the list
 test fn failing_argument_of_a_loop_called_some_of_the_time() -> (List<Int>, List<Int>) {
     (scale_some(runtime([1]), positive(2), true), scale_some(runtime([3]), positive(-1), false))
 }
