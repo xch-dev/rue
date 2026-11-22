@@ -135,6 +135,10 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// evaluated more than once, since they're compiled to constants (see
     /// [`Self::decide_repeats`]).
     folded_repeats: HashSet<SymbolId>,
+    /// The bindings that each call of a loop evaluates, rather than reading them from where
+    /// they're bound, while the run of let statements they're in is lowered (see
+    /// [`Self::loop_call_substitution`]).
+    loop_call_values: HashMap<HirId, Vec<SymbolId>>,
     /// What's recorded for a debug sidecar, if one was requested.
     debug: Option<LoweringDebugInfo>,
     /// How the environments of the program's functions are laid out (see [`layout`]).
@@ -236,6 +240,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             argument_captures: RefCell::default(),
             missing_paths: None,
             folded_repeats: HashSet::new(),
+            loop_call_values: HashMap::new(),
             debug: None,
             layout: Layout::CANDIDATES[0],
             nesting: None,
@@ -1023,25 +1028,25 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 function.nil_terminated && matches!(param_group, SymbolGroup::Sequential(_)),
             );
 
-            // The `for` expression's call of a loop evaluates the values that are only bound for
-            // the loop where it's called, rather than reading them from where they're bound.
-            // The loop's calls of itself pass on what it was called with
+            // A `for` expression's call of a loop evaluates the values that are only bound for
+            // the loop there, rather than reading them from where they're bound (see
+            // `Self::loop_call_substitution`)
             let mut substituted = HashMap::new();
 
-            if function.kind == FunctionKind::Loop && !self.db.is_loop_rest_call(hir) {
-                for capture in self.lowered_captures(symbol) {
-                    if self.loop_call_substitution(capture) == Some(symbol) {
-                        let value = self.lower_symbol_value(env, capture);
-                        substituted.insert(capture, value);
-                    }
-                }
+            for capture in self.loop_call_values.get(&hir).cloned().unwrap_or_default() {
+                let value = self.lower_symbol_value(env, capture);
+                substituted.insert(capture, value);
             }
 
-            let substituted = (!substituted.is_empty()).then_some(&substituted);
-
             for group in &capture_groups {
-                arg_env =
-                    self.lower_group_environment(env, group, arg_env, true, substituted, true);
+                arg_env = self.lower_group_environment(
+                    env,
+                    group,
+                    arg_env,
+                    true,
+                    Some(&substituted),
+                    true,
+                );
             }
 
             return self.arena.alloc(Lir::Run(function_lir, arg_env));
@@ -1589,12 +1594,19 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         stmts: Vec<Statement>,
         body: Tail,
     ) -> LirId {
-        // A binding that's evaluated where the only loop that uses it is called isn't bound here
-        let bound = symbols
-            .iter()
-            .copied()
-            .filter(|&symbol| self.loop_call_substitution(symbol).is_none())
-            .collect();
+        // A binding that's evaluated where the only loop that uses it is called isn't bound here,
+        // but at that call, which is in the rest of the block
+        let mut bound = IndexSet::new();
+        let mut at_calls: Vec<(HirId, SymbolId)> = Vec::new();
+
+        for &symbol in symbols {
+            match self.loop_call_substitution(symbol) {
+                Some(call) => at_calls.push((call, symbol)),
+                None => {
+                    bound.insert(symbol);
+                }
+            }
+        }
 
         let binding_groups = self.group_symbols(bound, false, true, false);
 
@@ -1604,7 +1616,23 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             body_env = Self::apply_group(body_env, group, true);
         }
 
+        for &(call, symbol) in &at_calls {
+            self.loop_call_values.entry(call).or_default().push(symbol);
+        }
+
         let mut expr = self.lower_block(&body_env, stmts, body);
+
+        // A run that this one is in can have values for the same call, which it's lowered
+        // inside of again when the run is measured
+        for (call, symbol) in at_calls {
+            if let Some(values) = self.loop_call_values.get_mut(&call) {
+                values.retain(|&value| value != symbol);
+
+                if values.is_empty() {
+                    self.loop_call_values.remove(&call);
+                }
+            }
+        }
 
         // The bindings that are never referenced, but may fail, are evaluated for their effect.
         // Nothing references them, so they're evaluated after the others are bound.

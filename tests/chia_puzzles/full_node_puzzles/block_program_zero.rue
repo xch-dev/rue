@@ -106,3 +106,33 @@ test fn reference_rejects_a_prefix_past_the_end() -> Any {
         [decompress_puzzle, decompress_coin_spend_entry, 4, 30, nil, deserialize, [GENERATOR], nil],
     )
 }
+
+// Entries that aren't a list fail when the first one is read
+test fn rejects_entries_that_are_an_atom() -> Any {
+    run(
+        main,
+        [decompress_puzzle, decompress_coin_spend_entry, 4, 17, 5, deserialize, [GENERATOR], nil],
+    )
+}
+
+test fn reference_rejects_entries_that_are_an_atom() -> Any {
+    run(
+        reference,
+        [decompress_puzzle, decompress_coin_spend_entry, 4, 17, 5, deserialize, [GENERATOR], nil],
+    )
+}
+
+// The prefix is taken before any entry is read, so it fails first
+test fn rejects_a_prefix_past_the_end_before_the_entries() -> Any {
+    run(
+        main,
+        [decompress_puzzle, decompress_coin_spend_entry, 4, 30, 5, deserialize, [GENERATOR], nil],
+    )
+}
+
+test fn reference_rejects_a_prefix_past_the_end_before_the_entries() -> Any {
+    run(
+        reference,
+        [decompress_puzzle, decompress_coin_spend_entry, 4, 30, 5, deserialize, [GENERATOR], nil],
+    )
+}

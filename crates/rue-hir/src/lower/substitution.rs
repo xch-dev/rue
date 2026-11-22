@@ -15,6 +15,11 @@
 //! [`Lowerer::decide_repeats`]). A function that captures a value that's always bound only needs
 //! the value, rather than what it's evaluated from (see [`Lowerer::is_always_bound`]).
 //!
+//! A binding that only a loop refers to is captured by it, and never substituted inside of it.
+//! Its value is evaluated where the loop is called, which builds what the loop captures, rather
+//! than bound before, if that's the loop's only use and the call is evaluated once whenever the
+//! value would have been (see [`Lowerer::loop_call_substitution`]).
+//!
 //! A binding that's never referenced is evaluated for its effect if it may fail, which the
 //! dependency graph decides (see [`crate::DependencyGraph::is_effect`]). So is the value of a type
 //! guard whose check doesn't use it (see [`crate::DependencyGraph::is_guard_effect`]).
@@ -248,38 +253,36 @@ impl Lowerer<'_, '_, '_> {
         Evaluation::new(self, symbol).block(&block.statements[index + 1..], block.body)
     }
 
-    /// The loop that the binding is evaluated for where it's called, rather than bound where its
-    /// let statement is, if there is one. That's a binding that's only referenced inside of a
-    /// loop, which captures it (see [`crate::DependencyGraph::is_loop_capture`]), where the
-    /// `for` expression that calls the loop is evaluated at most once for each time the let
-    /// statement is. The call evaluates what the loop captures, so the value is evaluated there,
-    /// as recursion written by hand evaluates the argument it passes the value as, and it isn't
-    /// bound before. The loop still reads it from what it's called with, so it's evaluated once,
-    /// whatever the loop does with it.
+    /// The call of the loop that the binding is evaluated at, rather than bound where its let
+    /// statement is, if there is one. That's a binding that's only referenced inside of one loop,
+    /// which captures it (see [`crate::DependencyGraph::sole_loop`]). The call evaluates what the
+    /// loop captures, so the value is evaluated there, as recursion written by hand evaluates the
+    /// argument it passes the value as, and it isn't bound before. The loop still reads it from
+    /// what it's called with, so it's evaluated once, whatever the loop does with it.
+    ///
+    /// The call has to be evaluated at most once for each time the let statement is, so it has
+    /// to be in the rest of the block itself: not inside of a lambda, another loop, a type guard
+    /// that uses its value more than once, the value of a `let`, or an argument of a call that's
+    /// inlined, which can each be evaluated any number of times.
     ///
     /// A value that may fail is only evaluated at the call if the rest of the block always gets
     /// there, as for any binding that's substituted where it's referenced (see
     /// [`Self::can_substitute`]), with the call of the loop counting as that reference. A value
     /// made of literals is substituted inside of the loop instead.
     ///
-    /// This can't depend on the arguments of the calls being inlined, unlike other bindings,
-    /// since it's decided both where the let statement is lowered and where the loop is called.
-    /// So the call has to be in the block itself: in one of its statements, or its value, and
-    /// not inside of a lambda, another loop, a type guard that uses its value more than once, the
-    /// value of a `let`, or an argument of a call that's inlined.
-    pub(super) fn loop_call_substitution(&self, symbol: SymbolId) -> Option<SymbolId> {
+    /// This is decided where the let statement is lowered (see [`Self::lower_let_run`]), which
+    /// the call is lowered inside of.
+    pub(super) fn loop_call_substitution(&self, symbol: SymbolId) -> Option<HirId> {
         let Symbol::Binding(binding) = self.db.symbol(symbol) else {
             return None;
         };
 
-        if !self.options.auto_inline
-            || binding.inline
-            || !self.graph.is_loop_capture(symbol)
-            || self.db.is_literal_hir(binding.value.hir)
+        if !self.options.auto_inline || binding.inline || self.db.is_literal_hir(binding.value.hir)
         {
             return None;
         }
 
+        let function = self.graph.sole_loop(symbol)?;
         let (block, index) = self.graph.let_statement(symbol)?;
 
         let Hir::Block(block) = self.db.hir(block) else {
@@ -289,70 +292,57 @@ impl Lowerer<'_, '_, '_> {
         let statements = &block.statements[index + 1..];
         let mut calls = Vec::new();
 
-        for statement in statements {
-            if !matches!(statement, Statement::Let(..)) {
-                for hir in statement.hirs() {
-                    self.direct_loop_calls(symbol, hir, &mut calls);
-                }
-            }
+        for hir in statements
+            .iter()
+            .flat_map(|statement| statement.lowered_hirs(self.options.debug_symbols))
+            .chain(block.body)
+        {
+            self.direct_loop_calls(function, hir, &mut calls);
         }
 
-        if let Some(body) = block.body {
-            self.direct_loop_calls(symbol, body, &mut calls);
-        }
-
-        let [function] = calls[..] else {
+        let [call] = calls[..] else {
             return None;
         };
 
-        // The loop can refer to it any number of times, but nothing else can
-        if !self.graph.is_only_referenced_in(symbol, function) {
-            return None;
-        }
-
         (!may_fail(self, binding.value.hir)
             || Evaluation::new(self, function).block(statements, block.body))
-        .then_some(function)
+        .then_some(call)
     }
 
-    /// Finds the calls of loops that capture the symbol, which the node evaluates at most once
-    /// each time it's evaluated (see [`Self::loop_call_substitution`]).
-    fn direct_loop_calls(&self, symbol: SymbolId, hir: HirId, calls: &mut Vec<SymbolId>) {
+    /// Finds the calls of the loop that the node evaluates at most once each time it's
+    /// evaluated (see [`Self::loop_call_substitution`]).
+    fn direct_loop_calls(&self, function: SymbolId, hir: HirId, calls: &mut Vec<HirId>) {
         rue_types::grow_stack(|| match self.db.hir(hir) {
             Hir::FunctionCall(call) => {
-                if let Hir::Reference(function) = self.db.hir(call.function)
-                    && self
-                        .graph
-                        .loop_captures(*function)
-                        .is_some_and(|captures| captures.contains(&symbol))
-                {
-                    calls.push(*function);
+                if matches!(
+                    self.db.hir(self.db.without_casts(call.function)),
+                    Hir::Reference(callee) if *callee == function
+                ) {
+                    calls.push(hir);
                 }
 
                 // An inlined call evaluates its arguments wherever it refers to its parameters
                 if self.inlined_callee(call.function).is_none() {
                     for &arg in &call.args {
-                        self.direct_loop_calls(symbol, arg, calls);
+                        self.direct_loop_calls(function, arg, calls);
                     }
                 }
             }
             Hir::Guard(guard) if guard.value_uses() > 1 => {}
+            // A let statement's value is evaluated wherever the binding is substituted
             Hir::Block(block) => {
-                for statement in &block.statements {
-                    if !matches!(statement, Statement::Let(..)) {
-                        for hir in statement.hirs() {
-                            self.direct_loop_calls(symbol, hir, calls);
-                        }
-                    }
-                }
-
-                if let Some(body) = block.body {
-                    self.direct_loop_calls(symbol, body, calls);
+                for hir in block
+                    .statements
+                    .iter()
+                    .flat_map(|statement| statement.lowered_hirs(self.options.debug_symbols))
+                    .chain(block.body)
+                {
+                    self.direct_loop_calls(function, hir, calls);
                 }
             }
             node => {
                 for child in node.children() {
-                    self.direct_loop_calls(symbol, child, calls);
+                    self.direct_loop_calls(function, child, calls);
                 }
             }
         });

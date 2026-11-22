@@ -416,8 +416,9 @@ test fn captured_value_that_cannot_fail_for_a_loop_called_some_of_the_time() -> 
 }
 
 // A loop that's called somewhere that can be evaluated more than once, or not at all, for each
-// time the value is bound, has the value bound before it: in a lambda, and in the argument of an
-// `inline fn` that refers to its parameter more than once
+// time the value is bound, has the value bound before it: in a lambda, in the argument of an
+// `inline fn` that refers to its parameter more than once, and in a type guard that uses its value
+// more than once
 inline fn both(items: List<Int>) -> (List<Int>, List<Int>) {
     (items, items)
 }
@@ -433,6 +434,23 @@ test fn captured_value_for_a_loop_in_an_inline_argument() -> (List<Int>, List<In
     let xs = runtime([1, 2, 3]);
     let k = positive(xs.first) + 1;
     both(for x in xs { x * k })
+}
+
+test fn captured_value_for_a_loop_in_a_type_guard() -> Int {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(xs.first) + 1;
+    if (for x in xs { x * k }) is (Int, (Int, Any)) {
+        1
+    } else {
+        0
+    }
+}
+
+// So does one that's passed to a lambda that's called where it's written, which is inlined there
+test fn captured_value_for_a_loop_passed_to_a_lambda() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(xs.first) + 1;
+    (fn(ys: List<Int>) => ys)(for x in xs { x * k })
 }
 
 // The result of one `for` used in another is only evaluated once
