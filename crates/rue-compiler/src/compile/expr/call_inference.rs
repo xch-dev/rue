@@ -38,7 +38,8 @@ pub(crate) struct InferredCall {
     pub mappings: HashMap<TypeId, TypeId>,
     /// The mappings before the renamed generics that weren't inferred were restored to the
     /// caller's generics they were renamed from (see `restore_renamed`), which leaves those out,
-    /// and has them as they are in what the others were inferred as.
+    /// and has them as they are in what the others were inferred as. It's empty for a call
+    /// without renamed generics.
     pub unrestored: HashMap<TypeId, TypeId>,
 }
 
@@ -594,7 +595,7 @@ pub(crate) fn infer_call(
         }
 
         let mut mappings = ctx.solve_call(&solver, order.merged().clone());
-        let mut unrestored = mappings.clone();
+        let mut unrestored = unrestored_mappings(&mappings, renamed);
         restore_renamed(ctx, &mut mappings, renamed);
 
         let mut solved_checks = checks.clone();
@@ -629,7 +630,7 @@ pub(crate) fn infer_call(
                 );
 
                 // What the vars are inferred as can reference the renamed generics too
-                let alternative_unrestored = alternative_mappings.clone();
+                let alternative_unrestored = unrestored_mappings(&alternative_mappings, renamed);
                 let restored = restore_renamed(ctx, &mut alternative_mappings, renamed);
 
                 for (_, ty, _) in alternative.iter_mut().flatten() {
@@ -682,7 +683,7 @@ pub(crate) fn infer_call(
             if !solves_call_as_checked(ctx, function, &solved_checks, &mappings, required_type) =>
         {
             let mut narrowed = ctx.solve_call_narrowed(&solver, order.merged().clone());
-            let narrowed_unrestored = narrowed.clone();
+            let narrowed_unrestored = unrestored_mappings(&narrowed, renamed);
             restore_renamed(ctx, &mut narrowed, renamed);
 
             let mut narrowed_checks = checks.clone();
@@ -3028,6 +3029,19 @@ fn has_uninferred_parameters(
                         .any(|generic| contains_generic(ctx.types_mut(), param.ty, generic))
             })
         })
+}
+
+/// The mappings as they are before `restore_renamed`, for `InferredCall::unrestored`, which only a
+/// call with renamed generics needs.
+fn unrestored_mappings(
+    mappings: &HashMap<TypeId, TypeId>,
+    renamed: &HashMap<TypeId, TypeId>,
+) -> HashMap<TypeId, TypeId> {
+    if renamed.is_empty() {
+        HashMap::new()
+    } else {
+        mappings.clone()
+    }
 }
 
 /// Maps the renamed generics that haven't been inferred back to the caller's generics they were

@@ -247,6 +247,8 @@ diagnostics:
 - Unused function `recursive_empty` at generic_inference_diagnostics_errors.rue:385:4
 - Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:389:37
 - Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_diagnostics_errors.rue:390:29
-- Unused function `recursive_untyped_parameters` at generic_inference_diagnostics_errors.rue:396:4
-- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:401:76
-- Cannot assign `((U, nil), U)` to `(Int, Int)`, since they are incompatible at generic_inference_diagnostics_errors.rue:402:30
+- Unused function `recursive_element_lambdas` at generic_inference_diagnostics_errors.rue:396:4
+- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:404:64
+- Unused function `recursive_untyped_parameters` at generic_inference_diagnostics_errors.rue:411:4
+- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:416:76
+- Cannot assign `((U, nil), U)` to `(Int, Int)`, since they are incompatible at generic_inference_diagnostics_errors.rue:417:30

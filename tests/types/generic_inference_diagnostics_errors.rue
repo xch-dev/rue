@@ -393,6 +393,21 @@ fn recursive_empty<T>(depth: Int) -> List<T> {
     nil
 }
 
+fn recursive_element_lambdas<T, U>(
+    list: List<fn(x: T) -> U>,
+    items: List<T>,
+    depth: Int,
+) -> List<U> {
+    if depth > 0 {
+        // `U` is inferred as the callee's `T`, which only stands in as the caller's `T` because
+        // the missing argument didn't give it a type, so what the call returns doesn't show that
+        let returned = recursive_element_lambdas([fn(x) => x], missing, depth - 1);
+        let _r: List<Int> = returned;
+    }
+
+    recursive_element_lambdas(list, items, depth)
+}
+
 fn recursive_untyped_parameters<T, U>(f: fn(x: U) -> T, g: fn(y: U) -> Int, depth: Int) -> (T, U) {
     if depth > 0 {
         // A known gap: here the lambdas' parameters are compiled as the caller's `U` that stands
