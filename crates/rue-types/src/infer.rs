@@ -52,8 +52,8 @@ pub struct Inference {
     /// `BranchId::choice`.
     choices: Choices,
     /// The vars in `generics` that stand for an instance of a passed generic function's generic
-    /// rather than for a generic of the function being called (`VarKind::Instance` in #362), with
-    /// the instance's bounds as their candidates (see `Inference::add_instance`).
+    /// rather than for a generic of the function being called, with the instance's bounds as their
+    /// candidates (see `Inference::add_instance`).
     instances: Vec<TypeId>,
     /// How those vars are resolved.
     policy: InstancePolicy,

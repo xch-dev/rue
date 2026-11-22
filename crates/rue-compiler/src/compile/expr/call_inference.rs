@@ -1631,9 +1631,9 @@ fn solve_with_lambda_parameters(
 /// mapping from the type expected of the call replaced by a weaker one. Each has a test in
 /// `tests/types/generic_inference_argument_order.rue`.
 ///
-/// Among the arguments that can go, it's today's order (#265): the other arguments in order, then
-/// the lambdas, the first whose parameter types have been inferred first. When none can, because
-/// they depend on each other, it's today's order too.
+/// Among the arguments that can go, the other arguments go in order, then the lambdas, the first
+/// whose parameter types have been inferred first (#265). When none can, because they depend on
+/// each other, they go in that order too.
 struct ArgumentOrder {
     arguments: Vec<Argument>,
     /// The arguments still to be compiled, the others in order and then the lambdas in order.
@@ -2118,11 +2118,11 @@ impl ArgumentOrder {
         })
     }
 
-    /// Whether compiling the argument now would change the expected type of an argument before it
-    /// in today's order that isn't a lambda, by adding to a generic that's already mapped in it.
-    /// That argument would have been compiled first, against that mapping, which can come from
-    /// the type expected of the call, so this one waits for it rather than widen a literal the
-    /// expected type keeps.
+    /// Whether compiling the argument now would change the expected type of an argument that
+    /// isn't a lambda and comes before it among those still to be compiled, by adding to a generic
+    /// that's already mapped in it. That argument would have been compiled first, against that
+    /// mapping, which can come from the type expected of the call, so this one waits for it rather
+    /// than widen a literal the expected type keeps.
     fn would_change_earlier(&self, i: usize, state: &State<'_>) -> bool {
         self.earlier_others(i).any(|other| {
             self.reads_now(other, state).iter().any(|generic| {
