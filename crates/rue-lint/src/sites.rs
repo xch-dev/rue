@@ -128,6 +128,8 @@ pub enum UnreachableReason {
     Handled,
     /// An earlier arm handles every value that's left.
     CatchAll(SrcLoc),
+    /// The matched value's type, named here, has no values, so no arm is ever taken.
+    NoValues(String),
     /// An earlier arm also handles the pattern's values, since it can't tell them apart from its
     /// own type at runtime (see [`IndistinguishableMatchArm`]).
     Indistinguishable {

@@ -1,0 +1,56 @@
+// No value can be assigned or cast to `Never`, or checked to be one
+
+fn takes_never(_never: Never) -> Int {
+    1
+}
+
+fn returns_value() -> Never {
+    1
+}
+
+// The function still never returns, so the code after a call to it is unreachable
+fn after_call() -> Int {
+    returns_value();
+    1
+}
+
+fn assign() -> Int {
+    let _never: Never = 1;
+    1
+}
+
+fn cast(value: Any) -> Int {
+    let _never = value as Never;
+    1
+}
+
+fn cast_to_uninhabited_pair(value: (Int, Int)) -> Int {
+    let _pair = value as (Int, Never);
+    1
+}
+
+fn guard(value: Int | Bytes) -> Int {
+    if value is Never {
+        1
+    } else {
+        2
+    }
+}
+
+fn call() -> Int {
+    takes_never(1)
+}
+
+fn function_type() -> fn() -> Never {
+    fn() => 1
+}
+
+test fn main() -> Int {
+    assign()
+        + cast(1)
+        + cast_to_uninhabited_pair((1, 2))
+        + guard(1)
+        + call()
+        + function_type()()
+        + after_call()
+}

@@ -45,6 +45,7 @@ impl Builtins {
         scope.insert_type("Int".to_string(), types.int, false);
         scope.insert_type("Bool".to_string(), types.bool, false);
         scope.insert_type("Any".to_string(), types.permissive_any, false);
+        scope.insert_type("Never".to_string(), types.never, false);
         scope.insert_type("List".to_string(), types.list, false);
         scope.insert_type("AlternatingList".to_string(), types.alternating_list, false);
 

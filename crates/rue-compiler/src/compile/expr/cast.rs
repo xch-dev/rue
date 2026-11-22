@@ -1,5 +1,6 @@
 use log::debug;
 use rue_ast::{AstCastExpr, AstNode};
+use rue_diagnostic::DiagnosticKind;
 use rue_hir::{Hir, Value};
 
 use crate::{Compiler, compile_expr, compile_type};
@@ -19,6 +20,17 @@ pub fn compile_cast_expr(ctx: &mut Compiler, cast: &AstCastExpr) -> Value {
         debug!("Unresolved cast expr");
         ctx.unresolved()
     };
+
+    // Nothing can be cast to a type without values, such as `Never`. The cast is unresolved, so
+    // that the code after it isn't reported as unreachable because of the mistake.
+    if rue_types::is_uninhabited(ctx.types_mut(), ty)
+        && ctx.try_is_assignable(expr.ty, ty) == Ok(false)
+    {
+        let from = ctx.type_name(expr.ty);
+        let to = ctx.type_name(ty);
+        ctx.diagnostic(cast.syntax(), DiagnosticKind::UninhabitedCast(from, to));
+        return ctx.unresolved();
+    }
 
     ctx.cast_type(cast.syntax(), expr.ty, ty);
 

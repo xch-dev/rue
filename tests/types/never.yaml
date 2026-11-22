@@ -1,0 +1,72 @@
+tests:
+- name: diverging_function
+  program: (q . 5)
+  debug_program: (a (q 2 4 (c 6 (q . 5))) (c (c (q 2 (i (> () 3) (q 2 2 (q . "negative")) (q . 3)) 1) (q 8 (q . "raise called at never.rue:5:5") 1)) ()))
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: diverging_function_raises
+  program: (a (q 2 (i (> () 2) (q 8) (q . 2)) 1) (c (q . -1) 1))
+  debug_program: (a (q 2 4 (c 6 (- () (q . 1)))) (c (c (q 2 (i (> () 3) (q 2 2 (q . "negative")) (q . 3)) 1) (q 8 (q . "raise called at never.rue:5:5") 1)) ()))
+  byte_cost: 528000
+  clvm_error: clvm raise ()
+  debug_clvm_error: clvm raise ("raise called at never.rue:5:5" "negative")
+- name: function_type
+  program: (q . 1)
+  debug_program: (a (q 2 10 (c 14 (c (q . 1) (c (q . 2) (c (c (q . 1) (q 2 2 (q . "unused"))) (c (c (q . 4) (c (c (q . 1) 4) (c () ()))) ())))))) (c (c (q 8 (q . "raise called at never.rue:5:5") 1) (c (q 2 (i 5 (q 1 . 1) (q 2 2 7)) 1) (q 2 1 ()))) ()))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: empty_list
+  program: ()
+  debug_program: (a (q 2 (q 2 (q 2 11 2) (c 2 1)) (c () 1)) (c (q 2 (i (not (not 1)) (q 5 1) ()) 1) ()))
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+- name: union_member
+  program: (q . 3)
+  debug_program: (a (q 2 (q . 2) (c 2 1)) (c (q . 3) 1))
+  output: "3"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: explicit_generic
+  program: (q . 2)
+  debug_program: (a (q 2 (i () (q 2 4 (a 6 (q . "unused"))) (q 2 4 (q . 2))) 1) (c (c (q . 1) (q 8 (q . "raise called at never.rue:5:5") 1)) ()))
+  output: "2"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: struct_field
+  program: (q . 1)
+  debug_program: (q . 1)
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: unreachable_after_call
+  program: (q . 4)
+  debug_program: (a (q 2 (i () (q 2 4 (c 6 ())) (q 1 . 4)) 1) (c (c (q 3 (q . 1) (q . 1) (a 2 (q . "stops here"))) (q 8 (q . "raise called at never.rue:5:5") 1)) ()))
+  output: "4"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: match_on_never
+  program: (q . 5)
+  debug_program: (q . 5)
+  output: "5"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+diagnostics:
+- Binding `int` is returned directly after it's declared at never.rue:59:5
+- Condition always evaluates to `false` at never.rue:68:8
+- |-
+  Unreachable code at never.rue:93:5
+    note: Any code after this is never evaluated at never.rue:92:5
+- Condition always evaluates to `false` at never.rue:97:8
+- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:107:9
+- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:108:9

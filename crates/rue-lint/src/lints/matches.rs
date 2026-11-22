@@ -19,6 +19,9 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
                 "Unreachable match arm, since an earlier arm handles every value that's left"
                     .to_string()
             }
+            UnreachableReason::NoValues(ty) => {
+                format!("Unreachable match arm, since the matched value's type `{ty}` has no values")
+            }
             UnreachableReason::Indistinguishable { members, .. } => format!(
                 "Unreachable match arm, since an earlier arm also handles {members}, which it can't tell apart from its own type at runtime"
             ),
@@ -30,7 +33,7 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
         };
 
         match &arm.reason {
-            UnreachableReason::Handled => {}
+            UnreachableReason::Handled | UnreachableReason::NoValues(_) => {}
             UnreachableReason::CatchAll(catch_all) => diagnostic.notes.push(Note::at(
                 catch_all.clone(),
                 "This arm handles every value that's left",

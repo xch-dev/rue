@@ -136,6 +136,7 @@ fn main(value: $0) -> Int {
             Int [Struct]
             Bool [Struct]
             Any [Struct]
+            Never [Struct]
             List [Struct] nil | (T, List<T>)
             AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
         "#]],
@@ -486,6 +487,7 @@ fn main() -> $0 {
             Int [Struct]
             Bool [Struct]
             Any [Struct]
+            Never [Struct]
             List [Struct] nil | (T, List<T>)
             AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
         "#]],
@@ -522,6 +524,7 @@ fn main() -> Int {
             Int [Struct]
             Bool [Struct]
             Any [Struct]
+            Never [Struct]
             List [Struct] nil | (T, List<T>)
             AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
         "#]],
@@ -557,6 +560,7 @@ fn main(value: Any) -> Int {
             Int [Struct]
             Bool [Struct]
             Any [Struct]
+            Never [Struct]
             List [Struct] nil | (T, List<T>)
             AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
         "#]],
@@ -591,6 +595,7 @@ type Alias = $0;
             Int [Struct]
             Bool [Struct]
             Any [Struct]
+            Never [Struct]
             List [Struct] nil | (T, List<T>)
             AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
         "#]],
@@ -909,6 +914,7 @@ fn main(value: Point | nil) -> Int {
             Int [Struct]
             Bool [Struct]
             Any [Struct]
+            Never [Struct]
             List [Struct] nil | (T, List<T>)
             AlternatingList [Struct] nil | (A, (B, AlternatingList<A, B>))
         "#]],
