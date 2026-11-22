@@ -2123,10 +2123,7 @@ fn version_3_is_deterministic_and_its_explicit_programs_compile() {
         let explicit = first.program.print(&Variant::default());
         assert_eq!(explicit, second.program.print(&Variant::default()));
         assert_eq!(first.variants, second.variants);
-        if matches!(
-            compile(&explicit),
-            Compiled::Ok { leak: None, .. }
-        ) {
+        if matches!(compile(&explicit), Compiled::Ok { leak: None, .. }) {
             valid += 1;
         }
         probes += usize::from(!first.program.probes.is_empty());
@@ -2161,10 +2158,7 @@ fn version_5_is_deterministic_and_its_explicit_programs_compile() {
         let explicit = first.program.print(&Variant::default());
         assert_eq!(explicit, second.program.print(&Variant::default()));
         assert_eq!(first.variants, second.variants);
-        if matches!(
-            compile(&explicit),
-            Compiled::Ok { leak: None, .. }
-        ) {
+        if matches!(compile(&explicit), Compiled::Ok { leak: None, .. }) {
             valid += 1;
         }
         // A call in `main` that passes an untyped lambda in a pair or list literal
@@ -2213,10 +2207,7 @@ fn version_4_is_deterministic_and_its_explicit_programs_compile() {
         let explicit = first.program.print(&Variant::default());
         assert_eq!(explicit, second.program.print(&Variant::default()));
         assert_eq!(first.variants, second.variants);
-        if matches!(
-            compile(&explicit),
-            Compiled::Ok { leak: None, .. }
-        ) {
+        if matches!(compile(&explicit), Compiled::Ok { leak: None, .. }) {
             valid += 1;
         }
         // A recursive call that passes an untyped lambda in a pair or list literal
@@ -2405,10 +2396,7 @@ fn version_2_is_deterministic_and_its_explicit_programs_compile() {
         let explicit = first.program.print(&Variant::default());
         assert_eq!(explicit, second.program.print(&Variant::default()));
         assert_eq!(first.variants, second.variants);
-        if matches!(
-            compile(&explicit),
-            Compiled::Ok { .. }
-        ) {
+        if matches!(compile(&explicit), Compiled::Ok { .. }) {
             valid += 1;
         }
     }
