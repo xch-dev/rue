@@ -175,15 +175,20 @@ test fn match_on_raising_binding() -> Int {
     }
 }
 
-// The same goes for a binding or an expression statement that's evaluated for its effect, before
-// a raise after it
+// The same goes for a binding that's evaluated for its effect, before a raise after it
 test fn unused_binding_before_raise() -> Int {
     let _never = fail("unused");
     raise "after";
 }
 
-test fn statement_before_raise() -> Int {
-    fail("statement");
+fn check(value: Int) -> nil {
+    assert value > 0;
+    nil
+}
+
+test fn unused_binding_before_statement_and_raise() -> Int {
+    let _never = fail("unused");
+    check(5);
     raise "after";
 }
 
