@@ -47,11 +47,13 @@ impl HirLintPass for UnreachableCode {
 
         // Removing the code after a `return`, `raise` or statement whose branches all end in one
         // leaves a block that still ends correctly, but removing it after any other statement
-        // could leave a block without a value
-        let removable = matches!(
-            diverging,
-            Statement::Return(..) | Statement::Raise(..) | Statement::Control(_)
-        );
+        // could leave a block without a value, such as after a statement whose condition never
+        // finishes but whose branches fall through
+        let removable = match diverging {
+            Statement::Return(..) | Statement::Raise(..) => true,
+            Statement::Control(statement) => statement.fallthroughs == 0,
+            _ => false,
+        };
 
         self.reported.push(SrcLoc::new(
             first.source.clone(),
@@ -89,11 +91,25 @@ impl HirLintPass for UnreachableCode {
 ///
 /// This includes a `let` whose value never finishes, since a value that may fail is evaluated
 /// whenever its let statement is, even if it's never referenced. An `inline let` isn't included,
-/// since its value is only evaluated where it's referenced.
+/// since its value is only evaluated where it's referenced. An `if` statement or `assert` whose
+/// condition never finishes doesn't either, since the condition is always evaluated.
 fn diverges(cx: &mut LintContext<'_>, statement: &Statement) -> bool {
     let hir = match statement {
         Statement::Return(..) | Statement::Raise(..) => return true,
-        Statement::Control(statement) => return statement.fallthroughs == 0,
+        Statement::Control(statement) => {
+            if statement.fallthroughs == 0 {
+                return true;
+            }
+
+            // The first condition of an `if` and `else` chain is always evaluated
+            let Hir::If(condition, ..) = *cx.db().hir(statement.hir) else {
+                return false;
+            };
+
+            condition
+        }
+        Statement::If(statement) => statement.condition,
+        Statement::Assert(condition, ..) => *condition,
         Statement::Expr(statement) => statement.hir,
         Statement::Let(symbol, _) => match cx.db().symbol(*symbol) {
             Symbol::Binding(binding) if !binding.inline => binding.value.hir,
@@ -105,7 +121,7 @@ fn diverges(cx: &mut LintContext<'_>, statement: &Statement) -> bool {
             | Symbol::Module(_)
             | Symbol::Builtin(_) => return false,
         },
-        Statement::If(_) | Statement::Assert(..) | Statement::Debug(..) => return false,
+        Statement::Debug(..) => return false,
     };
 
     cx.db().hir_type(hir).is_some_and(|ty| cx.is_never(ty))

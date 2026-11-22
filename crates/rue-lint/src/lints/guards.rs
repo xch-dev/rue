@@ -40,6 +40,12 @@ impl HirLintPass for UnnecessaryGuard {
             return;
         }
 
+        // A value of type `Never` is compatible with every type, but it's never produced, so the
+        // guard is never evaluated. That's reported by `unreachable_code` instead.
+        if cx.is_never(from) {
+            return;
+        }
+
         let lint = if cx.is_assignable(from, to) {
             Lint::UnnecessaryGuard
         } else {

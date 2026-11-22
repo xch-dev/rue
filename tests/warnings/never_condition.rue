@@ -1,0 +1,115 @@
+// A condition of type `Never` is compatible with both `true` and `false`, but it never finishes,
+// so `constant_condition` says nothing about it. The code after a statement whose condition never
+// finishes is reported by `unreachable_code` instead.
+
+fn fail() -> Never {
+    raise "failed";
+}
+
+fn assert_call() -> Int {
+    assert fail();
+    1
+}
+
+fn assert_block() -> Int {
+    assert {
+        raise "failed";
+    };
+    2
+}
+
+fn if_statement(value: Int) -> Int {
+    if fail() {
+        debug value;
+    }
+
+    value
+}
+
+fn if_return(value: Int) -> Int {
+    if fail() {
+        return 1;
+    }
+
+    value
+}
+
+fn if_expression(value: Int) -> Int {
+    if fail() {
+        1
+    } else {
+        value
+    }
+}
+
+fn else_if(value: Int) -> Int {
+    if value > 1 {
+        1
+    } else if fail() {
+        2
+    } else {
+        3
+    }
+}
+
+fn match_guard(value: Int) -> Int {
+    match value {
+        _ if fail() => 1,
+        _ => 2,
+    }
+}
+
+// A type guard on a value that never finishes isn't unnecessary either
+fn type_guard(value: Int) -> Int {
+    if fail() is Int {
+        1
+    } else {
+        value
+    }
+}
+
+// A condition that's always `true` is still reported
+fn constant(value: Int) -> Int {
+    assert true;
+    value
+}
+
+test fn assert_call_raises() -> Int {
+    assert_call()
+}
+
+test fn assert_block_raises() -> Int {
+    assert_block()
+}
+
+test fn if_statement_raises() -> Int {
+    if_statement(1)
+}
+
+test fn if_return_raises() -> Int {
+    if_return(1)
+}
+
+test fn if_expression_raises() -> Int {
+    if_expression(1)
+}
+
+test fn else_if_skips_the_condition() -> Int {
+    else_if(2)
+}
+
+test fn else_if_raises() -> Int {
+    else_if(0)
+}
+
+test fn match_guard_raises() -> Int {
+    match_guard(1)
+}
+
+test fn type_guard_raises() -> Int {
+    type_guard(1)
+}
+
+test fn constant_passes() -> Int {
+    constant(3)
+}
