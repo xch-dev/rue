@@ -174,6 +174,46 @@ pub(crate) fn has_rest_parameter(lambda: &AstLambdaExpr) -> bool {
     lambda.parameters().any(|param| param.spread().is_some())
 }
 
+/// The function types that a lambda expected to have the type is compiled against. A union with a
+/// member that isn't a function, such as `nil` in an optional callback's `fn(value: T) -> U | nil`,
+/// gives the function members that take as many parameters as the lambda (`lambda`, or any number
+/// without one): the one there is, or several where they all take the same parameter types.
+/// Otherwise it gives none, and the lambda's untyped parameters aren't given types.
+pub(crate) fn lambda_functions(
+    ctx: &mut Compiler,
+    ty: TypeId,
+    lambda: Option<&AstLambdaExpr>,
+) -> Vec<FunctionType> {
+    let functions = rue_types::extract_functions(ctx.types_mut(), ty, true);
+
+    if !functions.is_empty() {
+        return functions;
+    }
+
+    let arity = lambda
+        .filter(|lambda| !has_rest_parameter(lambda))
+        .map(|lambda| lambda.parameters().count());
+
+    let functions: Vec<FunctionType> = rue_types::extract_functions(ctx.types_mut(), ty, false)
+        .into_iter()
+        .filter(|function| {
+            function.nil_terminated && arity.is_none_or(|arity| function.params.len() == arity)
+        })
+        .collect();
+
+    let agree = functions.windows(2).all(|pair| {
+        pair[0].generics.is_empty()
+            && pair[1].generics.is_empty()
+            && pair[0].params.len() == pair[1].params.len()
+            && pair[0]
+                .param_types()
+                .zip(pair[1].param_types())
+                .all(|(first, second)| first == second)
+    });
+
+    if agree { functions } else { Vec::new() }
+}
+
 /// Compiles a lambda that's an argument of a call whose generics are being inferred, as
 /// `compile_lambda` does, with each untyped parameter that feeds itself typed as the least fixpoint
 /// of what it's given joined with what the lambda returns (#362, R4).
@@ -331,7 +371,7 @@ fn feeding_parameters(
         return None;
     }
 
-    let functions = rue_types::extract_functions(ctx.types_mut(), expected, true);
+    let functions = lambda_functions(ctx, expected, Some(expr));
     let [function] = functions.as_slice() else {
         return None;
     };
@@ -466,7 +506,7 @@ pub(crate) fn compile_lambda(
     let mut references = HashMap::new();
 
     let mut expected_functions = if let Some(ty) = expected_type {
-        rue_types::extract_functions(ctx.types_mut(), ty, true)
+        lambda_functions(ctx, ty, Some(expr))
     } else {
         vec![]
     };

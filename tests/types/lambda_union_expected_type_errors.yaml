@@ -1,0 +1,2 @@
+diagnostics:
+- Type of parameter cannot be inferred, it must be specified explicitly at lambda_union_expected_type_errors.rue:9:21

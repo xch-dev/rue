@@ -24,7 +24,7 @@ use rue_types::{
 use crate::{
     ArgumentFrame, Compiler, LambdaBody, LambdaParameter, MAX_GENERALIZED_LEVELS, ParameterWrap,
     compile_call_argument, compile_expr, compile_lambda_argument, generalized_call,
-    is_type_in_scope, occurs_contravariantly,
+    is_type_in_scope, lambda_functions, occurs_contravariantly,
 };
 
 /// What inferring a call's generics gave.
@@ -2011,7 +2011,7 @@ impl ArgumentOrder {
                 let is_lambda = matches!(arg, AstExpr::LambdaExpr(_));
                 let reads = reads_of(ctx, function, arg, param.ty);
                 let returns_reads = is_lambda
-                    && rue_types::extract_functions(ctx.types_mut(), param.ty, true)
+                    && lambda_functions(ctx, param.ty, None)
                         .into_iter()
                         .any(|expected| {
                             generics_in(ctx, function, expected.ret)
@@ -2672,7 +2672,7 @@ fn reads_of(
 
             let mut reads = bare_generics(ctx, function, param);
 
-            for expected in rue_types::extract_functions(ctx.types_mut(), param, true) {
+            for expected in lambda_functions(ctx, param, Some(lambda)) {
                 if reads_return {
                     reads.extend(generics_in(ctx, function, expected.ret));
                 }
@@ -2758,7 +2758,7 @@ fn element_lambdas(
         match expr {
             AstExpr::LambdaExpr(lambda) => {
                 let untyped = untyped_parameters(lambda);
-                let expected = rue_types::extract_functions(ctx.types_mut(), ty, true);
+                let expected = lambda_functions(ctx, ty, Some(lambda));
                 let mut reads = IndexSet::new();
                 let mut returns = IndexSet::new();
                 // Whether an untyped parameter is expected to have a type that has a generic in it
@@ -2999,8 +2999,8 @@ pub(crate) fn pair_parts(ctx: &mut Compiler, ty: TypeId) -> Option<(TypeId, Type
 }
 
 /// The positions of the lambda's parameters that have no type.
-/// The generics a lambda argument can add to (see `Argument::adds`). Where its parameter type
-/// isn't a function type, every generic in it counts.
+/// The generics a lambda argument can add to (see `Argument::adds`). Where it isn't expected to be
+/// one function type (see `lambda_functions`), every generic in its parameter type counts.
 fn lambda_adds(
     ctx: &mut Compiler,
     function: &FunctionType,
@@ -3008,11 +3008,12 @@ fn lambda_adds(
     param: TypeId,
 ) -> IndexSet<TypeId> {
     let writes = generics_in(ctx, function, param);
-    let semantic = rue_types::unwrap_semantic(ctx.types_mut(), param, true);
 
-    let Type::Function(expected) = ctx.ty(semantic).clone() else {
+    let functions = lambda_functions(ctx, param, Some(lambda));
+    let [expected] = functions.as_slice() else {
         return writes;
     };
+    let expected = expected.clone();
 
     let untyped = untyped_parameters(lambda);
     let mut adds = generics_in(ctx, function, expected.ret);
@@ -3051,7 +3052,7 @@ fn has_uninferred_parameters(
 ) -> bool {
     let expected = substitute_with_mappings(ctx.types_mut(), param, mappings);
 
-    rue_types::extract_functions(ctx.types_mut(), expected, true)
+    lambda_functions(ctx, expected, None)
         .into_iter()
         .flat_map(|function| function.params)
         .any(|param| {
@@ -3142,7 +3143,7 @@ fn own_generics_of(
     restored: &HashMap<TypeId, TypeId>,
     renamed: &HashMap<TypeId, TypeId>,
 ) -> Vec<Vec<TypeId>> {
-    let functions = rue_types::extract_functions(ctx.types_mut(), unrestored, true);
+    let functions = lambda_functions(ctx, unrestored, Some(lambda));
 
     untyped_parameters(lambda)
         .into_iter()
@@ -3285,7 +3286,7 @@ fn restored_parameters(
         return HashMap::new();
     }
 
-    let functions = rue_types::extract_functions(ctx.types_mut(), expected, true);
+    let functions = lambda_functions(ctx, expected, Some(lambda));
     let mut parameters = HashMap::new();
 
     for index in untyped_parameters(lambda) {

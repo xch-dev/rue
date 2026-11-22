@@ -1,0 +1,10 @@
+// A lambda expected to have a union type whose function members take different parameter types
+// isn't given any (see `lambda_functions`)
+
+fn apply_either(f: (fn(value: Int) -> Int) | (fn(value: Bytes) -> Int) | nil) -> Int {
+    unchecked_cast::<fn(value: Int) -> Int>(f)(1)
+}
+
+fn main() -> Int {
+    apply_either(fn(x) => 1)
+}

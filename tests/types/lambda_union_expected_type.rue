@@ -1,0 +1,73 @@
+// A lambda expected to have a union type with members that aren't functions, such as an optional
+// callback's `fn(value: T) -> U | nil`, is typed against the function members that take as many
+// parameters as it does: the one there is, or several that all take the same parameter types
+// (see `lambda_functions`)
+
+type Callback<T, U> = fn(value: T) -> U;
+
+fn apply_optional<T, U>(f: (fn(value: T) -> U) | nil, value: T) -> U | nil {
+    unchecked_cast::<fn(value: T) -> U>(f)(value)
+}
+
+fn apply_optional_int(f: (fn(value: Int) -> Int) | nil, value: Int) -> Int {
+    unchecked_cast::<fn(value: Int) -> Int>(f)(value)
+}
+
+fn apply_optional_alias<T, U>(f: Callback<T, U> | nil, value: T) -> U | nil {
+    unchecked_cast::<Callback<T, U>>(f)(value)
+}
+
+fn apply_or_any<T>(f: (fn(value: T) -> T) | Any, value: T) -> T {
+    unchecked_cast::<fn(value: T) -> T>(f)(value)
+}
+
+fn apply_one_or_two<T>(f: (fn(value: T) -> T) | (fn(a: T, b: T) -> T) | nil, value: T) -> T {
+    unchecked_cast::<fn(value: T) -> T>(f)(value)
+}
+
+fn apply_either<T>(f: (fn(value: T) -> T) | (fn(value: T) -> Int) | nil, value: T) -> T {
+    unchecked_cast::<fn(value: T) -> T>(f)(value)
+}
+
+// The parameter's type is what the `5` gives `T`, as for `fn(value: T) -> U`
+test fn optional_callback() -> Int {
+    let result = apply_optional(fn(x) => x + 1, 5);
+    let checked: Int | nil = result;
+    unchecked_cast::<Int>(checked)
+}
+
+test fn optional_callback_without_generics() -> Int {
+    apply_optional_int(fn(x) => x + 1, 5)
+}
+
+test fn optional_callback_through_an_alias() -> Int {
+    unchecked_cast::<Int>(apply_optional_alias(fn(x) => x * 2, 5))
+}
+
+test fn callback_or_any() -> Int {
+    apply_or_any(fn(x) => x - 1, 5)
+}
+
+// Only the member that takes one parameter is one a lambda with one can be
+test fn member_with_as_many_parameters() -> Int {
+    apply_one_or_two(fn(x) => x + 2, 5)
+}
+
+// Two members that take the same parameter types give the lambda those types
+test fn members_with_the_same_parameters() -> Int {
+    apply_either(fn(x) => x + 3, 5)
+}
+
+test fn nil_for_an_optional_callback() -> Int | nil {
+    apply_optional(nil, 5)
+}
+
+fn apply_generic_or_int<T>(f: (fn(value: T) -> T) | (fn(value: Int) -> Int) | nil, value: T) -> T {
+    unchecked_cast::<fn(value: T) -> T>(f)(value)
+}
+
+// Members that take different types can agree once the call's generics are substituted: `x`
+// waits for the `5`, and both members then take an `Int`
+test fn members_that_agree_once_substituted() -> Int {
+    apply_generic_or_int(fn(x) => x + 4, 5)
+}

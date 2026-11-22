@@ -1,0 +1,57 @@
+tests:
+- name: optional_callback
+  program: (a (q 16 2 (q . 1)) (q 5))
+  debug_program: (a (q 2 (q 2 (q . 2) (c 2 1)) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (q . 5))) 1)) (c (q 2 2 (c 3 ())) ()))
+  output: "6"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: optional_callback_without_generics
+  program: (a (q 16 2 (q . 1)) (q 5))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c 3 ())) ()))
+  output: "6"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: optional_callback_through_an_alias
+  program: (a (q 18 2 (q . 2)) (q 5))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 2))) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c 3 ())) ()))
+  output: "10"
+  runtime_cost: 1199
+  byte_cost: 252000
+  total_cost: 253199
+- name: callback_or_any
+  program: (a (q 17 2 (q . 1)) (q 5))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 17 2 (q . 1))) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c 3 ())) ()))
+  output: "4"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: member_with_as_many_parameters
+  program: (a (q 16 2 (q . 2)) (q 5))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 2))) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c 3 ())) ()))
+  output: "7"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: members_with_the_same_parameters
+  program: (a (q 16 2 (q . 3)) (q 5))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 3))) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c 3 ())) ()))
+  output: "8"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
+- name: nil_for_an_optional_callback
+  program: (a () (q 5))
+  debug_program: (a (q 2 2 (c () (q . 5))) (c (q 2 2 (c 3 ())) ()))
+  output: ()
+  runtime_cost: 199
+  byte_cost: 132000
+  total_cost: 132199
+- name: members_that_agree_once_substituted
+  program: (a (q 16 2 (q . 4)) (q 5))
+  debug_program: (a (q 2 2 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 4))) (c (q . 1) ()))) (q . 5))) (c (q 2 2 (c 3 ())) ()))
+  output: "9"
+  runtime_cost: 955
+  byte_cost: 252000
+  total_cost: 252955
