@@ -548,12 +548,13 @@ impl DependencyGraph {
             Usage::Other => return None,
         };
 
+        let next = *self.sites.get(&symbol)?;
+
         if self.references(symbol) != 1 || !walk.path.insert(symbol) {
             return None;
         }
 
         // A chain of bindings that are each the one before is as deep as it's long
-        let next = *self.sites.get(&symbol)?;
         let call = rue_types::grow_stack(|| self.call_site(db, next, walk));
         walk.path.remove(&symbol);
         let call = call?;
