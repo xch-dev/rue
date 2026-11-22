@@ -141,7 +141,7 @@ pub struct Lowerer<'d, 'a, 'g> {
     layout: Layout,
     /// The blocks that [`Layout::Nested`] lays out as subtrees, which are found before each way
     /// of lowering the program is tried, or `None` when the layout doesn't nest anything.
-    nesting: Option<Rc<Nesting>>,
+    nesting: Option<Nesting>,
     /// Whether lowering with [`Layout::Reached`] put a function's captures in another order than
     /// it found them in, or a function's parameters or a run of let statements in another order
     /// than the program reaches them in, so that [`Layout::Written`] or
@@ -511,7 +511,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     /// Lowers the value of a symbol in the environment. The entrypoint of a program that's
     /// compiled to be run on chain is lowered with [`lower_main`](Self::lower_main) instead,
-    /// which also decides which functions to inline by measuring.
+    /// which also decides how the environments are laid out and which functions to inline by
+    /// measuring.
     pub fn lower_symbol_value(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
         if let Some((frame, hir)) = self.inline_substitution(symbol) {
             return self.lower_substitution(env, frame, hir);
@@ -532,8 +533,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         symbol: SymbolId,
         function: &FunctionSymbol,
     ) -> (Vec<SymbolGroup>, SymbolGroup) {
-        let mut captures = self.lowered_captures(symbol);
-        self.order_captures(symbol, &mut captures);
+        let captures = self.ordered_captures(symbol);
 
         let capture_groups = self.group_symbols(
             captures,

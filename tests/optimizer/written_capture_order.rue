@@ -1,0 +1,28 @@
+// This program is smallest with each function's captures in the order it found them in, rather
+// than the order the program reaches them in, since in that layout inlining `positive` and
+// `small` makes it smaller too. Each layout decides what to inline for itself, so that one is
+// kept.
+
+fn runtime<T>(value: T) -> T {
+    assert value is (Any, Any) || value is nil;
+    value
+}
+
+fn positive(value: Int) -> Int {
+    assert value > 0;
+    value
+}
+
+fn small(value: Int) -> Int {
+    value
+        / if value < 100 {
+            1
+        } else {
+            0
+        }
+}
+
+test fn filters_and_appends() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    [...for x in xs if positive(x) > 0 { x }, small(xs.first + 100)]
+}

@@ -9,33 +9,37 @@
 //! for each pair. That depends on how the trees of the two functions line up, which isn't
 //! something either one can decide alone.
 //!
-//! So the program is lowered with each of a few layouts (see [`Layout::CANDIDATES`]), and the
-//! smallest program is kept, as [`super::inline`] does for inlining:
+//! So the program is lowered with each of a few layouts (see [`Layout::CANDIDATES`]), each
+//! with its own decisions about what to inline (see [`super::inline`]), and the smallest program
+//! is kept, so it's no larger than with any one of them. They're tried in this order, and the
+//! earlier one is kept when two are the same size:
 //!
-//! - **Written:** the symbols that are referenced equally often stay in the order each function
-//!   found them in.
-//! - **Reached:** a function's captures are in the order the program reaches them in from its
-//!   entrypoint, so that functions that capture the same symbols have the same tree (#593).
-//! - **Nested:** as reached, but a function's captures that are the captures of another function
-//!   are laid out as that function's tree, so that a call from one to the other passes them on
-//!   as one path (see [`Nesting`]).
+//! - **Reached:** a function's captures that are referenced equally often are in the order the
+//!   program reaches them in from its entrypoint, so that functions that capture the same symbols
+//!   have the same tree (#593).
+//! - **Written:** they stay in the order each function found them in.
+//! - **Nested:** as reached, but the captures of a function that are inside another tree, such
+//!   as the captures of a function that calls it, are laid out there as its own tree, so that
+//!   the call passes them on as one path (see [`Nesting`]).
 //! - **Everything reached:** as reached, but a function's parameters and each run of let
 //!   statements are in that order too.
+//!
+//! Written and everything reached are only tried if lowering with reached put something in
+//! another order than they would (see [`Reordered`]). Otherwise they'd lower the program the
+//! same way, since each trial is decided from the same state.
 //!
 //! Whatever the layout, a function's body and every call to it get their trees from
 //! [`Lowerer::function_groups`], which only depends on the layout and the symbols being laid
 //! out, so the two always agree.
 
-use std::{
-    collections::{HashMap, HashSet},
-    rc::Rc,
-};
+use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexSet;
+use rue_lir::LirId;
 
 use crate::{Environment, Symbol, SymbolId};
 
-use super::Lowerer;
+use super::{Lowerer, measure::Trial};
 
 /// How the environments of the program's functions are laid out (see the [module](self)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,15 +67,6 @@ impl Layout {
     }
 }
 
-/// The captures of the program's functions that are laid out as subtrees of the trees they're
-/// in, for [`Layout::Nested`].
-///
-/// Each function's set of captures is a block, unless it overlaps one that's already a block
-/// without either containing the other, so that any two blocks are nested or disjoint. They're
-/// taken from the smallest, so that the most of them fit. A tree of symbols is then built from
-/// the largest blocks inside of it, each laid out as its own tree, and the symbols that aren't in
-/// one. The tree of a block is the tree its function has, so a call from a function whose
-/// captures contain it to that function passes the block on as it is.
 /// What lowering with [`Layout::Reached`] put in another order than the other layouts would, so
 /// that they're only tried if they could lower the program differently.
 #[derive(Debug, Default, Clone, Copy)]
@@ -83,6 +78,15 @@ pub(super) struct Reordered {
     others: bool,
 }
 
+/// The captures of the program's functions that are laid out as subtrees of the trees they're
+/// in, for [`Layout::Nested`].
+///
+/// Each function's set of captures is a block, unless it overlaps one that's already a block
+/// without either containing the other, so that any two blocks are nested or disjoint. They're
+/// taken from the smallest, so that the most of them fit. A tree of symbols is then built from
+/// the largest blocks inside of it, each laid out as its own tree, and the symbols that aren't in
+/// one. The tree of a block is the tree its function has, so a call to that function from one
+/// whose tree contains the block passes the block on as it is.
 #[derive(Debug, Default)]
 pub(super) struct Nesting {
     blocks: Vec<Block>,
@@ -97,12 +101,59 @@ struct Block {
     len: usize,
     /// The smallest block that contains this one.
     parent: Option<usize>,
-    tree: Rc<Environment>,
+    tree: Environment,
     /// How many references the block stands for, in the tree it's part of.
     references: usize,
 }
 
 impl Lowerer<'_, '_, '_> {
+    /// Lowers the entrypoint, after deciding how the environments are laid out and which of the
+    /// functions that are measured are inlined (see [`Self::is_measured_function`]). This is how
+    /// a program that's run on chain is lowered. A program that's only run while compiling, such
+    /// as a const expression, is lowered with [`lower_symbol_value`](Self::lower_symbol_value),
+    /// which doesn't measure anything, since its size doesn't matter.
+    pub fn lower_main(&mut self, env: &Environment) -> LirId {
+        let mut best: Option<(Trial, Layout, HashSet<SymbolId>)> = None;
+
+        for layout in Layout::CANDIDATES {
+            if !self.is_layout_needed(layout) {
+                continue;
+            }
+
+            self.layout = layout;
+            self.inlined_functions.clear();
+
+            let trial = self.decide_inlining(env);
+
+            if best
+                .as_ref()
+                .is_none_or(|(best, ..)| trial.size < best.size)
+            {
+                best = Some((trial, layout, self.inlined_functions.clone()));
+            }
+        }
+
+        let (trial, layout, inlined_functions) = best.expect("the first layout is always lowered");
+
+        // Anything that's lowered after this is laid out the same way, and inlines the same
+        // functions
+        self.layout = layout;
+        self.inlined_functions = inlined_functions;
+        self.prepare_trial();
+
+        self.keep(trial)
+    }
+
+    /// Decides again what depends on which functions are inlined, before the program is lowered
+    /// that way: which values are constants, since a value can be one with a function inlined,
+    /// and what the layout nests, since that depends on what the functions capture.
+    pub(super) fn prepare_trial(&mut self) {
+        // Nothing is nested while the constants are found
+        self.nesting = None;
+        self.decide_repeats();
+        self.prepare_layout();
+    }
+
     /// Whether the program is lowered with the layout, which it isn't if it would be lowered the
     /// same way as with one that's already been tried. The first layout is always tried, and
     /// [`Layout::Written`] and [`Layout::EverythingReached`] only differ from it if lowering with
@@ -120,16 +171,14 @@ impl Lowerer<'_, '_, '_> {
     /// Finds what the layout nests, before the program is lowered with it, outside of any
     /// inlined call. Until then, as when a value is lowered to find out whether it's a constant,
     /// nothing is nested.
-    pub(super) fn prepare_layout(&mut self) {
-        self.nesting = None;
-
-        if self.layout == Layout::Nested {
-            self.nesting = Some(Rc::new(self.find_nesting()));
-        }
+    fn prepare_layout(&mut self) {
+        self.nesting = (self.layout == Layout::Nested).then(|| self.find_nesting());
     }
 
-    /// Orders the captures of a function for the layout, before they're grouped.
-    pub(super) fn order_captures(&self, symbol: SymbolId, captures: &mut IndexSet<SymbolId>) {
+    /// What the function captures where it's lowered here (see [`Self::lowered_captures`]), in
+    /// the order the layout puts them in, before they're grouped.
+    pub(super) fn ordered_captures(&self, symbol: SymbolId) -> IndexSet<SymbolId> {
+        let mut captures = self.lowered_captures(symbol);
         // The captures of a function that are referenced equally often are laid out in the order
         // the program reaches them in from its entrypoint, whatever order the function found them
         // in, so that functions that capture the same symbols, such as a recursive function and a
@@ -138,16 +187,17 @@ impl Lowerer<'_, '_, '_> {
         // value of a struct's field is still laid out as the same value written where it's used.
         // A closure's captures are a list in the order it's built with
         if self.graph.is_closure(symbol) {
-            return;
+            return captures;
         }
 
-        if self.layout == Layout::Reached && !self.is_in_reach_order(captures.iter()) {
+        if self.layout.orders_captures()
+            && self.order_by_reach(&mut captures)
+            && self.layout == Layout::Reached
+        {
             self.note_reordered(|reordered| reordered.captures = true);
         }
 
-        if self.layout.orders_captures() {
-            self.order_by_reach(captures);
-        }
+        captures
     }
 
     fn note_reordered(&self, f: impl FnOnce(&mut Reordered)) {
@@ -156,35 +206,36 @@ impl Lowerer<'_, '_, '_> {
         self.reordered.set(reordered);
     }
 
-    fn is_in_reach_order<'s>(&self, symbols: impl IntoIterator<Item = &'s SymbolId>) -> bool {
+    /// Orders the symbols by when the program reaches them from its entrypoint, then by id, and
+    /// returns whether that changed their order.
+    fn order_by_reach(&self, symbols: &mut IndexSet<SymbolId>) -> bool {
         let order = self.dependencies(self.main, false);
-        symbols
-            .into_iter()
-            .map(|symbol| (order.get_index_of(symbol).unwrap_or(usize::MAX), *symbol))
-            .is_sorted()
+        let key = |symbol: &SymbolId| (order.get_index_of(symbol).unwrap_or(usize::MAX), *symbol);
+
+        if symbols.iter().is_sorted_by_key(key) {
+            return false;
+        }
+
+        symbols.sort_by_key(key);
+        true
     }
 
-    /// Orders the symbols by when the program reaches them from its entrypoint, then by id.
-    fn order_by_reach(&self, symbols: &mut IndexSet<SymbolId>) {
-        let order = self.dependencies(self.main, false);
-        symbols.sort_by_key(|symbol| (order.get_index_of(symbol).unwrap_or(usize::MAX), *symbol));
-    }
-
-    /// The tree of the symbols for the layout, which are referenced as often as given. The
-    /// symbols that are referenced equally often keep the order they're given in, unless every
-    /// tree is in the order the program reaches its symbols in.
+    /// The tree of the symbols for the layout, by how often each one is referenced. The symbols
+    /// that are referenced equally often keep the order they're given in, unless every tree is in
+    /// the order the program reaches its symbols in.
     pub(super) fn layout_tree(&self, symbols: Vec<SymbolId>) -> Environment {
         let mut symbols: IndexSet<SymbolId> = symbols.into_iter().collect();
 
-        if self.layout == Layout::Reached && !self.is_in_reach_order(&symbols) {
-            self.note_reordered(|reordered| reordered.others = true);
-        }
-
-        if self.layout == Layout::EverythingReached {
+        if self.layout == Layout::Reached {
+            // Only to find out whether everything reached would lay them out differently
+            if self.order_by_reach(&mut symbols.clone()) {
+                self.note_reordered(|reordered| reordered.others = true);
+            }
+        } else if self.layout == Layout::EverythingReached {
             self.order_by_reach(&mut symbols);
         }
 
-        let Some(nesting) = self.nesting.clone() else {
+        let Some(nesting) = &self.nesting else {
             return Environment::tree(
                 symbols
                     .into_iter()
@@ -197,7 +248,7 @@ impl Lowerer<'_, '_, '_> {
         key.sort();
 
         if let Some(&block) = nesting.by_symbols.get(&key) {
-            return Environment::clone(&nesting.blocks[block].tree);
+            return nesting.blocks[block].tree.clone();
         }
 
         // The largest block that each symbol is in that's inside of these symbols. If a block is
@@ -227,7 +278,7 @@ impl Lowerer<'_, '_, '_> {
             }
         }
 
-        self.nested_tree(&nesting, &symbols, &largest)
+        self.nested_tree(nesting, &symbols, &largest)
     }
 
     /// The tree of the symbols, with each one that's in a block given by `largest` laid out as
@@ -246,7 +297,7 @@ impl Lowerer<'_, '_, '_> {
                 Some(&index) => {
                     if placed.insert(index) {
                         let block = &nesting.blocks[index];
-                        parts.push((Environment::clone(&block.tree), block.references));
+                        parts.push((block.tree.clone(), block.references));
                     }
                 }
                 None => parts.push((
@@ -262,8 +313,7 @@ impl Lowerer<'_, '_, '_> {
     fn find_nesting(&self) -> Nesting {
         // The captures of each function that has a tree of them, as it's lowered outside of any
         // inlined call. Elsewhere, it can capture fewer, and that tree isn't nested
-        let mut sets: Vec<IndexSet<SymbolId>> = Vec::new();
-        let mut seen = HashSet::new();
+        let mut sets = Vec::new();
 
         for &symbol in self.dependencies(self.main, false).iter() {
             if symbol == self.main
@@ -273,8 +323,7 @@ impl Lowerer<'_, '_, '_> {
                 continue;
             }
 
-            let mut captures = self.lowered_captures(symbol);
-            self.order_captures(symbol, &mut captures);
+            let mut captures = self.ordered_captures(symbol);
 
             let for_loop = self.graph.is_loop(symbol);
             captures.retain(|&capture| self.is_grouped_capture(capture, for_loop));
@@ -285,15 +334,12 @@ impl Lowerer<'_, '_, '_> {
 
             let mut key: Vec<SymbolId> = captures.iter().copied().collect();
             key.sort();
-
-            if seen.insert(key) {
-                sets.push(captures);
-            }
+            sets.push((key, captures));
         }
 
         // The sort is stable, so sets of the same size stay in the order the program reaches
         // their functions in
-        sets.sort_by_key(IndexSet::len);
+        sets.sort_by_key(|(key, _)| key.len());
 
         let mut nesting = Nesting::default();
 
@@ -301,7 +347,12 @@ impl Lowerer<'_, '_, '_> {
         // taken from the smallest
         let mut outermost: HashMap<SymbolId, usize> = HashMap::new();
 
-        for symbols in sets {
+        for (key, symbols) in sets {
+            // Functions that capture the same symbols have the same block
+            if nesting.by_symbols.contains_key(&key) {
+                continue;
+            }
+
             // The blocks it overlaps must all be inside of it. They're disjoint, so that holds if
             // each one has as many of its symbols as it has
             let mut overlaps: HashMap<usize, usize> = HashMap::new();
@@ -335,14 +386,12 @@ impl Lowerer<'_, '_, '_> {
                 nesting.innermost.entry(symbol).or_insert(index);
             }
 
-            let mut key: Vec<SymbolId> = symbols.iter().copied().collect();
-            key.sort();
             nesting.by_symbols.insert(key, index);
 
             nesting.blocks.push(Block {
                 len: symbols.len(),
                 parent: None,
-                tree: Rc::new(tree),
+                tree,
                 references: symbols
                     .iter()
                     .map(|&symbol| self.graph.layout_references(symbol))

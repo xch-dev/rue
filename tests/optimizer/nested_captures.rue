@@ -1,7 +1,7 @@
-// The loop in `add_scaled` captures a subset of what `add_scaled` does, and they call each
-// other. The captures they share are laid out as the loop's tree inside of the function's, so
-// the function passes the loop its environment as it is, as `(c 1 7)`, rather than rebuilding
-// the loop's tree from its own.
+// The loop in `add_scaled` captures what `add_scaled` does, and its own `xs` and `n`. The
+// captures they share are laid out as `add_scaled`'s tree inside of the loop's, so the loop calls
+// `add_scaled` with them as one path, `4`, and the loop's tree has the shape of `add_scaled`'s
+// whole environment, so `add_scaled` calls the loop with it as it is, as `(c 1 7)`.
 
 fn main(xs: List<Int>, n: Int) -> Int {
     add_scaled(xs, n)
