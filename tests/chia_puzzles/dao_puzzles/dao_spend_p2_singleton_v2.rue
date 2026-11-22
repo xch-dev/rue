@@ -238,7 +238,10 @@ fn dedupe(coins: List<ParentAmount>, ids: List<Bytes32>) -> List<ParentAmount> {
 }
 
 fn contains(item: Bytes32, items: List<Bytes32>) -> Bool {
-    for other in items fold found = false { item == other || found }
+    if items is nil {
+        return false;
+    }
+    item == items.first || contains(item, items.rest)
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.
@@ -424,5 +427,55 @@ test fn skips_a_later_duplicate_cat_coin() -> Any {
                 ParentAmount { parent: sha256("first"), amount: 10 },
             ],
         }],
+    ))
+}
+
+// The amounts of every created coin are added up, so the change is what's left after all of them
+test fn spends_xch_to_several_payees() -> Any {
+    check(spend(
+        [
+            CreateCoin { puzzle_hash: sha256("first_payee"), amount: 30 },
+            ReserveFee { amount: 1 },
+            CreateCoin { puzzle_hash: sha256("second_payee"), amount: 25 },
+            CreateCoin { puzzle_hash: sha256("melt"), amount: -113 },
+        ],
+        nil,
+        [
+            ParentAmount { parent: sha256("first"), amount: 50 },
+            ParentAmount { parent: sha256("second"), amount: 40 },
+        ],
+        nil,
+    ))
+}
+
+test fn spends_cats_to_several_payees() -> Any {
+    check(spend(
+        nil,
+        [TailConditions {
+            tail_hash: sha256("first_tail"),
+            conditions: [
+                CreateCoin { puzzle_hash: sha256("first_payee"), amount: 10 },
+                ReserveFee { amount: 1 },
+                CreateCoin { puzzle_hash: sha256("second_payee"), amount: 15 },
+            ],
+        }],
+        nil,
+        [TailCoins {
+            tail_hash: sha256("first_tail"),
+            coins: [ParentAmount { parent: sha256("first"), amount: 40 }],
+        }],
+    ))
+}
+
+// Two payments that only spend more than the coins hold together
+test fn overspends_xch_with_two_payments() -> Any {
+    check(spend(
+        [
+            CreateCoin { puzzle_hash: sha256("first_payee"), amount: 30 },
+            CreateCoin { puzzle_hash: sha256("second_payee"), amount: 30 },
+        ],
+        nil,
+        [ParentAmount { parent: sha256("first"), amount: 50 }],
+        nil,
     ))
 }

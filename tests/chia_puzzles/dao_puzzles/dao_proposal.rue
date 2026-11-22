@@ -334,7 +334,10 @@ fn loop_over_vote_coins(
 }
 
 fn contains(item: Bytes32, items: List<Bytes32>) -> Bool {
-    for other in items fold found = false { item == other || found }
+    if items is nil {
+        return false;
+    }
+    item == items.first || contains(item, items.rest)
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.

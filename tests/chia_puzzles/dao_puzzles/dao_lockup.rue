@@ -290,14 +290,15 @@ fn remove_all(items: List<Bytes32>, list: List<Bytes32>) -> List<Bytes32> {
 
 // Removes the first occurrence of the item, or returns nil if it isn't in the list.
 fn remove(item: Bytes32, list: List<Bytes32>) -> List<Bytes32> {
-    // Only the first match is removed, and the rest after it is kept as it is
-    for first, rest in list fold removed: List<Bytes32> = nil {
-        if first == item {
-            rest
-        } else {
-            [first, ...removed]
-        }
+    if list is nil {
+        return nil;
     }
+
+    if list.first == item {
+        return list.rest;
+    }
+
+    [list.first, ...remove(item, list.rest)]
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.
