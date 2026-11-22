@@ -1,0 +1,18 @@
+fn produce<T>() -> (T, fn(x: T) -> nil) {
+    unchecked_cast(nil)
+}
+
+fn call<R>(f: fn() -> R) -> R {
+    f()
+}
+
+// `produce` is passed as a value, and its `T` is in both positions of `R`. The expected type only
+// reaches `T` as upper bounds, so it's its least type, `Never`, which the parameter of
+// `fn(x: Int) -> nil` isn't. This is by design (#416's gap): giving `T` the lower bounds its upper
+// bounds imply rejected programs that compile today, in five review passes, and the last of them
+// broke the very bound it derived them from (see the PR that added this test). Specify `T`
+// instead: `call(produce::<Int>)` or `call::<(Int, fn(x: Int) -> nil)>(produce)` compiles
+fn instance_in_both_positions() -> Int {
+    let _result: (Int, fn(x: Int) -> nil) = call(produce);
+    1
+}

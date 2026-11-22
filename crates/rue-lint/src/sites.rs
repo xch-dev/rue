@@ -50,6 +50,9 @@ pub struct LintSites {
     /// either written or a constant. The value isn't in the HIR unless it's evaluated for its
     /// effect.
     pub unused_struct_spreads: Vec<UnusedStructSpread>,
+    /// The lists whose only item is a `for` that makes a list. Whether it does, and whether a
+    /// list of lists is expected there, is only known while the list is compiled.
+    pub bracketed_fors: Vec<BracketedFor>,
 }
 
 /// Why nothing is read from a value spread in a struct initializer.
@@ -79,6 +82,16 @@ pub struct UnusedStructSpread {
     /// Whether the value is still evaluated, since it isn't a path (such as a function call), so
     /// removing it could change what the program does.
     pub evaluated: bool,
+}
+
+/// A list whose only item is a `for` that makes a list, such as `[for x in xs { x }]` (see
+/// [`LintSites::bracketed_fors`]).
+#[derive(Debug, Clone)]
+pub struct BracketedFor {
+    /// The list, with its brackets.
+    pub list: SrcLoc,
+    /// The `for` inside of it.
+    pub for_expr: SrcLoc,
 }
 
 /// A type guard or `match` arm after which a struct is wider than it could be (see

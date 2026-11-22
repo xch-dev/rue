@@ -1,11 +1,14 @@
 use log::debug;
 use rue_ast::{AstExpr, AstListExpr, AstNode};
 use rue_hir::{FunctionCall, Hir, HirId, List, Value};
+use rue_lint::BracketedFor;
 use rue_types::{Pair, Type, TypeId, Union};
 
 use super::call_inference::{
     compile_refined_element, holds_other_pairs, list_of, pair_parts, record_element,
+    references_call_generics,
 };
+use super::for_expr::end_list_loop_with;
 use crate::Compiler;
 
 /// Compiles a list. Its type has a pair for each item, with the type of the last item as the rest
@@ -109,6 +112,10 @@ pub fn compile_list_expr(
         nil_terminated = false;
     }
 
+    if nil_terminated && let [value] = values.as_slice() {
+        record_bracketed_for(ctx, list, value.ty, last_item_type);
+    }
+
     let mut ty = ctx.builtins().nil.ty;
 
     for (i, value) in values.iter().rev().enumerate() {
@@ -127,10 +134,65 @@ pub fn compile_list_expr(
     Value::new(hir, ty)
 }
 
+/// Records a list whose only item is a `for` that makes a list, such as `[for x in xs { x }]`, for
+/// the `bracketed_for` lint: the `for` is a list already, so this is a list with one list in it.
+/// It isn't recorded if that's what the list is expected to be, as with a `List<List<Int>>`, or
+/// a list of items that are each a list or something else.
+fn record_bracketed_for(
+    ctx: &mut Compiler,
+    list: &AstListExpr,
+    item_type: TypeId,
+    expected_item: Option<TypeId>,
+) {
+    let Some(item) = list.items().next() else {
+        return;
+    };
+
+    let Some(AstExpr::ForExpr(for_expr)) = item.expr() else {
+        return;
+    };
+
+    let types = ctx.builtins().types;
+    let any_list = list_of(ctx, types.permissive_any);
+
+    // A fold's value isn't a list of the body's values, and a loop's value is nil
+    if for_expr.fold().is_some()
+        || ctx.is_unresolved(item_type)
+        || ctx.is_assignable(item_type, types.nil)
+        || !ctx.is_assignable(item_type, any_list)
+    {
+        return;
+    }
+
+    // A list of lists is what's expected, if the `for` is what an item is expected to be, and
+    // that isn't a type that says nothing about the item, such as `Any`. A type with the generics
+    // of a call that's being inferred isn't known yet, so then it's whether it's a list at all,
+    // which `List<T>` is, and `T` isn't
+    if let Some(expected) = expected_item {
+        let expects_list = if references_call_generics(ctx, expected) {
+            ctx.is_assignable(expected, any_list)
+        } else {
+            ctx.is_assignable(item_type, expected)
+                && !ctx.is_assignable(types.recursive_any, expected)
+        };
+
+        if expects_list {
+            return;
+        }
+    }
+
+    let site = BracketedFor {
+        list: ctx.trimmed_srcloc(list.syntax()),
+        for_expr: ctx.trimmed_srcloc(for_expr.syntax()),
+    };
+    ctx.lint_sites_mut().bracketed_fors.push(site);
+}
+
 /// The part of a list from the first item that's spread before the last one. Each such spread is
 /// a call to the builtin function that puts a list's items in front of the rest of the list (see
 /// `Builtins::spread_list`), unless what's spread is a list literal, whose items are put in the
-/// list directly.
+/// list directly, or a `for` expression, which builds its list in front of the rest itself (see
+/// [`end_list_loop_with`]).
 struct Tail {
     /// The type this part of the list is expected to be, which each spread is compiled against.
     expected: Option<TypeId>,
@@ -202,6 +264,9 @@ impl Tail {
         };
         let mut pending: Vec<HirId> = Vec::new();
 
+        let item_type = union_of(ctx, self.item_types);
+        let ty = list_of(ctx, item_type);
+
         for (hir, spread) in self.items.into_iter().rev() {
             if !spread {
                 pending.push(hir);
@@ -217,6 +282,15 @@ impl Tail {
 
             rest = prepend(ctx, &mut pending, rest);
 
+            // A `for` builds its list in front of the rest itself, by ending with it. That's
+            // only done once: a list that starts with such a `for` is its call too, and where
+            // it's spread before other items, it's copied in front of them
+            if let Some(function) = ctx.take_list_loop(hir) {
+                end_list_loop_with(ctx, function, rest, ty);
+                rest = hir;
+                continue;
+            }
+
             let spread_list = ctx.builtins().spread_list;
             let function = ctx.alloc_hir(Hir::Reference(spread_list));
             rest = ctx.alloc_hir(Hir::FunctionCall(FunctionCall {
@@ -227,9 +301,6 @@ impl Tail {
         }
 
         let hir = prepend(ctx, &mut pending, rest);
-
-        let item_type = union_of(ctx, self.item_types);
-        let ty = list_of(ctx, item_type);
 
         Value::new(hir, ty)
     }

@@ -542,14 +542,14 @@ fn compile_arm(
             debug!("Unresolved match arm body");
             ctx.unresolved()
         }
-        (Some(body), Some(branches)) if arm.ends_with_brace() => {
-            compile_branching_expr(ctx, &body, expected_type, branches).0
-        }
-        (Some(body), Some(branches)) if branches.is_statement() => {
+        (Some(body), Some(branches)) if branches.is_statement() && !arm.ends_with_brace() => {
             ctx.diagnostic(body.syntax(), DiagnosticKind::StatementMatchArmValue);
             compile_expr(ctx, &body, expected_type)
         }
-        (Some(body), _) => compile_expr(ctx, &body, expected_type),
+        (Some(body), Some(branches)) => {
+            compile_branching_expr(ctx, &body, expected_type, branches).0
+        }
+        (Some(body), None) => compile_expr(ctx, &body, expected_type),
     };
 
     ctx.revert_mappings(index, range.end());

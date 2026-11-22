@@ -356,6 +356,30 @@ fn test_code_actions_apply_suggestions() {
 }
 
 #[test]
+fn test_code_actions_for_a_bracketed_for() {
+    let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
+
+    // Each suggestion is a quick fix, and neither is preferred, since which one is meant depends
+    // on what the list is for
+    expect![[r#"
+        Remove the brackets (preferred: false):
+        fn main(xs: List<Int>) -> List<Int> {
+            for x in xs { x * 2 }
+        }
+
+        Spread the `for` into the list with `...` (preferred: false):
+        fn main(xs: List<Int>) -> List<Int> {
+            [...for x in xs { x * 2 }]
+        }
+
+    "#]]
+    .assert_eq(&project.code_actions(
+        "main.rue",
+        "fn main(xs: List<Int>) -> List<Int> {\n    [for x in xs { x * 2 }]\n}\n",
+    ));
+}
+
+#[test]
 fn test_diagnostics_unreachable_code() {
     let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
 
