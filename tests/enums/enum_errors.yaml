@@ -33,7 +33,7 @@ diagnostics:
 - Expected symbol, but found type `Shape` at enum_errors.rue:87:26
 - Cannot assign `1` to `Mode` without a cast, since they are semantically different at enum_errors.rue:88:30
 - Cannot assign `Shape::Empty` to `Shape::Circle`, since they are incompatible at enum_errors.rue:89:41
-- Expected 1 generic arguments, but found 0 at enum_errors.rue:90:37
+- Missing generic arguments for `Option::Some`, which aren't inferred from its fields; specify them explicitly, e.g. `Option::Some::<...> { ... }` at enum_errors.rue:90:37
 - Cannot subpath non-module symbol `Circle` at enum_errors.rue:91:31
 - Unknown field `kind` on type `Shape::Circle` at enum_errors.rue:92:53
 - Cannot assign `Option::None<Never>` to `Int`, since they are incompatible at enum_errors.rue:93:29

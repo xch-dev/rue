@@ -31,7 +31,6 @@ diagnostics:
 - Unused binding `rest` at match_errors.rue:109:34
 - Expected binding, found integer literal at match_errors.rue:109:40
 - Undeclared symbol `first` at match_errors.rue:109:47
-- Cannot assign `({unresolved}, {unresolved}) | 0 | ({unresolved}, nil)` to `Int` without a type guard, since the value isn't always a valid `Int` at match_errors.rue:115:60
 - Expected one of `as`, `if`, `=>`, found `(` at match_errors.rue:117:20
 - Undeclared symbol `first` at match_errors.rue:117:21
 - Undeclared symbol `rest` at match_errors.rue:117:28

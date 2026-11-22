@@ -4,7 +4,9 @@ diagnostics:
 - Unused function `take` at generic_inference_argument_order_errors.rue:5:4
 - Unused parameter `function` at generic_inference_argument_order_errors.rue:5:22
 - Unused function `candidates_keep_the_argument_order` at generic_inference_argument_order_errors.rue:11:4
-- "Cannot assign `fn(x: 5 | \"hi\") -> 5` to `fn(a: String | 5) -> String | 5`, since they are incompatible at generic_inference_argument_order_errors.rue:12:42"
+- |-
+  Cannot assign `fn(x: 5 | "hi") -> 5` to `fn(a: String | 5) -> String | 5`, since they are incompatible at generic_inference_argument_order_errors.rue:12:42
+    note: `T` is inferred as `String | 5` from the arguments of this call
 - Binding `shown` is returned directly after it's declared at generic_inference_argument_order_errors.rue:13:5
 - Cannot assign `String | 5` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_argument_order_errors.rue:13:22
 - Unused function `either` at generic_inference_argument_order_errors.rue:17:4
