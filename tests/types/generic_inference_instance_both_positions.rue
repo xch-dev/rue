@@ -1,0 +1,18 @@
+fn produce<T>() -> (T, fn(x: T) -> nil) {
+    unchecked_cast(nil)
+}
+
+fn call<R>(f: fn() -> R) -> R {
+    f()
+}
+
+// The ways to specify the `T` that `call(produce)` can't infer (see the errors file)
+test fn instance_specified_on_the_function() -> Int {
+    let _result: (Int, fn(x: Int) -> nil) = call(produce::<Int>);
+    1
+}
+
+test fn instance_specified_on_the_call() -> Int {
+    let _result: (Int, fn(x: Int) -> nil) = call::<(Int, fn(x: Int) -> nil)>(produce);
+    1
+}
