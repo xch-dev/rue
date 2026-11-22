@@ -987,6 +987,16 @@ impl DependencyGraph {
         self.owners(symbol).any(|owner| owner == function)
     }
 
+    /// Whether every reference to the symbol is inside of the function: in its body, or in the
+    /// value or body of something that's defined in it.
+    pub fn is_only_referenced_in(&self, symbol: SymbolId, function: SymbolId) -> bool {
+        self.dependencies.iter().all(|(&from, dependencies)| {
+            !dependencies.contains(&symbol)
+                || from == function
+                || self.is_defined_in(from, function)
+        })
+    }
+
     /// Whether the function can call itself other than through a loop, so that it can't be
     /// inlined. A loop on the way back to the function is in a cycle, so it calls itself and is
     /// never inlined. A function that only gets back to itself through loops, such as one whose

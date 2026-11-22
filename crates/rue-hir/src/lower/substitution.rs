@@ -248,6 +248,116 @@ impl Lowerer<'_, '_, '_> {
         Evaluation::new(self, symbol).block(&block.statements[index + 1..], block.body)
     }
 
+    /// The loop that the binding is evaluated for where it's called, rather than bound where its
+    /// let statement is, if there is one. That's a binding that's only referenced inside of a
+    /// loop, which captures it (see [`crate::DependencyGraph::is_loop_capture`]), where the
+    /// `for` expression that calls the loop is evaluated at most once for each time the let
+    /// statement is. The call evaluates what the loop captures, so the value is evaluated there,
+    /// as recursion written by hand evaluates the argument it passes the value as, and it isn't
+    /// bound before. The loop still reads it from what it's called with, so it's evaluated once,
+    /// whatever the loop does with it.
+    ///
+    /// A value that may fail is only evaluated at the call if the rest of the block always gets
+    /// there, as for any binding that's substituted where it's referenced (see
+    /// [`Self::can_substitute`]), with the call of the loop counting as that reference. A value
+    /// made of literals is substituted inside of the loop instead.
+    ///
+    /// This can't depend on the arguments of the calls being inlined, unlike other bindings,
+    /// since it's decided both where the let statement is lowered and where the loop is called.
+    /// So the call has to be in the block itself: in one of its statements, or its value, and
+    /// not inside of a lambda, another loop, a type guard that uses its value more than once, the
+    /// value of a `let`, or an argument of a call that's inlined.
+    pub(super) fn loop_call_substitution(&self, symbol: SymbolId) -> Option<SymbolId> {
+        let Symbol::Binding(binding) = self.db.symbol(symbol) else {
+            return None;
+        };
+
+        if !self.options.auto_inline
+            || binding.inline
+            || !self.graph.is_loop_capture(symbol)
+            || self.db.is_literal_hir(binding.value.hir)
+        {
+            return None;
+        }
+
+        let (block, index) = self.graph.let_statement(symbol)?;
+
+        let Hir::Block(block) = self.db.hir(block) else {
+            return None;
+        };
+
+        let statements = &block.statements[index + 1..];
+        let mut calls = Vec::new();
+
+        for statement in statements {
+            if !matches!(statement, Statement::Let(..)) {
+                for hir in statement.hirs() {
+                    self.direct_loop_calls(symbol, hir, &mut calls);
+                }
+            }
+        }
+
+        if let Some(body) = block.body {
+            self.direct_loop_calls(symbol, body, &mut calls);
+        }
+
+        let [function] = calls[..] else {
+            return None;
+        };
+
+        // The loop can refer to it any number of times, but nothing else can
+        if !self.graph.is_only_referenced_in(symbol, function) {
+            return None;
+        }
+
+        (!may_fail(self, binding.value.hir)
+            || Evaluation::new(self, function).block(statements, block.body))
+        .then_some(function)
+    }
+
+    /// Finds the calls of loops that capture the symbol, which the node evaluates at most once
+    /// each time it's evaluated (see [`Self::loop_call_substitution`]).
+    fn direct_loop_calls(&self, symbol: SymbolId, hir: HirId, calls: &mut Vec<SymbolId>) {
+        rue_types::grow_stack(|| match self.db.hir(hir) {
+            Hir::FunctionCall(call) => {
+                if let Hir::Reference(function) = self.db.hir(call.function)
+                    && self
+                        .graph
+                        .loop_captures(*function)
+                        .is_some_and(|captures| captures.contains(&symbol))
+                {
+                    calls.push(*function);
+                }
+
+                // An inlined call evaluates its arguments wherever it refers to its parameters
+                if self.inlined_callee(call.function).is_none() {
+                    for &arg in &call.args {
+                        self.direct_loop_calls(symbol, arg, calls);
+                    }
+                }
+            }
+            Hir::Guard(guard) if guard.value_uses() > 1 => {}
+            Hir::Block(block) => {
+                for statement in &block.statements {
+                    if !matches!(statement, Statement::Let(..)) {
+                        for hir in statement.hirs() {
+                            self.direct_loop_calls(symbol, hir, calls);
+                        }
+                    }
+                }
+
+                if let Some(body) = block.body {
+                    self.direct_loop_calls(symbol, body, calls);
+                }
+            }
+            node => {
+                for child in node.children() {
+                    self.direct_loop_calls(symbol, child, calls);
+                }
+            }
+        });
+    }
+
     /// Whether the constant's single reference is always evaluated when the program is run, or
     /// fails. Constants that are bound are evaluated at the start of the program, so a reference
     /// in one of their values counts too (see [`Self::find_constant_roots`]).

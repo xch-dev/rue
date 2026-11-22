@@ -1,11 +1,11 @@
 tests:
 - name: lambda_called_in_a_loop
-  program: (a (q 2 (q 2 (q 2 (q 2 39 (c (c 39 2) 11)) (c (c (q . 2) (c (q 1 16 5 2) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) 1)) (c (a 21 (c 21 2)) 1)) (c (a 14 (q 1 2 3 4 5 6 7 8)) 1)) (c (c (q 2 (i 3 (q 4 (a 6 (c 5 ())) (a 4 (c 2 7))) ()) 1) (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1))) ()))
+  program: (a (q 2 (q 2 (q 2 19 (c (c 19 (c (q . 2) (c (q 1 16 5 2) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ())))) 5)) (c (a 21 (c 21 2)) 1)) (c (a 14 (q 1 2 3 4 5 6 7 8)) 1)) (c (c (q 2 (i 3 (q 4 (a 6 (c 5 ())) (a 4 (c 2 7))) ()) 1) (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1))) ()))
   debug_program: (a (q 2 (q 2 (q 2 (q 2 39 (c (c 39 2) 11)) (c (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) 1)) (c (a 21 (c 21 2)) 1)) (c (a 14 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) (c (q . 5) (c (q . 6) (c (q . 7) (c (q . 8) ()))))))))) 1)) (c (c (q 2 (i 3 (q 4 (a 6 (c (f 3) ())) (a 4 (c (c 4 6) (r 3)))) ()) 1) (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1))) ()))
   output: (37 38 39 40 41 42 43 44)
-  runtime_cost: 30366
-  byte_cost: 3684000
-  total_cost: 3714366
+  runtime_cost: 30100
+  byte_cost: 3516000
+  total_cost: 3546100
 - name: lambda_called_by_a_recursive_function
   program: (a (q 2 (q 2 (q 2 43 (c 43 (c 5 (c (q . 2) (c (q 1 16 5 2) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ())))))) (c (a 9 (c 9 2)) 1)) (c (a 14 (q 1 2 3 4 5 6 7 8)) 1)) (c (c (q 2 (i 3 (q 16 5 (a 2 (c 2 7))) ()) 1) (c (q 2 (i 5 (q 4 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) ()) 1) (q 2 (i (l 1) (q . 1) (q 2 (i 1 (q 8) (q . 1)) 1)) 1))) ()))
   debug_program: (a (q 2 (q 2 (q 2 43 (c 43 (c 5 (c (q . 2) (c (c (q . 1) (q 16 5 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ())))))) (c (a 9 (c 9 2)) 1)) (c (a 14 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) (c (q . 5) (c (q . 6) (c (q . 7) (c (q . 8) ()))))))))) 1)) (c (c (q 2 (i (not 3) () (q 16 (f 3) (a 2 (c 2 (r 3))))) 1) (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at captured_values.rue:9:5"))) 1))) ()))

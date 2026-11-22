@@ -795,7 +795,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 let else_ = self.lower_hir(env, else_);
                 self.arena.alloc(Lir::If(condition, then, else_, inline))
             }
-            Hir::FunctionCall(call) => self.lower_function_call(env, call),
+            Hir::FunctionCall(call) => self.lower_function_call(env, hir, call),
             Hir::Unary(op, hir) => {
                 let lir = self.lower_hir(env, hir);
                 match op {
@@ -985,7 +985,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         lir
     }
 
-    fn lower_function_call(&mut self, env: &Environment, call: FunctionCall) -> LirId {
+    fn lower_function_call(&mut self, env: &Environment, hir: HirId, call: FunctionCall) -> LirId {
         if let Some(callee) = self.inlined_callee(call.function)
             && let Symbol::Function(function) = self.db.symbol(callee).clone()
         {
@@ -1023,8 +1023,25 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 function.nil_terminated && matches!(param_group, SymbolGroup::Sequential(_)),
             );
 
+            // The `for` expression's call of a loop evaluates the values that are only bound for
+            // the loop where it's called, rather than reading them from where they're bound.
+            // The loop's calls of itself pass on what it was called with
+            let mut substituted = HashMap::new();
+
+            if function.kind == FunctionKind::Loop && !self.db.is_loop_rest_call(hir) {
+                for capture in self.lowered_captures(symbol) {
+                    if self.loop_call_substitution(capture) == Some(symbol) {
+                        let value = self.lower_symbol_value(env, capture);
+                        substituted.insert(capture, value);
+                    }
+                }
+            }
+
+            let substituted = (!substituted.is_empty()).then_some(&substituted);
+
             for group in &capture_groups {
-                arg_env = self.lower_group_environment(env, group, arg_env, true, None, true);
+                arg_env =
+                    self.lower_group_environment(env, group, arg_env, true, substituted, true);
             }
 
             return self.arena.alloc(Lir::Run(function_lir, arg_env));
@@ -1572,7 +1589,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         stmts: Vec<Statement>,
         body: Tail,
     ) -> LirId {
-        let binding_groups = self.group_symbols(symbols.clone(), false, true, false);
+        // A binding that's evaluated where the only loop that uses it is called isn't bound here
+        let bound = symbols
+            .iter()
+            .copied()
+            .filter(|&symbol| self.loop_call_substitution(symbol).is_none())
+            .collect();
+
+        let binding_groups = self.group_symbols(bound, false, true, false);
 
         let mut body_env = env.clone();
 
