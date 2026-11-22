@@ -67,6 +67,7 @@ pub(crate) struct Checkpoint {
     undo: usize,
     uninferred_parameters: usize,
     named_generics: Vec<NamedGeneric>,
+    compiling_default: Option<(TypeId, String)>,
     first_placeholder: Option<&'static Location<'static>>,
     cancelled: bool,
 }
@@ -493,27 +494,86 @@ impl Compiler {
     /// maps that hold things from before is taken out again (see `Undo`), and the state that
     /// compiling an expression changes and puts back, which is only as large as what's being
     /// compiled, is copied.
+    ///
+    /// Every field is named here, so that one added later doesn't compile until it's said how it
+    /// goes back (see [`Self::restore`]).
     pub(crate) fn checkpoint(&self) -> Checkpoint {
+        let Self {
+            // Settings, and what doesn't depend on the code being compiled
+            options: _,
+            source: _,
+            builtins: _,
+            cancel: _,
+            external_programs: _,
+            // Only grow, so they go back to where they ended
+            diagnostics,
+            db,
+            syntax_map,
+            lint_sites,
+            named_types,
+            unchecked_type_items,
+            pending_defaults,
+            uninferred_parameters,
+            undo,
+            // Indexed by where they are in the diagnostics, which `restore` keeps those before
+            uninferred_errors: _,
+            suppressed: _,
+            // Keyed by the scopes and nodes made since, which `restore` clears
+            registered_scopes: _,
+            list_loops: _,
+            // Copied, since compiling an expression changes them and puts them back
+            scope_stack,
+            declaration_stack,
+            return_stack,
+            return_count,
+            call_frames,
+            expected,
+            argument_requirement,
+            named_generics,
+            compiling_default,
+            first_placeholder,
+            cancelled,
+            // Added to for something from before, so what's added is logged in `undo`
+            inferred_fields: _,
+            default_uses: _,
+            overridden_symbols: _,
+            narrowed_references: _,
+            // Only changed while compiling items and imports, which a lambda's body has none of,
+            // or put back by what changes them before it returns (`feeding_depth` around a lambda
+            // that's compiled in steps, which is where checkpoints are taken)
+            module_stack: _,
+            file: _,
+            inline_modules: _,
+            sibling_scopes: _,
+            error_items: _,
+            field_types: _,
+            declared_variants: _,
+            declared_defaults: _,
+            ambiguous_imports: _,
+            feeding_depth: _,
+        } = self;
+
         Checkpoint {
-            db: self.db.checkpoint(),
-            diagnostics: self.diagnostics.len(),
-            syntax_items: self.syntax_map.len(),
-            lint_sites: self.lint_sites.checkpoint(),
-            named_types: self.named_types.len(),
-            unchecked_type_items: self.unchecked_type_items.len(),
-            pending_defaults: self.pending_defaults.len(),
-            scope_stack: self.scope_stack.clone(),
-            declaration_stack: self.declaration_stack.clone(),
-            return_stack: self.return_stack.clone(),
-            return_count: self.return_count,
-            call_frames: self.call_frames.clone(),
-            expected: self.expected,
-            argument_requirement: self.argument_requirement,
-            undo: self.undo.len(),
-            uninferred_parameters: self.uninferred_parameters.len(),
-            named_generics: self.named_generics.clone(),
-            first_placeholder: self.first_placeholder,
-            cancelled: self.cancelled,
+            db: db.checkpoint(),
+            diagnostics: diagnostics.len(),
+            syntax_items: syntax_map.len(),
+            lint_sites: lint_sites.checkpoint(),
+            named_types: named_types.len(),
+            unchecked_type_items: unchecked_type_items.len(),
+            pending_defaults: pending_defaults.len(),
+            scope_stack: scope_stack.clone(),
+            declaration_stack: declaration_stack.clone(),
+            return_stack: return_stack.clone(),
+            return_count: *return_count,
+            call_frames: call_frames.clone(),
+            expected: *expected,
+            argument_requirement: *argument_requirement,
+            undo: undo.len(),
+            uninferred_parameters: uninferred_parameters.len(),
+            named_generics: named_generics.clone(),
+            compiling_default: compiling_default.clone(),
+            first_placeholder: *first_placeholder,
+            cancelled: *cancelled,
         }
     }
 
@@ -522,6 +582,9 @@ impl Compiler {
         let hirs = self.db.hirs_since(&checkpoint.db);
         for scope in self.db.scopes_since(&checkpoint.db) {
             self.registered_scopes.remove(&scope);
+        }
+        for hir in &hirs {
+            self.list_loops.remove(hir);
         }
         self.lint_sites.restore(&checkpoint.lint_sites, &hirs);
         self.db.restore(&checkpoint.db);
@@ -539,6 +602,8 @@ impl Compiler {
         self.uninferred_parameters
             .truncate(checkpoint.uninferred_parameters);
         self.named_generics.clone_from(&checkpoint.named_generics);
+        self.compiling_default
+            .clone_from(&checkpoint.compiling_default);
         self.syntax_map.truncate(checkpoint.syntax_items);
         self.named_types.truncate(checkpoint.named_types);
         self.unchecked_type_items
