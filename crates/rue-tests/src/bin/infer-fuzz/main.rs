@@ -6,7 +6,8 @@
 //! - **Inferred**: it compiles, and `main` gives the same output as the explicit program.
 //! - **Rejected**: it doesn't compile, although the explicit arguments are a valid instantiation.
 //! - **Unsound**: it compiles, but `main` gives a different output, or fails where the explicit
-//!   program didn't. This should never happen.
+//!   program didn't, or finishes where it raised. Two programs that both raise give the same
+//!   result, whatever the CLVM error is. This should never happen.
 //! - **Leaked**: it compiles, and `main` gives the same output, but a binding's or parameter's
 //!   type names a generic outside of where it's bound, such as a callee's generic that inference
 //!   left in it, or the `T` of an expected `fn<T>(a: T) -> T` named outside of it (`leak.rs`).
@@ -22,9 +23,10 @@
 //! Version 3 adds `probe` variants, each of which removes only the arguments of one call that
 //! nothing but an expected type's `Any` gives a type to, as
 //! `let f: (fn<T>(a: T) -> T) | Any = make_from_lambda(fn(x) => x);`. Rejecting it with
-//! `CannotInferGeneric` is right, so it counts as inferred, and compiling it must not leak a
-//! generic. A probe whose generic no parameter depends on, such as `pair_fn()`, compiles, since
-//! the generic is generalized over the annotation's `T`.
+//! `CannotInferGeneric`, or with `CannotInferParameterType` for a lambda parameter whose type is
+//! that generic, is right, so it counts as inferred, and compiling it must not leak a generic.
+//! A probe whose generic no parameter depends on, such as `pair_fn()`, compiles, since the
+//! generic is generalized over the annotation's `T`.
 //! Failures are grouped by category and the first diagnostic, and a few of each group are shrunk
 //! to a small reproduction.
 //!

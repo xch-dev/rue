@@ -86,6 +86,20 @@ pub enum Run {
     Error(String),
 }
 
+impl Run {
+    /// Whether running the two programs gives a different result: one raises and the other
+    /// doesn't, or both finish with different values. Two that both raise don't differ, whatever
+    /// the error is, since a raise is a failure on chain however it happens, and the CLVM error
+    /// depends on how the program is laid out, which inference can change without changing what
+    /// the program does (#362's final wide run, g3 seed 15604).
+    pub fn differs_from(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Error(_), Self::Error(_)) => false,
+            _ => self != other,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Compiled {
     Ok {
@@ -469,7 +483,7 @@ pub fn classify(
         Compiled::Ok {
             clvm, run, leak, ..
         } => {
-            if run != explicit_run {
+            if run.differs_from(explicit_run) {
                 let detail = format!("explicit: {explicit_run:?}, inferred: {run:?}");
                 outcome(Category::Unsound, None, false, Some(detail))
             } else if let Some(leak) = leak {
