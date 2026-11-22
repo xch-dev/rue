@@ -111,6 +111,20 @@ tests:
   runtime_cost: 151
   byte_cost: 180000
   total_cost: 180151
+- name: reader_waits_for_a_lambda_that_returns_its_generic
+  program: (a (q 6 (a 2 (c 2 (c (q 1) (c (q 21 4 (q . 100)) (q 4 (* 4 (q . 2)) (+ 6 (q . 1)))))))) (c (q 2 (i (a 11 (c 5 ())) (q . 5) (q 2 2 (c 2 (c (a 15 (c 5 ())) 7)))) 1) ()))
+  debug_program: (a (q 2 (q 6 2) (c (a 2 (c 2 (c (c (q . 1) ()) (c (c (q . 2) (c (c (q . 1) (q 21 (f 2) (q . 100))) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (* (f 2) (q . 2)) (+ (r 2) (q . 1)))) (c (q . 1) ()))))))) 1)) (c (q 2 (i (a 11 (c 5 ())) (q . 5) (q 2 2 (c 2 (c (a 15 (c 5 ())) (c 11 15))))) 1) ()))
+  output: "7"
+  runtime_cost: 27444
+  byte_cost: 1716000
+  total_cost: 1743444
+- name: readers_go_in_order
+  program: (q . 2)
+  debug_program: (a (q 2 2 (c (c (q . 1) ()) (c (c (q . 2) (c (c (q . 1) (q 21 (f 2) ())) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 16 (r 2) (q . 2))) (c (q . 1) ())))))) (c (q 2 (i (a 5 (c 2 ())) (q 2 7 (c 2 ())) ()) 1) ()))
+  output: "2"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
 diagnostics:
 - Unused parameter `backward` at generic_inference_argument_order.rue:9:40
 - Unused parameter `list` at generic_inference_argument_order.rue:21:15

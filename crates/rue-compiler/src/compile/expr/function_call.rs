@@ -170,6 +170,23 @@ pub fn compile_function_call_expr(
             mappings = with_never;
         }
 
+        // In a recursive call, a renamed generic that nothing gave a type is the caller's generic
+        // that it stands for (see `restore_renamed`). Where an error has been reported in the
+        // call's arguments, that error is why nothing did, so it isn't inferred, and isn't
+        // reported as such, and what the call returns doesn't show the caller's generic in errors
+        // that follow from that one
+        let mut stood_in = Vec::new();
+
+        if !renamed.is_empty() && has_errors_in_arguments(ctx, &args, reported) {
+            for &generic in &function.generics {
+                if renamed.contains_key(&generic) && mappings.get(&generic) == renamed.get(&generic)
+                {
+                    mappings.remove(&generic);
+                    stood_in.push(generic);
+                }
+            }
+        }
+
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {
                 continue;
@@ -291,7 +308,7 @@ pub fn compile_function_call_expr(
         // wrong type, or one for the arguments as a whole, such as one that's missing. That error
         // is what to fix, which specifying the generic wouldn't. An error in another argument
         // isn't why, and neither is any error for a generic that's only in the return type
-        let deferred = if uninferred.is_empty() {
+        let mut deferred = if uninferred.is_empty() {
             Vec::new()
         } else {
             deferred_generics(
@@ -302,6 +319,12 @@ pub fn compile_function_call_expr(
                 reported,
             )
         };
+
+        for generic in stood_in {
+            if !deferred.contains(&generic) {
+                deferred.push(generic);
+            }
+        }
 
         // The errors that only show those generics, such as one in the body of a lambda whose
         // parameter was left as one, follow from that error as well
@@ -480,6 +503,27 @@ fn unconstrained_as_never(
 }
 
 /// Whether an argument that the generic would have been inferred from has failed to compile.
+/// Whether an error has been reported in one of the arguments since there were `reported`
+/// diagnostics.
+fn has_errors_in_arguments(ctx: &mut Compiler, args: &[AstExpr], reported: usize) -> bool {
+    let errors = ctx.errors_since(reported);
+
+    if errors.is_empty() {
+        return false;
+    }
+
+    let arguments: Vec<_> = args
+        .iter()
+        .map(|arg| ctx.srcloc(arg.syntax()).span)
+        .collect();
+
+    errors.iter().any(|error| {
+        arguments
+            .iter()
+            .any(|arg| arg.start <= error.start && error.end <= arg.end)
+    })
+}
+
 fn from_unresolved_argument(
     ctx: &mut Compiler,
     checks: &[(AstExpr, TypeId, TypeId)],

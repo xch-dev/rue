@@ -2141,7 +2141,10 @@ fn compare_structure(
         (Type::Atom(_), Type::Pair(_)) => Comparison::Invalid,
         (Type::Pair(_), Type::Atom(_)) => Comparison::Invalid,
         (Type::Function(lhs), Type::Function(rhs)) => {
-            // TODO: We could relax the identical parameter requirement
+            // The arguments are passed as one list that the function takes apart by position, so
+            // a function type with another number of parameters, or one whose list doesn't end in
+            // `nil` where the other's does, as with a spread parameter, would read them from the
+            // wrong places
 
             if lhs.nil_terminated != rhs.nil_terminated || lhs.params.len() != rhs.params.len() {
                 Comparison::Invalid

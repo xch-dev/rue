@@ -252,3 +252,32 @@ test fn argument_doesnt_go_ahead_of_an_earlier_one() -> Int {
     );
     value
 }
+
+fn until<S>(state: S, done: fn(s: S) -> Bool, step: fn(s: S) -> S) -> S {
+    if done(state) {
+        return state;
+    }
+
+    until(step(state), done, step)
+}
+
+// A lambda that only reads a generic waits for one after it that returns it, which can add to
+// it: `done` is compiled after `step`, with `s` as the `(Int, Int)` that `step` makes of the
+// `(1, 0)`, not as the `(1, 0)` alone (see `Argument::adds`)
+test fn reader_waits_for_a_lambda_that_returns_its_generic() -> Int {
+    let result = until((1, 0), fn(s) => s.first > 100, fn(s) => (s.first * 2, s.rest + 1));
+    result.rest
+}
+
+fn both_read<S>(state: S, first: fn(s: S) -> Bool, second: fn(s: S) -> Int) -> Int {
+    if first(state) {
+        second(state)
+    } else {
+        0
+    }
+}
+
+// Two lambdas that only read the generic don't wait for each other, and go in order
+test fn readers_go_in_order() -> Int {
+    both_read((1, 0), fn(s) => s.first > 0, fn(s) => s.rest + 2)
+}

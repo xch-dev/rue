@@ -1631,9 +1631,9 @@ fn solve_with_lambda_parameters(
 /// mapping from the type expected of the call replaced by a weaker one. Each has a test in
 /// `tests/types/generic_inference_argument_order.rue`.
 ///
-/// Among the arguments that can go, it's today's order (#265): the other arguments in order, then
-/// the lambdas, the first whose parameter types have been inferred first. When none can, because
-/// they depend on each other, it's today's order too.
+/// Among the arguments that can go, the other arguments go in order, then the lambdas, the first
+/// whose parameter types have been inferred first (#265). When none can, because they depend on
+/// each other, they go in that order too.
 struct ArgumentOrder {
     arguments: Vec<Argument>,
     /// The arguments still to be compiled, the others in order and then the lambdas in order.
@@ -1678,6 +1678,12 @@ struct Argument {
     /// The generics that it can bound from above: those in the parameter types of the function
     /// types its parameter type has, such as `A` for `fn(a: A) -> B`.
     bounds_above: IndexSet<TypeId>,
+    /// For a lambda, the generics it can add to for another lambda that reads them: its writes,
+    /// other than those that are only in the types of its untyped parameters. Such a parameter is
+    /// compiled as what the generic is inferred as, so it adds nothing to it, as `s` doesn't to
+    /// `S` in `fn(s) => s.first > 100` for `fn(s: S) -> Bool`, while `fn(s) => (s.first, 1)` for
+    /// `fn(s: S) -> S` adds what it returns (see `ArgumentOrder::is_written`).
+    adds: IndexSet<TypeId>,
     /// For a lambda, the generics among its reads that are its whole parameter type, or members
     /// of it.
     bare: IndexSet<TypeId>,
@@ -2036,6 +2042,10 @@ impl ArgumentOrder {
                     reads,
                     writes: generics_in(ctx, function, param.ty),
                     bounds_above: bounded_above(ctx, function, param.ty),
+                    adds: match arg {
+                        AstExpr::LambdaExpr(lambda) => lambda_adds(ctx, function, lambda, param.ty),
+                        _ => generics_in(ctx, function, param.ty),
+                    },
                     bare: if is_lambda {
                         bare_generics(ctx, function, param.ty)
                     } else {
@@ -2090,14 +2100,17 @@ impl ArgumentOrder {
     /// through an instance of its own generics. For an argument that isn't a lambda, a lambda only
     /// counts for the generics it bounds from above: one that only gives the generic a lower
     /// bound would make its expected type widen a literal that it infers from its own arguments.
+    /// For a lambda, another lambda only counts for the generics it can add to (see
+    /// `Argument::adds`), so one that only reads a generic waits for one that returns it, as
+    /// `done` does for `step` in `until((1, 0), fn(s) => s.first > 100, fn(s) => (s.first * 2, 0))`.
     fn is_written(&self, i: usize, generic: TypeId) -> bool {
         self.pending.iter().any(|&other| {
             let argument = &self.arguments[other];
 
-            let writes = if !self.arguments[i].is_lambda() && argument.is_lambda() {
-                &argument.bounds_above
-            } else {
-                &argument.writes
+            let writes = match (self.arguments[i].is_lambda(), argument.is_lambda()) {
+                (false, true) => &argument.bounds_above,
+                (true, true) => &argument.adds,
+                _ => &argument.writes,
             };
 
             other != i && argument.holds_up() && writes.contains(&generic)
@@ -2119,7 +2132,7 @@ impl ArgumentOrder {
     }
 
     /// Whether compiling the argument now would change the expected type of an argument before it
-    /// in today's order that isn't a lambda, by adding to a generic that's already mapped in it.
+    /// in `pending` that isn't a lambda, by adding to a generic that's already mapped in it.
     /// That argument would have been compiled first, against that mapping, which can come from
     /// the type expected of the call, so this one waits for it rather than widen a literal the
     /// expected type keeps.
@@ -2986,6 +2999,36 @@ pub(crate) fn pair_parts(ctx: &mut Compiler, ty: TypeId) -> Option<(TypeId, Type
 }
 
 /// The positions of the lambda's parameters that have no type.
+/// The generics a lambda argument can add to (see `Argument::adds`). Where its parameter type
+/// isn't a function type, every generic in it counts.
+fn lambda_adds(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    lambda: &AstLambdaExpr,
+    param: TypeId,
+) -> IndexSet<TypeId> {
+    let writes = generics_in(ctx, function, param);
+    let semantic = rue_types::unwrap_semantic(ctx.types_mut(), param, true);
+
+    let Type::Function(expected) = ctx.ty(semantic).clone() else {
+        return writes;
+    };
+
+    let untyped = untyped_parameters(lambda);
+    let mut adds = generics_in(ctx, function, expected.ret);
+
+    for (index, ty) in expected.param_types().enumerate() {
+        if !untyped.contains(&index) {
+            adds.extend(generics_in(ctx, function, ty));
+        }
+    }
+
+    writes
+        .into_iter()
+        .filter(|generic| adds.contains(generic))
+        .collect()
+}
+
 fn untyped_parameters(lambda: &AstLambdaExpr) -> Vec<usize> {
     lambda
         .parameters()
