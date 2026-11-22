@@ -84,8 +84,8 @@ test fn function_and_loop_that_call_each_other() -> Int {
     size(runtime([1, [2, 3], [[4], 5]]))
 }
 
-// A function whose loop passes one of its parameters back to it as it is can't be inlined into the
-// loop, where the parameter would stand for itself, so it's called
+// A function whose loop passes one of its parameters back to it is called rather than inlined
+// into its loop, where the parameter would stand for itself
 fn count_leaves(tree: Tree, weight: Int) -> Int {
     if tree is Int {
         weight

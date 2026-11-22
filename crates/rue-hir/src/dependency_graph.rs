@@ -994,8 +994,10 @@ impl DependencyGraph {
     /// inlining itself again.
     ///
     /// A loop that captures one of the function's own values, such as a parameter it passes back
-    /// to the function, doesn't count: inlined into that loop, the function would be given its
-    /// own parameter as an argument, which then stands for itself.
+    /// to the function, doesn't count. Inlined into that loop, the function is given its own
+    /// parameter as an argument, which stands for itself, so measuring it goes to the depth limit
+    /// and is dropped, and a function that calls itself after such a loop is measured as a
+    /// candidate that comes out larger (as in `tests/warnings/for_loop_ends.rue`).
     pub fn calls_itself_outside_loops(&self, symbol: SymbolId) -> bool {
         let mut visited = HashSet::new();
         let mut stack: Vec<SymbolId> = self
