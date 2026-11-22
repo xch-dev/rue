@@ -346,3 +346,28 @@ fn uninferred_parameter<T>(outer: T, thing: Thing, either: First | Second) -> ni
     let destructured_argument = call(fn((a, b)) => 1);
     nil
 }
+
+fn recursive_walk<T, U>(list: List<T>, f: fn(x: T) -> U, depth: Int) -> List<U> {
+    if depth > 0 {
+        // The inner lambda's parameter isn't inferred, so `U` isn't either, and the call's type
+        // doesn't show the caller's `U` that stands for it, which `List<Int>` would be rejected for
+        let inner = recursive_walk([(fn(y) => y + 1, 1)], fn(p) => p.first(p.rest), depth - 1);
+        let _k: List<Int> = inner;
+
+        // Where `f` is passed on, `U` is inferred as the caller's `U` from it, which the error in
+        // another argument doesn't change, so `List<Int>` is still rejected
+        let passed_on = recursive_walk(list, f, missing);
+        let _j: List<Int> = passed_on;
+
+        // An argument that couldn't be compiled before the call is why `U` isn't inferred, too
+        let unknown = missing;
+        let unresolved_argument = recursive_walk(list, unknown, depth - 1);
+        let _l: List<Int> = unresolved_argument;
+    }
+
+    if list is nil {
+        nil
+    } else {
+        [f(list.first), ...recursive_walk(list.rest, f, depth)]
+    }
+}

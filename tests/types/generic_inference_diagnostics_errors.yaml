@@ -237,3 +237,8 @@ diagnostics:
 - Cannot destructure type `T` into a pair at generic_inference_diagnostics_errors.rue:346:41
 - Unused binding `a` at generic_inference_diagnostics_errors.rue:346:42
 - Unused binding `b` at generic_inference_diagnostics_errors.rue:346:45
+- Unused function `recursive_walk` at generic_inference_diagnostics_errors.rue:350:4
+- Type of parameter cannot be inferred, it must be specified explicitly at generic_inference_diagnostics_errors.rue:354:41
+- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:359:49
+- Cannot assign `List<U>` to `List<Int>`, since they are incompatible at generic_inference_diagnostics_errors.rue:360:29
+- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:363:23

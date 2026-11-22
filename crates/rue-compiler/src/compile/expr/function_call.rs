@@ -170,6 +170,18 @@ pub fn compile_function_call_expr(
             mappings = with_never;
         }
 
+        // In a recursive call, a renamed generic that nothing gave a type stands in as the
+        // caller's generic it was renamed from (see `restore_renamed`). After an error in the
+        // call, that error is why nothing did, so the generic is treated as one that wasn't
+        // inferred, and is left to the error like the others (see `deferred_generics`), rather
+        // than leaking the caller's generic into what the call returns
+        let stand_ins =
+            stand_ins_after_error(ctx, function, &checks, &mappings, &renamed, reported);
+
+        for generic in &stand_ins {
+            mappings.remove(generic);
+        }
+
         for &generic in &function.generics {
             if mappings.contains_key(&generic) {
                 continue;
@@ -291,7 +303,7 @@ pub fn compile_function_call_expr(
         // wrong type, or one for the arguments as a whole, such as one that's missing. That error
         // is what to fix, which specifying the generic wouldn't. An error in another argument
         // isn't why, and neither is any error for a generic that's only in the return type
-        let deferred = if uninferred.is_empty() {
+        let mut deferred = if uninferred.is_empty() {
             Vec::new()
         } else {
             deferred_generics(
@@ -302,6 +314,12 @@ pub fn compile_function_call_expr(
                 reported,
             )
         };
+
+        for generic in stand_ins {
+            if !deferred.contains(&generic) {
+                deferred.push(generic);
+            }
+        }
 
         // The errors that only show those generics, such as one in the body of a lambda whose
         // parameter was left as one, follow from that error as well
@@ -477,6 +495,48 @@ fn unconstrained_as_never(
     });
 
     assignable.then_some(with_never)
+}
+
+/// The renamed generics of a recursive call that are mapped to the caller's generics they were
+/// renamed from although no argument's type has that generic in it, so that only
+/// `restore_renamed` could have put it there, if an error has been reported in the call since
+/// there were `reported` diagnostics, or an argument couldn't be compiled. A generic that an
+/// argument's type has, such as `U` when `f: fn(x: T) -> U` is passed on, is inferred from it
+/// and is kept.
+fn stand_ins_after_error(
+    ctx: &mut Compiler,
+    function: &FunctionType,
+    checks: &[(AstExpr, TypeId, TypeId)],
+    mappings: &HashMap<TypeId, TypeId>,
+    renamed: &HashMap<TypeId, TypeId>,
+    reported: usize,
+) -> Vec<TypeId> {
+    if renamed.is_empty() {
+        return Vec::new();
+    }
+
+    let failed = ctx.has_errors_since(reported)
+        || (ctx.has_errors() && checks.iter().any(|&(_, ty, _)| ctx.is_unresolved(ty)));
+
+    if !failed {
+        return Vec::new();
+    }
+
+    function
+        .generics
+        .iter()
+        .copied()
+        .filter(|copy| {
+            let Some(&generic) = renamed.get(copy) else {
+                return false;
+            };
+
+            mappings.get(copy) == Some(&generic)
+                && !checks
+                    .iter()
+                    .any(|&(_, ty, _)| contains_generic(ctx.types_mut(), ty, generic))
+        })
+        .collect()
 }
 
 /// Whether an argument that the generic would have been inferred from has failed to compile.
