@@ -85,6 +85,10 @@ pub struct DependencyGraph {
     /// What each loop captures (see [`Self::loop_captures`]).
     loop_dependencies: HashMap<SymbolId, IndexSet<SymbolId>>,
 
+    /// The loop that each loop capture is only referenced inside of, if there's one (see
+    /// `DependencyGraph::sole_loop`).
+    sole_loops: HashMap<SymbolId, SymbolId>,
+
     // Keeps track of the const expressions that are reachable
     const_exprs: IndexSet<HirId>,
 
@@ -226,6 +230,7 @@ impl DependencyGraph {
             loops: HashSet::new(),
             loop_captures: HashSet::new(),
             loop_dependencies: HashMap::new(),
+            sole_loops: HashMap::new(),
             const_exprs: IndexSet::new(),
             current: None,
             pending: vec![main],
@@ -274,6 +279,7 @@ impl DependencyGraph {
         graph.find_repeated(db);
         graph.find_loop_captures(db);
         graph.find_loop_dependencies(db);
+        graph.find_sole_loops();
 
         graph
     }
@@ -985,6 +991,59 @@ impl DependencyGraph {
     /// parameter or local of the function or of a lambda inside it.
     pub fn is_defined_in(&self, symbol: SymbolId, function: SymbolId) -> bool {
         self.owners(symbol).any(|owner| owner == function)
+    }
+
+    /// The loop that the loop capture is only referenced inside of, if there's one: in its body,
+    /// or in the value or body of something that's defined in it. Of the loops inside of each
+    /// other that capture it, that's the outermost one, which is called from where the value is
+    /// defined. The loop can refer to it any number of times, but nothing outside of it does.
+    pub fn sole_loop(&self, symbol: SymbolId) -> Option<SymbolId> {
+        self.sole_loops.get(&symbol).copied()
+    }
+
+    fn find_sole_loops(&mut self) {
+        if self.loop_captures.is_empty() {
+            return;
+        }
+
+        // What refers to each capture
+        let mut referrers: HashMap<SymbolId, Vec<SymbolId>> = HashMap::new();
+
+        for (&from, dependencies) in &self.dependencies {
+            for &dependency in dependencies {
+                if self.loop_captures.contains(&dependency) {
+                    referrers.entry(dependency).or_default().push(from);
+                }
+            }
+        }
+
+        let mut sole_loops = HashMap::new();
+
+        for (capture, referrers) in referrers {
+            // A loop that the capture is defined in doesn't capture it
+            let contains_all = |function: SymbolId| {
+                self.loop_dependencies
+                    .get(&function)
+                    .is_some_and(|captures| captures.contains(&capture))
+                    && referrers
+                        .iter()
+                        .all(|&from| from == function || self.is_defined_in(from, function))
+            };
+
+            // The loops around the first reference, from the outermost, which contain the others
+            // too if any loop does
+            let outermost = iter::once(referrers[0])
+                .chain(self.owners(referrers[0]))
+                .filter(|symbol| self.loops.contains(symbol))
+                .filter(|&function| contains_all(function))
+                .last();
+
+            if let Some(function) = outermost {
+                sole_loops.insert(capture, function);
+            }
+        }
+
+        self.sole_loops = sole_loops;
     }
 
     /// Whether the function can call itself other than through a loop, so that it can't be

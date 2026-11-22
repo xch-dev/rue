@@ -762,21 +762,21 @@ tests:
   byte_cost: 2556000
   total_cost: 2561340
 - name: update_literal_outside_for
-  program: (a (q 2 (q 2 5 (c (c 5 2) 23)) (c (c (q . 1) 13) 1)) (c (q 2 (i 3 (q 4 (c 10 (c 5 30)) (a 4 (c 2 7))) ()) 1) 1))
+  program: (a (q 2 2 (c (c 2 (c (q . 1) 13)) 11)) (c (q 2 (i 3 (q 4 (c 10 (c 5 30)) (a 4 (c 2 7))) ()) 1) 1))
   debug_program: (a (q 2 (q 2 5 (c (c 5 2) 23)) (c (c (q . 1) (r 5)) 1)) (c (q 2 (i 3 (q 4 (c (f 6) (c (f 3) (r (r 6)))) (a 4 (c (c 4 6) (r 3)))) ()) 1) 1))
   solution: ((1 2 3) (7 8))
   output: ((1 7 3) (1 8 3))
-  runtime_cost: 3081
-  byte_cost: 1236000
-  total_cost: 1239081
+  runtime_cost: 2815
+  byte_cost: 1068000
+  total_cost: 1070815
 - name: rebuild_literal_outside_for
-  program: (a (q 2 (q 2 5 (c (c 5 2) 23)) (c (c (q . 1) (c 21 (c 45 ()))) 1)) (c (q 2 (i 3 (q 4 (c 10 (c 5 (c 46 ()))) (a 4 (c 2 7))) ()) 1) 1))
+  program: (a (q 2 2 (c (c 2 (c (q . 1) (c 21 (c 45 ())))) 11)) (c (q 2 (i 3 (q 4 (c 10 (c 5 (c 46 ()))) (a 4 (c 2 7))) ()) 1) 1))
   debug_program: (a (q 2 (q 2 5 (c (c 5 2) 23)) (c (c (q . 1) (c (f (r 5)) (c (f (r (r 5))) ()))) 1)) (c (q 2 (i 3 (q 4 (c (f 6) (c (f 3) (c (f (r (r 6))) ()))) (a 4 (c (c 4 6) (r 3)))) ()) 1) 1))
   solution: ((1 2 3) (7 8))
   output: ((1 7 3) (1 8 3))
-  runtime_cost: 3493
-  byte_cost: 1452000
-  total_cost: 1455493
+  runtime_cost: 3227
+  byte_cost: 1284000
+  total_cost: 1287227
 - name: update_fold_third
   program: (a (q 2 2 (c (c 5 2) (a (i (> 5 ()) (q 4 5 (c (+ 5 (q . 1)) ())) (q 8)) 1))) (c (q 2 (i 3 (q 4 5 (c 5 (c 5 (r (r (r (a 6 (c 2 7)))))))) (q 2 (i (> 4 ()) (q 4 4 (c 4 (c 4 (c 4 (c 4 (c 4 (c (+ 4 (q . 1)) (+ 4 (q . 2))))))))) (q 8)) 1)) 1) 1))
   debug_program: (a (q 2 4 (c (c 5 (c 4 14)) (a 10 5))) (c (c (q 2 (i 3 (q 2 (q 4 (f 7) (c (f 7) (c (f 7) (r (r (r 2)))))) (c (a 10 (c (c 4 (c 10 14)) (r 3))) 1)) (q 2 14 4)) 1) (c (q 2 (i (> 1 ()) (q 4 1 (c (+ 1 (q . 1)) ())) (q 8 (q . "assertion failed at struct_update.rue:728:5"))) 1) (q 2 (i (> 1 ()) (q 4 1 (c 1 (c 1 (c 1 (c 1 (c 1 (c (+ 1 (q . 1)) (+ 1 (q . 2))))))))) (q 8 (q . "assertion failed at struct_update.rue:723:5"))) 1))) 1))

@@ -378,6 +378,94 @@ test fn captured_hash() -> List<Bytes> {
     for x in runtime(["a", "b"]) { x + hash }
 }
 
+// A value that only a loop uses is evaluated where the loop is called, as an argument of
+// recursion written by hand would be, rather than bound before it. Once, whatever the loop does
+// with it, and also where only a loop inside of it uses it
+test fn captured_value_evaluated_at_the_call() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(xs.first) + 1;
+    for x in xs { x * k + k }
+}
+
+test fn captured_value_for_a_nested_loop() -> List<List<Int>> {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(xs.first) + 1;
+    for x in xs { for y in xs { x * y * k } }
+}
+
+// One that may fail stays bound before a loop that's only called some of the time, so that it
+// still fails when the loop isn't called. One that can't fail is evaluated at the call then
+test fn captured_value_for_a_loop_called_some_of_the_time_fails() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(xs.first - 1);
+    if xs.first > 1 {
+        for x in xs { x * k }
+    } else {
+        nil
+    }
+}
+
+test fn captured_value_that_cannot_fail_for_a_loop_called_some_of_the_time() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let k = sha256(xs.first as Bytes) as Int;
+    if xs.first > 1 {
+        for x in xs { x * k }
+    } else {
+        nil
+    }
+}
+
+// A loop that's called somewhere that can be evaluated more than once, or not at all, for each
+// time the value is bound, has the value bound before it: in a lambda, in the argument of an
+// `inline fn` that refers to its parameter more than once, and in a type guard that uses its value
+// more than once
+inline fn both(items: List<Int>) -> (List<Int>, List<Int>) {
+    (items, items)
+}
+
+test fn captured_value_for_a_loop_in_a_lambda() -> (List<Int>, List<Int>) {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(xs.first) + 1;
+    let scaled = fn() => for x in xs { x * k };
+    (scaled(), scaled())
+}
+
+test fn captured_value_for_a_loop_in_an_inline_argument() -> (List<Int>, List<Int>) {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(xs.first) + 1;
+    both(for x in xs { x * k })
+}
+
+test fn captured_value_for_a_loop_in_a_type_guard() -> Int {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(xs.first) + 1;
+    if (for x in xs { x * k }) is (Int, (Int, Any)) {
+        1
+    } else {
+        0
+    }
+}
+
+// An `inline fn` that's inlined into its own argument decides where the value is evaluated for
+// each copy of its body, which share the binding and the call of the loop
+inline fn scaled_sum(xs: List<Int>, x: Int) -> Int {
+    let scale = x * 3 + 1;
+    assert x > 0;
+    for y in xs fold sum = 0 { sum + y * scale }
+}
+
+test fn captured_value_in_an_inline_function_inlined_into_itself() -> Int {
+    let xs = runtime([1, 2]);
+    scaled_sum(xs, scaled_sum(xs, xs.first + 1))
+}
+
+// So does one that's passed to a lambda that's called where it's written, which is inlined there
+test fn captured_value_for_a_loop_passed_to_a_lambda() -> List<Int> {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(xs.first) + 1;
+    (fn(ys: List<Int>) => ys)(for x in xs { x * k })
+}
+
 // The result of one `for` used in another is only evaluated once
 test fn captured_fold() -> List<Int> {
     let ys = runtime([1, 2, 3]);
