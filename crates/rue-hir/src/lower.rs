@@ -135,10 +135,10 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// evaluated more than once, since they're compiled to constants (see
     /// [`Self::decide_repeats`]).
     folded_repeats: HashSet<SymbolId>,
-    /// The bindings that each call of a loop evaluates, rather than reading them from where
-    /// they're bound, while the run of let statements they're in is lowered (see
+    /// The call of a loop that each binding is evaluated at, rather than bound before, or `None`
+    /// if it's bound, while the run of let statements it's in is lowered, innermost last (see
     /// [`Self::loop_call_substitution`]).
-    loop_call_values: HashMap<HirId, Vec<SymbolId>>,
+    loop_calls: HashMap<SymbolId, Vec<Option<HirId>>>,
     /// What's recorded for a debug sidecar, if one was requested.
     debug: Option<LoweringDebugInfo>,
     /// How the environments of the program's functions are laid out (see [`layout`]).
@@ -240,7 +240,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             argument_captures: RefCell::default(),
             missing_paths: None,
             folded_repeats: HashSet::new(),
-            loop_call_values: HashMap::new(),
+            loop_calls: HashMap::new(),
             debug: None,
             layout: Layout::CANDIDATES[0],
             nesting: None,
@@ -1033,9 +1033,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             // `Self::loop_call_substitution`)
             let mut substituted = HashMap::new();
 
-            for capture in self.loop_call_values.get(&hir).cloned().unwrap_or_default() {
-                let value = self.lower_symbol_value(env, capture);
-                substituted.insert(capture, value);
+            if function.kind == FunctionKind::Loop {
+                for capture in self.lowered_captures(symbol) {
+                    if self
+                        .loop_calls
+                        .get(&capture)
+                        .and_then(|calls| calls.last())
+                        .is_some_and(|&call| call == Some(hir))
+                    {
+                        let value = self.lower_symbol_value(env, capture);
+                        substituted.insert(capture, value);
+                    }
+                }
             }
 
             for group in &capture_groups {
@@ -1595,17 +1604,26 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         body: Tail,
     ) -> LirId {
         // A binding that's evaluated where the only loop that uses it is called isn't bound here,
-        // but at that call, which is in the rest of the block
+        // but at that call, which is in the rest of the block. What's decided here is the
+        // innermost decision for the binding while the block is lowered, since an `inline fn`
+        // can be inlined into its own argument, which decides it again with other arguments
         let mut bound = IndexSet::new();
-        let mut at_calls: Vec<(HirId, SymbolId)> = Vec::new();
+        let mut decided = Vec::new();
 
         for &symbol in symbols {
-            match self.loop_call_substitution(symbol) {
-                Some(call) => at_calls.push((call, symbol)),
-                None => {
-                    bound.insert(symbol);
-                }
+            if self.graph.sole_loop(symbol).is_none() {
+                bound.insert(symbol);
+                continue;
             }
+
+            let call = self.loop_call_substitution(symbol);
+
+            if call.is_none() {
+                bound.insert(symbol);
+            }
+
+            decided.push(symbol);
+            self.loop_calls.entry(symbol).or_default().push(call);
         }
 
         let binding_groups = self.group_symbols(bound, false, true, false);
@@ -1616,20 +1634,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             body_env = Self::apply_group(body_env, group, true);
         }
 
-        for &(call, symbol) in &at_calls {
-            self.loop_call_values.entry(call).or_default().push(symbol);
-        }
-
         let mut expr = self.lower_block(&body_env, stmts, body);
 
-        // A run that this one is in can have values for the same call, which it's lowered
-        // inside of again when the run is measured
-        for (call, symbol) in at_calls {
-            if let Some(values) = self.loop_call_values.get_mut(&call) {
-                values.retain(|&value| value != symbol);
+        for symbol in decided {
+            if let Some(calls) = self.loop_calls.get_mut(&symbol) {
+                calls.pop();
 
-                if values.is_empty() {
-                    self.loop_call_values.remove(&call);
+                if calls.is_empty() {
+                    self.loop_calls.remove(&symbol);
                 }
             }
         }

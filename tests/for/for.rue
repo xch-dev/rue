@@ -446,6 +446,19 @@ test fn captured_value_for_a_loop_in_a_type_guard() -> Int {
     }
 }
 
+// An `inline fn` that's inlined into its own argument decides where the value is evaluated for
+// each copy of its body, which share the binding and the call of the loop
+inline fn scaled_sum(xs: List<Int>, x: Int) -> Int {
+    let scale = x * 3 + 1;
+    assert x > 0;
+    for y in xs fold sum = 0 { sum + y * scale }
+}
+
+test fn captured_value_in_an_inline_function_inlined_into_itself() -> Int {
+    let xs = runtime([1, 2]);
+    scaled_sum(xs, scaled_sum(xs, xs.first + 1))
+}
+
 // So does one that's passed to a lambda that's called where it's written, which is inlined there
 test fn captured_value_for_a_loop_passed_to_a_lambda() -> List<Int> {
     let xs = runtime([1, 2, 3]);
