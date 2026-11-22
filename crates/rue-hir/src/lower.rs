@@ -499,9 +499,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .borrow()
             .get(&function)
             .is_some_and(|arguments| arguments.contains(&parameter))
-            && self
-                .inline_argument(parameter)
-                .is_none_or(|argument| !may_fail(self, argument))
+            && !self.is_failing_argument(parameter)
     }
 
     pub fn base_path(&self) -> &Path {
@@ -1375,8 +1373,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 }
             }
 
-            // The arguments of the calls around this one that the closure would have evaluated
-            // are bound here, and the body reads them from the environment
             for capture in self.captured_arguments(symbol, function.body) {
                 args.insert(capture, None);
                 captured.push(capture);
@@ -1423,7 +1419,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
         }
 
-        // The arguments that are referenced some of the time are bound like a let statement
+        // The arguments that are referenced some of the time, and the captured arguments of the
+        // calls around this one, are bound like a let statement
         if !bound.is_empty() || !captured.is_empty() {
             let mut bound_args: HashMap<SymbolId, LirId> = bound
                 .iter()
@@ -2161,6 +2158,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     fn inline_argument(&self, symbol: SymbolId) -> Option<HirId> {
         self.inline_substitution(symbol).map(|(_, hir)| hir)
+    }
+
+    /// Whether the symbol is the parameter of a function that's being inlined, and its argument
+    /// may fail, so that a closure that captures it evaluates something that matters.
+    fn is_failing_argument(&self, symbol: SymbolId) -> bool {
+        self.inline_argument(symbol)
+            .is_some_and(|argument| may_fail(self, argument))
     }
 
     /// Whether the value can be lowered in any environment, since it doesn't depend on it.

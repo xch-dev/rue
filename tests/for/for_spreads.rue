@@ -513,6 +513,7 @@ test fn argument_of_a_fold_without_a_result() -> List<Int> {
         first_or(empty, positive(7)),
         nested_first_or(xs, positive(xs.first)),
         nested_first_or(empty, positive(7)),
+        ...items_or_last(xs, positive(xs.first)),
         ...items_or_last(empty, positive(7)),
     ]
 }

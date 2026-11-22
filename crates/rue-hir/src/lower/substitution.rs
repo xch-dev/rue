@@ -627,20 +627,15 @@ impl Lowerer<'_, '_, '_> {
         self.graph.references(parameter) == 1 && Evaluation::new(self, parameter).hir(body)
     }
 
-    /// The arguments of inlined calls around this one that the function captures, and that have
-    /// to be evaluated at its call since it's inlined there. A closure captures them by value, so
-    /// building it evaluates them, and a call that's inlined instead must too, or an argument that
-    /// may fail would only be evaluated where the body refers to it, such as a fold's value at
-    /// the end of a list that a body which never uses its result doesn't get to. That's only
-    /// left to the body if it always evaluates the argument, or fails.
+    /// The arguments of the inlined calls around this one that the function captures and that may
+    /// fail. Building its closure would evaluate them, since they're captured by value, so a call
+    /// that's inlined instead binds them, unless its body always evaluates them.
     pub(super) fn captured_arguments(&self, function: SymbolId, body: HirId) -> Vec<SymbolId> {
         self.dependencies(function, true)
             .iter()
             .copied()
             .filter(|&capture| {
-                self.inline_argument(capture)
-                    .is_some_and(|argument| may_fail(self, argument))
-                    && !Evaluation::new(self, capture).hir(body)
+                self.is_failing_argument(capture) && !Evaluation::new(self, capture).hir(body)
             })
             .collect()
     }
