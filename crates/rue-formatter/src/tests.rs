@@ -2052,9 +2052,11 @@ fn for_expressions() {
                 let wrapped = for coin in conditions if coin is CreateCoin {
                     CreateCoin { puzzle_hash: coin.puzzle_hash, amount: coin.amount, memos: coin.memos }
                 };
-                let payments_to_target = for c in conditions if c is CreateCoin
-                    && c.puzzle_hash == target_puzzle_hash
-                    && c.amount > 0 { c.amount + 100000 };
+                let payments_to_target = for c in conditions
+                    if c is CreateCoin && c.puzzle_hash == target_puzzle_hash && c.amount > 0
+                {
+                    c.amount + 100000
+                };
                 let typed = for x in xs fold rest: List<Int> = nil { [x, ...rest] };
                 for x in xs {
                     assert x > 0;
@@ -2063,6 +2065,657 @@ fn for_expressions() {
                 [a, b, ...for x in xs { x }]
             }
         "#]],
+    );
+}
+
+/// The `,` between the lists of a `for`, and between the item and what's left of its list, is
+/// followed by a space, and the comments around it are kept.
+#[test]
+fn for_headers() {
+    check(
+        r"fn main(xs: List<Int>, ys: List<Int>) -> Any {
+    let a = for a in xs,b in ys {a+b};
+    let b = for   x ,  rest in xs { x + length(rest) };
+    let c = for (a,b) , [...rest] in pairs  ,  { x, y },more in points if a>x fold sum:Int=0 { sum+a+b+x+y };
+    for a,r in xs,b in ys { assert a > b; }
+    let d = for a /* item */ , /* rest */ r in xs /* first */ , /* second */ b in ys { a + b };
+    [...for a in xs, b in ys { a + b }, 1]
+}
+",
+        expect![[r#"
+            fn main(xs: List<Int>, ys: List<Int>) -> Any {
+                let a = for a in xs, b in ys { a + b };
+                let b = for x, rest in xs { x + length(rest) };
+                let c = for (a, b), [...rest] in pairs, { x, y }, more in points if a > x fold sum: Int = 0 {
+                    sum + a + b + x + y
+                };
+                for a, r in xs, b in ys {
+                    assert a > b;
+                }
+                let d = for a /* item */ , /* rest */ r in xs /* first */ , /* second */ b in ys { a + b };
+                [...for a in xs, b in ys { a + b }, 1]
+            }
+        "#]],
+    );
+}
+
+/// A header that doesn't fit on one line with the `{` of the body has its filter and its fold
+/// on lines of their own, and the `{` on a line of its own. The lists stay on the line of the
+/// `for` if they fit on it together.
+#[test]
+fn long_for_headers() {
+    check(
+        r"fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int, expected: Bytes32) -> Int {
+    let fits = for coin in coins if coin.amount > minimum fold total = 0 { total + coin.amount };
+    let body_breaks = for coin in coins, amount in amounts if coin.amount > minimum fold total = 0 { let doubled = amount * 2; total + doubled };
+    let filter_and_fold = for coin in coins if coin.amount > minimum && coin.puzzle_hash == expected fold total = 0 { total + coin.amount };
+    let filter = for coin in coins if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount < 1000 { coin.amount + 100000 };
+    let long_filter = for coin in coins if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount < 1000000000 && coin.parent_coin_info != expected fold total = 0 { total + coin.amount };
+    let fold = for coin in coins fold total: Int = some_function_with_a_long_name(coins, minimum, expected, amounts) { total + coin.amount };
+    let long_fold = for coin in coins if coin.amount > minimum fold total = coin.amount + minimum + expected + coin.amount + minimum + expected + coin.amount { total + coin.amount };
+    let lists = for coin in coins, amount in amounts if coin.amount > minimum && coin.puzzle_hash == expected fold total = 0 { total + amount };
+    let only_lists = for coin in coins, amount in amounts, other_amount in amounts, third_amount_in_the_list in amounts { coin.amount + amount };
+    let long_lists = for coin, rest_of_the_coins in some_function_with_a_long_name(coins, minimum), amount, rest_of_the_amounts in another_function_with_a_long_name(amounts) if coin.amount > amount fold total = 0 { total + coin.amount };
+    let empty = for coin in coins if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount < 1000000000 {};
+    fits + body_breaks
+}
+",
+        expect![[r#"
+            fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int, expected: Bytes32) -> Int {
+                let fits = for coin in coins if coin.amount > minimum fold total = 0 { total + coin.amount };
+                let body_breaks = for coin in coins, amount in amounts if coin.amount > minimum fold total = 0 {
+                    let doubled = amount * 2;
+                    total + doubled
+                };
+                let filter_and_fold = for coin in coins
+                    if coin.amount > minimum && coin.puzzle_hash == expected
+                    fold total = 0
+                {
+                    total + coin.amount
+                };
+                let filter = for coin in coins
+                    if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount < 1000
+                {
+                    coin.amount + 100000
+                };
+                let long_filter = for coin in coins
+                    if coin.amount > minimum
+                        && coin.puzzle_hash == expected
+                        && coin.amount < 1000000000
+                        && coin.parent_coin_info != expected
+                    fold total = 0
+                {
+                    total + coin.amount
+                };
+                let fold = for coin in coins
+                    fold total: Int = some_function_with_a_long_name(coins, minimum, expected, amounts)
+                {
+                    total + coin.amount
+                };
+                let long_fold = for coin in coins
+                    if coin.amount > minimum
+                    fold total = coin.amount
+                        + minimum
+                        + expected
+                        + coin.amount
+                        + minimum
+                        + expected
+                        + coin.amount
+                {
+                    total + coin.amount
+                };
+                let lists = for coin in coins, amount in amounts
+                    if coin.amount > minimum && coin.puzzle_hash == expected
+                    fold total = 0
+                {
+                    total + amount
+                };
+                let only_lists = for coin in coins,
+                    amount in amounts,
+                    other_amount in amounts,
+                    third_amount_in_the_list in amounts
+                {
+                    coin.amount + amount
+                };
+                let long_lists = for coin, rest_of_the_coins in some_function_with_a_long_name(coins, minimum),
+                    amount, rest_of_the_amounts in another_function_with_a_long_name(amounts)
+                    if coin.amount > amount
+                    fold total = 0
+                {
+                    total + coin.amount
+                };
+                let empty = for coin in coins
+                    if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount < 1000000000
+                {};
+                fits + body_breaks
+            }
+        "#]],
+    );
+}
+
+/// The same for a `for` that's a statement, an item of a list, an argument, and the value of
+/// another `for`, each indented from where it starts.
+#[test]
+fn long_for_headers_in_other_expressions() {
+    check(
+        r"fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int, expected: Bytes32) -> Int {
+    for coin in coins, amount in amounts if coin.amount > minimum && coin.puzzle_hash == expected && amount > 0 { assert coin.amount == amount; }
+    #[allow(unused_value)]
+    for coin in coins, amount in amounts if coin.amount > minimum && coin.puzzle_hash == expected fold total = 0 { total + amount }
+    let list = [1, ...for coin in coins, amount in amounts if coin.amount > minimum && coin.puzzle_hash == expected { coin.amount + amount }, 2];
+    let argument = length(for coin in coins, amount in amounts if coin.amount > minimum && coin.puzzle_hash == expected { coin.amount + amount });
+    let nested = for coin in coins if coin.amount > minimum { for amount in amounts if coin.amount > minimum && coin.puzzle_hash == expected && amount > 0 { amount } };
+    let in_the_header = for coin in coins fold total = (for amount in amounts if amount > minimum && amount < 1000000 fold sum = 0 { sum + amount }) { total + coin.amount };
+    let sum = 1 + (for coin in coins if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount > 0 fold total = 0 { total + coin.amount });
+    if (for coin in coins if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount > 0 fold total = 0 { total + coin.amount }) > 0 { return 1; }
+    0
+}
+",
+        expect![[r#"
+            fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int, expected: Bytes32) -> Int {
+                for coin in coins, amount in amounts
+                    if coin.amount > minimum && coin.puzzle_hash == expected && amount > 0
+                {
+                    assert coin.amount == amount;
+                }
+                #[allow(unused_value)]
+                for coin in coins, amount in amounts
+                    if coin.amount > minimum && coin.puzzle_hash == expected
+                    fold total = 0
+                {
+                    total + amount
+                }
+                let list = [
+                    1,
+                    ...for coin in coins, amount in amounts
+                        if coin.amount > minimum && coin.puzzle_hash == expected
+                    {
+                        coin.amount + amount
+                    },
+                    2,
+                ];
+                let argument = length(
+                    for coin in coins, amount in amounts
+                        if coin.amount > minimum && coin.puzzle_hash == expected
+                    {
+                        coin.amount + amount
+                    },
+                );
+                let nested = for coin in coins if coin.amount > minimum {
+                    for amount in amounts
+                        if coin.amount > minimum && coin.puzzle_hash == expected && amount > 0
+                    {
+                        amount
+                    }
+                };
+                let in_the_header = for coin in coins
+                    fold total = (
+                        for amount in amounts if amount > minimum && amount < 1000000 fold sum = 0 {
+                            sum + amount
+                        }
+                    )
+                {
+                    total + coin.amount
+                };
+                let sum = 1
+                    + (
+                        for coin in coins
+                            if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount > 0
+                            fold total = 0
+                        {
+                            total + coin.amount
+                        }
+                    );
+                if (
+                    for coin in coins
+                        if coin.amount > minimum && coin.puzzle_hash == expected && coin.amount > 0
+                        fold total = 0
+                    {
+                        total + coin.amount
+                    }
+                ) > 0
+                {
+                    return 1;
+                }
+                0
+            }
+        "#]],
+    );
+}
+
+/// A header with one list and nothing after it has no parts to put on lines of their own, so
+/// it's formatted as before: its list breaks where it can.
+#[test]
+fn for_header_with_one_list() {
+    check(
+        r"fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int, expected: Bytes32) -> Int {
+    let call = for coin, rest in some_function_with_a_long_name(coins, minimum, expected, amounts, coins, minimum, expected) { coin.amount };
+    for coin in coins.first + coins.rest + coins.first + coins.rest + coins.first + coins.rest + coins.first + coins.rest + coins.rest { assert coin.amount > 0; }
+    for coin in coins.first + coins.rest { assert coin.amount > 0; }
+    0
+}
+",
+        expect![[r#"
+            fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int, expected: Bytes32) -> Int {
+                let call = for coin, rest in some_function_with_a_long_name(
+                    coins,
+                    minimum,
+                    expected,
+                    amounts,
+                    coins,
+                    minimum,
+                    expected,
+                ) { coin.amount };
+                for coin in coins.first
+                    + coins.rest
+                    + coins.first
+                    + coins.rest
+                    + coins.first
+                    + coins.rest
+                    + coins.first
+                    + coins.rest
+                    + coins.rest
+                {
+                    assert coin.amount > 0;
+                }
+                for coin in coins.first + coins.rest {
+                    assert coin.amount > 0;
+                }
+                0
+            }
+        "#]],
+    );
+}
+
+/// Comments in a header keep their places. A comment that ends its line breaks the header, and
+/// the lines after it are indented. Blank lines in a header aren't kept.
+#[test]
+fn for_header_comments() {
+    check(
+        r"fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int) -> Int {
+    let a = for coin in coins // the coins
+    if coin.amount > minimum // only large ones
+    fold total = 0 // from nothing
+    { total + coin.amount };
+    let b = for coin in coins, // the coins
+    amount in amounts
+    // only large ones
+    if coin.amount > minimum
+    // before the body
+    { amount };
+    let c = for /* item */ coin /* in */ in coins /* list */ , /* next */ amount in amounts /* filter */ if amount > 0 /* fold */ fold total = 0 /* body */ { total };
+    let d = for coin, // rest
+    rest in coins, amount in amounts { amount };
+    let e = for coin in coins
+
+    if coin.amount > minimum
+
+    fold total = 0
+
+    { total + coin.amount };
+    let f = for coin in coins if coin.amount > minimum fold total = 0 /* before the body of a header that is too long */ { total + coin.amount };
+    a + b
+}
+",
+        expect![[r#"
+            fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int) -> Int {
+                let a = for coin in coins // the coins
+                    if coin.amount > minimum // only large ones
+                    fold total = 0 // from nothing
+                {
+                    total + coin.amount
+                };
+                let b = for coin in coins, // the coins
+                    amount in amounts
+                    // only large ones
+                    if coin.amount > minimum
+                    // before the body
+                {
+                    amount
+                };
+                let c = for /* item */ coin /* in */ in coins /* list */ , /* next */
+                    amount in amounts /* filter */
+                    if amount > 0 /* fold */
+                    fold total = 0 /* body */
+                {
+                    total
+                };
+                let d = for coin, // rest
+                    rest in coins,
+                    amount in amounts
+                {
+                    amount
+                };
+                let e = for coin in coins if coin.amount > minimum fold total = 0 { total + coin.amount };
+                let f = for coin in coins
+                    if coin.amount > minimum
+                    fold total = 0 /* before the body of a header that is too long */
+                {
+                    total + coin.amount
+                };
+                a + b
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn long_for_headers_at_a_narrow_width() {
+    let options = FormatOptions {
+        max_width: 40,
+        ..FormatOptions::default()
+    };
+    let output = format_source(
+        "fn main(){let a=for coin in coins if coin.amount>minimum fold total=0{total+coin.amount};\
+         let b=for coin in coins,amount in amounts{coin.amount+amount};\
+         let c=for first_coin in first_coins,second_coin in second_coins{first_coin.amount};\
+         let d=for coin in coins if coin.amount>minimum&&coin.puzzle_hash==expected{coin};\
+         for coin in function_with_a_long_name(coins,minimum),amount in amounts if amount>0{assert amount>coin.amount;}}",
+        &options,
+    )
+    .unwrap();
+    expect![[r#"
+        fn main() {
+            let a = for coin in coins
+                if coin.amount > minimum
+                fold total = 0
+            {
+                total + coin.amount
+            };
+            let b = for coin in coins,
+                amount in amounts
+            {
+                coin.amount + amount
+            };
+            let c = for first_coin in first_coins,
+                second_coin in second_coins
+            {
+                first_coin.amount
+            };
+            let d = for coin in coins
+                if coin.amount > minimum
+                    && coin.puzzle_hash
+                        == expected
+            {
+                coin
+            };
+            for coin in function_with_a_long_name(
+                    coins,
+                    minimum,
+                ),
+                amount in amounts
+                if amount > 0
+            {
+                assert amount > coin.amount;
+            }
+        }
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(format_source(&output, &options).unwrap(), output);
+}
+
+/// A header fits if it ends within the width with the `{` of its body, and not if the `{` is
+/// what goes over it. A header that only has lists then has each of them on a line of its own.
+#[test]
+fn for_headers_at_the_width() {
+    check(
+        r"fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int) -> Int {
+    for coin in coins if coin.amount > minimum && coin.puzzle_hash == eeeeeeeeeeeeeeeeeeeeeeeeeeee { assert coin.amount > 0; }
+    for coin in coins if coin.amount > minimum && coin.puzzle_hash == eeeeeeeeeeeeeeeeeeeeeeeeeeeee { assert coin.amount > 0; }
+    for coin in coins, amount in amounts, other_amount in amounts, third in eeeeeeeeeeeeeeeeeeeeee { assert coin.amount > 0; }
+    for coin in coins, amount in amounts, other_amount in amounts, third in eeeeeeeeeeeeeeeeeeeeeee { assert coin.amount > 0; }
+    0
+}
+",
+        expect![[r#"
+            fn main(coins: List<Coin>, amounts: List<Int>, minimum: Int) -> Int {
+                for coin in coins if coin.amount > minimum && coin.puzzle_hash == eeeeeeeeeeeeeeeeeeeeeeeeeeee {
+                    assert coin.amount > 0;
+                }
+                for coin in coins
+                    if coin.amount > minimum && coin.puzzle_hash == eeeeeeeeeeeeeeeeeeeeeeeeeeeee
+                {
+                    assert coin.amount > 0;
+                }
+                for coin in coins, amount in amounts, other_amount in amounts, third in eeeeeeeeeeeeeeeeeeeeee {
+                    assert coin.amount > 0;
+                }
+                for coin in coins,
+                    amount in amounts,
+                    other_amount in amounts,
+                    third in eeeeeeeeeeeeeeeeeeeeeee
+                {
+                    assert coin.amount > 0;
+                }
+                0
+            }
+        "#]],
+    );
+}
+
+/// A header that fits is followed by its body's `{` after one space, whatever its last part
+/// ends with and however the body is laid out.
+#[test]
+fn for_headers_before_a_block() {
+    check(
+        r"fn main(coins: List<Coin>, minimum: Int) -> Int {
+    for coin in coins if coin.amount > 0 { assert coin.amount > minimum; }
+    let a = for coin in coins if coin.amount > 0 && coin.amount < minimum { let doubled = coin.amount * 2; doubled };
+    let b = for coin in coins fold total = minimum + 1 { // the total
+        total + coin.amount };
+    let c = [1, ...for coin in coins if coin.amount > 0 { let doubled = coin.amount * 2; doubled }];
+    for coin in coins if coin is Coin | nil { assert coin.amount > minimum; }
+    a + b
+}
+",
+        expect![[r#"
+            fn main(coins: List<Coin>, minimum: Int) -> Int {
+                for coin in coins if coin.amount > 0 {
+                    assert coin.amount > minimum;
+                }
+                let a = for coin in coins if coin.amount > 0 && coin.amount < minimum {
+                    let doubled = coin.amount * 2;
+                    doubled
+                };
+                let b = for coin in coins fold total = minimum + 1 {
+                    // the total
+                    total + coin.amount
+                };
+                let c = [
+                    1,
+                    ...for coin in coins if coin.amount > 0 {
+                        let doubled = coin.amount * 2;
+                        doubled
+                    },
+                ];
+                for coin in coins if coin is Coin | nil {
+                    assert coin.amount > minimum;
+                }
+                a + b
+            }
+        "#]],
+    );
+}
+
+/// A body with statements breaks the group around the `for`, as any block with statements does.
+#[test]
+fn for_bodies_with_statements_break_the_group_around_them() {
+    check(
+        r"fn main(coins: List<Coin>, amounts: List<Int>) -> Int {
+    let argument = length(for coin in coins, amount in amounts { let doubled = amount * 2; doubled });
+    let list = [1, ...for coin in coins if coin.amount > 0 { // large
+        coin.amount }, 2];
+    let sum = 1 + (for coin in coins fold total = 0 { let doubled = coin.amount * 2; total + doubled });
+    sum
+}
+",
+        expect![[r#"
+            fn main(coins: List<Coin>, amounts: List<Int>) -> Int {
+                let argument = length(
+                    for coin in coins, amount in amounts {
+                        let doubled = amount * 2;
+                        doubled
+                    },
+                );
+                let list = [
+                    1,
+                    ...for coin in coins if coin.amount > 0 {
+                        // large
+                        coin.amount
+                    },
+                    2,
+                ];
+                let sum = 1
+                    + (
+                        for coin in coins fold total = 0 {
+                            let doubled = coin.amount * 2;
+                            total + doubled
+                        }
+                    );
+                sum
+            }
+        "#]],
+    );
+}
+
+/// A block after a condition that ends in a union of types is separated from it once.
+#[test]
+fn blocks_after_a_union_in_a_condition() {
+    check(
+        r"fn main(x: Bool, y: Any) -> Int {
+    if x && y is A | B { return 1; }
+    if some_condition_with_a_long_name && another_condition_with_a_long_name && y is SomeTypeWithALongName | AnotherType { return 2; }
+    match x && y is A | B { true => 1, false => 0 }
+}
+",
+        expect![[r#"
+            fn main(x: Bool, y: Any) -> Int {
+                if x && y is A | B {
+                    return 1;
+                }
+                if some_condition_with_a_long_name
+                    && another_condition_with_a_long_name
+                    && y is SomeTypeWithALongName | AnotherType
+                {
+                    return 2;
+                }
+                match x && y is A | B {
+                    true => 1,
+                    false => 0,
+                }
+            }
+        "#]],
+    );
+}
+
+/// Comments that end their line, or start one, in every place of a header that they break.
+#[test]
+fn for_header_comments_that_break_it() {
+    check(
+        r"fn main(coins: List<Coin>, minimum: Int) -> Int {
+    let a = for coin in coins /* over
+    two lines */ if coin.amount > minimum fold total = 0 { total + coin.amount };
+    let b = for coin in coins if coin.amount > minimum /* over
+    two lines */ { coin.amount };
+    let c = for coin in coins
+    /* starts a line */ if coin.amount > minimum { coin.amount };
+    let d = for coin in coins if coin.amount > minimum
+    /* starts a line */ { coin.amount };
+    let e = for // after the keyword
+    coin in coins if coin.amount > minimum { coin.amount };
+    let f = for
+    // on a line of its own
+    coin in coins if coin.amount > minimum { coin.amount };
+    a + b
+}
+",
+        expect![[r#"
+            fn main(coins: List<Coin>, minimum: Int) -> Int {
+                let a = for coin in coins /* over
+                two lines */
+                    if coin.amount > minimum
+                    fold total = 0
+                {
+                    total + coin.amount
+                };
+                let b = for coin in coins
+                    if coin.amount > minimum /* over
+                two lines */
+                {
+                    coin.amount
+                };
+                let c = for coin in coins
+                    /* starts a line */
+                    if coin.amount > minimum
+                {
+                    coin.amount
+                };
+                let d = for coin in coins
+                    if coin.amount > minimum
+                    /* starts a line */
+                {
+                    coin.amount
+                };
+                let e = for // after the keyword
+                    coin in coins
+                    if coin.amount > minimum
+                {
+                    coin.amount
+                };
+                let f = for
+                    // on a line of its own
+                    coin in coins
+                    if coin.amount > minimum
+                {
+                    coin.amount
+                };
+                a + b
+            }
+        "#]],
+    );
+}
+
+/// Blank lines before the comments in a header, and between them, aren't kept either.
+#[test]
+fn for_header_comments_after_blank_lines() {
+    check(
+        "fn main() { let a = for\n\n// item\n\nx in xs\n\n// filter\n\n// more\n\nif x > 0\n\n// body\n\n{ x }; }",
+        expect![[r#"
+            fn main() {
+                let a = for
+                    // item
+                    x in xs
+                    // filter
+                    // more
+                    if x > 0
+                    // body
+                {
+                    x
+                };
+            }
+        "#]],
+    );
+}
+
+/// Line breaks and blank lines after the `for` and between the parts of a header don't change
+/// how it's formatted, with or without a comment that doesn't end its line.
+#[test]
+fn for_header_line_breaks_are_not_kept() {
+    let source = "fn main() { let a = for /* a */\n\nx in xs, /* b */\n\ny in ys /* c */\n\nif x > 0 /* d */\nfold sum = 0 /* e */\n\n{ sum }; }";
+
+    check(
+        source,
+        expect![[r#"
+        fn main() {
+            let a = for /* a */ x in xs, /* b */ y in ys /* c */ if x > 0 /* d */ fold sum = 0 /* e */ {
+                sum
+            };
+        }
+    "#]],
+    );
+    assert_eq!(
+        format_source(source, &FormatOptions::default()).unwrap(),
+        format_source(&source.replace('\n', " "), &FormatOptions::default()).unwrap()
     );
 }
 

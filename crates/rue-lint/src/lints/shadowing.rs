@@ -49,10 +49,10 @@ impl Walker<'_, '_> {
                 lambda.body().map(|body| body.syntax().clone()),
             );
         } else if let Some(expr) = AstForExpr::cast(node.clone()) {
-            // The list is evaluated before the item is in scope, and the fold's value outside of
-            // it. The item is in scope in the filter and the body, and the result of the fold in
-            // the body
-            if let Some(list) = expr.list() {
+            // The lists are evaluated before any item is in scope, and the fold's value outside
+            // of it. The items, and what's left of their lists, are in scope in the filter and
+            // the body, and the result of the fold in the body
+            for list in expr.clauses().filter_map(|clause| clause.list()) {
                 self.walk(list.syntax());
             }
 
@@ -65,9 +65,9 @@ impl Walker<'_, '_> {
             self.scopes.push(HashMap::new());
 
             for name in expr
-                .binding()
-                .iter()
-                .flat_map(|binding| binding_names(binding, true))
+                .clauses()
+                .flat_map(|clause| clause.bindings())
+                .flat_map(|binding| binding_names(&binding, true))
             {
                 self.declare(&name);
             }

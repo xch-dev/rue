@@ -3,7 +3,7 @@ use rue_parser::{SyntaxKind, T};
 
 use crate::{
     FormatError, FormatOptions,
-    analysis::{DelimiterStyle, ItemBoundary, Layout},
+    analysis::{DelimiterStyle, ForHeader, ItemBoundary, Layout},
     document::Doc,
     ordering::{CompactGroup, DocumentItem, ImportGroupPlan},
     renderer::render,
@@ -259,7 +259,11 @@ impl<'a> Formatter<'a> {
                     )
                 })?;
                 let gap = self.stream.gap_before(next);
+                // A block after the span isn't this span's to separate from: the body of a
+                // `for` after the last part of its header, or the block after a group that the
+                // one around it also ends with, which separates them itself
                 if !facts.continuation_operators.is_empty()
+                    && next.index() < span.end().index()
                     && self
                         .layout
                         .facts(next)
@@ -291,6 +295,17 @@ impl<'a> Formatter<'a> {
                     ));
                 }
                 docs.push(self.delimited(index, close)?);
+                close
+            } else if let Some(header) = facts.for_header.clone() {
+                let close = self.layout.facts(header.body).pair.ok_or_else(|| {
+                    FormatError::Internal("body of a `for` has no closing brace".to_string())
+                })?;
+                if close.index() >= span.end().index() {
+                    return Err(FormatError::Internal(
+                        "`for` expression crosses formatting span".to_string(),
+                    ));
+                }
+                docs.push(self.for_expr(index, &header, close)?);
                 close
             } else if facts.is_message_comma() {
                 // The message is the rest of the group, which is indented if it's on its own line
@@ -326,6 +341,111 @@ impl<'a> Formatter<'a> {
             }
         }
         Ok(Doc::concat(docs))
+    }
+
+    /// A `for` expression whose header has more than one part: further lists, a filter or a fold.
+    ///
+    /// If the header and the `{` of the body fit on the line, they're on it, and the body is
+    /// laid out as it is after any other header. Otherwise the filter and the fold are each on a
+    /// line of their own, indented, and the `{` is on a line of its own, so that the body, which
+    /// is then always on lines of its own, doesn't run into the header:
+    ///
+    /// ```text
+    /// for coin in coins, amount in amounts
+    ///     if coin.amount > minimum && coin.puzzle_hash == expected
+    ///     fold total = 0
+    /// {
+    ///     total + amount
+    /// }
+    /// ```
+    ///
+    /// The lists stay on the line of the `for` together if they fit on it, and otherwise each
+    /// is on a line of its own, as they are in a header that only has lists and doesn't fit.
+    /// Everything after the `for` is indented, so a line that a comment forces is too.
+    fn for_expr(
+        &mut self,
+        keyword: TokenId,
+        header: &ForHeader,
+        close: TokenId,
+    ) -> Result<Doc, FormatError> {
+        let keyword_doc = self.token(keyword);
+
+        let mut lists = Vec::new();
+        let mut rest = Vec::new();
+
+        for (position, &start) in header.parts.iter().enumerate() {
+            let next = header.parts.get(position + 1).copied();
+            let end = self.stream.boundary_before(next.unwrap_or(header.body));
+            let docs = if position < header.lists {
+                &mut lists
+            } else {
+                &mut rest
+            };
+
+            let (comments, starts_line) = self.header_comments(self.stream.gap_before(start));
+            docs.push(comments);
+            docs.push(if starts_line {
+                Doc::hard_line()
+            } else if position == 0 {
+                Doc::space()
+            } else {
+                Doc::soft_line()
+            });
+            docs.push(self.span(self.stream.span(start, end)?)?);
+        }
+
+        // With a filter or a fold, the lists are a group of their own, which only breaks if
+        // they don't fit on the line together
+        let lists = Doc::concat(lists).group_if(!rest.is_empty());
+
+        // Comments before the body are part of the header, so they're indented with it, unlike
+        // the `{` after them
+        let (comments, starts_line) = self.header_comments(self.stream.gap_before(header.body));
+        let before_body = if starts_line {
+            Doc::hard_line()
+        } else {
+            Doc::if_break(Doc::hard_line(), Doc::space())
+        };
+
+        let body = self.delimited(header.body, close)?;
+
+        Ok(Doc::group_with_tail(
+            Doc::concat([
+                keyword_doc,
+                Doc::concat([lists, Doc::concat(rest), comments]).indent(),
+                before_body,
+            ]),
+            body,
+        ))
+    }
+
+    /// The comments before a part of the header of a `for`, or before its body, and whether
+    /// what's after them has to start a line. That line break isn't in the document that's
+    /// returned, since the caller emits it, at the indentation of what's after them.
+    ///
+    /// The comments on the line of what's before them stay on it, and each one that starts a
+    /// line is on a line of its own. What's after them starts a line if a comment starts one, or
+    /// ends its line, as a line comment does. A block comment that's on the line of what's
+    /// before it leaves that to whether the header fits, whatever line breaks the source has
+    /// around it, and blank lines aren't kept.
+    fn header_comments(&mut self, gap: &Gap) -> (Doc, bool) {
+        let mut gap = gap.clone();
+        remove_blank_lines(&mut gap);
+
+        let (trailing, leading) = split_between(&gap);
+        let starts_line = !leading.comments.is_empty()
+            || trailing.comments.last().is_some_and(|comment| {
+                comment.kind == SyntaxKind::LineComment || comment.multiline
+            });
+
+        let trailing = self.gap_doc_with_final_line(&trailing, Separator::None, false);
+        let leading = if leading.comments.is_empty() {
+            Doc::Nil
+        } else {
+            self.gap_doc_with_comments(&leading, Separator::Hard, false, true)
+        };
+
+        (Doc::concat([trailing, leading]), starts_line)
     }
 
     fn grouped_span(&mut self, span: TokenSpan) -> Result<Doc, FormatError> {
@@ -687,7 +807,11 @@ impl<'a> Formatter<'a> {
             return Separator::Hard;
         }
         if left.kind == T![,] {
-            return Separator::Soft;
+            return if self.layout.facts(previous).is_header_comma() {
+                Separator::Space
+            } else {
+                Separator::Soft
+            };
         }
         if right.kind == T![::]
             && self.layout.facts(next).is_absolute_path_start()

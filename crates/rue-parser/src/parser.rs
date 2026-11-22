@@ -381,25 +381,27 @@ impl Parser {
 
     /// Returns the kind of the `n`th non-trivia token after the current position.
     pub(crate) fn lookahead(&self, n: usize) -> SyntaxKind {
-        let mut remaining = n;
-        let mut i = 0;
+        self.upcoming()
+            .nth(n)
+            .map_or(SyntaxKind::Eof, |token| token.kind)
+    }
 
-        loop {
-            let kind = self.nth(i);
+    /// The non-trivia tokens from the current position on.
+    fn upcoming(&self) -> impl Iterator<Item = &ParseToken> {
+        let start = if self.too_deep {
+            self.parse_tokens.len()
+        } else {
+            self.pos.min(self.parse_tokens.len())
+        };
 
-            if kind == SyntaxKind::Eof {
-                return kind;
-            }
+        self.parse_tokens[start..]
+            .iter()
+            .filter(|token| !token.kind.is_trivia())
+    }
 
-            if !kind.is_trivia() {
-                if remaining == 0 {
-                    return kind;
-                }
-                remaining -= 1;
-            }
-
-            i += 1;
-        }
+    /// Whether the token is an identifier with the given text.
+    fn is_word(&self, token: &ParseToken, word: &str) -> bool {
+        token.kind == SyntaxKind::Ident && &self.source.text[token.span.clone()] == word
     }
 
     /// Whether the current token is the first one on its line (ignoring trivia).
@@ -414,25 +416,36 @@ impl Parser {
     }
 
     /// Returns the kind of the first non-trivia token after the delimited group (such as `{...}`)
-    /// that starts at the current token, or the current token's kind if it doesn't start a group.
+    /// that starts at the current token, which is the end of the file if the group isn't closed.
     pub(crate) fn lookahead_past_group(&self) -> SyntaxKind {
+        self.token_past_group()
+            .map_or(SyntaxKind::Eof, |token| token.kind)
+    }
+
+    /// Whether the first non-trivia token after the delimited group that starts at the current
+    /// token (see [`Self::lookahead_past_group`]) is the given token, or one of the given words,
+    /// which are only keywords where they're expected (see [`Self::at_word`]).
+    pub(crate) fn past_group_at(&self, kind: SyntaxKind, words: &[&str]) -> bool {
+        self.token_past_group().is_some_and(|token| {
+            token.kind == kind || words.iter().any(|word| self.is_word(token, word))
+        })
+    }
+
+    /// The first non-trivia token after the delimited group that starts at the current token, if
+    /// the group is closed and there's a token after it.
+    fn token_past_group(&self) -> Option<&ParseToken> {
         let mut depth = 0usize;
-        let mut n = 0;
+        let mut tokens = self.upcoming();
 
         loop {
-            let kind = self.lookahead(n);
-
-            match kind {
+            match tokens.next()?.kind {
                 T!['('] | T!['['] | T!['{'] => depth += 1,
                 T![')'] | T![']'] | T!['}'] => depth = depth.saturating_sub(1),
-                SyntaxKind::Eof => return kind,
                 _ => {}
             }
 
-            n += 1;
-
             if depth == 0 {
-                return self.lookahead(n);
+                return tokens.next();
             }
         }
     }
@@ -469,7 +482,7 @@ impl Parser {
             && self
                 .parse_tokens
                 .get(self.pos)
-                .is_some_and(|token| &self.source.text[token.span.clone()] == word)
+                .is_some_and(|token| self.is_word(token, word))
     }
 
     /// Consumes the word if it's present (see [`Self::at_word`]), and otherwise reports an error

@@ -634,3 +634,729 @@ fn test_unfinished_for() {
     "#]]
     .assert_eq(&output);
 }
+
+/// What's left of a list after the item is renamed from its declaration and from a use, and so
+/// are the items of the lists that are gone through together.
+#[test]
+fn test_rename_for_rest_and_several_lists() {
+    check_renames(
+        "xs: List<Int>, ys: List<Int>",
+        &[
+            (
+                "for x, re$0st in xs if size(rest) > 0 { x + size(rest) }",
+                "others",
+            ),
+            (
+                "for x, rest in xs if size(re$0st) > 0 { x + size(rest) }",
+                "others",
+            ),
+            (
+                "for x, rest in xs fold total = 0 { total + x + size(re$0st) }",
+                "others",
+            ),
+            ("for a in xs, b$0 in ys if b > 0 { a + b }", "other"),
+            ("for a in xs, b in ys if b > 0 { a + b$0 }", "other"),
+            (
+                "for a, left in xs, b, ri$0ght in ys { a + b + size(left) + size(right) }",
+                "others",
+            ),
+        ],
+        expect![[r#"
+            == for x, re$0st in xs if size(rest) > 0 { x + size(rest) } => others
+            main.rue:
+            fn main(xs: List<Int>, ys: List<Int>) -> Any {
+                for x, others in xs if size(others) > 0 { x + size(others) }
+            }
+
+            fn size(_list: List<Int>) -> Int {
+                1
+            }
+
+            == for x, rest in xs if size(re$0st) > 0 { x + size(rest) } => others
+            main.rue:
+            fn main(xs: List<Int>, ys: List<Int>) -> Any {
+                for x, others in xs if size(others) > 0 { x + size(others) }
+            }
+
+            fn size(_list: List<Int>) -> Int {
+                1
+            }
+
+            == for x, rest in xs fold total = 0 { total + x + size(re$0st) } => others
+            main.rue:
+            fn main(xs: List<Int>, ys: List<Int>) -> Any {
+                for x, others in xs fold total = 0 { total + x + size(others) }
+            }
+
+            fn size(_list: List<Int>) -> Int {
+                1
+            }
+
+            == for a in xs, b$0 in ys if b > 0 { a + b } => other
+            main.rue:
+            fn main(xs: List<Int>, ys: List<Int>) -> Any {
+                for a in xs, other in ys if other > 0 { a + other }
+            }
+
+            fn size(_list: List<Int>) -> Int {
+                1
+            }
+
+            == for a in xs, b in ys if b > 0 { a + b$0 } => other
+            main.rue:
+            fn main(xs: List<Int>, ys: List<Int>) -> Any {
+                for a in xs, other in ys if other > 0 { a + other }
+            }
+
+            fn size(_list: List<Int>) -> Int {
+                1
+            }
+
+            == for a, left in xs, b, ri$0ght in ys { a + b + size(left) + size(right) } => others
+            main.rue:
+            fn main(xs: List<Int>, ys: List<Int>) -> Any {
+                for a, left in xs, b, others in ys { a + b + size(left) + size(others) }
+            }
+
+            fn size(_list: List<Int>) -> Int {
+                1
+            }
+
+        "#]],
+    );
+}
+
+/// The items of every list, and what's left of each, are in one scope, which starts after the
+/// last list. So one can't be renamed to another's name, and a name that's only used in a list
+/// isn't in the way, whichever list it is.
+#[test]
+fn test_rename_for_rest_and_several_lists_conflicts() {
+    check_renames(
+        "xs: List<Int>, ys: List<Int>, limit: Int",
+        &[
+            ("for x$0, rest in xs { x + size(rest) }", "rest"),
+            ("for x, re$0st in xs { x + size(rest) }", "x"),
+            ("for a$0 in xs, b in ys { a + b }", "b"),
+            ("for a in xs, b$0 in ys { a + b }", "a"),
+            ("for x, re$0st in xs { x + size(rest) + limit }", "limit"),
+            ("for x, rest in xs { x + size(rest) + lim$0it }", "rest"),
+            // The second list isn't in the scope of the first list's item
+            ("for a$0 in xs, b in ys { a + b }", "ys"),
+            ("for a in xs, b in y$0s { a + b }", "a"),
+            ("for a in xs, b in y$0s { a + b + size(ys) }", "a"),
+        ],
+        expect![[r#"
+            == for x$0, rest in xs { x + size(rest) } => rest
+            error: `rest` is already used in a scope that has `x`
+
+            == for x, re$0st in xs { x + size(rest) } => x
+            error: `x` is already used in a scope that has `rest`
+
+            == for a$0 in xs, b in ys { a + b } => b
+            error: `b` is already used in a scope that has `a`
+
+            == for a in xs, b$0 in ys { a + b } => a
+            error: `a` is already used in a scope that has `b`
+
+            == for x, re$0st in xs { x + size(rest) + limit } => limit
+            error: Renaming `rest` to `limit` would change what `limit` refers to at main.rue:2:42
+
+            == for x, rest in xs { x + size(rest) + lim$0it } => rest
+            error: Renaming `limit` to `rest` would change what `rest` refers to at main.rue:2:42
+
+            == for a$0 in xs, b in ys { a + b } => ys
+            main.rue:
+            fn main(xs: List<Int>, ys: List<Int>, limit: Int) -> Any {
+                for ys in xs, b in ys { ys + b }
+            }
+
+            fn size(_list: List<Int>) -> Int {
+                1
+            }
+
+            == for a in xs, b in y$0s { a + b } => a
+            main.rue:
+            fn main(xs: List<Int>, a: List<Int>, limit: Int) -> Any {
+                for a in xs, b in a { a + b }
+            }
+
+            fn size(_list: List<Int>) -> Int {
+                1
+            }
+
+            == for a in xs, b in y$0s { a + b + size(ys) } => a
+            error: Renaming `ys` to `a` would change what `a` refers to at main.rue:2:41
+
+        "#]],
+    );
+}
+
+#[test]
+fn test_for_rest_and_several_lists_navigation() {
+    let mut output = String::new();
+
+    for body in [
+        "for x, rest in xs if rest is nil { x + size(re$0st) }",
+        "for x, re$0st in xs if rest is nil { x + size(rest) }",
+        "for a in xs, b in ys if b > 0 { a + b$0 }",
+        "for a in xs, b$0 in ys if b > 0 { a + b }",
+        "for a in xs, b in y$0s { a + b }",
+    ] {
+        let source = format!(
+            "fn main(xs: List<Int>, ys: List<Int>) -> Any {{\n    {body}\n}}\n\nfn size(_list: List<Int>) -> Int {{\n    1\n}}\n"
+        );
+        let project = compiled(&source);
+        writeln!(
+            output,
+            "== {body}\ndefinition:\n{}references:\n{}hover:\n{}\n",
+            project.definitions(),
+            project.references(),
+            project.hover()
+        )
+        .unwrap();
+    }
+
+    expect![[r#"
+        == for x, rest in xs if rest is nil { x + size(re$0st) }
+        definition:
+        main.rue:1:11-1:15
+        references:
+        main.rue:1:11-1:15
+        main.rue:1:25-1:29
+        main.rue:1:48-1:52
+        hover:
+        let rest: nil
+
+
+        == for x, re$0st in xs if rest is nil { x + size(rest) }
+        definition:
+        main.rue:1:25-1:29
+        main.rue:1:48-1:52
+        references:
+        main.rue:1:11-1:15
+        main.rue:1:25-1:29
+        main.rue:1:48-1:52
+        hover:
+        let rest: List<Int>
+
+
+        == for a in xs, b in ys if b > 0 { a + b$0 }
+        definition:
+        main.rue:1:17-1:18
+        references:
+        main.rue:1:17-1:18
+        main.rue:1:28-1:29
+        main.rue:1:40-1:41
+        hover:
+        let b: Int
+
+
+        == for a in xs, b$0 in ys if b > 0 { a + b }
+        definition:
+        main.rue:1:28-1:29
+        main.rue:1:40-1:41
+        references:
+        main.rue:1:17-1:18
+        main.rue:1:28-1:29
+        main.rue:1:40-1:41
+        hover:
+        let b: Int
+
+
+        == for a in xs, b in y$0s { a + b }
+        definition:
+        main.rue:0:23-0:25
+        references:
+        main.rue:0:23-0:25
+        main.rue:1:22-1:24
+        hover:
+        ys: List<Int>
+
+
+    "#]]
+    .assert_eq(&output);
+}
+
+/// What's left of a list gets the type of a list of its items, and the item of each list gets
+/// its type.
+#[test]
+fn test_for_rest_and_several_lists_inlay_hints() {
+    check_hints(
+        "fn main(xs: List<Int>, pairs: List<(Int, Bytes)>) -> Int {\n    let sums = for x, rest in xs { x + (for y in rest fold sum = 0 { sum + y }) };\n    for a in sums, (count, name), [...others] in pairs {\n        assert a + count > name.length;\n        assert !(others is nil);\n    }\n    for _, _ in xs, _ in pairs {\n        assert !(sums is nil);\n    }\n    0\n}\n",
+        expect![[r#"
+            fn main(xs: List<Int>, pairs: List<(Int, Bytes)>) -> Int {
+                let sums«: List<Int>» = for x«: Int», rest«: List<Int>» in xs { x + (for y«: Int» in rest fold sum = 0 { sum + y }) };
+                for a«: Int» in sums, (count«: Int», name«: Bytes»), [...others«: List<(Int, Bytes)>»] in pairs {
+                    assert a + count > name.length;
+                    assert !(others is nil);
+                }
+                for _, _ in xs, _ in pairs {
+                    assert !(sums is nil);
+                }
+                0
+            }
+        "#]],
+    );
+}
+
+/// Signature help in each list.
+#[test]
+fn test_for_several_lists_signature_help() {
+    const ALL: &str = "fn all(count: Int, more: Int) -> List<Int> {\n    [count, more]\n}\n\n";
+
+    let mut output = String::new();
+
+    for body in [
+        "for a in all(1, $0), b in all(2, 3) { a + b }",
+        "for a in all(1, 2), b, rest in all(2, $0) { a + b }",
+    ] {
+        let source = format!("{ALL}fn main() -> Any {{\n    {body}\n}}\n");
+        let project = TestProject::new(&[("main.rue", &source)]);
+        writeln!(output, "== {body}\n{}", project.signature_help()).unwrap();
+    }
+
+    expect![[r#"
+        == for a in all(1, $0), b in all(2, 3) { a + b }
+        > fn all(count: Int, [more: Int]) -> List<Int>
+
+        == for a in all(1, 2), b, rest in all(2, $0) { a + b }
+        > fn all(count: Int, [more: Int]) -> List<Int>
+
+    "#]]
+    .assert_eq(&output);
+}
+
+/// Unfinished headers with several lists, or with a name for what's left of a list, don't panic
+/// either, and what's around them is still found.
+#[test]
+fn test_unfinished_for_headers() {
+    const ADD: &str = "fn add(first: Int, second: Int) -> Int {\n    first + second\n}\n\n";
+
+    let mut output = String::new();
+
+    for body in [
+        "for x,",
+        "for x, rest",
+        "for x, rest in",
+        "for x, in xs { x }",
+        "for , rest in xs { rest }",
+        "for a in xs,",
+        "for a in xs, b",
+        "for a in xs, b in",
+        "for a in xs, { a }",
+        "for a in xs, b, in xs { add(a, ",
+    ] {
+        let source = format!(
+            "{ADD}fn main(xs: List<Int>) -> Any {{\n    let before = add(1, $0);\n    let list = xs;\n    {body}\n}}\n\nfn after() -> Int {{\n    1\n}}\n"
+        );
+        let project = TestProject::new(&[("main.rue", &source)]);
+        project
+            .backend()
+            .nested_symbols
+            .store(true, Ordering::Relaxed);
+        *lock(&project.backend().shared.hints) = HintOptions::default();
+
+        writeln!(
+            output,
+            "== {body}\nsymbols:\n{}hints:\n{}signature:\n{}",
+            project.document_symbols("main.rue"),
+            project.inlay_hints("main.rue"),
+            project.signature_help()
+        )
+        .unwrap();
+
+        // Renaming `xs` from its use before the `for`
+        let source = source.replace("$0", "").replace("list = xs", "list = x$0s");
+        let project = TestProject::new(&[("main.rue", &source)]);
+        project
+            .backend()
+            .shared
+            .rename_files
+            .store(true, Ordering::Relaxed);
+        writeln!(output, "rename:\n{}", project.rename("ys")).unwrap();
+    }
+
+    expect![[r#"
+        == for x,
+        symbols:
+        Function add `(first: Int, second: Int) -> Int` 0:0-2:1 [0:3-0:6]
+        Function main `(xs: List<Int>) -> Any` 4:0-8:1 [4:3-4:7]
+        Function after `() -> Int` 10:0-12:1 [10:3-10:8]
+        hints:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(xs: List<Int>) -> Any {
+            let before«: Int» = add(«first:» 1, );
+            let list«: List<Int>» = xs;
+            for x,
+        }
+
+        fn after() -> Int {
+            1
+        }
+        signature:
+        > fn add(first: Int, [second: Int]) -> Int
+
+        rename:
+        main.rue:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(ys: List<Int>) -> Any {
+            let before = add(1, );
+            let list = ys;
+            for x,
+        }
+
+        fn after() -> Int {
+            1
+        }
+
+        == for x, rest
+        symbols:
+        Function add `(first: Int, second: Int) -> Int` 0:0-2:1 [0:3-0:6]
+        Function main `(xs: List<Int>) -> Any` 4:0-8:1 [4:3-4:7]
+        Function after `() -> Int` 10:0-12:1 [10:3-10:8]
+        hints:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(xs: List<Int>) -> Any {
+            let before«: Int» = add(«first:» 1, );
+            let list«: List<Int>» = xs;
+            for x, rest
+        }
+
+        fn after() -> Int {
+            1
+        }
+        signature:
+        > fn add(first: Int, [second: Int]) -> Int
+
+        rename:
+        main.rue:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(ys: List<Int>) -> Any {
+            let before = add(1, );
+            let list = ys;
+            for x, rest
+        }
+
+        fn after() -> Int {
+            1
+        }
+
+        == for x, rest in
+        symbols:
+        Function add `(first: Int, second: Int) -> Int` 0:0-2:1 [0:3-0:6]
+        Function main `(xs: List<Int>) -> Any` 4:0-8:1 [4:3-4:7]
+        Function after `() -> Int` 10:0-12:1 [10:3-10:8]
+        hints:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(xs: List<Int>) -> Any {
+            let before«: Int» = add(«first:» 1, );
+            let list«: List<Int>» = xs;
+            for x, rest in
+        }
+
+        fn after() -> Int {
+            1
+        }
+        signature:
+        > fn add(first: Int, [second: Int]) -> Int
+
+        rename:
+        main.rue:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(ys: List<Int>) -> Any {
+            let before = add(1, );
+            let list = ys;
+            for x, rest in
+        }
+
+        fn after() -> Int {
+            1
+        }
+
+        == for x, in xs { x }
+        symbols:
+        Function add `(first: Int, second: Int) -> Int` 0:0-2:1 [0:3-0:6]
+        Function main `(xs: List<Int>) -> Any` 4:0-8:1 [4:3-4:7]
+        Function after `() -> Int` 10:0-12:1 [10:3-10:8]
+        hints:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(xs: List<Int>) -> Any {
+            let before«: Int» = add(«first:» 1, );
+            let list«: List<Int>» = xs;
+            for x«: Int», in«: List<Int>» xs { x }
+        }
+
+        fn after() -> Int {
+            1
+        }
+        signature:
+        > fn add(first: Int, [second: Int]) -> Int
+
+        rename:
+        main.rue:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(ys: List<Int>) -> Any {
+            let before = add(1, );
+            let list = ys;
+            for x, in ys { x }
+        }
+
+        fn after() -> Int {
+            1
+        }
+
+        == for , rest in xs { rest }
+        symbols:
+        Function add `(first: Int, second: Int) -> Int` 0:0-2:1 [0:3-0:6]
+        Function main `(xs: List<Int>) -> Any` 4:0-8:1 [4:3-4:7]
+        Function after `() -> Int` 10:0-12:1 [10:3-10:8]
+        hints:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(xs: List<Int>) -> Any {
+            let before«: Int» = add(«first:» 1, );
+            let list«: List<Int>» = xs;
+            for , rest«: List<Int>» in xs { rest }
+        }
+
+        fn after() -> Int {
+            1
+        }
+        signature:
+        > fn add(first: Int, [second: Int]) -> Int
+
+        rename:
+        main.rue:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(ys: List<Int>) -> Any {
+            let before = add(1, );
+            let list = ys;
+            for , rest in ys { rest }
+        }
+
+        fn after() -> Int {
+            1
+        }
+
+        == for a in xs,
+        symbols:
+        Function add `(first: Int, second: Int) -> Int` 0:0-2:1 [0:3-0:6]
+        Function main `(xs: List<Int>) -> Any` 4:0-8:1 [4:3-4:7]
+        Function after `() -> Int` 10:0-12:1 [10:3-10:8]
+        hints:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(xs: List<Int>) -> Any {
+            let before«: Int» = add(«first:» 1, );
+            let list«: List<Int>» = xs;
+            for a«: Int» in xs,
+        }
+
+        fn after() -> Int {
+            1
+        }
+        signature:
+        > fn add(first: Int, [second: Int]) -> Int
+
+        rename:
+        main.rue:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(ys: List<Int>) -> Any {
+            let before = add(1, );
+            let list = ys;
+            for a in ys,
+        }
+
+        fn after() -> Int {
+            1
+        }
+
+        == for a in xs, b
+        symbols:
+        Function add `(first: Int, second: Int) -> Int` 0:0-2:1 [0:3-0:6]
+        Function main `(xs: List<Int>) -> Any` 4:0-8:1 [4:3-4:7]
+        Function after `() -> Int` 10:0-12:1 [10:3-10:8]
+        hints:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(xs: List<Int>) -> Any {
+            let before«: Int» = add(«first:» 1, );
+            let list«: List<Int>» = xs;
+            for a«: Int» in xs, b
+        }
+
+        fn after() -> Int {
+            1
+        }
+        signature:
+        > fn add(first: Int, [second: Int]) -> Int
+
+        rename:
+        main.rue:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(ys: List<Int>) -> Any {
+            let before = add(1, );
+            let list = ys;
+            for a in ys, b
+        }
+
+        fn after() -> Int {
+            1
+        }
+
+        == for a in xs, b in
+        symbols:
+        Function add `(first: Int, second: Int) -> Int` 0:0-2:1 [0:3-0:6]
+        Function main `(xs: List<Int>) -> Any` 4:0-8:1 [4:3-4:7]
+        Function after `() -> Int` 10:0-12:1 [10:3-10:8]
+        hints:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(xs: List<Int>) -> Any {
+            let before«: Int» = add(«first:» 1, );
+            let list«: List<Int>» = xs;
+            for a«: Int» in xs, b in
+        }
+
+        fn after() -> Int {
+            1
+        }
+        signature:
+        > fn add(first: Int, [second: Int]) -> Int
+
+        rename:
+        main.rue:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(ys: List<Int>) -> Any {
+            let before = add(1, );
+            let list = ys;
+            for a in ys, b in
+        }
+
+        fn after() -> Int {
+            1
+        }
+
+        == for a in xs, { a }
+        symbols:
+        Function add `(first: Int, second: Int) -> Int` 0:0-2:1 [0:3-0:6]
+        Function main `(xs: List<Int>) -> Any` 4:0-8:1 [4:3-4:7]
+        Function after `() -> Int` 10:0-12:1 [10:3-10:8]
+        hints:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(xs: List<Int>) -> Any {
+            let before«: Int» = add(«first:» 1, );
+            let list«: List<Int>» = xs;
+            for a«: Int» in xs, { a }
+        }
+
+        fn after() -> Int {
+            1
+        }
+        signature:
+        > fn add(first: Int, [second: Int]) -> Int
+
+        rename:
+        main.rue:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(ys: List<Int>) -> Any {
+            let before = add(1, );
+            let list = ys;
+            for a in ys, { a }
+        }
+
+        fn after() -> Int {
+            1
+        }
+
+        == for a in xs, b, in xs { add(a, 
+        symbols:
+        Function add `(first: Int, second: Int) -> Int` 0:0-2:1 [0:3-0:6]
+        Function main `(xs: List<Int>) -> Any` 4:0-8:1 [4:3-4:7]
+        Function after `() -> Int` 10:0-12:1 [10:3-10:8]
+        hints:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(xs: List<Int>) -> Any {
+            let before«: Int» = add(«first:» 1, );
+            let list«: List<Int>» = xs;
+            for a«: Int» in xs, b«: Int», in«: List<Int>» xs { add(«first:» a, 
+        }
+
+        fn after() -> Int {
+            1
+        }
+        signature:
+        > fn add(first: Int, [second: Int]) -> Int
+
+        rename:
+        main.rue:
+        fn add(first: Int, second: Int) -> Int {
+            first + second
+        }
+
+        fn main(ys: List<Int>) -> Any {
+            let before = add(1, );
+            let list = ys;
+            for a in ys, b, in ys { add(a, 
+        }
+
+        fn after() -> Int {
+            1
+        }
+
+    "#]]
+    .assert_eq(&output);
+}

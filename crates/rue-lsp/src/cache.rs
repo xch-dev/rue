@@ -388,13 +388,23 @@ impl Cache<Compiler> {
             // The message of an `assert` comes after its condition
             T![,] if parent == Some(SyntaxKind::AssertStmt) => Some(CompletionContext::Expression),
             // The list of a `for` comes after `in`, which is an identifier there
-            SyntaxKind::Ident if parent == Some(SyntaxKind::ForExpr) && token.text() == "in" => {
+            SyntaxKind::Ident if parent == Some(SyntaxKind::ForClause) && token.text() == "in" => {
                 Some(CompletionContext::Expression)
             }
             // A spread in a struct initializer is the value it's updated from, rather than the
             // name of a field
             T![...] if parent == Some(SyntaxKind::StructInitializerSpread) => {
                 Some(CompletionContext::Expression)
+            }
+            // The names in the header of a `for` are new ones: the item after `for`, or after
+            // the `,` before another list, what's left of the list after the `,` in a clause,
+            // and the result after `fold`
+            T![for] => Some(CompletionContext::Statement),
+            T![,] if matches!(parent, Some(SyntaxKind::ForExpr | SyntaxKind::ForClause)) => {
+                Some(CompletionContext::Statement)
+            }
+            SyntaxKind::Ident if parent == Some(SyntaxKind::ForFold) && token.text() == "fold" => {
+                Some(CompletionContext::Statement)
             }
             _ => None,
         }

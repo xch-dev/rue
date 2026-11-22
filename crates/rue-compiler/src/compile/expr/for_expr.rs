@@ -1,5 +1,6 @@
 use log::debug;
-use rue_ast::{AstBinding, AstForExpr, AstNode, AstStmtOrExpr};
+use rowan::TextRange;
+use rue_ast::{AstBinding, AstForClause, AstForExpr, AstNode, AstStmtOrExpr};
 use rue_diagnostic::Name;
 use rue_hir::{
     BindingSymbol, Block, Declaration, ExprStatement, FunctionCall, FunctionKind, FunctionSymbol,
@@ -9,7 +10,10 @@ use rue_types::{FunctionParameter, FunctionType, Pair, Type, TypeId};
 
 use super::call_inference::{list_of, pair_parts, references_call_generics};
 use super::list::{list_item_types, union_of};
-use crate::{BlockKind, Compiler, compile_block, compile_expr, compile_type, create_binding};
+use crate::{
+    BlockKind, Compiler, CompletionContext, SyntaxItemKind, compile_block, compile_expr,
+    compile_type, create_binding,
+};
 
 /// The result of a fold for the rest of the list.
 struct Accumulator {
@@ -18,6 +22,16 @@ struct Accumulator {
     /// The result at the end of the list.
     init: HirId,
     ty: TypeId,
+}
+
+/// A list that a `for` expression goes through, such as `x in xs`.
+struct Clause {
+    ast: AstForClause,
+    list: Value,
+    /// The type of an item of the list.
+    item_type: TypeId,
+    /// The parameter of the function for what's left of the list.
+    parameter: SymbolId,
 }
 
 /// What a `for` expression makes of the items of its list.
@@ -54,6 +68,13 @@ enum ForKind {
 /// - Without a fold, if the body has no value, or the expression is a statement, whose value
 ///   isn't used, the body is only evaluated for each item, and the result is nil. So it is if the
 ///   body's value is nil, unless the expression is expected to be a list.
+/// - With several lists, such as `for a in xs, b in ys`, the function takes what's left of each,
+///   and ends when the first one does. If another list runs out before that, the call with the
+///   rest of the lists fails, as `rest` does for nil. Every kind of `for` gets to that call for
+///   each item: a fold too, since its result can then fail, so it isn't left to the body.
+/// - With a name after the item, such as `for x, rest in xs`, the name is bound to what's left of
+///   the list after the item, which is the rest of the parameter that the item is the first of.
+///   It's a list of the item's type, in scope where the item is.
 pub fn compile_for_expr(
     ctx: &mut Compiler,
     expr: &AstForExpr,
@@ -63,26 +84,57 @@ pub fn compile_for_expr(
     let types = ctx.builtins().types;
     let range = expr.syntax().text_range();
 
-    let list = if let Some(list) = expr.list() {
-        let value = compile_expr(ctx, &list, None);
-        let any_list = list_of(ctx, types.permissive_any);
-        ctx.assign_type(list.syntax(), value.ty, any_list);
-        value
-    } else {
-        debug!("Unresolved for list");
-        ctx.unresolved()
-    };
+    // The lists are all compiled before any item is in scope, since they're gone through
+    // together, and each is a parameter of the function
+    let clauses: Vec<Clause> = expr
+        .clauses()
+        .map(|clause| {
+            // The names before `in` are new ones, so nothing is completed for them, like in the
+            // binding of a `let`
+            let clause_range = clause.syntax().text_range();
+            let names_end = clause
+                .in_token()
+                .map_or(clause_range.end(), |token| token.text_range().start());
+            ctx.add_syntax(
+                SyntaxItemKind::CompletionContext(CompletionContext::Statement),
+                TextRange::new(clause_range.start(), names_end),
+            );
 
-    // A list with no items, such as nil, has no item to give a type
-    let item_types = list_item_types(ctx, list.ty);
-    let item_type = if ctx.is_unresolved(list.ty) {
-        // A list that isn't there, or that couldn't be compiled, doesn't say what the item is
-        list.ty
-    } else if item_types.is_empty() {
-        types.never
-    } else {
-        union_of(ctx, item_types)
-    };
+            let list = if let Some(list) = clause.list() {
+                let value = compile_expr(ctx, &list, None);
+                let any_list = list_of(ctx, types.permissive_any);
+                ctx.assign_type(list.syntax(), value.ty, any_list);
+                value
+            } else {
+                debug!("Unresolved for list");
+                ctx.unresolved()
+            };
+
+            // A list with no items, such as nil, has no item to give a type
+            let item_types = list_item_types(ctx, list.ty);
+            let item_type = if ctx.is_unresolved(list.ty) {
+                // A list that isn't there, or that couldn't be compiled, doesn't say what the
+                // item is
+                list.ty
+            } else if item_types.is_empty() {
+                types.never
+            } else {
+                union_of(ctx, item_types)
+            };
+
+            let parameter = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol {
+                name: None,
+                ty: list.ty,
+            }));
+
+            Clause {
+                ast: clause,
+                list,
+                item_type,
+                parameter,
+            }
+        })
+        .collect();
 
     let fold = expr.fold();
     let has_value = expr
@@ -95,6 +147,14 @@ pub fn compile_for_expr(
     // A value that's nil doesn't say what the result is, so then it's the type the expression is
     // expected to be, if there is one, as with `fold rest = nil` for a list
     let accumulator = fold.as_ref().map(|fold| {
+        // The name of the result is a new one too
+        if let Some(binding) = fold.binding() {
+            ctx.add_syntax(
+                SyntaxItemKind::CompletionContext(CompletionContext::Statement),
+                binding.syntax().text_range(),
+            );
+        }
+
         let annotation = fold.ty().map(|ty| compile_type(ctx, &ty));
 
         let init = if let Some(init) = fold.init() {
@@ -132,23 +192,36 @@ pub fn compile_for_expr(
     });
 
     let function = ctx.alloc_symbol(Symbol::Unresolved);
-
-    let parameter = ctx.alloc_symbol(Symbol::Parameter(ParameterSymbol {
-        name: None,
-        ty: list.ty,
-    }));
+    let parameters: Vec<SymbolId> = clauses.iter().map(|clause| clause.parameter).collect();
 
     let first_hir = ctx.next_hir_id();
 
-    // Each use of what's left of the list is a node of its own
+    // Each use of what's left of the lists is a node of its own. The loop ends when the first
+    // list does, so another one can run out before it. It has no rest then, so the call fails,
+    // which is what makes a `for` over several lists fail for a list that's too short. That's
+    // recorded for the rest of each of them, so that the call is known to be able to fail: it's
+    // never left out, and the result of a fold, which is this call, is only evaluated where the
+    // body refers to it if the body always gets there
     let rest_call = |ctx: &mut Compiler| {
-        let reference = ctx.alloc_hir(Hir::Reference(parameter));
-        let rest = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, reference));
+        let args = parameters
+            .iter()
+            .enumerate()
+            .map(|(index, &parameter)| {
+                let reference = ctx.alloc_hir(Hir::Reference(parameter));
+                let rest = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, reference));
+
+                if index > 0 {
+                    ctx.insert_unchecked_list_read(rest);
+                }
+
+                rest
+            })
+            .collect();
         let callee = ctx.alloc_hir(Hir::Reference(function));
 
         ctx.alloc_hir(Hir::FunctionCall(FunctionCall {
             function: callee,
-            args: vec![rest],
+            args,
             nil_terminated: true,
         }))
     };
@@ -157,32 +230,57 @@ pub fn compile_for_expr(
         .body()
         .map_or(range.end(), |body| body.syntax().text_range().start());
 
-    // The item is in scope after the list, in the filter and the body. It isn't in scope in the
-    // fold's value, which is between them, so its scope ends before that. The body sees it from
-    // the scopes of the fold and of its block, which are inside of this one
+    // The items are in scope after the last list, in the filter and the body. They aren't in
+    // scope in the fold's value, which is between them, so their scope ends before that. The body
+    // sees them from the scopes of the fold and of its block, which are inside of this one
     let item_end = fold
         .as_ref()
         .map_or(body_start, |fold| fold.syntax().text_range().start());
 
-    let item_start = expr
-        .list()
-        .map_or(item_end, |list| list.syntax().text_range().end());
+    let item_start = clauses
+        .last()
+        .map_or(item_end, |clause| clause.ast.syntax().text_range().end());
 
     let scope = ctx.alloc_child_scope();
     ctx.push_scope(scope, item_start);
 
     let mut statements = Vec::new();
 
-    // The item is the first of what's left of the list, which is cheap to get wherever it's used
-    let reference = ctx.alloc_hir(Hir::Reference(parameter));
-    let first = ctx.alloc_hir(Hir::Unary(UnaryOp::First, reference));
-    declare(
-        ctx,
-        expr.binding().as_ref(),
-        Value::new(first, item_type),
-        true,
-        &mut statements,
-    );
+    // The item is the first of what's left of its list, and what's after it is the rest, which
+    // are cheap to get wherever they're used. A list other than the first that has run out has
+    // neither, but the call for the rest of the lists has failed for it by then, or will: a list
+    // and a loop always get to that call, and so does a fold that's over several lists (see
+    // `rest_call`)
+    for clause in &clauses {
+        let reference = ctx.alloc_hir(Hir::Reference(clause.parameter));
+        let first = ctx.alloc_hir(Hir::Unary(UnaryOp::First, reference));
+
+        declare(
+            ctx,
+            clause.ast.binding().as_ref(),
+            Value::new(first, clause.item_type),
+            true,
+            &mut statements,
+        );
+
+        if let Some(pattern) = clause.ast.rest() {
+            let reference = ctx.alloc_hir(Hir::Reference(clause.parameter));
+            let rest = ctx.alloc_hir(Hir::Unary(UnaryOp::Rest, reference));
+
+            let ty = if ctx.is_unresolved(clause.item_type) {
+                clause.item_type
+            } else {
+                list_of(ctx, clause.item_type)
+            };
+            declare(
+                ctx,
+                Some(&pattern),
+                Value::new(rest, ty),
+                true,
+                &mut statements,
+            );
+        }
+    }
 
     let filter = expr.filter().map(|filter| {
         if let Some(condition) = filter.condition() {
@@ -339,13 +437,30 @@ pub fn compile_for_expr(
         _ => (ctx.builtins().nil.hir, types.nil),
     };
 
-    // What's left of the list is a pair unless it's nil, which is the end of it
-    let condition = ctx.alloc_hir(Hir::Reference(parameter));
-    let function_body = ctx.alloc_hir(Hir::If(condition, step, end, false));
+    // What's left of the first list is a pair unless it's nil, which is the end of it, and of
+    // the loop, whatever is left of the other lists
+    let function_body = match parameters.first() {
+        Some(&parameter) => {
+            let condition = ctx.alloc_hir(Hir::Reference(parameter));
+            ctx.alloc_hir(Hir::If(condition, step, end, false))
+        }
+        None => end,
+    };
 
     let ty = ctx.alloc_type(Type::Function(FunctionType {
         generics: Vec::new(),
-        params: vec![FunctionParameter::new("list", list.ty)],
+        params: clauses
+            .iter()
+            .enumerate()
+            .map(|(index, clause)| {
+                let name = if index == 0 {
+                    "list".to_string()
+                } else {
+                    format!("list{}", index + 1)
+                };
+                FunctionParameter::new(name, clause.list.ty)
+            })
+            .collect(),
         nil_terminated: true,
         ret: return_type,
     }));
@@ -355,7 +470,7 @@ pub fn compile_for_expr(
         ty,
         scope,
         vars: Vec::new(),
-        parameters: vec![parameter],
+        parameters,
         nil_terminated: true,
         return_type,
         body: function_body,
@@ -365,7 +480,7 @@ pub fn compile_for_expr(
     let callee = ctx.alloc_hir(Hir::Reference(function));
     let hir = ctx.alloc_hir(Hir::FunctionCall(FunctionCall {
         function: callee,
-        args: vec![list.hir],
+        args: clauses.iter().map(|clause| clause.list.hir).collect(),
         nil_terminated: true,
     }));
 

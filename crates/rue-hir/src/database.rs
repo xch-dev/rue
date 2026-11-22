@@ -39,6 +39,9 @@ pub struct Database {
     single_use_loop_rests: HashSet<SymbolId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
     default_field_uses: HashMap<(TypeId, String), HirId>,
+    /// The nodes that take the rest of a list that can have run out (see
+    /// `Database::insert_unchecked_list_read`).
+    unchecked_list_reads: HashSet<HirId>,
     scopes: Arena<Scope>,
     imports: Arena<Import>,
     symbols: Arena<Symbol>,
@@ -151,7 +154,22 @@ impl Database {
         self.single_use_loop_rests.contains(&symbol)
     }
 
-    /// Whether the node is the call of a loop to itself with the rest of its list (see
+    /// Records that the node takes the rest of a list other than the first of a `for` expression
+    /// over several lists, such as `ys` in `for a in xs, b in ys`, for the loop's call to itself.
+    /// The loop ends when the first list does, so nothing checks that this one still has an item
+    /// before that.
+    pub fn insert_unchecked_list_read(&mut self, hir: HirId) {
+        self.unchecked_list_reads.insert(hir);
+    }
+
+    /// Whether the node takes the rest of a list that can have run out (see
+    /// [`Self::insert_unchecked_list_read`]). That fails if it has, unlike reading any other
+    /// value, whose shape is what its type says.
+    pub fn is_unchecked_list_read(&self, hir: HirId) -> bool {
+        self.unchecked_list_reads.contains(&hir)
+    }
+
+    /// Whether the node is the call of a loop to itself with the rest of its lists (see
     /// `FunctionKind::Loop`), which is the result of a `for` expression's fold for the rest of the
     /// list. A binding for it is evaluated once before the body, unless it can be evaluated where
     /// the body refers to it instead (see [`Self::is_single_use_loop_rest`]).
@@ -168,17 +186,16 @@ impl Database {
             return false;
         };
 
+        // Each argument is the rest of the parameter for its list
         function.kind == FunctionKind::Loop
-            && matches!(
-                call.args.as_slice(),
-                [arg] if matches!(
+            && call.args.len() == function.parameters.len()
+            && call.args.iter().zip(&function.parameters).all(|(arg, parameter)| {
+                matches!(
                     self.hir(*arg),
-                    Hir::Unary(UnaryOp::Rest, list) if matches!(
-                        self.hir(*list),
-                        Hir::Reference(parameter) if function.parameters.first() == Some(parameter)
-                    )
+                    Hir::Unary(UnaryOp::Rest, list)
+                        if matches!(self.hir(*list), Hir::Reference(reference) if reference == parameter)
                 )
-            )
+            })
     }
 
     /// The value inside of any casts, which is what's evaluated at runtime.
