@@ -6,7 +6,9 @@
 //! lowering something that behave the same, each is lowered, optimized and generated, and the
 //! smaller one is kept, rather than estimating which one it will be.
 
-use rue_lir::{ClvmTarget, CodegenOptions, LirId, compiled_size};
+use rue_lir::{ClvmTarget, CodegenOptions, LirId, compiled_size, is_pure, optimize};
+
+use crate::{Environment, HirId};
 
 use super::{Lowerer, LoweringDebugInfo, TooDeep};
 
@@ -75,16 +77,55 @@ impl Lowerer<'_, '_, '_> {
         trial.lir
     }
 
+    /// Whether the value is compiled to a constant, which is the same wherever it's evaluated,
+    /// and can't fail. That's found by lowering and optimizing it, rather than guessing what the
+    /// optimizer folds, and what's lowered is discarded.
+    ///
+    /// The value is lowered with nothing in the environment. It isn't a constant if lowering it
+    /// reads anything from there, such as a parameter, a value that's bound, or a function that
+    /// isn't inlined, which ends the lowering.
+    pub(super) fn folds_to_constant(&mut self, value: HirId) -> bool {
+        debug_assert!(self.missing_paths.is_none());
+
+        if !self.options.optimize_lir {
+            return false;
+        }
+
+        // What's recorded while lowering it is discarded, as for a trial that isn't kept
+        let debug = self.debug.clone();
+        let was_too_deep = self.too_deep.is_some();
+
+        self.missing_paths = Some(false);
+        let lir = self.lower_hir(&Environment::Nil, value);
+        let missing = self.missing_paths.take() == Some(true);
+
+        self.debug = debug;
+        let too_deep = !was_too_deep && self.too_deep.take().is_some();
+
+        if missing || too_deep {
+            return false;
+        }
+
+        // A value that's pure can't fail, and is the same wherever it's evaluated
+        let lir = optimize(self.arena, lir, self.target());
+        is_pure(self.arena, lir)
+    }
+
+    /// What the program is compiled for.
+    fn target(&self) -> ClvmTarget {
+        ClvmTarget {
+            operand_limits: self.options.operand_limits,
+            hard_fork_2: self.options.hard_fork_2,
+        }
+    }
+
     /// How many bytes the LIR compiles to on its own, with the options the program is compiled
     /// with. Code that can't be generated is as large as it gets, so it's never chosen over code
     /// that can.
     fn compiled_size(&mut self, lir: LirId) -> usize {
         let options = CodegenOptions {
             optimize_static_pairs: self.options.optimize_static_pairs,
-            target: ClvmTarget {
-                operand_limits: self.options.operand_limits,
-                hard_fork_2: self.options.hard_fork_2,
-            },
+            target: self.target(),
         };
 
         compiled_size(self.arena, lir, self.options.optimize_lir, options).unwrap_or(usize::MAX)

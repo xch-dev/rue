@@ -9,8 +9,9 @@ use rue_options::CompilerOptions;
 use crate::{
     BindingSymbol, Block, ConstantSymbol, Database, FailureAnalysis, FieldAccess, FieldKind,
     FunctionKind, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
-    analysis::{Callee, Effect, resolve_callee},
+    analysis::{Callee, Effect, resolve_callee, resolve_function},
     lower::MAX_REPEATED_STATIC_SIZE,
+    repeat_cost::is_cheap_to_repeat,
 };
 
 /// The most reads that are counted for a symbol. Each inline binding that reads another one more
@@ -48,6 +49,22 @@ pub struct DependencyGraph {
     // the let statement of a binding or the expression of a lambda is in, and the body of a
     // lambda for its parameters. There's a copy of the symbol in each copy of that place
     definitions: HashMap<SymbolId, RepeatId>,
+
+    // Keeps track of where each symbol was last referenced, which is its only reference if it's
+    // only read once. For a lambda, that's the lambda expression
+    sites: HashMap<SymbolId, Site>,
+
+    // Keeps track of how the value of an expression is used, if it's the whole value of a binding
+    // or constant, or an argument of a call to a function that's known where it's called
+    usages: HashMap<HirId, Usage>,
+
+    // Keeps track of the bindings and constants whose only reference can be evaluated more than
+    // once for each time their value would be (see `Self::is_repeated`)
+    repeated: HashSet<SymbolId>,
+
+    // Keeps track of the `inline` bindings and constants, whose values are lowered where they're
+    // referenced
+    inline_values: HashSet<SymbolId>,
 
     // Keeps track of the reads that a symbol would have on top of those in each place, if each
     // struct that reuses the rest of it from its first or second field on copied the fields one
@@ -135,6 +152,39 @@ enum Repeat {
     Lambda(SymbolId),
 }
 
+/// Where a symbol is referenced.
+#[derive(Debug, Clone, Copy)]
+struct Site {
+    /// The symbol whose body or value the reference is in, which it's evaluated with.
+    place: SymbolId,
+    /// What's done with the value that's referenced there.
+    usage: Usage,
+}
+
+/// The state of the walk that finds how often places are evaluated (see
+/// [`DependencyGraph::is_evaluated_once`]).
+#[derive(Debug, Default)]
+struct Walk {
+    /// The places and bindings on the way to the one being followed.
+    path: HashSet<SymbolId>,
+    /// Whether each place is evaluated at most once each time the scope is, once it's known.
+    results: HashMap<(SymbolId, Option<SymbolId>), bool>,
+}
+
+/// What's done with the value of a reference or a lambda expression, which decides how many
+/// times a function that it's the value of can be called.
+#[derive(Debug, Clone, Copy)]
+enum Usage {
+    /// It's called where it's written.
+    Called,
+    /// It's the whole value of the binding or constant.
+    Bound(SymbolId),
+    /// It's the argument for the parameter, in a call to a function that's known there.
+    Argument(SymbolId),
+    /// Anything else, after which it could be called any number of times.
+    Other,
+}
+
 /// A type guard whose check doesn't use its value, along with the symbol whose body it's in, which
 /// hasn't been decided by [`visit_effects`] yet.
 #[derive(Debug, Clone, Copy)]
@@ -168,6 +218,10 @@ impl DependencyGraph {
             repeats: IndexSet::new(),
             repeat: None,
             definitions: HashMap::new(),
+            sites: HashMap::new(),
+            usages: HashMap::new(),
+            repeated: HashSet::new(),
+            inline_values: HashSet::new(),
             closures: HashSet::new(),
             loops: HashSet::new(),
             loop_captures: HashSet::new(),
@@ -217,6 +271,7 @@ impl DependencyGraph {
         }
 
         graph.count_reads(db);
+        graph.find_repeated(db);
         graph.find_loop_captures(db);
         graph.find_loop_dependencies(db);
 
@@ -329,6 +384,188 @@ impl DependencyGraph {
 
         self.references = counter.counts;
         self.tail_references = tail_references;
+    }
+
+    /// Whether the binding or constant is only referenced once, but the reference can be evaluated
+    /// more than once for each time the value would be if it were bound: at its let statement for
+    /// a binding, and when the program starts for a constant. That's the case for a reference in
+    /// a lambda that can be called more than once, such as `k` in
+    /// `let k = total(xs); map(xs, fn(x) => x + k)`, or for a constant in a function that calls
+    /// itself. Substituting the value there would evaluate it again each time, so it's bound
+    /// instead, unless it's compiled to a constant.
+    ///
+    /// A value that's cheap to evaluate isn't one of these, since evaluating it again costs less
+    /// than the bytes that binding it takes (see [`is_cheap_to_repeat`]).
+    pub fn is_repeated(&self, symbol: SymbolId) -> bool {
+        self.repeated.contains(&symbol)
+    }
+
+    /// Finds the bindings and constants that are only referenced once, somewhere that can be
+    /// evaluated more than once, and whose values aren't cheap to evaluate (see
+    /// [`Self::is_repeated`]). An `inline` one is always substituted, and one that's referenced
+    /// more than once is bound unless it's only a path.
+    fn find_repeated(&mut self, db: &Database) {
+        let mut walk = Walk::default();
+        let mut repeated = HashSet::new();
+
+        // The answers don't depend on the order, but they're found in the same one each run
+        let mut sites: Vec<(SymbolId, Site)> = self
+            .sites
+            .iter()
+            .map(|(&symbol, &site)| (symbol, site))
+            .collect();
+        sites.sort_unstable_by_key(|&(symbol, _)| symbol);
+
+        for (symbol, site) in sites {
+            if self.references(symbol) != 1 {
+                continue;
+            }
+
+            // What the value is evaluated with if it's bound: the function or value that a
+            // binding's let statement is in, or the program for a constant
+            let (scope, value) = match db.symbol(symbol) {
+                Symbol::Binding(binding) if !binding.inline => {
+                    let Some(&owner) = self.owners.get(&symbol) else {
+                        continue;
+                    };
+                    (Some(owner), binding.value.hir)
+                }
+                Symbol::Constant(constant) if !constant.inline => (None, constant.value.hir),
+                Symbol::Binding(_)
+                | Symbol::Constant(_)
+                | Symbol::Unresolved
+                | Symbol::Module(_)
+                | Symbol::Function(_)
+                | Symbol::Parameter(_)
+                | Symbol::Builtin(_) => continue,
+            };
+
+            if !self.is_evaluated_once(db, site.place, scope, &mut walk)
+                && !is_cheap_to_repeat(db, self, value)
+            {
+                repeated.insert(symbol);
+            }
+        }
+
+        self.repeated = repeated;
+    }
+
+    /// Whether the body or value of `place` is evaluated at most once each time `scope` is, or
+    /// each time the program is run if that's `None`. This is found by following each place to
+    /// the one that evaluates it, which has to end at the scope:
+    ///
+    /// - A function's body is evaluated when it's called. That's once if its only reference is
+    ///   called once (see [`Self::call_site`]), each time the place that the call is in is
+    ///   evaluated. A function that calls itself is referenced more than once, and a loop's body
+    ///   is evaluated for each item.
+    /// - The value of an `inline` binding or constant is evaluated wherever it's referenced.
+    /// - The value of any other binding is evaluated once at its let statement, or once where
+    ///   it's referenced if it's substituted there. If it's substituted somewhere that's
+    ///   evaluated more often, it's cheap along with everything that's substituted into it,
+    ///   which is all that's evaluated again. Any other constant is evaluated once when the
+    ///   program starts, or substituted the same way.
+    ///
+    /// An argument of a call that's inlined is evaluated where its parameter is referenced, but
+    /// a loop or a lambda that isn't inlined captures the argument's value, so that's still once
+    /// for each time the call is evaluated.
+    fn is_evaluated_once(
+        &self,
+        db: &Database,
+        place: SymbolId,
+        scope: Option<SymbolId>,
+        walk: &mut Walk,
+    ) -> bool {
+        if scope == Some(place) {
+            return true;
+        }
+
+        // The entrypoint is run once, unless the program calls it again
+        if place == self.main {
+            return scope.is_none() && self.references(place) == 0;
+        }
+
+        if let Some(&once) = walk.results.get(&(place, scope)) {
+            return once;
+        }
+
+        // The places on the way here, which nothing is evaluated by. This keeps the walk finite
+        // if that changes. A place can be reached again by another way, such as two calls of the
+        // same function that each pass it a lambda, so it's taken off once it's been followed
+        if !walk.path.insert(place) {
+            return false;
+        }
+
+        // A chain of inline constants, or of calls, is as deep as it's long
+        let once = rue_types::grow_stack(|| match db.symbol(place) {
+            Symbol::Function(_) => {
+                !self.loops.contains(&place)
+                    && self.references(place) == 1
+                    && self.sites.get(&place).is_some_and(|&site| {
+                        self.call_site(db, site, walk)
+                            .is_some_and(|call| self.is_evaluated_once(db, call, scope, walk))
+                    })
+            }
+            Symbol::Binding(BindingSymbol { inline: true, .. })
+            | Symbol::Constant(ConstantSymbol { inline: true, .. }) => {
+                self.references(place) == 1
+                    && self
+                        .sites
+                        .get(&place)
+                        .is_some_and(|site| self.is_evaluated_once(db, site.place, scope, walk))
+            }
+            Symbol::Binding(_) | Symbol::Constant(_) => match self.owners.get(&place) {
+                Some(&owner) => self.is_evaluated_once(db, owner, scope, walk),
+                // A constant of the program
+                None => scope.is_none(),
+            },
+            Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {
+                false
+            }
+        });
+        walk.path.remove(&place);
+
+        // A place that's found not to be evaluated once because the walk came back to it is on
+        // the way back to itself, so that's the answer from anywhere. The answers are kept, so
+        // that a place that many lambdas are passed through is only followed once
+        walk.results.insert((place, scope), once);
+        once
+    }
+
+    /// The place that calls a function once each time it's evaluated, if the function is only
+    /// called there, given the only reference to it (or the lambda expression, for a lambda).
+    ///
+    /// The function's value can go through bindings that are only referenced once, as in
+    /// `let g = fn(x) => x + k; g(1)`, and through the parameters of the functions it's passed
+    /// to, if they're known where they're called, as long as each parameter is only referenced
+    /// once, and the call it ends up in is evaluated once each time that function is. Anything
+    /// else could call it any number of times, such as `map(xs, g)`, whose parameter is called
+    /// and passed on.
+    fn call_site(&self, db: &Database, site: Site, walk: &mut Walk) -> Option<SymbolId> {
+        let (symbol, function) = match site.usage {
+            Usage::Called => return Some(site.place),
+            Usage::Bound(binding) => (binding, None),
+            Usage::Argument(parameter) => (parameter, Some(*self.owners.get(&parameter)?)),
+            Usage::Other => return None,
+        };
+
+        let next = *self.sites.get(&symbol)?;
+
+        if self.references(symbol) != 1 || !walk.path.insert(symbol) {
+            return None;
+        }
+
+        // A chain of bindings that are each the one before is as deep as it's long
+        let call = rue_types::grow_stack(|| self.call_site(db, next, walk));
+        walk.path.remove(&symbol);
+        let call = call?;
+
+        let Some(function) = function else {
+            return Some(call);
+        };
+
+        // The function calls its parameter once, each time it's called from where the argument is
+        self.is_evaluated_once(db, call, Some(function), walk)
+            .then_some(site.place)
     }
 
     /// The block that the binding's let statement is in, and its index in the block's statements.
@@ -571,8 +808,33 @@ impl DependencyGraph {
                     continue;
                 }
 
-                for &dependency in self.dependencies.get(&current).into_iter().flatten() {
+                // What's referenced, from the last to the first, so that it's taken in order
+                let mut pending: Vec<(SymbolId, bool)> = Vec::new();
+                let dependencies = &self.dependencies;
+                let inline_values = &self.inline_values;
+                let refer = |pending: &mut Vec<(SymbolId, bool)>, symbol, entered| {
+                    let references = dependencies.get(&symbol).into_iter().flatten();
+                    pending.extend(references.rev().map(|&reference| (reference, entered)));
+                };
+
+                refer(&mut pending, current, entered);
+
+                while let Some((dependency, entered)) = pending.pop() {
                     let entered = entered || enclosing.contains(&dependency);
+
+                    // An `inline` value is lowered where it's referenced, so what it refers to
+                    // is referenced there too, in place of the value, rather than after
+                    // everything else that's referenced. The default value of a struct's field
+                    // is one of these, and the loop captures the same symbols in the same order
+                    // as if the value were written in the initializer
+                    let mut visit =
+                        |stack: &mut Vec<(SymbolId, bool)>, pending: &mut Vec<(SymbolId, bool)>| {
+                            if !inline_values.contains(&dependency) {
+                                stack.push((dependency, entered));
+                            } else if visited.insert((dependency, entered)) {
+                                refer(pending, dependency, entered);
+                            }
+                        };
 
                     // A loop is a function of the program wherever it's defined, including the
                     // loop itself and the loops inside of it
@@ -606,10 +868,16 @@ impl DependencyGraph {
                             && matches!(db.symbol(dependency), Symbol::Function(_))
                         {
                             for capture in self.dependencies(dependency, true) {
-                                if self.is_defined_in(capture, function)
-                                    || self.owners.get(&capture).is_some_and(|owner| {
-                                        !enclosing.contains(owner) && !self.loops.contains(&capture)
-                                    })
+                                // A loop is a function of the program wherever it's defined:
+                                // in the loop, or in a value that's lowered in it, such as the
+                                // default value of a struct's field, which captures the same
+                                // as if it were written in the initializer
+                                if !self.loops.contains(&capture)
+                                    && (self.is_defined_in(capture, function)
+                                        || self
+                                            .owners
+                                            .get(&capture)
+                                            .is_some_and(|owner| !enclosing.contains(owner)))
                                 {
                                     continue;
                                 }
@@ -636,7 +904,7 @@ impl DependencyGraph {
                             }
                         }
 
-                        stack.push((dependency, entered));
+                        visit(&mut stack, &mut pending);
                         continue;
                     }
 
@@ -644,7 +912,7 @@ impl DependencyGraph {
                     // of too
                     if !enclosed {
                         result.insert(dependency);
-                        stack.push((dependency, entered));
+                        visit(&mut stack, &mut pending);
                         continue;
                     }
 
@@ -670,7 +938,7 @@ impl DependencyGraph {
                     };
 
                     if substituted {
-                        stack.push((dependency, entered));
+                        visit(&mut stack, &mut pending);
                     } else {
                         self.loop_captures.insert(dependency);
                     }
@@ -683,6 +951,15 @@ impl DependencyGraph {
 
     pub fn const_exprs(&self) -> impl Iterator<Item = HirId> + '_ {
         self.const_exprs.iter().copied()
+    }
+
+    /// What the body or value of the symbol references, in order.
+    fn references_of(&self, symbol: SymbolId) -> impl DoubleEndedIterator<Item = SymbolId> + '_ {
+        self.dependencies
+            .get(&symbol)
+            .into_iter()
+            .flatten()
+            .copied()
     }
 
     /// The functions that the symbol is defined in, from the innermost to the outermost.
@@ -704,6 +981,33 @@ impl DependencyGraph {
     }
 
     pub fn dependencies(&self, symbol: SymbolId, captures_only: bool) -> IndexSet<SymbolId> {
+        self.dependencies_with(symbol, captures_only, |_| false)
+    }
+
+    /// What the function captures, like [`Self::dependencies`] with only captures, but without
+    /// what the values that it captures depend on, if they're bound outside of it (`is_bound`).
+    /// A function only needs the value of a binding that's bound before it, as in
+    /// `let k = total(xs); map(xs, fn(x) => x + k + k)`, where the lambda captures `k`, but
+    /// neither `total` nor `xs`. Whatever binds the value has what it depends on: a binding is
+    /// defined in a function that it's local to, and a constant is bound by the entrypoint, for
+    /// which `is_bound` must not hold.
+    pub fn captures(
+        &self,
+        symbol: SymbolId,
+        is_bound: impl Fn(SymbolId) -> bool,
+    ) -> IndexSet<SymbolId> {
+        self.dependencies_with(symbol, true, is_bound)
+    }
+
+    /// Walks what the symbol depends on, and collects all of it, or only what it captures. What
+    /// a value that's captured depends on is left out if the value `is_bound` outside of the
+    /// symbol, since only the value is needed then (see [`Self::captures`]).
+    fn dependencies_with(
+        &self,
+        symbol: SymbolId,
+        captures_only: bool,
+        is_bound: impl Fn(SymbolId) -> bool,
+    ) -> IndexSet<SymbolId> {
         // The locals of the scopes enclosing the symbol are captured, unless they are reached
         // through the scope they're defined in (such as by a recursive call), so each path
         // keeps track of which of these scopes it has entered
@@ -711,10 +1015,10 @@ impl DependencyGraph {
 
         let mut visited = HashSet::new();
         let mut result = IndexSet::new();
-        let mut stack = vec![(symbol, false, vec![false; scopes.len()])];
+        let mut stack = vec![(symbol, false, false, vec![false; scopes.len()])];
 
-        while let Some((current, is_result, mut entered)) = stack.pop() {
-            if !visited.insert((current, is_result, entered.clone())) {
+        while let Some((current, is_result, is_value, mut entered)) = stack.pop() {
+            if !visited.insert((current, is_result, is_value, entered.clone())) {
                 continue;
             }
 
@@ -722,11 +1026,24 @@ impl DependencyGraph {
                 result.insert(current);
             }
 
+            // Only the value is needed, rather than what it's evaluated from
+            if is_value {
+                continue;
+            }
+
             if let Some(index) = scopes.iter().position(|&scope| scope == current) {
                 entered[index] = true;
             }
 
-            for dependency in self.dependencies.get(&current).cloned().unwrap_or_default() {
+            // What's referenced, from the last to the first, so that it's taken in order
+            let mut pending: Vec<SymbolId> = self.references_of(current).rev().collect();
+            let mut referenced = HashSet::new();
+
+            while let Some(dependency) = pending.pop() {
+                if !referenced.insert(dependency) {
+                    continue;
+                }
+
                 // Any other local can only be reached through the scope it's defined in. A loop is
                 // defined in a function, so that it captures the function's values, but it's a
                 // function of the program like one that's declared, which anything can capture
@@ -738,7 +1055,27 @@ impl DependencyGraph {
                             .is_none_or(|index| entered[index])
                     });
 
-                stack.push((dependency, !captures_only || !is_local, entered.clone()));
+                let is_result = !captures_only || !is_local;
+
+                // An `inline` value is lowered where it's referenced, so what it refers to is
+                // referenced there too, in place of the value, rather than after everything
+                // else. The default value of a struct's field is one of these, and the symbols
+                // are found in the same order as if the value were written in the initializer
+                if self.inline_values.contains(&dependency) && !scopes.contains(&dependency) {
+                    if visited.insert((dependency, is_result, false, entered.clone())) {
+                        if is_result {
+                            result.insert(dependency);
+                        }
+
+                        pending.extend(self.references_of(dependency).rev());
+                    }
+
+                    continue;
+                }
+
+                let is_value = !is_local && is_bound(dependency);
+
+                stack.push((dependency, is_result, is_value, entered.clone()));
             }
         }
 
@@ -1367,7 +1704,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
                 graph.owners.insert(*symbol, current);
             }
 
-            visit_symbol_reference(graph, *symbol);
+            visit_symbol_reference(graph, *symbol, usage(graph, hir, is_call));
         }
         Hir::Block(block) => {
             // Nothing after a `return` or `raise` is lowered, so it doesn't reference anything
@@ -1419,7 +1756,7 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
 
             graph.closures.insert(*lambda);
 
-            visit_symbol_reference(graph, *lambda);
+            visit_symbol_reference(graph, *lambda, usage(graph, hir, is_call));
         }
         Hir::If(condition, then, else_, _inline) => {
             visit_hir(db, graph, *condition, false);
@@ -1427,19 +1764,34 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             visit_hir(db, graph, *else_, false);
         }
         Hir::FunctionCall(call) => {
-            let mut inline = None;
+            let mut function = None;
 
-            if let Hir::Reference(function) = db.hir(db.without_casts(call.function))
-                && let Symbol::Function(symbol) = db.symbol(*function)
+            if let Hir::Reference(reference) = db.hir(db.without_casts(call.function))
+                && let Symbol::Function(symbol) = db.symbol(*reference)
             {
-                graph.calls.entry(*function).or_default().push(hir);
-
-                if symbol.kind == FunctionKind::Inline {
-                    inline = Some(symbol);
-                }
+                graph.calls.entry(*reference).or_default().push(hir);
+                function = Some(symbol);
             }
 
+            let inline = function.filter(|function| function.kind == FunctionKind::Inline);
+
             visit_hir(db, graph, call.function, true);
+
+            // An argument that's passed for a parameter of its own is that parameter's value,
+            // if the function that's called is known, which a lambda that's bound to a name is
+            if let Some(callee) = resolve_function(db, call.function)
+                && let Symbol::Function(symbol) = db.symbol(callee)
+            {
+                let spread = usize::from(!call.nil_terminated);
+                let passed = call.args.len().saturating_sub(spread);
+
+                for (&parameter, &arg) in symbol.fixed_parameters().iter().zip(&call.args[..passed])
+                {
+                    graph
+                        .usages
+                        .insert(db.without_casts(arg), Usage::Argument(parameter));
+                }
+            }
 
             for (index, &arg) in call.args.iter().enumerate() {
                 // The arguments of an `inline fn` are lowered where its parameters are referenced
@@ -1527,12 +1879,22 @@ fn visit_symbol(db: &Database, graph: &mut DependencyGraph, symbol: SymbolId) {
     // Its value or body is lowered as often as the place it's defined in
     graph.repeat = graph.definition(db, symbol);
 
+    // A function that's the whole value of a binding or constant is called through it
+    if let Symbol::Constant(ConstantSymbol { value, .. })
+    | Symbol::Binding(BindingSymbol { value, .. }) = db.symbol(symbol)
+    {
+        graph
+            .usages
+            .insert(db.without_casts(value.hir), Usage::Bound(symbol));
+    }
+
     match db.symbol(symbol) {
         // The value of an inline binding or constant is lowered where it's referenced
         Symbol::Constant(ConstantSymbol { value, inline, .. })
         | Symbol::Binding(BindingSymbol { value, inline, .. })
             if *inline =>
         {
+            graph.inline_values.insert(symbol);
             visit_repeated(db, graph, Repeat::Value(symbol), value.hir);
         }
         Symbol::Unresolved | Symbol::Module(_) | Symbol::Parameter(_) | Symbol::Builtin(_) => {}
@@ -1712,9 +2074,25 @@ fn visit_effects(db: &Database, graph: &mut DependencyGraph) -> bool {
     added
 }
 
-fn visit_symbol_reference(graph: &mut DependencyGraph, symbol: SymbolId) {
+/// What's done with the value of a reference or a lambda expression where it's written.
+fn usage(graph: &DependencyGraph, hir: HirId, is_call: bool) -> Usage {
+    if is_call {
+        Usage::Called
+    } else {
+        graph.usages.get(&hir).copied().unwrap_or(Usage::Other)
+    }
+}
+
+fn visit_symbol_reference(graph: &mut DependencyGraph, symbol: SymbolId, usage: Usage) {
     // We should add the symbol to the dependencies of the symbol we're currently visiting
     if let Some(current) = graph.current {
+        graph.sites.insert(
+            symbol,
+            Site {
+                place: current,
+                usage,
+            },
+        );
         graph
             .dependencies
             .entry(current)

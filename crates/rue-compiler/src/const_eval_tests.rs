@@ -326,3 +326,82 @@ fn nothing_is_evaluated_when_there_are_other_errors() {
     assert_eq!(compiled.errors(), ["3:31 UndeclaredSymbol(\"missing\")"]);
     assert_eq!(compiled.const_values(), ["`const { 1 + 2 }` = unevaluated"]);
 }
+
+/// A constant that references itself can't be lowered, since its value would have to be bound
+/// before itself, whether it's referenced once or twice. The error is reported for the constant,
+/// rather than for each const expression that reaches it.
+#[test]
+fn const_expression_that_reaches_a_constant_that_references_itself_is_not_evaluated() {
+    for body in ["n + K", "n + K + K"] {
+        let compiled = compile(&format!(
+            "
+fn climb(n: Int) -> Int {{ if n > 40 {{ n }} else {{ climb(n + 7) }} }}
+const K: Int = f(climb(3));
+fn f(n: Int) -> Int {{ if n > 3 {{ n }} else {{ g(n) + g(n + 1) }} }}
+fn g(n: Int) -> Int {{ {body} }}
+fn main(x: Int) -> Int {{ x + const {{ f(5) }} }}
+"
+        ));
+
+        assert_eq!(
+            compiled.errors(),
+            ["3:7 RecursiveConstant(\"K\")"],
+            "{body}"
+        );
+    }
+}
+
+/// The default value of a struct's field is an `inline` constant, which is substituted where it's
+/// referenced, so a const expression that reaches one that can lead back to itself is still
+/// evaluated, as the rest of the program is.
+#[test]
+fn const_expression_through_a_default_value_that_leads_back_to_itself_is_evaluated() {
+    let compiled = compile(
+        "
+struct S { a: Int = f(9) }
+fn f(n: Int) -> Int { if n > 5 { n } else { S {}.a + n } }
+fn main(x: Int) -> Int { x + const { f(2) } + const { S {}.a } }
+",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.const_values(),
+        ["`const { f(2) }` = 11", "`const { S {}.a }` = 9"]
+    );
+}
+
+/// A function that calls itself, and reads a constant, doesn't keep a const expression from being
+/// evaluated: only a constant that references itself does.
+#[test]
+fn const_expression_that_calls_a_recursive_function_that_reads_a_constant_is_evaluated() {
+    let compiled = compile(
+        "
+const BASE: Int = 5;
+fn f(n: Int) -> Int { if n > 5 { n } else { f(n + BASE) } }
+fn main(x: Int) -> Int { x + const { f(2) } + const { f(1) + f(3) } }
+",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.const_values(),
+        ["`const { f(2) }` = 7", "`const { f(1) + f(3) }` = 14"]
+    );
+}
+
+/// An `inline` constant that references itself is an error, but it's substituted where it's
+/// referenced, so a const expression that reaches it is still evaluated.
+#[test]
+fn const_expression_that_reaches_an_inline_constant_that_references_itself_is_evaluated() {
+    let compiled = compile(
+        "
+inline const K: Int = f(9);
+fn f(n: Int) -> Int { if n > 5 { n } else { K + n } }
+fn main(x: Int) -> Int { x + const { f(2) } }
+",
+    );
+
+    assert_eq!(compiled.errors(), ["2:14 RecursiveConstant(\"K\")"]);
+    assert_eq!(compiled.const_values(), ["`const { f(2) }` = 11"]);
+}

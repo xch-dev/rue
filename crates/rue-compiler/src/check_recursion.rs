@@ -105,7 +105,7 @@ impl Components<'_> {
 ///
 /// This uses Tarjan's algorithm, which visits each declaration once. It's iterative, so that a long
 /// chain of references doesn't overflow the stack.
-fn cyclic_declarations(ctx: &Compiler, roots: &[Declaration]) -> HashSet<Declaration> {
+pub(crate) fn cyclic_declarations(ctx: &Compiler, roots: &[Declaration]) -> HashSet<Declaration> {
     let mut components = Components {
         ctx,
         failures: FailureAnalysis::new(ctx.options().enforces_operand_limits()),

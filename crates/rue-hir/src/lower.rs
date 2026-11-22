@@ -91,7 +91,8 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// everything the run can reach, so they're only found once per run.
     rounds: HashMap<Box<Slice<SymbolId>>, Rc<Vec<Option<usize>>>>,
     /// Whether each binding or constant that's referenced once can be evaluated where it's
-    /// referenced, which isn't the case if it may fail and the reference isn't always evaluated.
+    /// referenced, which isn't the case if it may fail and the reference isn't always evaluated,
+    /// or if the reference can be evaluated more than once and the value isn't cheap.
     substitutions: RefCell<HashMap<SymbolId, bool>>,
     /// Whether each binding that's referenced more than once is evaluated where it's referenced
     /// anyway, since its value is only a path into the environment, for the let statements being
@@ -117,6 +118,17 @@ pub struct Lowerer<'d, 'a, 'g> {
     substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
     /// What's always evaluated when the program is run, which constants are checked against.
     constant_roots: OnceCell<Vec<HirId>>,
+    /// The parameters of an `inline fn` that each closure in it only captures so that their
+    /// arguments are evaluated when the closure is built, rather than because it refers to them
+    /// (see [`Self::function_captures`]). They're found along with the dependencies.
+    argument_captures: RefCell<HashMap<SymbolId, IndexSet<SymbolId>>>,
+    /// Whether a symbol wasn't found in the environment, while a value is lowered on its own to
+    /// find out whether it's a constant (see [`Self::folds_to_constant`]), or `None` otherwise.
+    missing_paths: Option<bool>,
+    /// The bindings and constants that are substituted although their only reference can be
+    /// evaluated more than once, since they're compiled to constants (see
+    /// [`Self::decide_repeats`]).
+    folded_repeats: HashSet<SymbolId>,
     /// What's recorded for a debug sidecar, if one was requested.
     debug: Option<LoweringDebugInfo>,
 }
@@ -204,6 +216,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             function_failures: RefCell::default(),
             substitution_failures: RefCell::default(),
             constant_roots: OnceCell::new(),
+            argument_captures: RefCell::default(),
+            missing_paths: None,
+            folded_repeats: HashSet::new(),
             debug: None,
         }
     }
@@ -310,12 +325,136 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         // on where it's called from (see `DependencyGraph::loop_captures`)
         let dependencies = match self.graph.loop_captures(symbol) {
             Some(captures) if captures_only => Rc::new(captures.clone()),
-            _ => Rc::new(self.graph.dependencies(symbol, captures_only)),
+            _ if captures_only => Rc::new(self.function_captures(symbol)),
+            _ => Rc::new(self.graph.dependencies(symbol, false)),
         };
         self.dependencies
             .borrow_mut()
             .insert(key, dependencies.clone());
         dependencies
+    }
+
+    /// What the function captures: what it depends on from outside of it, apart from what the
+    /// values that are bound outside of it depend on (see [`DependencyGraph::captures`]).
+    fn function_captures(&self, symbol: SymbolId) -> IndexSet<SymbolId> {
+        // The entrypoint binds the constants, so it needs what their values depend on
+        let mut captures = self.graph.captures(symbol, |capture| {
+            self.is_always_bound(capture)
+                && !(symbol == self.main && matches!(self.db.symbol(capture), Symbol::Constant(_)))
+        });
+
+        // What the function would capture if nothing were left out, which is only found if
+        // something below needs it
+        let mut unpruned = None;
+
+        // Two kinds of function capture more than that, and whatever calls one passes it all of
+        // what it captures. A loop is lowered once, with what it was found to capture when the
+        // graph was built, which includes what the values it captures depend on. And the
+        // entrypoint captures what its constants depend on. So a function that can reach either
+        // one captures the same, as far as it would without leaving anything out, which is
+        // what tells its own values apart from the ones of a call that it makes. A loop captures
+        // the loops inside of it, so they're all found here
+        let mut index = 0;
+
+        while let Some(&capture) = captures.get_index(index) {
+            index += 1;
+
+            let is_entrypoint = capture == self.main && symbol != self.main;
+
+            if !is_entrypoint && self.graph.loop_captures(capture).is_none() {
+                continue;
+            }
+
+            let needed = self.dependencies(capture, true);
+            let unpruned = unpruned.get_or_insert_with(|| self.graph.dependencies(symbol, true));
+
+            captures.extend(
+                needed
+                    .iter()
+                    .copied()
+                    .filter(|needed| unpruned.contains(needed)),
+            );
+        }
+
+        // What's added back is in the order it would have without anything left out, so that
+        // the functions are grouped together the same way
+        if let Some(unpruned) = &unpruned {
+            captures = unpruned
+                .iter()
+                .copied()
+                .filter(|capture| captures.contains(capture))
+                .chain(
+                    captures
+                        .iter()
+                        .copied()
+                        .filter(|capture| !unpruned.contains(capture)),
+                )
+                .collect();
+        }
+
+        // The argument of an `inline fn` is evaluated wherever its parameter is referenced, and
+        // a closure that captures the parameter evaluates the argument when it's built. So a
+        // closure in an `inline fn` still captures the parameters that the values it captures
+        // depend on. Otherwise an argument that may fail, and that's only evaluated some of the
+        // time by what refers to it, would no longer be evaluated where the closure is built
+        let inline_fn = |symbol: SymbolId| {
+            matches!(
+                self.db.symbol(symbol),
+                Symbol::Function(function) if function.kind == FunctionKind::Inline
+            )
+        };
+
+        let mut owners =
+            iter::successors(self.graph.owner(symbol), |&owner| self.graph.owner(owner));
+
+        if owners.any(inline_fn) {
+            let unpruned = unpruned.get_or_insert_with(|| self.graph.dependencies(symbol, true));
+
+            // The closure doesn't refer to these itself, so they're only captured where the
+            // argument may fail (see `Self::is_idle_argument`)
+            let arguments: IndexSet<SymbolId> = unpruned
+                .iter()
+                .copied()
+                .filter(|&capture| {
+                    matches!(self.db.symbol(capture), Symbol::Parameter(_))
+                        && self.graph.owner(capture).is_some_and(inline_fn)
+                        && !captures.contains(&capture)
+                })
+                .collect();
+
+            captures.extend(arguments.iter().copied());
+
+            self.argument_captures
+                .borrow_mut()
+                .insert(symbol, arguments);
+        }
+
+        captures
+    }
+
+    /// What the function captures where it's lowered here, which is the same for the environment
+    /// its body is lowered with and the closure that's built for it: what it depends on, apart
+    /// from the parameters it doesn't need here (see [`Self::is_idle_argument`]).
+    fn lowered_captures(&self, symbol: SymbolId) -> IndexSet<SymbolId> {
+        self.dependencies(symbol, true)
+            .iter()
+            .copied()
+            .filter(|&capture| !self.is_idle_argument(symbol, capture))
+            .collect()
+    }
+
+    /// Whether the function only captures the parameter of an `inline fn` so that its argument
+    /// is evaluated when the closure is built (see [`Self::function_captures`]), and there's
+    /// nothing to evaluate it for here: the argument can't fail, or the call isn't being
+    /// inlined. The closure doesn't refer to the parameter, so it isn't captured then.
+    fn is_idle_argument(&self, function: SymbolId, parameter: SymbolId) -> bool {
+        self.argument_captures
+            .borrow()
+            .get(&function)
+            .is_some_and(|arguments| arguments.contains(&parameter))
+            && self
+                .inline_argument(parameter)
+                .is_none_or(|argument| !may_fail(self, argument))
     }
 
     pub fn base_path(&self) -> &Path {
@@ -351,8 +490,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         symbol: SymbolId,
         function: &FunctionSymbol,
     ) -> (Vec<SymbolGroup>, SymbolGroup) {
-        let captures: IndexSet<SymbolId> =
-            self.dependencies(symbol, true).iter().copied().collect();
+        let captures = self.lowered_captures(symbol);
 
         let capture_groups = self.group_symbols(
             captures,
@@ -512,7 +650,8 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// Lowers something one level deeper, unless that's deeper than [`MAX_LOWERING_DEPTH`], in
     /// which case it records where and returns a placeholder instead.
     fn nested(&mut self, frame: Frame, f: impl FnOnce(&mut Self) -> LirId) -> LirId {
-        if self.too_deep.is_some() {
+        // A value that needs the environment isn't a constant, whatever the rest of it is
+        if self.too_deep.is_some() || self.missing_paths == Some(true) {
             return self.arena.alloc(Lir::Atom(vec![]));
         }
 
@@ -1264,10 +1403,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 }
             } else {
                 let captures: Vec<SymbolId> = self
-                    .dependencies(symbol, true)
-                    .iter()
-                    .copied()
-                    .filter(|&symbol| self.is_capture(symbol))
+                    .lowered_captures(symbol)
+                    .into_iter()
+                    .filter(|&capture| self.is_capture(capture))
                     .collect();
 
                 for capture in captures {
@@ -1286,14 +1424,20 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_path(&mut self, env: &Environment, symbol: SymbolId) -> LirId {
-        self.arena.alloc(Lir::Path(env.path(symbol).unwrap_or_else(
-            |error| match error {
-                PathError::SymbolNotFound => panic!(
-                    "clvm path in environment not found for symbol {}",
-                    self.db.debug_symbol(symbol)
-                ),
-            },
-        )))
+        let path = match env.path(symbol) {
+            Ok(path) => path,
+            // A value that's lowered on its own isn't a constant if it needs the environment
+            Err(PathError::SymbolNotFound) if self.missing_paths.is_some() => {
+                self.missing_paths = Some(true);
+                return self.arena.alloc(Lir::Atom(vec![]));
+            }
+            Err(PathError::SymbolNotFound) => panic!(
+                "clvm path in environment not found for symbol {}",
+                self.db.debug_symbol(symbol)
+            ),
+        };
+
+        self.arena.alloc(Lir::Path(path))
     }
 
     fn lower_block(&mut self, env: &Environment, mut stmts: Vec<Statement>, body: Tail) -> LirId {

@@ -8,7 +8,7 @@ use clvmr::Allocator;
 use num_bigint::BigInt;
 use rue_clvm::disassemble_program;
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
-use rue_hir::{Hir, HirId, ModuleDeclarations, Statement, Symbol, SymbolId};
+use rue_hir::{DependencyGraph, Hir, HirId, ModuleDeclarations, Statement, Symbol, SymbolId};
 use rue_options::CompilerOptions;
 use rue_types::TypeId;
 
@@ -105,10 +105,15 @@ impl Compiled {
         disassemble_program(&allocator, main)
     }
 
+    /// The dependency graph of the source's `main` function.
+    pub fn dependency_graph(&self) -> DependencyGraph {
+        DependencyGraph::build(&self.ctx, self.symbol("main"), *self.ctx.options())
+    }
+
     /// The symbol that a path like `inner::value` names, looked up in the scope of each module
     /// along the way, starting from the file's module. This includes symbols that were imported
     /// into a module, whether or not they're exported from it.
-    fn symbol(&self, path: &str) -> SymbolId {
+    pub fn symbol(&self, path: &str) -> SymbolId {
         let (module, name) = match path.rsplit_once("::") {
             Some((module, name)) => (self.module(module), name),
             None => (self.module, path),

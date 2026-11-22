@@ -20,6 +20,8 @@ mod assert_message_tests;
 #[cfg(test)]
 mod cancel_tests;
 #[cfg(test)]
+mod capture_tests;
+#[cfg(test)]
 mod cascade_tests;
 #[cfg(test)]
 mod comparison_limit_tests;

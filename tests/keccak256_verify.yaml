@@ -49,7 +49,7 @@ tests:
   clvm_error: clvm raise ()
 - name: check_in_lambda
   program: (i () (a (q 36 (+ (q . 1230) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) () (q 8)) 1) 1) (c (a (c (c (q . 14) ()) (c (q . "prefix") (c 2 ()))) ()) (c 5 ()))) ())
-  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q 2 (q 36 (+ (q . 1230) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) () (q 8)) 1) 1) (c 5 (c 2 ())))) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 5) (c () ()))) ()))) ()))) ()))) 1)) (c (a (c (c (q . 14) ()) (c (q . "prefix") (c 2 ()))) ()) 1))
+  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 ())) (c (c (q . 2) (c (c (q . 1) (q 2 (q 36 (+ (q . 1230) (* (strlen 2) (q . 2))) (q . 1) (q 2 (i (= (keccak256 2) 5) () (q 8)) 1) 1) (c 5 (c 2 ())))) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) 1)) (c (a (c (c (q . 14) ()) (c (q . "prefix") (c 2 ()))) ()) 1))
   solution: ("hello" 0x84cf6c97606988f64d8965a2853c5bc4334dcda941683d8a1c78877577f416a0)
   output: ()
   runtime_cost: 4980

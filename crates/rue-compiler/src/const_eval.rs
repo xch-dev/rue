@@ -6,13 +6,15 @@ use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program};
 use id_arena::Arena;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
-    DependencyGraph, Environment, Hir, HirId, Lowerer, MAX_LOWERING_DEPTH, Symbol, SymbolId,
-    has_reachable_unresolved,
+    Declaration, DependencyGraph, Environment, Hir, HirId, Lowerer, MAX_LOWERING_DEPTH, Symbol,
+    SymbolId, has_reachable_unresolved,
 };
 use rue_lir::{CodegenOptions, codegen, optimize};
 use rue_options::CompilerOptions;
 
-use crate::{Compiler, clvm_target, entrypoint::synthetic_function};
+use crate::{
+    Compiler, check_recursion::cyclic_declarations, clvm_target, entrypoint::synthetic_function,
+};
 
 pub(crate) fn evaluate_const_exprs(ctx: &mut Compiler) {
     if ctx.has_errors() {
@@ -254,6 +256,28 @@ fn evaluate_const_expr(
                     ctx.debug_symbol(dependency)
                 )));
             }
+        }
+    }
+
+    // A constant that's bound and references itself can't be lowered, since its value would
+    // have to be bound before itself. It's an error that's reported on its own (see
+    // `check_recursion`), which finds the same cycles. That's also an error for an `inline` one,
+    // but it's substituted where it's referenced, so the expression is still evaluated. Only the
+    // constants count: a function that calls itself and reads one isn't a cycle of the constant
+    let constants: Vec<Declaration> = graph
+        .dependencies(root, false)
+        .into_iter()
+        .filter(|&dependency| {
+            matches!(ctx.symbol(dependency), Symbol::Constant(constant) if !constant.inline)
+        })
+        .map(Declaration::Symbol)
+        .collect();
+
+    if !constants.is_empty() {
+        let cyclic = cyclic_declarations(ctx, &constants);
+
+        if constants.iter().any(|constant| cyclic.contains(constant)) {
+            return Err(ConstEvalError::DependencyFailed);
         }
     }
 
