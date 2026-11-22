@@ -257,6 +257,16 @@ fn evaluate_const_expr(
         }
     }
 
+    // A constant that references itself is an error that's reported on its own, and it can't be
+    // lowered, since its value would have to be bound before itself
+    for dependency in graph.dependencies(root, false) {
+        if matches!(ctx.symbol(dependency), Symbol::Constant(_))
+            && graph.dependencies(dependency, false).contains(&dependency)
+        {
+            return Err(ConstEvalError::DependencyFailed);
+        }
+    }
+
     let mut arena = Arena::new();
     let lir = {
         let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, root, PathBuf::new());

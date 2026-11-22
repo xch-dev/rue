@@ -184,6 +184,7 @@ impl Lowerer<'_, '_, '_> {
         // What a function captures, and whether a value can fail, depend on which values are
         // substituted
         self.dependencies.borrow_mut().clear();
+        self.argument_captures.borrow_mut().clear();
         self.substitutions.borrow_mut().clear();
         self.substitution_failures.borrow_mut().clear();
         self.function_failures.borrow_mut().clear();

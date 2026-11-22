@@ -118,6 +118,10 @@ pub struct Lowerer<'d, 'a, 'g> {
     substitution_failures: RefCell<HashMap<(SymbolId, bool), bool>>,
     /// What's always evaluated when the program is run, which constants are checked against.
     constant_roots: OnceCell<Vec<HirId>>,
+    /// The parameters of an `inline fn` that each closure in it only captures so that their
+    /// arguments are evaluated when the closure is built, rather than because it refers to them
+    /// (see [`Self::function_captures`]). They're found along with the dependencies.
+    argument_captures: RefCell<HashMap<SymbolId, HashSet<SymbolId>>>,
     /// Whether a symbol wasn't found in the environment, while a value is lowered on its own to
     /// find out whether it's a constant (see [`Self::folds_to_constant`]), or `None` otherwise.
     missing_paths: Option<bool>,
@@ -212,6 +216,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             function_failures: RefCell::default(),
             substitution_failures: RefCell::default(),
             constant_roots: OnceCell::new(),
+            argument_captures: RefCell::default(),
             missing_paths: None,
             folded_repeats: HashSet::new(),
             debug: None,
@@ -389,13 +394,44 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         if owners.any(inline_fn) {
             let unpruned = unpruned.get_or_insert_with(|| self.graph.dependencies(symbol, true));
 
-            captures.extend(unpruned.iter().copied().filter(|&capture| {
-                matches!(self.db.symbol(capture), Symbol::Parameter(_))
-                    && self.graph.owner(capture).is_some_and(inline_fn)
-            }));
+            // The closure doesn't refer to these itself, so they're only captured where the
+            // argument may fail (see `Self::is_idle_argument`)
+            let arguments: HashSet<SymbolId> = unpruned
+                .iter()
+                .copied()
+                .filter(|&capture| {
+                    matches!(self.db.symbol(capture), Symbol::Parameter(_))
+                        && self.graph.owner(capture).is_some_and(inline_fn)
+                        && !captures.contains(&capture)
+                })
+                .collect();
+
+            captures.extend(
+                unpruned
+                    .iter()
+                    .filter(|capture| arguments.contains(capture)),
+            );
+
+            self.argument_captures
+                .borrow_mut()
+                .insert(symbol, arguments);
         }
 
         captures
+    }
+
+    /// Whether the function only captures the parameter of an `inline fn` so that its argument
+    /// is evaluated when the closure is built (see [`Self::function_captures`]), and there's
+    /// nothing to evaluate it for here: the argument can't fail, or the call isn't being
+    /// inlined. The closure doesn't refer to the parameter, so it isn't captured then.
+    fn is_idle_argument(&self, function: SymbolId, parameter: SymbolId) -> bool {
+        self.argument_captures
+            .borrow()
+            .get(&function)
+            .is_some_and(|arguments| arguments.contains(&parameter))
+            && self
+                .inline_argument(parameter)
+                .is_none_or(|argument| !may_fail(self, argument))
     }
 
     pub fn base_path(&self) -> &Path {
@@ -431,8 +467,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         symbol: SymbolId,
         function: &FunctionSymbol,
     ) -> (Vec<SymbolGroup>, SymbolGroup) {
-        let captures: IndexSet<SymbolId> =
-            self.dependencies(symbol, true).iter().copied().collect();
+        let captures: IndexSet<SymbolId> = self
+            .dependencies(symbol, true)
+            .iter()
+            .copied()
+            .filter(|&capture| !self.is_idle_argument(symbol, capture))
+            .collect();
 
         let capture_groups = self.group_symbols(
             captures,
@@ -1348,7 +1388,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     .dependencies(symbol, true)
                     .iter()
                     .copied()
-                    .filter(|&symbol| self.is_capture(symbol))
+                    .filter(|&capture| {
+                        self.is_capture(capture) && !self.is_idle_argument(symbol, capture)
+                    })
                     .collect();
 
                 for capture in captures {

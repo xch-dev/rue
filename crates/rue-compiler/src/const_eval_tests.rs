@@ -326,3 +326,27 @@ fn nothing_is_evaluated_when_there_are_other_errors() {
     assert_eq!(compiled.errors(), ["3:31 UndeclaredSymbol(\"missing\")"]);
     assert_eq!(compiled.const_values(), ["`const { 1 + 2 }` = unevaluated"]);
 }
+
+/// A constant that references itself can't be lowered, since its value would have to be bound
+/// before itself, whether it's referenced once or twice. The error is reported for the constant,
+/// rather than for each const expression that reaches it.
+#[test]
+fn const_expression_that_reaches_a_constant_that_references_itself_is_not_evaluated() {
+    for body in ["n + K", "n + K + K"] {
+        let compiled = compile(&format!(
+            "
+fn climb(n: Int) -> Int {{ if n > 40 {{ n }} else {{ climb(n + 7) }} }}
+const K: Int = f(climb(3));
+fn f(n: Int) -> Int {{ if n > 3 {{ n }} else {{ g(n) + g(n + 1) }} }}
+fn g(n: Int) -> Int {{ {body} }}
+fn main(x: Int) -> Int {{ x + const {{ f(5) }} }}
+"
+        ));
+
+        assert_eq!(
+            compiled.errors(),
+            ["3:7 RecursiveConstant(\"K\")"],
+            "{body}"
+        );
+    }
+}

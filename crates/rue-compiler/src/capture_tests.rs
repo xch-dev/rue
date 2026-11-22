@@ -340,11 +340,26 @@ inline fn scaled(p: Int, c: Bool, xs: List<Int>) -> List<Int> { let v = if c { p
 fn main(xs: List<Int>, n: Int) -> List<Int> { scaled(positive(n), n > 5, xs) }",
     );
 
-    // The closure captures the value, and the arguments for `p` and `c`
+    // The closure captures the value and the argument for `p`, which may fail. The argument for
+    // `c` can't, so there's nothing to evaluate it for
     let start = program
         .find("(c (q . 2) (c (q 1 ")
         .expect("the program builds a closure");
-    assert_eq!(program[start..].matches("(q . 4)").count(), 3, "{program}");
+    assert_eq!(program[start..].matches("(q . 4)").count(), 2, "{program}");
+}
+
+/// A closure in an `inline fn` doesn't capture a parameter that only a bound value it captures
+/// reads, if its argument can't fail, so the argument is only evaluated for the value.
+#[test]
+fn closure_in_an_inline_function_only_captures_a_bound_value() {
+    let inline = program(
+        "inline fn offset(ys: List<Int>, xs: List<Int>) -> List<Int> { let k = total(ys); map(xs, fn(y) => y + k) }
+fn main(xs: List<Int>, ys: List<Int>) -> List<Int> { offset(ys, xs) }",
+    );
+    let written = program(
+        "fn main(xs: List<Int>, ys: List<Int>) -> List<Int> { let k = total(ys); map(xs, fn(y) => y + k) }",
+    );
+    assert_eq!(inline, written);
 }
 
 /// A value that isn't written as something cheap, but is compiled to a constant, is substituted
