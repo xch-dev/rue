@@ -1351,15 +1351,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     continue;
                 };
 
-                // An argument for a parameter that a loop refers to is evaluated for each item
-                let repeated = (self.graph.references(parameter) > 1
-                    || self.graph.is_loop_capture(parameter))
-                    && !self.is_trivial_argument(arg);
-
-                if !repeated
-                    && (!may_fail(self, arg)
-                        || self.parameter_always_evaluated(function.body, parameter))
-                {
+                if !self.binds_inline_argument(
+                    function,
+                    parameter,
+                    || self.is_trivial_argument(arg),
+                    || may_fail(self, arg),
+                ) {
                     continue;
                 }
 

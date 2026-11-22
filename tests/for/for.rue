@@ -511,9 +511,10 @@ test fn attributes() -> Int {
     5
 }
 
-// The result for the rest of the list is evaluated once where it's an argument of a call, or the
-// value of a `let`, since a function that's inlined evaluates its argument wherever it refers to
-// its parameter
+// The result for the rest of the list is evaluated once, before the body, where it's an argument
+// of a call that's inlined into a body that refers to the parameter more than once, since a
+// function that's inlined evaluates its argument wherever it refers to its parameter. In the value
+// of a `let` that's bound, it's evaluated in place, where the `let` is
 inline fn larger(a: Int, b: Int) -> Int {
     if a > b {
         a
@@ -537,6 +538,208 @@ test fn fold_in_a_let_passed_to_an_inline_function() -> Int {
         let next = total + x;
         twice(next) / 2
     }
+}
+
+// Where it's the argument of a call, it's evaluated there, as in recursion written by hand: at a
+// call that isn't inlined, or where the body of one that's inlined refers to the parameter, through
+// any number of calls that are inlined too
+fn hash_with(item: Int, rest: Bytes32) -> Bytes32 {
+    sha256(item as Bytes + rest)
+}
+
+test fn fold_as_an_argument_used_once() -> Bytes32 {
+    let xs = runtime([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    for x in xs fold hash = sha256(nil) { hash_with(x, hash) }
+}
+
+fn hash_twice_with(item: Int, rest: Bytes32) -> Bytes32 {
+    hash_with(item, hash_with(item, rest))
+}
+
+test fn fold_as_an_argument_of_nested_calls() -> Bytes32 {
+    let xs = runtime([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    for x in xs fold hash = sha256(nil) { hash_twice_with(x, hash) }
+}
+
+// A function that's called more than once isn't inlined here, so its argument is evaluated at the
+// call, however many times its body refers to the parameter
+fn doubled(value: Int) -> Int {
+    value + value
+}
+
+test fn fold_as_an_argument_of_a_call_that_isnt_inlined() -> (Int, Int) {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    (
+        for x in xs fold total = 0 { doubled(total) + x },
+        for x in xs fold total = 0 { doubled(doubled(total)) + x },
+    )
+}
+
+// An inlined call whose body refers to the parameter more than once would bind the argument, or
+// one that may fail where the body doesn't always get to it, which is no smaller than binding it
+// before the body. So it's bound there instead: for a function that's called once, and a lambda
+// that's passed to an `inline fn`
+fn doubled_once(value: Int) -> Int {
+    value + value
+}
+
+inline fn apply(f: fn(value: Int) -> Int, value: Int) -> Int {
+    f(value)
+}
+
+test fn fold_as_an_argument_bound_by_the_call() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    for x in xs fold total = 0 { doubled_once(total) + x }
+}
+
+test fn fold_as_an_argument_of_a_lambda_bound_by_the_call() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    for x in xs fold total = 0 { apply(fn(value: Int) => value + value, total) + x }
+}
+
+// So is one that's passed to such a call through a `let` that's substituted there. Each test calls
+// the function once, so that it's inlined
+test fn fold_as_an_argument_bound_by_the_call_through_a_let() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    for x in xs fold total = 0 {
+        let same = total;
+        doubled_once(same) + x
+    }
+}
+
+test fn fold_as_an_argument_bound_by_the_call_through_an_inline_let() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    for x in xs fold total = 0 {
+        inline let same = total;
+        doubled_once(same) + x
+    }
+}
+
+// A `let` whose value is the result, and that's referenced more than once, is bound with the
+// result evaluated in place, where the `let` is, rather than bound before the body as well
+inline fn doubled_through_a_let(value: Int) -> Int {
+    let bound = value;
+    bound + bound
+}
+
+test fn fold_as_an_argument_bound_by_a_let() -> (Int, Int) {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    (
+        for x in xs fold total = 0 { doubled_through_a_let(total) + x },
+        for x in xs fold total = 0 {
+            let same = total;
+            apply(fn(value: Int) => value + same, same)
+        },
+    )
+}
+
+// An argument that the result is only part of is bound with the result evaluated in place in it,
+// and one whose parameter is never referenced is evaluated for its effect, so the result is
+// evaluated in place in either
+fn ignored_once(_value: Int) -> Int {
+    0
+}
+
+test fn fold_as_part_of_an_argument_bound_by_the_call() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    for x in xs fold total = 0 { apply(fn(value: Int) => value + value, total + x) }
+}
+
+test fn fold_as_an_argument_that_isnt_referenced() -> Int {
+    let xs = runtime([1, 2, 3, 0]);
+    for x in xs fold total = 0 {
+        assert x != 3;
+        ignored_once(total) + x
+    }
+}
+
+// A lambda that's passed to an `inline fn` and refers to its parameter once has it evaluated in
+// place, and so does one that calls the same `inline fn`, which isn't inlined inside of a call of
+// itself
+test fn fold_as_an_argument_of_a_lambda() -> (Int, Int) {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    (
+        for x in xs fold total = 0 { apply(fn(value: Int) => value * 2, total) + x },
+        for x in xs fold total = 0 {
+            apply(fn(value: Int) => apply(fn(inner: Int) => doubled(inner), value), total) + x
+        },
+    )
+}
+
+// A body that's inlined and refers to the parameter in a lambda or another `for` evaluates the
+// argument once, where the closure is built or the loop is called, and one that refers to it more
+// than once, through another `inline fn` or a type guard, has the result evaluated before the body,
+// rather than going through the rest of the list again for each reference
+inline fn twice_through(value: Int) -> Int {
+    twice(value)
+}
+
+inline fn through_a_lambda(value: Int) -> Int {
+    let get = fn() => value;
+    get() + get()
+}
+
+inline fn through_a_for(value: Int, ys: List<Int>) -> Int {
+    for y in ys fold sum = 0 { sum + y * value }
+}
+
+inline fn has_two_items(value: Any) -> Bool {
+    value is (Int, (Int, nil))
+}
+
+test fn fold_as_an_argument_used_twice_through_an_inline_function() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    for x in xs fold total = 0 { twice_through(total) + x }
+}
+
+test fn fold_as_an_argument_used_in_a_lambda() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    for x in xs fold total = 0 { through_a_lambda(total) + x }
+}
+
+test fn fold_as_an_argument_used_in_a_for() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    let ys = runtime([1, 2]);
+    for x in xs fold total = 0 { through_a_for(total, ys) + x }
+}
+
+test fn fold_as_an_argument_used_in_a_type_guard() -> Any {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    for x in xs fold result: Any = nil {
+        if has_two_items(result) {
+            x
+        } else {
+            (x, (x, nil))
+        }
+    }
+}
+
+// A result that can fail is only evaluated in the call if the body it's inlined into always gets
+// to it, so a fold still fails for an item after one that doesn't use it
+fn first_if(condition: Bool, value: Int) -> Int {
+    if condition {
+        value
+    } else {
+        0
+    }
+}
+
+test fn fold_as_an_argument_used_some_of_the_time_fails() -> Int {
+    for x in runtime([1, 2, 0]) fold total = 0 {
+        assert x > 0;
+        first_if(x > 1, total)
+    }
+}
+
+// One that can't fail is evaluated where the body uses it, so the fold stops at the first item
+// that doesn't
+fn either(first: Bool, second: Bool) -> Bool {
+    first || second
+}
+
+test fn fold_as_an_argument_stops_early() -> Bool {
+    let xs = runtime([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    for x in xs fold found = false { either(x == 2, found) }
 }
 
 // A body whose value is nil makes a loop, such as a call to a function that returns nothing, or
