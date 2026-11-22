@@ -22,13 +22,12 @@ pub fn compile_cast_expr(ctx: &mut Compiler, cast: &AstCastExpr) -> Value {
         ctx.unresolved()
     };
 
-    // Nothing can be cast to a type without values, such as `Never`, from one with values. That's
-    // clearer to say than that they're represented differently, and the cast is unresolved, so
-    // that the code after it isn't reported as unreachable because of the mistake. A value with
-    // an error in it was already reported, so it's only made unresolved.
-    if rue_types::is_uninhabited(ctx.types_mut(), ty)
-        && !rue_types::is_uninhabited(ctx.types_mut(), expr.ty)
-    {
+    // A cast that's rejected to a type without values, such as `Never`, is reported as such, which
+    // is clearer than that the types are represented differently. Casts between types without
+    // values that are already allowed still are. The cast is unresolved, so that the code after it
+    // isn't reported as unreachable because of the mistake. A value with an error in it was
+    // already reported, so it's only made unresolved.
+    if rue_types::is_uninhabited(ctx.types_mut(), ty) {
         if rue_types::contains_unresolved(ctx.types(), expr.ty) {
             return ctx.unresolved();
         }

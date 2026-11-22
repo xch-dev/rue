@@ -29,6 +29,12 @@ fn cast_to_uninhabited_pair(value: (Int, Int)) -> Int {
     1
 }
 
+// A cast between types without values is still rejected if their parts don't match
+fn cast_without_values(pair: (Int, Never)) -> Int {
+    let _never = pair as Never;
+    1
+}
+
 enum Empty {}
 
 fn cast_to_empty_enum(value: Any) -> Int {
@@ -66,6 +72,7 @@ test fn main() -> Int {
         + call()
         + function_type()()
         + after_call()
+        + cast_without_values(unchecked_cast(nil))
         + cast_to_empty_enum(1)
         + cast_unresolved()
 }
