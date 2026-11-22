@@ -1,0 +1,16 @@
+// This program is smallest with its run of let statements in the order the program reaches the
+// bindings in, `number` before `pair`, rather than the order they're written in.
+
+fn pick<T>(first: T, second: T) -> T {
+    if first is Int {
+        return second;
+    }
+    first
+}
+
+test fn picks_the_pair() {
+    let pair: Any = (1, 2);
+    let number: Any = 5;
+    assert !(pick(pair, number) is Bytes32);
+    assert pick(number, pair) is (Int, Int);
+}

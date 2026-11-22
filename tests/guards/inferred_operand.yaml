@@ -7,12 +7,12 @@ tests:
   byte_cost: 1524000
   total_cost: 1526729
 - name: generic_inferred_from_arguments
-  program: (a (q 2 (q 2 (i (a (i (l (a 5 2)) () (q 9 (strlen (a 5 2)) (q . 32))) 1) (q 8) (q 2 (i (a (i (l (a 5 (c 6 4))) (q 2 (i (l (f (a 5 (c 6 4)))) () (q 32 (l (r (a 5 (c 6 4)))))) 1) ()) 1) () (q 8)) 1)) 1) (c (q (q . 2) . 5) 1)) (c (q 2 (i (l 2) (q . 2) (q . 3)) 1) ()))
+  program: (a (q 2 (q 2 (i (a (i (l (a 5 (c 6 4))) () (q 9 (strlen (a 5 (c 6 4))) (q . 32))) 1) (q 8) (q 2 (i (a (i (l (a 5 2)) (q 2 (i (l (f (a 5 2))) () (q 32 (l (r (a 5 2))))) 1) ()) 1) () (q 8)) 1)) 1) (c (q 5 1 . 2) 1)) (c (q 2 (i (l 2) (q . 2) (q . 3)) 1) ()))
   debug_program: (a (q 2 (q 2 (i (not (a (i (not (l (a 5 (c 4 6)))) (q 9 (strlen (a 5 (c 4 6))) (q . 32)) ()) 1)) (q 2 (i (a (i (l (a 5 (c 6 4))) (q 2 (i (not (l (f (a 5 (c 6 4))))) (q 32 (l (r (a 5 (c 6 4))))) ()) 1) ()) 1) () (q 8 (q . "assertion failed at inferred_operand.rue:21:5"))) 1) (q 8 (q . "assertion failed at inferred_operand.rue:20:5"))) 1) (c (c (c (q . 1) (q . 2)) (q . 5)) 1)) (c (q 2 (i (not (l 2)) (q . 3) (q . 2)) 1) ()))
   output: ()
-  runtime_cost: 4409
-  byte_cost: 2796000
-  total_cost: 2800409
+  runtime_cost: 4195
+  byte_cost: 2724000
+  total_cost: 2728195
 - name: list_literal
   program: ()
   debug_program: (a (q 2 (i (not (not (l (f (c 4 ()))))) (q 2 (i (not (l (f (c 6 ())))) () (q 8 (q . "assertion failed at inferred_operand.rue:28:5"))) 1) (q 8 (q . "assertion failed at inferred_operand.rue:27:5"))) 1) (c (c (c (q . 1) (q . 2)) (q . 5)) 1))

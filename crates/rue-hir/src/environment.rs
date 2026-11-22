@@ -46,30 +46,44 @@ impl Environment {
     /// Symbols that aren't referenced don't change the balance, so they're split off one at a time,
     /// and the tree is as deep as there are unreferenced symbols.
     pub fn tree(referenced_symbols: IndexMap<SymbolId, usize>) -> Self {
-        // The sort is stable, so symbols that are referenced equally often stay in order
-        let mut symbols: Vec<_> = referenced_symbols.into_iter().collect();
-        symbols.sort_by_key(|&(_, count)| Reverse(count));
+        Self::tree_of(
+            referenced_symbols
+                .into_iter()
+                .map(|(symbol, count)| (Self::Leaf(symbol), count))
+                .collect(),
+        )
+    }
 
-        if symbols.is_empty() {
+    /// Builds a tree of the parts, each with the number of references it stands for, the way
+    /// [`Self::tree`] does for symbols. A part can be a tree of its own, which is kept as it is,
+    /// so that the tree it's in has it as a subtree.
+    pub fn tree_of(parts: Vec<(Self, usize)>) -> Self {
+        // The sort is stable, so parts that are referenced equally often stay in order
+        let mut parts = parts;
+        parts.sort_by_key(|&(_, count)| Reverse(count));
+
+        if parts.is_empty() {
             return Self::Nil;
         }
 
-        // The total reference count of the symbols before each index
-        let mut counts_before = Vec::with_capacity(symbols.len() + 1);
+        // The total reference count of the parts before each index
+        let mut counts_before = Vec::with_capacity(parts.len() + 1);
         counts_before.push(0);
 
-        for (_, count) in &symbols {
+        for (_, count) in &parts {
             counts_before.push(counts_before.last().unwrap() + count);
         }
 
+        let mut parts: Vec<Option<Self>> = parts.into_iter().map(|(part, _)| Some(part)).collect();
+
         let mut root = Self::Nil;
 
-        // Each range of symbols left to build, and where to put its tree
-        let mut pending = vec![(0, symbols.len(), &mut root)];
+        // Each range of parts left to build, and where to put its tree
+        let mut pending = vec![(0, parts.len(), &mut root)];
 
         while let Some((start, end, tree)) = pending.pop() {
             if end - start == 1 {
-                *tree = Self::Leaf(symbols[start].0);
+                *tree = parts[start].take().expect("each part is placed once");
                 continue;
             }
 
@@ -237,6 +251,34 @@ mod tests {
 
     fn path(env: &Environment, symbol: SymbolId) -> u64 {
         env.path(symbol).unwrap().try_into().unwrap()
+    }
+
+    #[test]
+    fn tree_of_keeps_parts_whole() {
+        let [a, b, c, d] = symbols(4)[..] else {
+            unreachable!()
+        };
+
+        // The part stands for both of its references, so it goes after `c`, and it's kept as
+        // it is rather than split up to balance them
+        let part = pair(Environment::Leaf(a), Environment::Leaf(b));
+        let tree = Environment::tree_of(vec![(part, 2), (Environment::Leaf(c), 3)]);
+        assert_eq!(path(&tree, c), 2);
+        assert_eq!(path(&tree, a), 5);
+        assert_eq!(path(&tree, b), 7);
+
+        // A part that's referenced more often than the rest goes first, and the rest are
+        // balanced around it
+        let part = pair(Environment::Leaf(a), Environment::Leaf(b));
+        let tree = Environment::tree_of(vec![
+            (Environment::Leaf(c), 1),
+            (part, 10),
+            (Environment::Leaf(d), 1),
+        ]);
+        assert_eq!(path(&tree, a), 4);
+        assert_eq!(path(&tree, b), 6);
+        assert_eq!(path(&tree, c), 5);
+        assert_eq!(path(&tree, d), 7);
     }
 
     #[test]

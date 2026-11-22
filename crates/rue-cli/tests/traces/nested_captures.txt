@@ -1,0 +1,54 @@
+===== debug: ((1 2 3) 0) =====
+output: 411
+===== debug: ((1 2 (4 . 5)) 0) =====
+error: InvalidOperatorArg: Requires Int Argument: +
+  nested_captures.rue:10:5, in main
+    add_scaled(xs, n)
+    xs = (1 2 (4 . 5))
+    n = ()
+  nested_captures.rue:27:9, in add_scaled
+    for x in xs fold sum = 0 { sum + x + add_scaled(xs, n + SCALE) }
+    n = ()
+    xs = (1 2 (4 . 5))
+  nested_captures.rue:9:39, in for
+    fn main(xs: List<Int>, n: Int) -> Int {
+    n = ()
+    xs = (1 2 (4 . 5))
+    list = (1 2 (4 . 5))
+  nested_captures.rue:9:39, in for
+    fn main(xs: List<Int>, n: Int) -> Int {
+    n = ()
+    xs = (1 2 (4 . 5))
+    list = (2 (4 . 5))
+  nested_captures.rue:27:36, in for
+    for x in xs fold sum = 0 { sum + x + add_scaled(xs, n + SCALE) }
+    n = ()
+    xs = (1 2 (4 . 5))
+    list = ((4 . 5))
+===== release: ((1 2 3) 0) =====
+output: 411
+===== release: ((1 2 (4 . 5)) 0) =====
+error: InvalidOperatorArg: Requires Int Argument: +
+  nested_captures.rue:10:5, in main
+    add_scaled(xs, n)
+    xs = (1 2 (4 . 5))
+    n = ()
+  nested_captures.rue:27:9, in add_scaled
+    for x in xs fold sum = 0 { sum + x + add_scaled(xs, n + SCALE) }
+    n = ()
+    xs = (1 2 (4 . 5))
+  nested_captures.rue:27:36, in for
+    for x in xs fold sum = 0 { sum + x + add_scaled(xs, n + SCALE) }
+    n = ()
+    xs = (1 2 (4 . 5))
+    list = (1 2 (4 . 5))
+  nested_captures.rue:27:36, in for
+    for x in xs fold sum = 0 { sum + x + add_scaled(xs, n + SCALE) }
+    n = ()
+    xs = (1 2 (4 . 5))
+    list = (2 (4 . 5))
+  nested_captures.rue:27:36, in for
+    for x in xs fold sum = 0 { sum + x + add_scaled(xs, n + SCALE) }
+    n = ()
+    xs = (1 2 (4 . 5))
+    list = ((4 . 5))
