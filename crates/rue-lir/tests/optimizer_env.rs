@@ -61,7 +61,7 @@ fn gen_lir(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
 
     let d = depth - 1;
 
-    match rng.below(14) {
+    match rng.below(20) {
         0 | 1 => {
             let value = gen_lir(arena, rng, d);
             let callee = arena.alloc(Lir::Quote(value));
@@ -115,9 +115,48 @@ fn gen_lir(arena: &mut Arena<Lir>, rng: &mut Rng, depth: u32) -> LirId {
             let args = (0..=rng.below(3)).map(|_| gen_lir(arena, rng, d)).collect();
             arena.alloc(Lir::Concat(args))
         }
-        _ => {
+        13 => {
             let value = gen_lir(arena, rng, d);
             arena.alloc(Lir::Strlen(value))
+        }
+        // A check in front of a value, which sometimes reads into what it checks
+        14..=16 => {
+            let value = if rng.below(2) == 0 {
+                gen_path(arena, rng)
+            } else {
+                gen_lir(arena, rng, d)
+            };
+            let check = if rng.below(2) == 0 {
+                arena.alloc(Lir::Listp(value))
+            } else {
+                value
+            };
+            let check = if rng.below(3) == 0 {
+                let other = gen_lir(arena, rng, d);
+                arena.alloc(Lir::All(vec![check, other]))
+            } else {
+                check
+            };
+            let body = gen_lir(arena, rng, d);
+            let body = if rng.below(2) == 0 {
+                let f = arena.alloc(Lir::First(value));
+                arena.alloc(Lir::Cons(f, body))
+            } else {
+                body
+            };
+            let raise = arena.alloc(Lir::Raise(vec![]));
+            arena.alloc(Lir::If(check, body, raise, false))
+        }
+        17 => {
+            let c = gen_lir(arena, rng, d);
+            let t = gen_lir(arena, rng, d);
+            let e = gen_lir(arena, rng, d);
+            arena.alloc(Lir::If(c, t, e, rng.below(2) == 0))
+        }
+        _ => {
+            let value = gen_lir(arena, rng, d);
+            let other = gen_lir(arena, rng, d);
+            arena.alloc(Lir::Cons(value, other))
         }
     }
 }

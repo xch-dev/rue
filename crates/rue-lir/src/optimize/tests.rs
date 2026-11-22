@@ -1417,14 +1417,17 @@ fn test_guard_implied_by_its_value_is_dropped() {
     );
 
     // A branch that fails anyway counts as reading into it, which is what a check after the
-    // guard is, so the guard is dropped and the check is kept
-    let checked = arena.alloc(Lir::If(y, first, fail, false));
+    // guard is, so the guard is dropped and the check is kept. The check is a call, so it isn't
+    // merged with the guard first
+    let unit = atom(&mut arena, &[]);
+    let call = arena.alloc(Lir::Run(y, unit));
+    let checked = arena.alloc(Lir::If(call, first, fail, false));
     let lir = arena.alloc(Lir::If(x, checked, fail, false));
     check(
         &mut arena,
         lir,
-        LIST_ENVS,
-        expect!["(a (i 5 (q . 4) (q 8)) 1)"],
+        &["((1) (q . 1))", "(() (q . 1))", "((1) (q))", "(5 (q . 1))"],
+        expect!["(a (i (a 5 ()) (q . 4) (q 8)) 1)"],
     );
 
     // The guarded value doesn't have to be a path, as long as it's the same expression
@@ -1653,4 +1656,60 @@ fn test_reads_after_dropped_checks_are_not_merged() {
     let tail = arena.alloc(Lir::If(listp, rest, fail, false));
     let lir = arena.alloc(Lir::Cons(head, tail));
     check(&mut arena, lir, LIST_ENVS, expect!["(c 4 6)"]);
+}
+
+#[test]
+fn test_implied_guards_are_dropped_anywhere() {
+    let mut arena = Arena::new();
+    let x = path(&mut arena, 2);
+    let first = arena.alloc(Lir::First(x));
+    let fail = raise(&mut arena);
+    let one = atom(&mut arena, &[1]);
+
+    // In the body of a function, which reads its own environment: here, the argument after the
+    // capture, which is the value at path 2 of the caller's
+    let param = path(&mut arena, 5);
+    let param_first = arena.alloc(Lir::First(param));
+    let guarded = arena.alloc(Lir::If(param, param_first, fail, false));
+    let body = arena.alloc(Lir::Quote(guarded));
+    let closure = arena.alloc(Lir::Closure(body, vec![one], true));
+    let nil = atom(&mut arena, &[]);
+    let args = arena.alloc(Lir::Cons(x, nil));
+    let call = arena.alloc(Lir::Run(closure, args));
+    check(
+        &mut arena,
+        call,
+        LIST_ENVS,
+        expect!["(a (q 2 (q . 9) (c (q . 1) 1)) (c 2 ()))"],
+    );
+
+    // In the captures of a closure
+    let guarded = arena.alloc(Lir::If(x, first, fail, false));
+    let function = arena.alloc(Lir::Quote(one));
+    let closure = arena.alloc(Lir::Closure(function, vec![guarded], true));
+    check(
+        &mut arena,
+        closure,
+        LIST_ENVS,
+        expect!["(c (q . 2) (c (q 1 1 . 1) (c (c (q . 4) (c (c (q . 1) 4) (q 1))) ())))"],
+    );
+
+    // In the condition of an `if`
+    let y = path(&mut arena, 5);
+    let lir = arena.alloc(Lir::If(guarded, y, one, false));
+    check(
+        &mut arena,
+        lir,
+        LIST_ENVS,
+        expect!["(a (i 4 (q . 5) (q 1 . 1)) 1)"],
+    );
+
+    // A check that's shared is rebuilt once, by the pass that drops it
+    let pair = arena.alloc(Lir::Cons(guarded, guarded));
+    let optimized = super::drop_implied_guards(&mut arena, pair, None);
+    let Lir::Cons(left, right) = arena[optimized] else {
+        panic!("expected a pair");
+    };
+    assert_eq!(left, right);
+    assert_eq!(left, first);
 }

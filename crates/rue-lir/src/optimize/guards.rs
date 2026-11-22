@@ -242,7 +242,7 @@ fn fails_on_atom(arena: &Arena<Lir>, value: LirId, guarded: LirId, budget: &mut 
             }
         }
         Lir::Run(callee, env) => any(&[*callee, *env]),
-        // The captures are evaluated to build the closure, but the function is code
+        // The captures are evaluated to build the closure, and the function is quoted code
         Lir::Closure(_, args, _) => any(args),
         Lir::Listp(inner)
         | Lir::Not(inner)

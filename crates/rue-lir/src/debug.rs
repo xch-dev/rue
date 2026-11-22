@@ -255,6 +255,40 @@ mod tests {
     }
 
     #[test]
+    fn checks_that_are_left_keep_tags() {
+        // `(a (i (all 2 5 11) (q . 4) (q 8)) 1)`, where `2` is dropped since `4` reads into it
+        let mut arena = Arena::new();
+        let checks = [2u8, 5, 11].map(|path| arena.alloc(Lir::Path(path.into())));
+        let all = arena.alloc(Lir::All(checks.to_vec()));
+        let first = arena.alloc(Lir::Path(4u8.into()));
+        let raise = arena.alloc(Lir::Raise(vec![]));
+        let check = arena.alloc(Lir::If(all, first, raise, false));
+
+        let mut tags = DebugTags {
+            spans: HashMap::from([(all, 1), (check, 2)]),
+            ..DebugTags::default()
+        };
+
+        let optimized = optimize_with_tags(&mut arena, check, ClvmTarget::default(), &mut tags);
+
+        let mut allocator = Allocator::new();
+        let program =
+            codegen(&arena, &mut allocator, optimized, CodegenOptions::default()).unwrap();
+        assert_eq!(
+            rue_clvm::disassemble_program(&allocator, program),
+            "(a (i (all 5 11) (q . 4) (q 8)) 1)"
+        );
+
+        // The checks that are left are a new `all`, with the span of the one it replaces
+        let Lir::If(condition, ..) = arena[optimized] else {
+            panic!("expected if");
+        };
+        assert_ne!(condition, all);
+        assert_eq!(tags.spans.get(&condition), Some(&1));
+        assert_eq!(tags.spans.get(&optimized), Some(&2));
+    }
+
+    #[test]
     fn nodes_take_the_innermost_span() {
         let mut arena = Arena::new();
         let mut scopes = SpanScopes::default();
