@@ -305,11 +305,28 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
 
     /// Whether creating a closure for the function evaluates the target. That's the case for an
     /// argument of an inlined function that the closure captures, since it's captured by value.
-    /// A call that's inlined rather than building the closure evaluates it too, unless its body
-    /// always does (see `Lowerer::captured_arguments`).
-    fn captures_target(&self, function: SymbolId) -> bool {
-        matches!(self.db().symbol(self.target), Symbol::Parameter(_))
-            && self.cx.captures(function, self.target)
+    /// A call that's inlined instead evaluates it at the call, or leaves it to a body that always
+    /// does (see `Lowerer::captured_arguments`). The closure can capture the target through the
+    /// parameter of a call being followed, too, whose argument evaluates it.
+    fn captures_target(&mut self, function: SymbolId) -> bool {
+        if !matches!(self.db().symbol(self.target), Symbol::Parameter(_)) {
+            return false;
+        }
+
+        if self.cx.captures(function, self.target) {
+            return true;
+        }
+
+        let parameters: Vec<SymbolId> = self
+            .scopes
+            .iter()
+            .flat_map(|scope| scope.arguments.keys().copied())
+            .filter(|&parameter| self.cx.captures(function, parameter))
+            .collect();
+
+        parameters
+            .into_iter()
+            .any(|parameter| self.reference(parameter))
     }
 
     fn call(&mut self, callee: HirId, args: &[HirId]) -> bool {

@@ -386,6 +386,23 @@ inline fn nested_fold_or(xs: List<Int>, value: Int) -> Int {
     for _x in xs fold _rest = for _y in xs fold _inner = value { 2 } { 1 }
 }
 
+inline fn forward_fold_or(xs: List<Int>, value: Int) -> Int {
+    fold_or(xs, value)
+}
+
+inline fn call_captured(x: Int, value: Int) -> Int {
+    let g = fn(y: Int) => if y > 0 {
+        1
+    } else {
+        value
+    };
+    g(x)
+}
+
+inline fn forward_call_captured(x: Int, value: Int) -> Int {
+    call_captured(x, value)
+}
+
 fn loop_captures(xs: List<Int>, flag: Bool) -> Int {
     // Warns: the inline binding fails if the argument of `fold_or` does, which the loop captures
     inline let folded = fold_or(xs, check(1));
@@ -396,10 +413,16 @@ fn loop_captures(xs: List<Int>, flag: Bool) -> Int {
     // Doesn't warn: the loop captures the argument, so it's evaluated when the closure is built
     let b = fold_or(xs, check(1));
 
+    // Doesn't warn: the argument is passed on to a parameter that the loop captures
+    let c = forward_fold_or(xs, check(1));
+
+    // Doesn't warn: the same, with a lambda that captures the parameter
+    let d = forward_call_captured(1, check(1));
+
     if flag {
-        folded + a + b
+        folded + a + b + c + d
     } else {
-        a + b
+        a + b + c + d
     }
 }
 

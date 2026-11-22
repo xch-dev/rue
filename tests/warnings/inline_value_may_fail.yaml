@@ -15,12 +15,12 @@ tests:
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise ("raise called at inline_value_may_fail.rue:80:5" "failed")
 - name: loops
-  program: (a (q 16 (a (q 1 . 1) (c (q . 1) 1)) 4 6) (c (c (a (q 1 . 1) (c (q . 1) 1)) (a (q 1 . 1) (c (q . 1) 1))) 1))
-  debug_program: (a (q 2 18 (c (c 4 (c 26 (c 22 30))) (c (c (q . 1) (c (q . 2) ())) (q . 1)))) (c (c (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at inline_value_may_fail.rue:2:5"))) 1) (c (c (q 2 (q 2 (i 15 (q 16 (+ (a 21 (c (a 9 (q . 1)) 11)) 4) 6) (q 16 4 6)) 1) (c (c (a 22 (c (c 5 (c 30 (a 4 (q . 1)))) 5)) (a 10 (c (a 4 (q . 1)) 5))) 1)) (q 2 (i 3 (q 1 . 1) (q . 2)) 1)) (c (q 2 (i 3 (q 1 . 1) (q 2 10 (c 14 4))) 1) (q 2 (i 3 (q 1 . 2) (q . 2)) 1)))) ()))
-  output: "3"
-  runtime_cost: 2178
-  byte_cost: 996000
-  total_cost: 998178
+  program: (a (q 2 2 (q (q 2) . 1)) (c (q 2 (q 2 (i 7 (q 16 (a (q 2 (i 11 (q 1 . 1) (q . 2)) 1) (c (q . 1) 1)) 8 12 10 14) (q 16 8 12 10 14)) 1) (c (c (c (a (q 2 (i 5 (q 1 . 1) (q 2 (i 5 (q 1 . 2) (q . 2)) 1)) 1) (c (q . 1) 1)) (a (q 2 (i 5 (q 1 . 1) (q . 2)) 1) (c (q . 1) 1))) (c (a (q 2 (i 5 (q 1 . 1) (q . 2)) 1) (c (q . 1) 1)) (a (q 1 . 1) (c (q . 1) 1)))) 1)) ()))
+  debug_program: (a (q 2 18 (c (c 4 (c 26 (c 22 30))) (c (c (q . 1) (c (q . 2) ())) (q . 1)))) (c (c (q 2 (i (> (q . 100) 1) (q . 1) (q 8 (q . "assertion failed at inline_value_may_fail.rue:2:5"))) 1) (c (c (q 2 (q 2 (i 15 (q 16 (+ (+ (+ (a 21 (c (a 9 (q . 1)) 11)) 8) 12) 10) 14) (q 16 (+ (+ 8 12) 10) 14)) 1) (c (c (c (a 22 (c (c 5 (c 30 (a 4 (q . 1)))) 5)) (a 10 (c (a 4 (q . 1)) 5))) (c (a 10 (c (a 4 (q . 1)) 5)) (a (q 2 2 (c (q . 1) ())) (c (c (q . 2) (c (c (q . 1) (q 2 (i (> 5 ()) (q 1 . 1) (q . 2)) 1)) (c (c (q . 4) (c (c (q . 1) (a 4 (q . 1))) (c (q . 1) ()))) ()))) 1)))) 1)) (q 2 (i 3 (q 1 . 1) (q . 2)) 1)) (c (q 2 (i 3 (q 1 . 1) (q 2 10 (c 14 4))) 1) (q 2 (i 3 (q 1 . 2) (q . 2)) 1)))) ()))
+  output: "5"
+  runtime_cost: 5232
+  byte_cost: 3420000
+  total_cost: 3425232
 diagnostics:
 - |-
   This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at inline_value_may_fail.rue:10:5
@@ -110,5 +110,5 @@ diagnostics:
   This argument can fail, but `guard_of_parameter_in_closure` is an `inline fn` that doesn't always evaluate its parameter `value`, so its check can be skipped at inline_value_may_fail.rue:281:43
     note: Bind the argument with `let` before the call to always evaluate it, or remove `inline` from the function
 - |-
-  This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at inline_value_may_fail.rue:391:5
+  This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at inline_value_may_fail.rue:408:5
     note: Remove `inline` to always evaluate it here
