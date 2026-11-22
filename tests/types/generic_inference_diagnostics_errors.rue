@@ -371,3 +371,14 @@ fn recursive_walk<T, U>(list: List<T>, f: fn(x: T) -> U, depth: Int) -> List<U> 
         [f(list.first), ...recursive_walk(list.rest, f, depth)]
     }
 }
+
+fn recursive_empty<T>(depth: Int) -> List<T> {
+    if depth > 0 {
+        // `T` is only in the return type, so the error in the argument isn't why it isn't
+        // inferred, and the caller's `T` that stands for it is still rejected for `List<Int>`
+        let empty = recursive_empty(missing);
+        let _e: List<Int> = empty;
+    }
+
+    nil
+}

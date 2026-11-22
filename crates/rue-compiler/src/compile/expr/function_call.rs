@@ -171,12 +171,12 @@ pub fn compile_function_call_expr(
         }
 
         // In a recursive call, a renamed generic that nothing gave a type stands in as the
-        // caller's generic it was renamed from (see `restore_renamed`). After an error in the
-        // call, that error is why nothing did, so the generic is treated as one that wasn't
-        // inferred, and is left to the error like the others (see `deferred_generics`), rather
-        // than leaking the caller's generic into what the call returns
+        // caller's generic it was renamed from (see `restore_renamed`). Where an error that's
+        // been reported is why nothing did, the generic is treated as one that wasn't inferred,
+        // and is left to that error like the others, rather than leaking the caller's generic
+        // into what the call returns
         let stand_ins =
-            stand_ins_after_error(ctx, function, &checks, &mappings, &renamed, reported);
+            deferred_stand_ins(ctx, function, &args, &checks, &mappings, &renamed, reported);
 
         for generic in &stand_ins {
             mappings.remove(generic);
@@ -196,8 +196,9 @@ pub fn compile_function_call_expr(
                 continue;
             }
 
-            // An argument that it would have been inferred from has already failed to compile
-            if from_unresolved_argument(ctx, &checks, generic) {
+            // An argument that it would have been inferred from has already failed to compile, or
+            // the generic is a stand-in left to an error (see above)
+            if stand_ins.contains(&generic) || from_unresolved_argument(ctx, &checks, generic) {
                 from_unresolved.push(generic);
             } else {
                 unreported.push(generic);
@@ -303,7 +304,7 @@ pub fn compile_function_call_expr(
         // wrong type, or one for the arguments as a whole, such as one that's missing. That error
         // is what to fix, which specifying the generic wouldn't. An error in another argument
         // isn't why, and neither is any error for a generic that's only in the return type
-        let mut deferred = if uninferred.is_empty() {
+        let deferred = if uninferred.is_empty() {
             Vec::new()
         } else {
             deferred_generics(
@@ -314,12 +315,6 @@ pub fn compile_function_call_expr(
                 reported,
             )
         };
-
-        for generic in stand_ins {
-            if !deferred.contains(&generic) {
-                deferred.push(generic);
-            }
-        }
 
         // The errors that only show those generics, such as one in the body of a lambda whose
         // parameter was left as one, follow from that error as well
@@ -498,45 +493,54 @@ fn unconstrained_as_never(
 }
 
 /// The renamed generics of a recursive call that are mapped to the caller's generics they were
-/// renamed from although no argument's type has that generic in it, so that only
-/// `restore_renamed` could have put it there, if an error has been reported in the call since
-/// there were `reported` diagnostics, or an argument couldn't be compiled. A generic that an
-/// argument's type has, such as `U` when `f: fn(x: T) -> U` is passed on, is inferred from it
-/// and is kept.
-fn stand_ins_after_error(
+/// renamed from, although no argument's type has that generic in it, so that only
+/// `restore_renamed` could have put it there, and that an error is why they weren't inferred, as
+/// `deferred_generics` decides for a generic that isn't inferred. A generic that an argument's
+/// type has, such as `U` when `f: fn(x: T) -> U` is passed on, is inferred from it and is kept.
+fn deferred_stand_ins(
     ctx: &mut Compiler,
     function: &FunctionType,
+    args: &[AstExpr],
     checks: &[(AstExpr, TypeId, TypeId)],
     mappings: &HashMap<TypeId, TypeId>,
     renamed: &HashMap<TypeId, TypeId>,
     reported: usize,
 ) -> Vec<TypeId> {
-    if renamed.is_empty() {
-        return Vec::new();
-    }
-
-    let failed = ctx.has_errors_since(reported)
-        || (ctx.has_errors() && checks.iter().any(|&(_, ty, _)| ctx.is_unresolved(ty)));
-
-    if !failed {
-        return Vec::new();
-    }
-
-    function
-        .generics
+    let stand_ins: HashMap<TypeId, TypeId> = renamed
         .iter()
-        .copied()
-        .filter(|copy| {
-            let Some(&generic) = renamed.get(copy) else {
-                return false;
-            };
-
-            mappings.get(copy) == Some(&generic)
-                && !checks
-                    .iter()
-                    .any(|&(_, ty, _)| contains_generic(ctx.types_mut(), ty, generic))
+        .filter(|&(copy, generic)| mappings.get(copy) == Some(generic))
+        .filter(|&(_, &generic)| {
+            !checks
+                .iter()
+                .any(|&(_, ty, _)| contains_generic(ctx.types_mut(), ty, generic))
         })
-        .collect()
+        .map(|(&copy, &generic)| (copy, generic))
+        .collect();
+
+    if stand_ins.is_empty() {
+        return Vec::new();
+    }
+
+    // An argument that it would have been inferred from has a part that failed to compile, such
+    // as a lambda that returns what it couldn't, which is why it's only a stand-in
+    let from_unresolved: Vec<TypeId> = stand_ins
+        .keys()
+        .copied()
+        .filter(|&copy| {
+            checks.iter().any(|&(_, ty, param)| {
+                rue_types::contains_unresolved(ctx.types(), ty)
+                    && contains_generic(ctx.types_mut(), param, copy)
+            })
+        })
+        .collect();
+
+    deferred_generics(
+        ctx,
+        function,
+        args,
+        (&stand_ins, &from_unresolved),
+        reported,
+    )
 }
 
 /// Whether an argument that the generic would have been inferred from has failed to compile.
