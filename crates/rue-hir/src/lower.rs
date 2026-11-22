@@ -1431,9 +1431,55 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     /// Evaluates the value for its effect, before returning the result. This is the form that
     /// expression statements are lowered to, since an inline `if` evaluates both branches.
+    ///
+    /// CLVM evaluates an operator's operands from the last to the first, so `(i () value result)`
+    /// evaluates the result first. Which one is evaluated first only matters if both of them
+    /// fail, since that's the failure that's reported, which in a debug build is the message and
+    /// location of the raise. So if the result always raises, such as the raise of a `match` on a
+    /// value that has no values (#580), it comes first, and the value is evaluated before it. If
+    /// the value always raises, the result is never reached, so it's left out.
     fn effect(&mut self, value: LirId, result: LirId) -> LirId {
+        if self.always_raises(value) {
+            return value;
+        }
+
         let nil = self.arena.alloc(Lir::Atom(vec![]));
-        self.arena.alloc(Lir::If(nil, value, result, true))
+
+        if self.always_raises(result) {
+            self.arena.alloc(Lir::If(nil, result, value, true))
+        } else {
+            self.arena.alloc(Lir::If(nil, value, result, true))
+        }
+    }
+
+    /// Whether evaluating the LIR always raises: a raise, an `if` whose branches both raise, an
+    /// effect whose result raises, or a run of a quoted body that raises. A call to a function
+    /// that always raises can't be seen here, so it isn't one.
+    fn always_raises(&self, mut lir: LirId) -> bool {
+        loop {
+            match &self.arena[lir] {
+                Lir::Raise(_) => return true,
+                // An effect whose result raises puts it first (see `effect`)
+                Lir::If(condition, then, _, true)
+                    if matches!(&self.arena[*condition], Lir::Atom(atom) if atom.is_empty()) =>
+                {
+                    lir = *then;
+                }
+                Lir::If(_, then, otherwise, false) => {
+                    if !self.always_raises(*then) {
+                        return false;
+                    }
+                    lir = *otherwise;
+                }
+                Lir::Run(body, _) => {
+                    let Lir::Quote(body) = &self.arena[*body] else {
+                        return false;
+                    };
+                    lir = *body;
+                }
+                _ => return false,
+            }
+        }
     }
 
     fn lower_symbol_reference(&mut self, env: &Environment, symbol: SymbolId) -> LirId {

@@ -167,13 +167,13 @@ tests:
   byte_cost: 300000
   total_cost: 300481
 - name: no_arms
-  program: (a (i 2 (q . 2) (q 3 () (x) (x))) 1)
-  debug_program: (a (i (= 2 ()) (q 3 () (x (q . "raise called at match.rue:226:13") (q . "never")) (x (q . "raise called at match.rue:225:16"))) (q . 2)) 1)
+  program: (a (i 2 (q . 2) (q 8)) 1)
+  debug_program: (a (i (= 2 ()) (q 8 (q . "raise called at match.rue:226:13") (q . "never")) (q . 2)) 1)
   solution: (5)
   output: "5"
   runtime_cost: 305
-  byte_cost: 372000
-  total_cost: 372305
+  byte_cost: 252000
+  total_cost: 252305
 - name: nested_atoms
   program: (a (q 2 2 1) (c (q 2 (i 5 (q 16 9 (a 2 (c 2 (c 13 ())))) ()) 1) 1))
   debug_program: (a (q 2 2 1) (c (q 2 (i (not 5) () (q 16 (f 5) (a 2 (c 2 (c (r 5) ()))))) 1) 1))

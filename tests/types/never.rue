@@ -151,3 +151,53 @@ test fn match_on_empty_enum() -> Int {
     let _function: fn(empty: Empty) -> Int = match_empty;
     8
 }
+
+// The value that a match is on is evaluated before the match raises for having no arm that takes
+// it, so a debug build reports the value's own raise, rather than the match's (#580)
+test fn match_on_raising_value() -> Int {
+    match fail("subject") {
+        _ => 1,
+    }
+}
+
+test fn match_statement_on_raising_value() -> Int {
+    match fail("statement") {
+        _ => {}
+    }
+    1
+}
+
+test fn match_on_raising_binding() -> Int {
+    let never = fail("binding");
+    match never {
+        Int => 1,
+        _ => 2,
+    }
+}
+
+// The same goes for a binding or an expression statement that's evaluated for its effect, before
+// a raise after it
+test fn unused_binding_before_raise() -> Int {
+    let _never = fail("unused");
+    raise "after";
+}
+
+test fn statement_before_raise() -> Int {
+    fail("statement");
+    raise "after";
+}
+
+test fn unused_binding_before_raising_branches(flag: Bool) -> Int {
+    let _never = fail("unused");
+    if flag {
+        raise "then";
+    } else {
+        raise "else";
+    }
+}
+
+// A value that may fail but doesn't is still followed by the raise after it
+test fn unused_binding_that_returns_before_raise() -> Int {
+    let _value = checked(5);
+    raise "after";
+}
