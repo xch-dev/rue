@@ -342,6 +342,49 @@ impl Inference {
         bounds
     }
 
+    /// The inference with each generic's upper candidates that were collected under a union
+    /// member that didn't match left out, which is what a type expected of a call bounds its
+    /// generics by (see `CallSolver::new`): `(1, B)` against `(0, Int) | (1, Bytes)` collects
+    /// `B ≤ Int` under `(0, Int)`, which can't hold it, so only `B ≤ Bytes` bounds `B`.
+    ///
+    /// Where several members matched, each one's candidates are kept, in the members' order. A
+    /// solution holds the value by one of them, and which one is decided as a generic's bounds
+    /// are: one that the generic's lower bounds don't satisfy isn't added (see
+    /// `pass_upper_bounds`), and a generic that nothing else constrains takes the first. So
+    /// `(B, B)` against `(6, 6) | (5, 5)` makes `B` `5` where an argument gives `B ≥ 5`.
+    ///
+    /// A generic that would be left with no upper candidates keeps them all, as in
+    /// `Inference::keep_matched`. The bounds aren't under any union member afterwards.
+    #[must_use]
+    pub fn with_member_bounds(&self) -> Inference {
+        let results = self.choices.results();
+        let mut bounded = self.clone();
+
+        for (&generic, candidates) in &self.generics {
+            let branches = &self.branches[&generic];
+            let mut bounds: Vec<TypeId> = Vec::new();
+
+            for (&ty, branches) in candidates.upper.iter().zip(&branches.upper) {
+                if branches
+                    .iter()
+                    .all(|&branch| self.choices.matched_with(&results, branch))
+                    && !bounds.contains(&ty)
+                {
+                    bounds.push(ty);
+                }
+            }
+
+            if bounds.is_empty() {
+                continue;
+            }
+
+            bounded.branches[&generic].upper = vec![Vec::new(); bounds.len()];
+            bounded.generics[&generic].upper = bounds;
+        }
+
+        bounded
+    }
+
     /// Like `Inference::matched_candidates`, but also leaving out the candidates of each kind in
     /// `left_out` for the generic that were collected under its union member, or in a union nested
     /// in it.

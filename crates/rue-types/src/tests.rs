@@ -2137,6 +2137,174 @@ mod inference {
         assert_eq!(mappings[&a], five);
     }
 
+    #[test]
+    fn member_bounds_leave_out_members_that_cant_hold_the_type() {
+        let mut db = Db::new();
+        let (int, bytes) = (db.builtins.int, db.builtins.bytes);
+        let one = db.literal(AtomSemantic::Int, &[1]);
+        let two = db.literal(AtomSemantic::Int, &[2]);
+        let (a, b) = (db.generic("A"), db.generic("B"));
+
+        let bounds = |db: &mut Db, ret: TypeId, members: &[TypeId]| {
+            let expected_type = db.union(members);
+            let mut expected = Inference::new([a, b]);
+            infer_from_expected(
+                &mut db.arena,
+                &db.builtins,
+                ret,
+                expected_type,
+                &mut expected,
+            );
+            (expected.clone(), expected.with_member_bounds())
+        };
+
+        // `(1, B)` against `(2, Int) | (1, Bytes)`: every member gives `B` a candidate, but only
+        // the second can hold it, whichever order they're in
+        let ret = db.pair(one, b);
+        let two_int = db.pair(two, int);
+        let one_bytes = db.pair(one, bytes);
+        let (all, bounded) = bounds(&mut db, ret, &[two_int, one_bytes]);
+        assert_eq!(candidates(&all, b).upper, vec![int, bytes]);
+        assert_eq!(candidates(&bounded, b).upper, vec![bytes]);
+        let (all, bounded) = bounds(&mut db, ret, &[one_bytes, two_int]);
+        assert_eq!(candidates(&all, b).upper, vec![bytes, int]);
+        assert_eq!(candidates(&bounded, b).upper, vec![bytes]);
+
+        // `(A, B)` against `(Int, Bytes) | (Bytes, Int)`: both hold it, so each one's candidates
+        // are kept, in the members' order
+        let ret = db.pair(a, b);
+        let int_bytes = db.pair(int, bytes);
+        let bytes_int = db.pair(bytes, int);
+        let (_, bounded) = bounds(&mut db, ret, &[int_bytes, bytes_int]);
+        assert_eq!(candidates(&bounded, a).upper, vec![int, bytes]);
+        assert_eq!(candidates(&bounded, b).upper, vec![bytes, int]);
+
+        // `(B, B)` against `(Int, Int) | (Bytes, Bytes)`: a bound is only kept once
+        let ret = db.pair(b, b);
+        let int_int = db.pair(int, int);
+        let bytes_bytes = db.pair(bytes, bytes);
+        let (all, bounded) = bounds(&mut db, ret, &[int_int, bytes_bytes]);
+        assert_eq!(candidates(&all, b).upper, vec![int, int, bytes, bytes]);
+        assert_eq!(candidates(&bounded, b).upper, vec![int, bytes]);
+
+        // `(1, B)` against `(2, Int) | (2, Bytes)`: no member holds it, so they all count as
+        // matching, and `B` keeps every candidate
+        let ret = db.pair(one, b);
+        let two_bytes = db.pair(two, bytes);
+        let (_, bounded) = bounds(&mut db, ret, &[two_int, two_bytes]);
+        assert_eq!(candidates(&bounded, b).upper, vec![int, bytes]);
+
+        // `(1, B)` against `(1, U) | (2, Int)` with the `B ≤ U` left out, as it is for a generic
+        // of an enclosing call: the member that holds it gives `B` nothing, so `B` keeps the
+        // candidate it has
+        let u = db.generic("U");
+        let one_u = db.pair(one, u);
+        let expected_type = db.union(&[one_u, two_int]);
+        let mut expected = Inference::new([a, b]);
+        infer_from_expected(
+            &mut db.arena,
+            &db.builtins,
+            ret,
+            expected_type,
+            &mut expected,
+        );
+        assert_eq!(candidates(&expected, b).upper, vec![u, int]);
+        expected.retain_bounds(|ty| ty != u);
+        let bounded = expected.with_member_bounds();
+        assert_eq!(candidates(&bounded, b).upper, vec![int]);
+
+        // `(1, (B, fn(x: B) -> Int))` against `(2, (Int, fn(x: Int) -> Int))` and the same with
+        // `1` and `Bytes`: only the upper candidates are left out, so `B` keeps both lower ones
+        let takes_b = db.function(&[b], int);
+        let takes_int = db.function(&[int], int);
+        let takes_bytes = db.function(&[bytes], int);
+        let b_inner = db.pair(b, takes_b);
+        let int_inner = db.pair(int, takes_int);
+        let bytes_inner = db.pair(bytes, takes_bytes);
+        let ret = db.pair(one, b_inner);
+        let two_int_inner = db.pair(two, int_inner);
+        let one_bytes_inner = db.pair(one, bytes_inner);
+        let (all, bounded) = bounds(&mut db, ret, &[two_int_inner, one_bytes_inner]);
+        assert_eq!(candidates(&all, b).upper, vec![int, bytes]);
+        assert_eq!(candidates(&all, b).lower, vec![int, bytes]);
+        assert_eq!(candidates(&bounded, b).upper, vec![bytes]);
+        assert_eq!(candidates(&bounded, b).lower, vec![int, bytes]);
+    }
+
+    #[test]
+    fn call_solver_falls_back_to_a_bound_between_members_that_cant_hold_the_type() {
+        let mut db = Db::new();
+        let (int, bytes) = (db.builtins.int, db.builtins.bytes);
+        let one = db.literal(AtomSemantic::Int, &[1]);
+        let two = db.literal(AtomSemantic::Int, &[2]);
+        let five = db.literal(AtomSemantic::Int, &[5]);
+        let b = db.generic("B");
+
+        // `(1, B)` against `(1, Int) | (2, Bytes) | (1, 5)`: the first and last members hold it, so
+        // `B` is at most `Int` and at most `5`, and falls back to the narrower `5`. The bounds
+        // aren't under any member afterwards, or `5` would be left out as the second member's
+        let ret = db.pair(one, b);
+        let one_int = db.pair(one, int);
+        let two_bytes = db.pair(two, bytes);
+        let one_five = db.pair(one, five);
+        let expected_type = db.union(&[one_int, two_bytes, one_five]);
+        let mut expected = Inference::new([b]);
+        infer_from_expected(
+            &mut db.arena,
+            &db.builtins,
+            ret,
+            expected_type,
+            &mut expected,
+        );
+        assert_eq!(candidates(&expected, b).upper, vec![int, bytes, five]);
+        let solver = CallSolver::new(&mut db.arena, &db.builtins, Some(expected));
+
+        let infer = Inference::new([b]);
+        let inferred = solver.solve_arguments(&mut db.arena, &db.builtins, &infer);
+        assert!(inferred.is_empty());
+        let mappings =
+            solver.argument_mappings(&mut db.arena, &db.builtins, &infer, &inferred, true);
+        assert_eq!(mappings[&b], five);
+        assert_eq!(solver.solve(&mut db.arena, &db.builtins, infer)[&b], five);
+    }
+
+    #[test]
+    fn call_solver_bounds_by_the_narrower_types_members_that_hold_the_type() {
+        let mut db = Db::new();
+        let (int, bytes, nil) = (db.builtins.int, db.builtins.bytes, db.builtins.nil);
+        let one = db.literal(AtomSemantic::Int, &[1]);
+        let two = db.literal(AtomSemantic::Int, &[2]);
+        let b = db.generic("B");
+
+        // A call returning `(1, B)` that's expected to be a `(2, Int) | (1, Bytes) | nil`, and
+        // would have been a `(2, Int) | (1, Bytes)` before that was widened: `B` is only bounded
+        // by the narrower type, through the member that holds `(1, B)`, so it's `Bytes`, not `Int`
+        // from `(2, Int)`
+        let ret = db.pair(one, b);
+        let two_int = db.pair(two, int);
+        let one_bytes = db.pair(one, bytes);
+        let wide_type = db.union(&[two_int, one_bytes, nil]);
+        let narrower_type = db.union(&[two_int, one_bytes]);
+
+        let mut expected = Inference::new([b]);
+        infer_from_expected(&mut db.arena, &db.builtins, ret, wide_type, &mut expected);
+        let mut narrower = Inference::new([b]);
+        infer_from_expected(
+            &mut db.arena,
+            &db.builtins,
+            ret,
+            narrower_type,
+            &mut narrower,
+        );
+        assert_eq!(candidates(&narrower, b).upper, vec![int, bytes]);
+
+        let solver = CallSolver::new(&mut db.arena, &db.builtins, Some(expected))
+            .with_narrower_expected(&mut db.arena, &db.builtins, &narrower);
+
+        let infer = Inference::new([b]);
+        assert_eq!(solver.solve(&mut db.arena, &db.builtins, infer)[&b], bytes);
+    }
+
     /// Collects the bounds that `B` is expected to satisfy, as in `let x: <expected> = ...` for a
     /// call returning `B`, and adds them to the inference.
     fn add_expected(
