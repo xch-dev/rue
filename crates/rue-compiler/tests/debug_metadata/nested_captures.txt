@@ -1,6 +1,6 @@
 ===== debug =====
 program: (a (q 2 (q 2 9 (c (c (c 9 21) (c 29 2)) (c 23 11))) (c (a 14 (c 14 (q . 5))) 1)) (c (c (q 2 (i (> 5 (q . 3)) (q . 5) (q 2 12 (c (c (c 5 8) (c (c 7 12) (c 10 14))) 7))) 1) (c (q 2 (i 3 (q 2 (q 16 (+ 2 (f 7)) (a 25 (c (c (c 25 53) (c 45 61)) (c (+ 17 61) 37)))) (c (a 26 (c (c (c 8 12) (c (c 18 26) (c 22 30))) (r 3))) 1)) ()) 1) (q 2 (i (> 3 (q . 100)) (q . 3) (q 2 2 (c 2 (* 3 (q . 3))))) 1))) 1))
-sidecar: 5205 bytes
+sidecar: 5262 bytes
 files:
   nested_captures.rue
 functions:
@@ -9,29 +9,29 @@ functions:
   2: for (((n@8: integer . _) . ((xs@18: list . _) . (_ . _))) . list@3: list)
   3: scale (_ . n@3: integer)
 nodes:
-  nested_captures.rue:6:39-8:2  (a (q 2 (q 2 9 (c (c (c 9 21) (c 29 2)) (c 23 11))) (c (a...
-    nested_captures.rue:7:5-7:22 fn main  (a 9 (c (c (c 9 21) (c 29 2)) (c 23 11)))
-    nested_captures.rue:18:20-18:28  (a 14 (c 14 (q . 5)))
-      nested_captures.rue:18:26-18:27  (q . 5)
-    nested_captures.rue:21:5-25:6 fn add_scaled  (a (i (> 5 (q . 3)) (q . 5) (q 2 12 (c (c (c 5 8) (c (c 7...
-      nested_captures.rue:21:8-21:13  (> 5 (q . 3))
-        nested_captures.rue:21:12-21:13  (q . 3)
-      nested_captures.rue:24:9-24:73  (a 12 (c (c (c 5 8) (c (c 7 12) (c 10 14))) 7))
-    nested_captures.rue:6:39-8:2 fn for  (a (i 3 (q 2 (q 16 (+ 2 (f 7)) (a 25 (c (c (c 25 53) (c 4...
-      nested_captures.rue:24:36-24:71  (+ (+ 2 (f 7)) (a 25 (c (c (c 25 53) (c 45 61)) (c (+ 17 ...
-        nested_captures.rue:24:36-24:43  (+ 2 (f 7))
-          nested_captures.rue:24:42-24:43  (f 7)
-        nested_captures.rue:24:46-24:71  (a 25 (c (c (c 25 53) (c 45 61)) (c (+ 17 61) 37)))
-          nested_captures.rue:24:61-24:70  (+ 17 61)
-    nested_captures.rue:11:5-15:6 fn scale  (a (i (> 3 (q . 100)) (q . 3) (q 2 2 (c 2 (* 3 (q . 3))))...
-      nested_captures.rue:11:8-11:15  (> 3 (q . 100))
-        nested_captures.rue:11:12-11:15  (q . 100)
-      nested_captures.rue:14:9-14:21  (a 2 (c 2 (* 3 (q . 3))))
-        nested_captures.rue:14:15-14:20  (* 3 (q . 3))
-          nested_captures.rue:14:19-14:20  (q . 3)
+  nested_captures.rue:9:39-11:2  (a (q 2 (q 2 9 (c (c (c 9 21) (c 29 2)) (c 23 11))) (c (a...
+    nested_captures.rue:10:5-10:22 fn main  (a 9 (c (c (c 9 21) (c 29 2)) (c 23 11)))
+    nested_captures.rue:21:20-21:28  (a 14 (c 14 (q . 5)))
+      nested_captures.rue:21:26-21:27  (q . 5)
+    nested_captures.rue:24:5-28:6 fn add_scaled  (a (i (> 5 (q . 3)) (q . 5) (q 2 12 (c (c (c 5 8) (c (c 7...
+      nested_captures.rue:24:8-24:13  (> 5 (q . 3))
+        nested_captures.rue:24:12-24:13  (q . 3)
+      nested_captures.rue:27:9-27:73  (a 12 (c (c (c 5 8) (c (c 7 12) (c 10 14))) 7))
+    nested_captures.rue:9:39-11:2 fn for  (a (i 3 (q 2 (q 16 (+ 2 (f 7)) (a 25 (c (c (c 25 53) (c 4...
+      nested_captures.rue:27:36-27:71  (+ (+ 2 (f 7)) (a 25 (c (c (c 25 53) (c 45 61)) (c (+ 17 ...
+        nested_captures.rue:27:36-27:43  (+ 2 (f 7))
+          nested_captures.rue:27:42-27:43  (f 7)
+        nested_captures.rue:27:46-27:71  (a 25 (c (c (c 25 53) (c 45 61)) (c (+ 17 61) 37)))
+          nested_captures.rue:27:61-27:70  (+ 17 61)
+    nested_captures.rue:14:5-18:6 fn scale  (a (i (> 3 (q . 100)) (q . 3) (q 2 2 (c 2 (* 3 (q . 3))))...
+      nested_captures.rue:14:8-14:15  (> 3 (q . 100))
+        nested_captures.rue:14:12-14:15  (q . 100)
+      nested_captures.rue:17:9-17:21  (a 2 (c 2 (* 3 (q . 3))))
+        nested_captures.rue:17:15-17:20  (* 3 (q . 3))
+          nested_captures.rue:17:19-17:20  (q . 3)
 ===== release =====
 program: (a (q 2 (q 2 9 (c (c (c 9 21) (c 29 2)) (c 23 11))) (c (a 14 (c 14 (q . 5))) 1)) (c (c (q 2 (i (> 5 (q . 3)) (q . 5) (q 2 12 (c 1 7))) 1) (c (q 2 (i 3 (q 16 (a 24 (c 2 7)) 5 (a 16 (c 4 (c (+ 10 28) 14)))) ()) 1) (q 2 (i (> 3 (q . 100)) (q . 3) (q 2 2 (c 2 (* 3 (q . 3))))) 1))) 1))
-sidecar: 4037 bytes
+sidecar: 4094 bytes
 files:
   nested_captures.rue
 functions:
@@ -40,21 +40,21 @@ functions:
   2: for ((((_ . _) . (_ . _)) . (n@10: integer . xs@14: list)) . list@3: list)
   3: scale (_ . n@3: integer)
 nodes:
-  nested_captures.rue:6:39-8:2  (a (q 2 (q 2 9 (c (c (c 9 21) (c 29 2)) (c 23 11))) (c (a...
-    nested_captures.rue:7:5-7:22 fn main  (a 9 (c (c (c 9 21) (c 29 2)) (c 23 11)))
-    nested_captures.rue:18:20-18:28  (a 14 (c 14 (q . 5)))
-      nested_captures.rue:18:26-18:27  (q . 5)
-    nested_captures.rue:21:5-25:6 fn add_scaled  (a (i (> 5 (q . 3)) (q . 5) (q 2 12 (c 1 7))) 1)
-      nested_captures.rue:21:8-21:13  (> 5 (q . 3))
-        nested_captures.rue:21:12-21:13  (q . 3)
-      nested_captures.rue:24:9-24:73  (a 12 (c 1 7))
-    nested_captures.rue:6:39-8:2 fn for  (a (i 3 (q 16 (a 24 (c 2 7)) 5 (a 16 (c 4 (c (+ 10 28) 14...
-      nested_captures.rue:24:36-24:71  (+ (a 24 (c 2 7)) 5 (a 16 (c 4 (c (+ 10 28) 14))))
-        nested_captures.rue:24:36-24:39  (a 24 (c 2 7))
-        nested_captures.rue:24:46-24:71  (a 16 (c 4 (c (+ 10 28) 14)))
-          nested_captures.rue:24:61-24:70  (+ 10 28)
-    nested_captures.rue:11:5-15:6 fn scale  (a (i (> 3 (q . 100)) (q . 3) (q 2 2 (c 2 (* 3 (q . 3))))...
-      nested_captures.rue:11:8-11:15  (> 3 (q . 100))
-        nested_captures.rue:11:12-11:15  (q . 100)
-      nested_captures.rue:14:9-14:21  (a 2 (c 2 (* 3 (q . 3))))
-        nested_captures.rue:14:15-14:20  (* 3 (q . 3))
+  nested_captures.rue:9:39-11:2  (a (q 2 (q 2 9 (c (c (c 9 21) (c 29 2)) (c 23 11))) (c (a...
+    nested_captures.rue:10:5-10:22 fn main  (a 9 (c (c (c 9 21) (c 29 2)) (c 23 11)))
+    nested_captures.rue:21:20-21:28  (a 14 (c 14 (q . 5)))
+      nested_captures.rue:21:26-21:27  (q . 5)
+    nested_captures.rue:24:5-28:6 fn add_scaled  (a (i (> 5 (q . 3)) (q . 5) (q 2 12 (c 1 7))) 1)
+      nested_captures.rue:24:8-24:13  (> 5 (q . 3))
+        nested_captures.rue:24:12-24:13  (q . 3)
+      nested_captures.rue:27:9-27:73  (a 12 (c 1 7))
+    nested_captures.rue:9:39-11:2 fn for  (a (i 3 (q 16 (a 24 (c 2 7)) 5 (a 16 (c 4 (c (+ 10 28) 14...
+      nested_captures.rue:27:36-27:71  (+ (a 24 (c 2 7)) 5 (a 16 (c 4 (c (+ 10 28) 14))))
+        nested_captures.rue:27:36-27:39  (a 24 (c 2 7))
+        nested_captures.rue:27:46-27:71  (a 16 (c 4 (c (+ 10 28) 14)))
+          nested_captures.rue:27:61-27:70  (+ 10 28)
+    nested_captures.rue:14:5-18:6 fn scale  (a (i (> 3 (q . 100)) (q . 3) (q 2 2 (c 2 (* 3 (q . 3))))...
+      nested_captures.rue:14:8-14:15  (> 3 (q . 100))
+        nested_captures.rue:14:12-14:15  (q . 100)
+      nested_captures.rue:17:9-17:21  (a 2 (c 2 (* 3 (q . 3))))
+        nested_captures.rue:17:15-17:20  (* 3 (q . 3))

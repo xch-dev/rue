@@ -1,3 +1,6 @@
+// solution: ((1 2 3) 0)
+// solution: ((1 2 (4 . 5)) 0)
+
 // The loop in `add_scaled` captures what `add_scaled` does, and its own `xs` and `n`. The
 // captures they share are laid out as `add_scaled`'s tree inside of the loop's, so the loop calls
 // `add_scaled` with them as one path, `4`, and the loop's tree has the shape of `add_scaled`'s
