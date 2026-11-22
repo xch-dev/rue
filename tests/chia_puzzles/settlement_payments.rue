@@ -7,38 +7,22 @@ extern fn reference(...solution: Any) -> Any from "./settlement_payments.clsp.he
 extern fn run(puzzle: Any, solution: Any) -> Any from "./run.hex";
 
 fn main(...notarized_payments: List<NotarizedPayment>) -> List<Condition> {
-    settle(notarized_payments)
-}
-
-fn settle(notarized_payments: List<NotarizedPayment>) -> List<Condition> {
-    if notarized_payments is nil {
-        return nil;
+    for notarized_payment in notarized_payments fold conditions = nil {
+        [
+            CreatePuzzleAnnouncement { message: tree_hash(notarized_payment) },
+            ...for payment in notarized_payment.payments fold rest = conditions {
+                assert payment.amount > 0;
+                [
+                    CreateCoin {
+                        puzzle_hash: payment.puzzle_hash,
+                        amount: payment.amount,
+                        memos: payment.memos,
+                    },
+                    ...rest,
+                ]
+            },
+        ]
     }
-
-    let notarized_payment = notarized_payments.first;
-
-    [
-        CreatePuzzleAnnouncement { message: tree_hash(notarized_payment) },
-        ...create_coins(notarized_payment.payments, settle(notarized_payments.rest)),
-    ]
-}
-
-fn create_coins(payments: List<Payment>, rest: List<Condition>) -> List<Condition> {
-    if payments is nil {
-        return rest;
-    }
-
-    let payment = payments.first;
-    assert payment.amount > 0;
-
-    [
-        CreateCoin {
-            puzzle_hash: payment.puzzle_hash,
-            amount: payment.amount,
-            memos: payment.memos,
-        },
-        ...create_coins(payments.rest, rest),
-    ]
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.

@@ -36,41 +36,33 @@ fn wrap(
     wrapper_stack: List<Bytes32>,
     inner_most_puzzle_hash: Bytes32,
 ) -> Bytes32 {
-    if wrapper_stack is nil {
-        return inner_most_puzzle_hash;
-    }
-
-    let inner_puzzle_hash = wrap(
-        quoted_add_wrapper_mod_hash,
-        wrapper_stack.rest,
-        inner_most_puzzle_hash,
-    );
-
-    tree_hash_pair(
-        A_HASH,
+    for wrapper in wrapper_stack fold inner_puzzle_hash = inner_most_puzzle_hash {
         tree_hash_pair(
-            quoted_add_wrapper_mod_hash,
+            A_HASH,
             tree_hash_pair(
+                quoted_add_wrapper_mod_hash,
                 tree_hash_pair(
-                    C_HASH,
                     tree_hash_pair(
-                        wrapper_stack.first,
+                        C_HASH,
                         tree_hash_pair(
+                            wrapper,
                             tree_hash_pair(
-                                C_HASH,
                                 tree_hash_pair(
-                                    tree_hash_pair(ONE_HASH, inner_puzzle_hash),
-                                    ONE_LIST_HASH,
+                                    C_HASH,
+                                    tree_hash_pair(
+                                        tree_hash_pair(ONE_HASH, inner_puzzle_hash),
+                                        ONE_LIST_HASH,
+                                    ),
                                 ),
+                                NIL_HASH,
                             ),
-                            NIL_HASH,
                         ),
                     ),
+                    NIL_HASH,
                 ),
-                NIL_HASH,
             ),
-        ),
-    )
+        )
+    }
 }
 
 // Runs the port and the reference with the same solution, and checks that they agree.
