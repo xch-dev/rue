@@ -1,0 +1,9 @@
+// A type named `Never` that's declared in the program is used instead of the builtin one, so
+// programs that declared their own before it could be written still compile as they did
+
+type Never = Int;
+
+test fn shadowed() -> Int {
+    let value: Never = 7;
+    value
+}

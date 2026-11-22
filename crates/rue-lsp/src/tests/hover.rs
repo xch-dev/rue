@@ -193,6 +193,20 @@ fn main(num: In$0t) -> Int {
 }
 
 #[test]
+fn test_hover_never_type() {
+    check(
+        r#"
+fn fail() -> Nev$0er {
+    raise;
+}
+"#,
+        expect![[r#"
+            type Never
+        "#]],
+    );
+}
+
+#[test]
 fn test_hover_struct() {
     check(
         r#"

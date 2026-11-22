@@ -1,0 +1,153 @@
+// `Never` is the type with no values. It can be written as a type, such as for a function that
+// never returns, and is assignable to every other type
+
+fn fail(message: String) -> Never {
+    raise message;
+}
+
+fn checked(value: Int) -> Int {
+    if value < 0 {
+        fail("negative")
+    } else {
+        value
+    }
+}
+
+test fn diverging_function() -> Int {
+    checked(5)
+}
+
+test fn diverging_function_raises() -> Int {
+    checked(-1)
+}
+
+// A function that never returns can be passed where one that returns anything is expected
+fn run(function: fn() -> Never) -> Int {
+    function()
+}
+
+fn either(flag: Bool, otherwise: fn() -> Never) -> Int {
+    if flag {
+        1
+    } else {
+        run(otherwise)
+    }
+}
+
+test fn function_type() -> Int {
+    either(true, fn() => fail("unused"))
+}
+
+fn first_or_zero(list: List<Int>) -> Int {
+    if list is (Int, List<Int>) {
+        list.first
+    } else {
+        0
+    }
+}
+
+test fn empty_list() -> Int {
+    // A list of `Never` is empty, so it's a list of anything
+    let empty: List<Never> = [];
+    let ints: List<Int> = empty;
+    first_or_zero(ints)
+}
+
+test fn union_member() -> Int {
+    // `Int | Never` has the same values as `Int`
+    let value: Int | Never = 3;
+    let int: Int = value;
+    int
+}
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+test fn explicit_generic() -> Int {
+    if false {
+        identity::<Never>(fail("unused"))
+    } else {
+        identity::<Int>(2)
+    }
+}
+
+// A struct with a field of type `Never` has no values either
+struct Impossible {
+    value: Int,
+    never: Never,
+}
+
+fn impossible_value(impossible: Impossible) -> Int {
+    impossible.value + run(fn() => impossible.never)
+}
+
+test fn struct_field() -> Int {
+    let _function: fn(impossible: Impossible) -> Int = impossible_value;
+    1
+}
+
+// The code after a statement that calls a function which never returns is unreachable
+fn after_call() -> Int {
+    fail("stops here");
+    1
+}
+
+test fn unreachable_after_call() -> Int {
+    if false {
+        after_call()
+    } else {
+        4
+    }
+}
+
+// No arm of a match on a value with no values is ever taken
+fn match_never(never: Never) -> Int {
+    match never {
+        Int => 1,
+        _ => 2,
+    }
+}
+
+test fn match_on_never() -> Int {
+    let _function: fn(never: Never) -> Int = match_never;
+    5
+}
+
+// A value with no values can be cast to any other type with no values, as before
+type Ints = (Int, Ints);
+type Strings = (String, Strings);
+
+fn recursive_cast(ints: Ints) -> Strings {
+    ints as Strings
+}
+
+fn pair_cast(pair: (Int, Never)) -> (Bytes, Never) {
+    pair as (Bytes, Never)
+}
+
+fn never_cast(never: Never) -> (Int, Never) {
+    never as (Int, Never)
+}
+
+test fn casts_without_values() -> Int {
+    let _recursive: fn(ints: Ints) -> Strings = recursive_cast;
+    let _pair: fn(pair: (Int, Never)) -> (Bytes, Never) = pair_cast;
+    let _never: fn(never: Never) -> (Int, Never) = never_cast;
+    6
+}
+
+// An enum without variants has no values either
+enum Empty {}
+
+fn match_empty(empty: Empty) -> Int {
+    match empty {
+        Int => 1,
+        _ => 2,
+    }
+}
+
+test fn match_on_empty_enum() -> Int {
+    let _function: fn(empty: Empty) -> Int = match_empty;
+    8
+}

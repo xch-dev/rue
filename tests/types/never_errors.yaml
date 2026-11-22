@@ -1,0 +1,14 @@
+diagnostics:
+- Cannot assign `1` to `Never`, since they are incompatible at never_errors.rue:7:29
+- |-
+  Unreachable code at never_errors.rue:14:5
+    note: Any code after this is never evaluated at never_errors.rue:13:5
+- Cannot assign `1` to `Never`, since they are incompatible at never_errors.rue:18:25
+- Cannot cast `Any` to `Never`, since `Never` has no values at never_errors.rue:23:18
+- Cannot cast `(Int, Int)` to `(Int, Never)`, since `(Int, Never)` has no values at never_errors.rue:28:17
+- Cannot cast `(Int, Never)` to `Never`, since `Never` has no values at never_errors.rue:34:18
+- Cannot cast `Any` to `Empty`, since `Empty` has no values at never_errors.rue:41:18
+- Undeclared symbol `undeclared` at never_errors.rue:47:18
+- Cannot type guard from `Int | Bytes` to `Never`, since they do not overlap at never_errors.rue:52:8
+- Cannot assign `1` to `Never`, since they are incompatible at never_errors.rue:60:17
+- Cannot assign `fn() -> 1` to `fn() -> Never`, since they are incompatible at never_errors.rue:63:37

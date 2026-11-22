@@ -128,12 +128,15 @@ pub fn compile_match_expr(
             }
         };
 
-        // Once an arm has handled every value that's left, the ones after it are never taken
+        // Once an arm has handled every value that's left, the ones after it are never taken. An
+        // arm that handles the last members is a catch-all, so without one there are no members
+        // left only if the value's type has none, such as `Never`, and then no arm is taken.
         if catch_all.is_some() || remaining_members.is_empty() {
             if !has_error {
-                let reason = catch_all
-                    .clone()
-                    .map_or(UnreachableReason::Handled, UnreachableReason::CatchAll);
+                let reason = match catch_all.clone() {
+                    Some(catch_all) => UnreachableReason::CatchAll(catch_all),
+                    None => UnreachableReason::NoValues(ctx.type_name(scrutinee.ty)),
+                };
                 report_unreachable(ctx, pattern_srcloc, pattern, reason, &mut indistinguishable);
             }
             compile_unreachable_arm(ctx, &matched, &arm, pattern, remaining);
