@@ -539,11 +539,35 @@ impl Lowerer<'_, '_, '_> {
             return false;
         }
 
+        if let Some(loop_function) = self.loop_call_argument(function.body, parameter) {
+            return may_fail() && !Evaluation::new(self, loop_function).hir(function.body);
+        }
+
         let repeated = (self.graph.references(parameter) > 1
             || self.graph.is_loop_capture(parameter))
             && !is_trivial();
 
         repeated || (may_fail() && !self.parameter_always_evaluated(function.body, parameter))
+    }
+
+    /// The loop that the argument for the parameter is evaluated at the call of, when a call to
+    /// the function is inlined, if there is one. That's a parameter that's only referenced inside
+    /// of one loop, which captures it (see [`crate::DependencyGraph::sole_loop`]), and that the
+    /// body calls once, as with `item` in
+    /// `fn contains(list: List<Bytes>, item: Bytes) -> Bool { for x in list fold found = false { x == item || found } }`.
+    /// The call evaluates what the loop captures, so the argument is evaluated there, as it is
+    /// for an `inline fn` and as a binding that's only used by a loop is (see
+    /// [`Self::loop_call_substitution`]). The loop reads it from what it's called with, so it's
+    /// evaluated once, however many items there are.
+    ///
+    /// The call has to be evaluated at most once each time the body is, so it can't be inside of
+    /// a lambda, another loop, or an argument of a call that's inlined (see
+    /// [`Self::direct_loop_calls`]).
+    fn loop_call_argument(&self, body: HirId, parameter: SymbolId) -> Option<SymbolId> {
+        let function = self.graph.sole_loop(parameter)?;
+        let mut calls = Vec::new();
+        self.direct_loop_calls(function, body, &mut calls);
+        (calls.len() == 1).then_some(function)
     }
 
     /// The function that a call to the callee is inlined into, as [`Self::inlined_callee`] finds

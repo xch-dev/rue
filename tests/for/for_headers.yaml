@@ -229,12 +229,12 @@ tests:
   byte_cost: 900000
   total_cost: 903434
 - name: rest_in_a_fold
-  program: (a (q 2 4 (c 2 (q 1 2 3 2))) (c (c (q 2 (i 3 (q 2 (i (a (q 2 13 (c (c 13 2) 15)) (c 5 1)) (q 1 . 1) (q 2 4 (c 2 7))) 1) ()) 1) (q 2 (i 3 (q 2 (i (= 5 6) (q 1 . 1) (q 2 4 (c 2 7))) 1) ()) 1)) ()))
+  program: (a (q 2 4 (c 2 (q 1 2 3 2))) (c (c (q 2 (i 3 (q 2 (i (a 6 (c (c 6 5) 7)) (q 1 . 1) (q 2 4 (c 2 7))) 1) ()) 1) (q 2 (i 3 (q 2 (i (= 5 6) (q 1 . 1) (q 2 4 (c 2 7))) 1) ()) 1)) ()))
   debug_program: (a (q 2 8 (c (c 8 (c 12 30)) (a 10 (c 22 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 2) ())))))))) (c (c (c (q 2 (i 3 (q 2 (q 2 (i (a 29 (c 21 (c (r 7) (f 7)))) (q 1 . 1) (q . 2)) 1) (c (a 4 (c (c 4 (c 10 14)) (r 3))) 1)) ()) 1) (q 2 (i 3 (q 2 (q 2 (i (= (f 7) 13) (q 1 . 1) (q . 2)) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) ()) 1)) (c (q 2 2 3) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 2 (c (c 2 7) 5))))) ()))
   output: "1"
-  runtime_cost: 8278
-  byte_cost: 2172000
-  total_cost: 2180278
+  runtime_cost: 7746
+  byte_cost: 2004000
+  total_cost: 2011746
 - name: pairs_of_items
   program: (a (q 2 4 (c 2 (q 1 2 3))) (c (c (q 2 (i 3 (q 2 6 (c (c 3 (c 6 (a 4 (c 2 7)))) 7)) ()) 1) (q 2 (i 3 (q 4 (c 8 5) (a 10 (c 2 7))) (q . 14)) 1)) ()))
   debug_program: (a (q 2 4 (c (c 4 10) (a 14 (c (q . 1) (c (q . 2) (c (q . 3) ())))))) (c (c (q 2 (i 3 (q 2 (q 2 13 (c (c 7 (c 13 2)) (r 7))) (c (a 4 (c (c 4 6) (r 3))) 1)) ()) 1) (c (q 2 (i 3 (q 4 (c (f 4) (f 3)) (a 10 (c (c 4 (c 10 14)) (r 3)))) (q . 14)) 1) (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1))) ()))
@@ -243,16 +243,16 @@ tests:
   byte_cost: 1668000
   total_cost: 1675187
 - name: rest_in_a_loop
-  program: (a (q 3 () (a 4 (c 2 (q 1 2 3))) (q . 5)) (c (c (q 2 (i 3 (q 2 (i (a (q 2 13 (c (c 13 2) 15)) (c 5 1)) (q 8) (q 2 4 (c 2 7))) 1) ()) 1) (q 2 (i 3 (q 2 (i (= 5 6) (q 1 . 1) (q 2 4 (c 2 7))) 1) ()) 1)) ()))
+  program: (a (q 3 () (a 4 (c 2 (q 1 2 3))) (q . 5)) (c (c (q 2 (i 3 (q 2 (i (a 6 (c (c 6 5) 7)) (q 8) (q 2 4 (c 2 7))) 1) ()) 1) (q 2 (i 3 (q 2 (i (= 5 6) (q 1 . 1) (q 2 4 (c 2 7))) 1) ()) 1)) ()))
   debug_program: (a (q 3 (q . 1) (q . 5) (a 8 (c (c 8 (c 12 30)) (a 10 (c 22 (c (q . 1) (c (q . 2) (c (q . 3) ())))))))) (c (c (c (q 2 (i 3 (q 2 (i (not (a 14 (c 10 (c (r 3) (f 3))))) (q 2 4 (c (c 4 (c 10 14)) (r 3))) (q 8 (q . "assertion failed at for_headers.rue:226:9"))) 1) ()) 1) (q 2 (i 3 (q 2 (q 2 (i (= (f 7) 13) (q 1 . 1) (q . 2)) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) ()) 1)) (c (q 2 2 3) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 2 (c (c 2 7) 5))))) ()))
   output: "5"
-  runtime_cost: 9334
-  byte_cost: 2268000
-  total_cost: 2277334
+  runtime_cost: 8536
+  byte_cost: 2100000
+  total_cost: 2108536
 - name: rest_in_a_loop_that_fails
-  program: (a (q 3 () (a 4 (c 2 (q 1 2 1))) (q . 5)) (c (c (q 2 (i 3 (q 2 (i (a (q 2 13 (c (c 13 2) 15)) (c 5 1)) (q 8) (q 2 4 (c 2 7))) 1) ()) 1) (q 2 (i 3 (q 2 (i (= 5 6) (q 1 . 1) (q 2 4 (c 2 7))) 1) ()) 1)) ()))
+  program: (a (q 3 () (a 4 (c 2 (q 1 2 1))) (q . 5)) (c (c (q 2 (i 3 (q 2 (i (a 6 (c (c 6 5) 7)) (q 8) (q 2 4 (c 2 7))) 1) ()) 1) (q 2 (i 3 (q 2 (i (= 5 6) (q 1 . 1) (q 2 4 (c 2 7))) 1) ()) 1)) ()))
   debug_program: (a (q 3 (q . 1) (q . 5) (a 8 (c (c 8 (c 12 30)) (a 10 (c 22 (c (q . 1) (c (q . 2) (c (q . 1) ())))))))) (c (c (c (q 2 (i 3 (q 2 (i (not (a 14 (c 10 (c (r 3) (f 3))))) (q 2 4 (c (c 4 (c 10 14)) (r 3))) (q 8 (q . "assertion failed at for_headers.rue:233:9"))) 1) ()) 1) (q 2 (i 3 (q 2 (q 2 (i (= (f 7) 13) (q 1 . 1) (q . 2)) 1) (c (a 4 (c (c 4 6) (r 3))) 1)) ()) 1)) (c (q 2 2 3) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at for_headers.rue:5:5"))) 1) (q 2 2 (c (c 2 7) 5))))) ()))
-  byte_cost: 2268000
+  byte_cost: 2100000
   clvm_error: clvm raise ()
   debug_clvm_error: clvm raise "assertion failed at for_headers.rue:233:9"
 - name: rest_in_a_filter
