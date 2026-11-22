@@ -1,11 +1,12 @@
 tests:
 - name: reads_a_struct
-  program: (q . 3)
-  debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) ()))) (c (q 2 (i (not (not 1)) (q 16 (f 1) (f (r 1))) (q 8 (q . "assertion failed at implied_guards.rue:11:5"))) 1) ()))
+  program: (+ 4 10)
+  debug_program: (a (q 2 2 5) (c (q 2 (i (not (not 1)) (q 16 (f 1) (f (r 1))) (q 8 (q . "assertion failed at implied_guards.rue:11:5"))) 1) 1))
+  solution: ((1 2))
   output: "3"
-  runtime_cost: 20
-  byte_cost: 36000
-  total_cost: 36020
+  runtime_cost: 864
+  byte_cost: 84000
+  total_cost: 84864
 - name: reads_nil
   program: (+ 4 10)
   debug_program: (a (q 2 2 5) (c (q 2 (i (not (not 1)) (q 16 (f 1) (f (r 1))) (q 8 (q . "assertion failed at implied_guards.rue:11:5"))) 1) 1))

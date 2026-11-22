@@ -41,8 +41,8 @@ fn first_or_zero(list: Any, pick_first: Bool) -> Any {
     }
 }
 
-test fn reads_a_struct() -> Int {
-    sum(Point { x: 1, y: 2 })
+test fn reads_a_struct(point: Point | nil) -> Int {
+    sum(point)
 }
 
 test fn reads_nil(point: Point | nil) -> Int {

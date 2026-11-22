@@ -21,6 +21,9 @@ use id_arena::Arena;
 
 use crate::{ClvmTarget, DebugTags, Lir, LirId, SpanScopes, stack::grow_stack};
 
+/// Optimizes the LIR for the target. The result is ready for codegen, and isn't optimized again:
+/// the last step drops checks that the values after them imply (see `drop_implied_guards`), and
+/// the other rewrites rely on those checks being there.
 pub fn optimize(arena: &mut Arena<Lir>, lir: LirId, target: ClvmTarget) -> LirId {
     let optimized = optimize_node(arena, lir, target, &mut None);
     drop_implied_guards(arena, optimized, None)
@@ -29,6 +32,7 @@ pub fn optimize(arena: &mut Arena<Lir>, lir: LirId, target: ClvmTarget) -> LirId
 /// Optimizes the LIR like [`optimize`], and carries its tags over to the optimized LIR. A node
 /// that the optimizer generates is tagged with the span of the innermost tagged node that it was
 /// generated from, and the node that a function's body is optimized to is tagged with the function.
+/// Its result isn't optimized again either.
 pub fn optimize_with_tags(
     arena: &mut Arena<Lir>,
     lir: LirId,
@@ -75,13 +79,7 @@ fn optimize_node(
         trace.scopes.exit(arena.len());
     }
 
-    if let Some(&function) = trace.tags.functions.get(&lir) {
-        trace.tags.functions.entry(result).or_insert(function);
-    }
-
-    if let Some(&label) = trace.tags.labels.get(&lir) {
-        trace.tags.labels.entry(result).or_insert(label);
-    }
+    trace.tags.inherit_roots(lir, result);
 
     result
 }

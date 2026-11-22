@@ -8,7 +8,7 @@ use crate::{DebugTags, Lir, LirId, is_below, optimize::same_value, stack::grow_s
 /// check guards (see [`fails_on_atom`]), which bounds the work for each check.
 const MAX_IMPLIED_GUARD_SIZE: usize = 256;
 
-/// Drops each check whose failure is implied by the value after it (see [`implied_guard`]).
+/// Drops each check whose failure is implied by the value after it (see [`remaining_check`]).
 ///
 /// This runs once the rest of the optimizer is done, and nothing is rewritten after it. The other
 /// rewrites rely on a value having its type, which a check like `assert value is (Any, Any)` is
@@ -43,179 +43,142 @@ impl Pass<'_> {
 
         let result = grow_stack(|| self.visit_step(arena, lir));
         self.rebuilt.insert(lir, result);
+        self.inherit(lir, result);
+        result
+    }
 
-        if result != lir
+    fn inherit(&mut self, from: LirId, to: LirId) {
+        if from != to
             && let Some(tags) = self.tags.as_deref_mut()
         {
-            for tags in [&mut tags.spans, &mut tags.functions, &mut tags.labels] {
-                if let Some(&tag) = tags.get(&lir) {
-                    tags.entry(result).or_insert(tag);
+            tags.inherit(from, to);
+        }
+    }
+
+    fn visit_step(&mut self, arena: &mut Arena<Lir>, lir: LirId) -> LirId {
+        let mut node = arena[lir].clone();
+        let mut changed = false;
+        let mut visit = |arena: &mut Arena<Lir>, child: &mut LirId| {
+            let rebuilt = self.visit(arena, *child);
+            changed |= rebuilt != *child;
+            *child = rebuilt;
+        };
+
+        match &mut node {
+            Lir::Atom(_) | Lir::Path(_) => {}
+            Lir::Quote(a)
+            | Lir::First(a)
+            | Lir::Rest(a)
+            | Lir::Listp(a)
+            | Lir::Not(a)
+            | Lir::Strlen(a)
+            | Lir::Lognot(a)
+            | Lir::PubkeyForExp(a)
+            | Lir::G1Negate(a)
+            | Lir::G2Negate(a)
+            | Lir::Op(_, a)
+            | Lir::DebugPrint(_, a) => visit(arena, a),
+            Lir::Run(a, b)
+            | Lir::Cons(a, b)
+            | Lir::Div(a, b)
+            | Lir::Divmod(a, b)
+            | Lir::Mod(a, b)
+            | Lir::Eq(a, b)
+            | Lir::Gt(a, b)
+            | Lir::GtBytes(a, b)
+            | Lir::Ash(a, b)
+            | Lir::Lsh(a, b)
+            | Lir::G1Multiply(a, b)
+            | Lir::G2Multiply(a, b)
+            | Lir::Keccak256Verify(a, b) => {
+                visit(arena, a);
+                visit(arena, b);
+            }
+            Lir::If(a, b, c, _)
+            | Lir::Modpow(a, b, c)
+            | Lir::CoinId(a, b, c)
+            | Lir::K1Verify(a, b, c)
+            | Lir::R1Verify(a, b, c) => {
+                visit(arena, a);
+                visit(arena, b);
+                visit(arena, c);
+            }
+            Lir::Substr(a, b, c) => {
+                visit(arena, a);
+                visit(arena, b);
+                if let Some(c) = c {
+                    visit(arena, c);
+                }
+            }
+            Lir::G1Map(a, b) | Lir::G2Map(a, b) => {
+                visit(arena, a);
+                if let Some(b) = b {
+                    visit(arena, b);
+                }
+            }
+            Lir::Closure(a, args, _) | Lir::BlsVerify(a, args) => {
+                visit(arena, a);
+                for arg in args {
+                    visit(arena, arg);
+                }
+            }
+            Lir::Add(args)
+            | Lir::Sub(args)
+            | Lir::Mul(args)
+            | Lir::All(args)
+            | Lir::Any(args)
+            | Lir::Raise(args)
+            | Lir::Concat(args)
+            | Lir::Logand(args)
+            | Lir::Logior(args)
+            | Lir::Logxor(args)
+            | Lir::G1Add(args)
+            | Lir::G1Subtract(args)
+            | Lir::G2Add(args)
+            | Lir::G2Subtract(args)
+            | Lir::BlsPairingIdentity(args)
+            | Lir::Sha256(args)
+            | Lir::Sha256Inline(args)
+            | Lir::Keccak256(args)
+            | Lir::Keccak256Inline(args) => {
+                for arg in args {
+                    visit(arena, arg);
                 }
             }
         }
 
-        result
-    }
+        // An inline `if` evaluates the raise either way, so its check can't be dropped
+        if let Lir::If(condition, then, otherwise, false) = &mut node
+            && matches!(&arena[*otherwise], Lir::Raise(args) if args.is_empty())
+        {
+            let Some(rest) = remaining_check(arena, *condition, *then) else {
+                return *then;
+            };
 
-    fn visit_step(&mut self, arena: &mut Arena<Lir>, lir: LirId) -> LirId {
-        let mut changed = false;
-        let mut visit = |arena: &mut Arena<Lir>, child: LirId| {
-            let rebuilt = self.visit(arena, child);
-            changed |= rebuilt != child;
-            rebuilt
-        };
-
-        let node = match arena[lir].clone() {
-            node @ (Lir::Atom(_) | Lir::Path(_)) => node,
-            Lir::Quote(value) => Lir::Quote(visit(arena, value)),
-            Lir::Run(callee, env) => Lir::Run(visit(arena, callee), visit(arena, env)),
-            Lir::Closure(callee, args, has_parameters) => Lir::Closure(
-                visit(arena, callee),
-                args.into_iter().map(|arg| visit(arena, arg)).collect(),
-                has_parameters,
-            ),
-            Lir::First(value) => Lir::First(visit(arena, value)),
-            Lir::Rest(value) => Lir::Rest(visit(arena, value)),
-            Lir::Cons(first, rest) => Lir::Cons(visit(arena, first), visit(arena, rest)),
-            Lir::Listp(value) => Lir::Listp(visit(arena, value)),
-            Lir::Add(args) => Lir::Add(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::Sub(args) => Lir::Sub(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::Mul(args) => Lir::Mul(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::Div(left, right) => Lir::Div(visit(arena, left), visit(arena, right)),
-            Lir::Divmod(left, right) => Lir::Divmod(visit(arena, left), visit(arena, right)),
-            Lir::Mod(left, right) => Lir::Mod(visit(arena, left), visit(arena, right)),
-            Lir::Modpow(base, exponent, modulus) => Lir::Modpow(
-                visit(arena, base),
-                visit(arena, exponent),
-                visit(arena, modulus),
-            ),
-            Lir::Eq(left, right) => Lir::Eq(visit(arena, left), visit(arena, right)),
-            Lir::Gt(left, right) => Lir::Gt(visit(arena, left), visit(arena, right)),
-            Lir::GtBytes(left, right) => Lir::GtBytes(visit(arena, left), visit(arena, right)),
-            Lir::Not(value) => Lir::Not(visit(arena, value)),
-            Lir::All(args) => Lir::All(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::Any(args) => Lir::Any(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::If(condition, then, otherwise, inline) => {
-                let condition = visit(arena, condition);
-                let then = visit(arena, then);
-                let otherwise = visit(arena, otherwise);
-
-                if inline || !matches!(&arena[otherwise], Lir::Raise(args) if args.is_empty()) {
-                    Lir::If(condition, then, otherwise, inline)
-                } else {
-                    match implied_guard(arena, condition, then) {
-                        Guard::Implied => return then,
-                        Guard::Rest(condition) => {
-                            changed = true;
-                            Lir::If(condition, then, otherwise, inline)
-                        }
-                        Guard::Kept => Lir::If(condition, then, otherwise, inline),
-                    }
-                }
+            if rest != *condition {
+                self.inherit(*condition, rest);
+                *condition = rest;
+                changed = true;
             }
-            Lir::Raise(args) => Lir::Raise(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::Concat(args) => Lir::Concat(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::Strlen(value) => Lir::Strlen(visit(arena, value)),
-            Lir::Substr(string, start, end) => Lir::Substr(
-                visit(arena, string),
-                visit(arena, start),
-                end.map(|end| visit(arena, end)),
-            ),
-            Lir::Logand(args) => Lir::Logand(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::Logior(args) => Lir::Logior(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::Logxor(args) => Lir::Logxor(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::Lognot(value) => Lir::Lognot(visit(arena, value)),
-            Lir::Ash(value, shift) => Lir::Ash(visit(arena, value), visit(arena, shift)),
-            Lir::Lsh(value, shift) => Lir::Lsh(visit(arena, value), visit(arena, shift)),
-            Lir::PubkeyForExp(exp) => Lir::PubkeyForExp(visit(arena, exp)),
-            Lir::G1Add(args) => Lir::G1Add(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::G1Subtract(args) => {
-                Lir::G1Subtract(args.into_iter().map(|a| visit(arena, a)).collect())
-            }
-            Lir::G1Multiply(left, right) => {
-                Lir::G1Multiply(visit(arena, left), visit(arena, right))
-            }
-            Lir::G1Negate(value) => Lir::G1Negate(visit(arena, value)),
-            Lir::G1Map(value, map) => {
-                Lir::G1Map(visit(arena, value), map.map(|map| visit(arena, map)))
-            }
-            Lir::G2Add(args) => Lir::G2Add(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::G2Subtract(args) => {
-                Lir::G2Subtract(args.into_iter().map(|a| visit(arena, a)).collect())
-            }
-            Lir::G2Multiply(left, right) => {
-                Lir::G2Multiply(visit(arena, left), visit(arena, right))
-            }
-            Lir::G2Negate(value) => Lir::G2Negate(visit(arena, value)),
-            Lir::G2Map(value, map) => {
-                Lir::G2Map(visit(arena, value), map.map(|map| visit(arena, map)))
-            }
-            Lir::BlsPairingIdentity(args) => {
-                Lir::BlsPairingIdentity(args.into_iter().map(|a| visit(arena, a)).collect())
-            }
-            Lir::BlsVerify(sig, args) => Lir::BlsVerify(
-                visit(arena, sig),
-                args.into_iter().map(|a| visit(arena, a)).collect(),
-            ),
-            Lir::Sha256(args) => Lir::Sha256(args.into_iter().map(|a| visit(arena, a)).collect()),
-            Lir::Sha256Inline(args) => {
-                Lir::Sha256Inline(args.into_iter().map(|a| visit(arena, a)).collect())
-            }
-            Lir::Keccak256(args) => {
-                Lir::Keccak256(args.into_iter().map(|a| visit(arena, a)).collect())
-            }
-            Lir::Keccak256Inline(args) => {
-                Lir::Keccak256Inline(args.into_iter().map(|a| visit(arena, a)).collect())
-            }
-            Lir::CoinId(parent, puzzle_hash, amount) => Lir::CoinId(
-                visit(arena, parent),
-                visit(arena, puzzle_hash),
-                visit(arena, amount),
-            ),
-            Lir::K1Verify(public_key, message, signature) => Lir::K1Verify(
-                visit(arena, public_key),
-                visit(arena, message),
-                visit(arena, signature),
-            ),
-            Lir::R1Verify(public_key, message, signature) => Lir::R1Verify(
-                visit(arena, public_key),
-                visit(arena, message),
-                visit(arena, signature),
-            ),
-            Lir::Keccak256Verify(value, hash) => {
-                Lir::Keccak256Verify(visit(arena, value), visit(arena, hash))
-            }
-            Lir::Op(op, arg) => Lir::Op(op, visit(arena, arg)),
-            Lir::DebugPrint(srcloc, value) => Lir::DebugPrint(srcloc, visit(arena, value)),
-        };
+        }
 
         if changed { arena.alloc(node) } else { lir }
     }
 }
 
-/// What's left of the check of an `if` whose other branch is the raise of a release build.
-enum Guard {
-    /// The check is implied by the value, so the `if` is the value.
-    Implied,
-    /// Some of the checks that the condition is `all` of are implied, and this is the rest.
-    Rest(LirId),
-    /// None of it is implied.
-    Kept,
-}
-
-/// Whether `(a (i x (q . B) (q 8)) 1)` is `B`, because `B` fails whenever `x` is nil, or
-/// `(a (i (l x) (q . B) (q 8)) 1)` is, because `B` fails whenever `x` is an atom. Both hold when
-/// every way through `B` reads into `x` (see [`fails_on_atom`]), as the fields of a struct are read
-/// after `assert value is Struct`. A list that ends in an atom other than nil fails the same way,
-/// since the check passes for it and reading into the atom fails. A check that's `all` of several,
-/// as checks in a row are merged into (see `merge_checks`), drops the ones that are implied, since
-/// the value is still only reached if the rest pass. Evaluating `x` can fail, but only where `B`
-/// would, since it evaluates `x` as well.
+/// What's left of the check of `(a (i x (q . B) (q 8)) 1)`, or `None` if `B` implies all of it.
+/// `B` implies `x` if it fails whenever `x` is nil, and `(l x)` if it fails whenever `x` is an
+/// atom, which both hold when every way through `B` reads into `x` (see [`fails_on_atom`]), as
+/// the fields of a struct are read after `assert value is Struct`. A list that ends in an atom
+/// other than nil fails the same way, since the check passes for it and reading into the atom
+/// fails. A check that's `all` of several, as checks in a row are merged into (see
+/// `merge_checks`), drops the ones that are implied, since `B` is still only reached if the rest
+/// pass. Evaluating `x` can fail, but only where `B` would, since it evaluates `x` as well.
 ///
 /// This changes which failure is raised, but not whether the program fails, and a release build
 /// has nothing to tell one failure from another: CLVM has no side effects, and the cost of a spend
 /// that fails doesn't matter. The raise of a debug build has a message, so it's kept there.
-fn implied_guard(arena: &mut Arena<Lir>, condition: LirId, then: LirId) -> Guard {
+fn remaining_check(arena: &mut Arena<Lir>, condition: LirId, then: LirId) -> Option<LirId> {
     let implied = |arena: &Arena<Lir>, check: LirId| {
         let guarded = match arena[check] {
             Lir::Listp(value) => value,
@@ -226,12 +189,9 @@ fn implied_guard(arena: &mut Arena<Lir>, condition: LirId, then: LirId) -> Guard
         fails_on_atom(arena, then, guarded, &mut budget)
     };
 
-    if implied(arena, condition) {
-        return Guard::Implied;
-    }
-
-    let Lir::All(checks) = &arena[condition] else {
-        return Guard::Kept;
+    let checks = match &arena[condition] {
+        Lir::All(checks) => checks.clone(),
+        _ => vec![condition],
     };
 
     let rest: Vec<LirId> = checks
@@ -240,12 +200,12 @@ fn implied_guard(arena: &mut Arena<Lir>, condition: LirId, then: LirId) -> Guard
         .filter(|&check| !implied(arena, check))
         .collect();
 
-    match rest.len() {
-        0 => Guard::Implied,
+    match rest.as_slice() {
+        [] => None,
+        _ if rest.len() == checks.len() => Some(condition),
         // `all` of one value has its truthiness, which is all that an `if` looks at
-        1 => Guard::Rest(rest[0]),
-        len if len < checks.len() => Guard::Rest(arena.alloc(Lir::All(rest))),
-        _ => Guard::Kept,
+        [only] => Some(*only),
+        _ => Some(arena.alloc(Lir::All(rest))),
     }
 }
 

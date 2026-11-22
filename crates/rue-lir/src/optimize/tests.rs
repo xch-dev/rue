@@ -4,7 +4,7 @@ use id_arena::Arena;
 use num_bigint::BigUint;
 use rue_clvm::{disassemble_program, disassemble_value};
 
-use crate::{ClvmTarget, CodegenOptions, Lir, LirId, codegen, optimize};
+use crate::{ClvmOp, ClvmTarget, CodegenOptions, Lir, LirId, codegen, optimize};
 
 fn atom(arena: &mut Arena<Lir>, bytes: &[u8]) -> LirId {
     arena.alloc(Lir::Atom(bytes.to_vec()))
@@ -1479,6 +1479,32 @@ fn test_guard_implied_by_its_value_is_dropped() {
         expect!["(c (q . 2) (c (q 1 1 . 1) (c (c (q . 4) (c (c (q . 1) 4) (q 1))) ())))"],
     );
 
+    // Reading further into a value that isn't a path, where the reads aren't folded into a path
+    let call_first_first = arena.alloc(Lir::First(call_first));
+    let lir = arena.alloc(Lir::If(again, call_first_first, fail, false));
+    check(
+        &mut arena,
+        lir,
+        &[
+            "((q . 5) ())",
+            "((q . 5) ((1) 2))",
+            "((q . 5) (1 2))",
+            "((q) ())",
+        ],
+        expect!["(f (f (a 2 5)))"],
+    );
+
+    // The arguments of an operator that isn't known to the optimizer are evaluated
+    let op_args = arena.alloc(Lir::Cons(first, nil));
+    let op = arena.alloc(Lir::Op(ClvmOp::Strlen, op_args));
+    let lir = arena.alloc(Lir::If(x, op, fail, false));
+    check(
+        &mut arena,
+        lir,
+        LIST_ENVS,
+        expect!["(a (c (c (q . 13) ()) (c 4 ())) ())"],
+    );
+
     // An `if` that picks between constants is inline, and still reads into it
     let eager = arena.alloc(Lir::If(first, one, nil, true));
     let lir = arena.alloc(Lir::If(x, eager, fail, false));
@@ -1532,6 +1558,10 @@ fn test_guard_that_is_not_implied_is_kept() {
         expect!["(a (i 2 (q 2 (i 5 (q . 4) (q . 5)) 1) (q 8)) 1)"],
     );
 
+    // An inline `if` evaluates the raise either way, so it always fails
+    let inline = arena.alloc(Lir::If(x, first, fail, true));
+    check(&mut arena, inline, LIST_ENVS, expect!["(i 2 4 (x))"]);
+
     // The raise of a debug build has a message, which has to be kept
     let message = atom(&mut arena, b"x is nil");
     let debug_fail = arena.alloc(Lir::Raise(vec![message]));
@@ -1576,6 +1606,24 @@ fn test_implied_checks_of_all_are_dropped() {
     let second = arena.alloc(Lir::If(listp, first, fail, false));
     let lir = arena.alloc(Lir::If(x, second, fail, false));
     check(&mut arena, lir, LIST_ENVS, expect!["4"]);
+
+    // Some of them, and more than one is left
+    let w = path(&mut arena, 23);
+    let third = arena.alloc(Lir::If(w, first, fail, false));
+    let second = arena.alloc(Lir::If(y, third, fail, false));
+    let lir = arena.alloc(Lir::If(x, second, fail, false));
+    check(
+        &mut arena,
+        lir,
+        &[
+            "((1) 2 3)",
+            "(() 2 3)",
+            "((1) () 3)",
+            "((1) 2 ())",
+            "(5 2 3)",
+        ],
+        expect!["(a (i (all 5 23) (q . 4) (q 8)) 1)"],
+    );
 
     // None of them
     let rest = arena.alloc(Lir::Rest(y));
