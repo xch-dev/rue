@@ -4,6 +4,9 @@ use rue_hir::{Block, Hir, HirId, Statement};
 use crate::{HirLintPass, LintContext};
 
 /// Conditions whose type is a single boolean value always take the same branch.
+///
+/// A condition of type `Never` is compatible with both values, but it never finishes, so it never
+/// takes a branch at all. That's reported by `unreachable_code` instead.
 #[derive(Debug, Default)]
 pub(crate) struct ConstantCondition;
 
@@ -34,6 +37,10 @@ fn check_condition(cx: &mut LintContext<'_>, condition: HirId) {
     };
 
     let srcloc = srcloc.clone();
+
+    if cx.is_never(ty) {
+        return;
+    }
 
     let value = if cx.is_castable(ty, cx.builtin_types().bool_true) {
         "true"
