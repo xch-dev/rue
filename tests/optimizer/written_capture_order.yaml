@@ -1,5 +1,5 @@
 tests:
-- name: filters_and_appends
+- name: item_after_the_filter_fails
   program: (a (q 2 (q 2 5 (c (c 5 2) 2)) (c (q 1 2 3) 1)) (c (q 2 (i 3 (q 2 (i (> (a (q 2 (i (> 2 ()) (q . 2) (q 8)) 1) (c 5 1)) ()) (q 4 5 (a 4 (c 2 7))) (q 2 4 (c 2 7))) 1) (q 4 (a (q 19 2 (> (q . 100) 2)) (c (+ 10 (q . 100)) 1)) ())) 1) ()))
   debug_program: (a (q 2 (q 2 9 (c (c 9 (c 2 (c 45 61))) 2)) (c (a 10 (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1)) (c (c (q 2 (i 3 (q 2 (i (> (a 30 (f 3)) ()) (q 4 (f 3) (a 4 (c (c 4 (c 10 (c 22 30))) (r 3)))) (q 2 4 (c (c 4 (c 10 (c 22 30))) (r 3)))) 1) (q 4 (a 22 (+ (f 10) (q . 100))) ())) 1) (c (q 2 (i (a (i (l 1) (q 1 . 1) (q 2 (i (not (l 1)) (q 9 1 ()) ()) 1)) 1) (q . 1) (q 8 (q . "assertion failed at written_capture_order.rue:7:5"))) 1) (c (q 19 1 (a (i (> (q . 100) 1) (q 1 . 1) ()) 1)) (q 2 (i (> 1 ()) (q . 1) (q 8 (q . "assertion failed at written_capture_order.rue:12:5"))) 1)))) ()))
   byte_cost: 2532000

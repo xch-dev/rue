@@ -22,7 +22,8 @@ fn small(value: Int) -> Int {
         }
 }
 
-test fn filters_and_appends() -> List<Int> {
+// `small` fails on the item after the `for`, as in `for_spreads.rue`, after the filter runs
+test fn item_after_the_filter_fails() -> List<Int> {
     let xs = runtime([1, 2, 3]);
     [...for x in xs if positive(x) > 0 { x }, small(xs.first + 100)]
 }
