@@ -6,13 +6,15 @@ use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program};
 use id_arena::Arena;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
-    DependencyGraph, Environment, Hir, HirId, Lowerer, MAX_LOWERING_DEPTH, Symbol, SymbolId,
-    has_reachable_unresolved,
+    Declaration, DependencyGraph, Environment, Hir, HirId, Lowerer, MAX_LOWERING_DEPTH, Symbol,
+    SymbolId, has_reachable_unresolved,
 };
 use rue_lir::{CodegenOptions, codegen, optimize};
 use rue_options::CompilerOptions;
 
-use crate::{Compiler, clvm_target, entrypoint::synthetic_function};
+use crate::{
+    Compiler, check_recursion::cyclic_declarations, clvm_target, entrypoint::synthetic_function,
+};
 
 pub(crate) fn evaluate_const_exprs(ctx: &mut Compiler) {
     if ctx.has_errors() {
@@ -257,12 +259,23 @@ fn evaluate_const_expr(
         }
     }
 
-    // A constant that references itself is an error that's reported on its own, and it can't be
-    // lowered, since its value would have to be bound before itself
-    for dependency in graph.dependencies(root, false) {
-        if matches!(ctx.symbol(dependency), Symbol::Constant(_))
-            && graph.dependencies(dependency, false).contains(&dependency)
-        {
+    // A constant that's bound and references itself can't be lowered, since its value would
+    // have to be bound before itself. It's an error that's reported on its own (see
+    // `check_recursion`), which finds the same cycles. An `inline` one, such as the default value
+    // of a struct's field, is substituted where it's referenced, so it's lowered either way
+    let constants: Vec<Declaration> = graph
+        .dependencies(root, false)
+        .into_iter()
+        .filter(|&dependency| {
+            matches!(ctx.symbol(dependency), Symbol::Constant(constant) if !constant.inline)
+        })
+        .map(Declaration::Symbol)
+        .collect();
+
+    if !constants.is_empty() {
+        let cyclic = cyclic_declarations(ctx, &constants);
+
+        if constants.iter().any(|constant| cyclic.contains(constant)) {
             return Err(ConstEvalError::DependencyFailed);
         }
     }

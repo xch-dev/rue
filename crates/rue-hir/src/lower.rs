@@ -121,7 +121,7 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// The parameters of an `inline fn` that each closure in it only captures so that their
     /// arguments are evaluated when the closure is built, rather than because it refers to them
     /// (see [`Self::function_captures`]). They're found along with the dependencies.
-    argument_captures: RefCell<HashMap<SymbolId, HashSet<SymbolId>>>,
+    argument_captures: RefCell<HashMap<SymbolId, IndexSet<SymbolId>>>,
     /// Whether a symbol wasn't found in the environment, while a value is lowered on its own to
     /// find out whether it's a constant (see [`Self::folds_to_constant`]), or `None` otherwise.
     missing_paths: Option<bool>,
@@ -396,7 +396,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
             // The closure doesn't refer to these itself, so they're only captured where the
             // argument may fail (see `Self::is_idle_argument`)
-            let arguments: HashSet<SymbolId> = unpruned
+            let arguments: IndexSet<SymbolId> = unpruned
                 .iter()
                 .copied()
                 .filter(|&capture| {
@@ -406,11 +406,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 })
                 .collect();
 
-            captures.extend(
-                unpruned
-                    .iter()
-                    .filter(|capture| arguments.contains(capture)),
-            );
+            captures.extend(arguments.iter().copied());
 
             self.argument_captures
                 .borrow_mut()
@@ -418,6 +414,17 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         captures
+    }
+
+    /// What the function captures where it's lowered here, which is the same for the environment
+    /// its body is lowered with and the closure that's built for it: what it depends on, apart
+    /// from the parameters it doesn't need here (see [`Self::is_idle_argument`]).
+    fn lowered_captures(&self, symbol: SymbolId) -> IndexSet<SymbolId> {
+        self.dependencies(symbol, true)
+            .iter()
+            .copied()
+            .filter(|&capture| !self.is_idle_argument(symbol, capture))
+            .collect()
     }
 
     /// Whether the function only captures the parameter of an `inline fn` so that its argument
@@ -467,12 +474,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         symbol: SymbolId,
         function: &FunctionSymbol,
     ) -> (Vec<SymbolGroup>, SymbolGroup) {
-        let captures: IndexSet<SymbolId> = self
-            .dependencies(symbol, true)
-            .iter()
-            .copied()
-            .filter(|&capture| !self.is_idle_argument(symbol, capture))
-            .collect();
+        let captures = self.lowered_captures(symbol);
 
         let capture_groups = self.group_symbols(
             captures,
@@ -1385,12 +1387,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 }
             } else {
                 let captures: Vec<SymbolId> = self
-                    .dependencies(symbol, true)
-                    .iter()
-                    .copied()
-                    .filter(|&capture| {
-                        self.is_capture(capture) && !self.is_idle_argument(symbol, capture)
-                    })
+                    .lowered_captures(symbol)
+                    .into_iter()
+                    .filter(|&capture| self.is_capture(capture))
                     .collect();
 
                 for capture in captures {

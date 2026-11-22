@@ -350,3 +350,23 @@ fn main(x: Int) -> Int {{ x + const {{ f(5) }} }}
         );
     }
 }
+
+/// The default value of a struct's field is an `inline` constant, which is substituted where it's
+/// referenced, so a const expression that reaches one that can lead back to itself is still
+/// evaluated, as the rest of the program is.
+#[test]
+fn const_expression_through_a_default_value_that_leads_back_to_itself_is_evaluated() {
+    let compiled = compile(
+        "
+struct S { a: Int = f(9) }
+fn f(n: Int) -> Int { if n > 5 { n } else { S {}.a + n } }
+fn main(x: Int) -> Int { x + const { f(2) } + const { S {}.a } }
+",
+    );
+
+    compiled.assert_no_errors();
+    assert_eq!(
+        compiled.const_values(),
+        ["`const { f(2) }` = 11", "`const { S {}.a }` = 9"]
+    );
+}

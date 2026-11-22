@@ -157,6 +157,7 @@ enum Repeat {
 struct Site {
     /// The symbol whose body or value the reference is in, which it's evaluated with.
     place: SymbolId,
+    /// What's done with the value that's referenced there.
     usage: Usage,
 }
 

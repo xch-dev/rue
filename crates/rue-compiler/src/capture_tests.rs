@@ -1,6 +1,9 @@
 //! Tests for when a value that's only referenced once is bound rather than substituted, since the
 //! reference can be evaluated more than once, and for the order that inline values are captured in.
 
+use clvmr::{Allocator, ChiaDialect, error::EvalErr, run_program};
+use rue_clvm::{assemble, disassemble_value};
+use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
 
 use crate::test_utils::{compile, compile_with};
@@ -56,9 +59,10 @@ fn source(items: &str) -> String {
     format!("{HELPERS}\n{K}\n{items}")
 }
 
-/// Whether the constant `K` of the program is bound rather than substituted, since its only
-/// reference can be evaluated more than once each time the program is run.
-fn is_bound(source: &str) -> bool {
+/// Whether the dependency graph finds that the constant `K` of the program is only referenced
+/// somewhere that can be evaluated more than once each time the program is run, and isn't cheap
+/// to evaluate, so it's bound, unless it's found to be a constant once it's lowered.
+fn is_repeated_in(source: &str) -> bool {
     let compiled = compile(source);
     compiled.assert_no_errors();
     compiled
@@ -66,15 +70,15 @@ fn is_bound(source: &str) -> bool {
         .is_repeated(compiled.symbol("K"))
 }
 
-/// Whether the constant `K` is bound, in a program with the helpers and the items.
+/// Whether the constant `K` is repeated, in a program with the helpers and the items.
 fn is_repeated(items: &str) -> bool {
-    is_bound(&source(items))
+    is_repeated_in(&source(items))
 }
 
-/// Whether the constant `K` is bound when it's only referenced in a lambda that's called for
+/// Whether the constant `K` is repeated when it's only referenced in a lambda that's called for
 /// each item of a list, given the items that declare it.
 fn is_value_repeated(items: &str) -> bool {
-    is_bound(&format!(
+    is_repeated_in(&format!(
         "{HELPERS}\n{items}\nfn main(xs: List<Int>) -> List<Int> {{ map(xs, fn(x) => x + K) }}"
     ))
 }
@@ -270,6 +274,21 @@ fn program(items: &str) -> String {
     compile(&source(items)).main_program()
 }
 
+/// What `main` returns for the solution, or what it raises, in a program with the helpers and
+/// the items.
+fn run(items: &str, solution: &str) -> Result<String, String> {
+    let mut allocator = Allocator::new();
+    let program = assemble(&mut allocator, &program(items)).unwrap();
+    let solution = assemble(&mut allocator, solution).unwrap();
+    let dialect = ChiaDialect::new(ClvmTarget::default().flags());
+
+    match run_program(&mut allocator, &dialect, program, solution, u64::MAX) {
+        Ok(output) => Ok(disassemble_value(&allocator, output.1)),
+        Err(EvalErr::Raise(value)) => Err(disassemble_value(&allocator, value)),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 /// A lambda that's only called once evaluates the value once, so the value is substituted, and
 /// the program is the same as if it were written where it's used.
 #[test]
@@ -331,21 +350,52 @@ fn main(xs: List<Int>) -> List<Int> { add(xs) }";
 
 /// A closure in an `inline fn` still captures the parameters that a bound value it captures
 /// depends on, so that the argument is evaluated when the closure is built, as it was before
-/// values that are bound stopped being followed.
+/// values that are bound stopped being followed. That's only needed for an argument that may
+/// fail, so the argument for `c` isn't captured.
 #[test]
 fn closure_in_an_inline_function_captures_the_parameters_of_a_bound_value() {
-    let program = program(
-        "fn positive(value: Int) -> Int { assert value > 0; value }
-inline fn scaled(p: Int, c: Bool, xs: List<Int>) -> List<Int> { let v = if c { p * 2 } else { 0 }; map(xs, fn(y) => y + v + v) }
-fn main(xs: List<Int>, n: Int) -> List<Int> { scaled(positive(n), n > 5, xs) }",
+    let scaled = "fn positive(value: Int) -> Int { assert value > 0; value }
+inline fn scaled(p: Int, c: Bool, xs: List<Int>) -> List<Int> { let v = if c { p * 2 } else { 0 }; map(xs, fn(y) => y + v + v) }";
+    let main = format!(
+        "{scaled}\nfn main(xs: List<Int>, n: Int) -> List<Int> {{ scaled(positive(n), n > 5, xs) }}"
     );
 
-    // The closure captures the value and the argument for `p`, which may fail. The argument for
-    // `c` can't, so there's nothing to evaluate it for
-    let start = program
+    // The value doesn't evaluate `p` when `c` is false, but building the closure does
+    assert_eq!(run(&main, "((1 2) 0)"), Err("()".to_string()));
+    assert_eq!(run(&main, "((1 2) 3)"), Ok("(1 2)".to_string()));
+    assert_eq!(run(&main, "((1 2) 7)"), Ok("(29 30)".to_string()));
+
+    // The closure captures the value and the argument for `p`, but not the one for `c`
+    let built = program(&main);
+    let start = built
         .find("(c (q . 2) (c (q 1 ")
         .expect("the program builds a closure");
-    assert_eq!(program[start..].matches("(q . 4)").count(), 2, "{program}");
+    let closure = &built[start..];
+    assert_eq!(closure.matches("(q . 4)").count(), 2, "{built}");
+    // A capture is quoted into the closure's environment: the call to `positive` is, and the
+    // comparison isn't
+    assert!(closure.contains("(c (q . 1) (a "), "{built}");
+    assert!(!closure.contains("(c (q . 1) (> "), "{built}");
+
+    // The same in a closure inside the closure, which only has the static arguments: the outer
+    // closure evaluates the argument when it's built, and the inner one doesn't capture it
+    let nested = "fn positive(value: Int) -> Int { assert value > 0; value }
+inline fn scaled(p: Int, c: Bool, xs: List<Int>) -> List<Int> { let v = if c { p * 2 } else { 0 }; map(xs, fn(y) => total(map(xs, fn(z) => z + y + v + v))) }
+fn main(xs: List<Int>, n: Int) -> List<Int> { scaled(positive(n), n > 5, xs) }";
+    assert_eq!(run(nested, "((1 2) 0)"), Err("()".to_string()));
+    assert_eq!(run(nested, "((1 2) 3)"), Ok("(5 7)".to_string()));
+
+    // An `inline fn` that's used as a value isn't inlined, so its closure has no argument to
+    // evaluate, and only captures the value, like a lambda that isn't in an `inline fn`
+    let value = |function: &str| {
+        program(&format!(
+            "fn positive(value: Int) -> Int {{ assert value > 0; value }}
+{function} scaled(p: Int, c: Bool, xs: List<Int>) -> List<Int> {{ let v = if c {{ p * 2 }} else {{ 0 }}; map(xs, fn(y) => y + v + v) }}
+fn call(f: fn(p: Int, c: Bool, xs: List<Int>) -> List<Int>, n: Int, xs: List<Int>) -> List<Int> {{ [...f(positive(n), n > 5, xs), ...f(n, n > 6, xs)] }}
+fn main(xs: List<Int>, n: Int) -> List<Int> {{ call(scaled, n, xs) }}"
+        ))
+    };
+    assert_eq!(value("inline fn"), value("fn"));
 }
 
 /// A closure in an `inline fn` doesn't capture a parameter that only a bound value it captures
