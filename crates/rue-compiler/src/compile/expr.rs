@@ -20,7 +20,9 @@ mod prefix;
 mod struct_initializer;
 
 pub use binary::*;
-pub(crate) use call_inference::{DeferredLambda, ElementLambda, HeldLambda, HeldStep};
+pub(crate) use call_inference::{
+    DeferredLambda, ElementLambda, HeldLambda, HeldStep, list_of, pair_parts,
+};
 pub use cast::*;
 pub use const_expr::*;
 pub use field_access::*;
@@ -140,6 +142,7 @@ pub(crate) fn compile_lambda_argument(
     expr: &AstExpr,
     lambda: &AstLambdaExpr,
     expected_type: Option<TypeId>,
+    declared: Option<TypeId>,
     wrap: &ParameterWrap<'_>,
 ) -> (Value, Vec<LambdaParameter>) {
     ctx.add_syntax(
@@ -147,6 +150,7 @@ pub(crate) fn compile_lambda_argument(
         expr.syntax().text_range(),
     );
 
-    let (value, parameters) = compile_lambda(ctx, lambda, expected_type, Some(wrap));
+    let (value, parameters) =
+        compile_lambda_feeding_itself(ctx, lambda, expected_type, declared, wrap);
     (ctx.record_value(expr.syntax(), value), parameters)
 }

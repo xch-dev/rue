@@ -1,0 +1,5 @@
+// solution: ((1 2 3) (10 20))
+
+fn main(xs: List<Int>, ys: List<Int>) -> List<Int> {
+    for a in xs, b in ys { a + b }
+}

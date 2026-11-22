@@ -31,6 +31,17 @@ pub enum Doc {
         broken: Rc<Self>,
         flat: Rc<Self>,
     },
+    /// A group with a tail after it that's broken wherever the group is, though the group is
+    /// only measured up to the tail's first line. The tail of a group that fits is laid out as
+    /// it would be on its own, so a tail that's a group can still break. Where the group is
+    /// broken, a tail that's a group is laid out broken instead, which only reaches the group
+    /// that the tail itself is, not the groups inside of it. This is how the body of a `for`
+    /// follows its header: a header that's on one line can have a body on one line or on
+    /// several, and a header over several lines always has its body on lines of its own.
+    GroupWithTail {
+        group: Rc<Self>,
+        tail: Rc<Self>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,6 +122,13 @@ impl Doc {
 
     pub fn reluctant_group(self) -> Self {
         Self::ReluctantGroup(Rc::new(self))
+    }
+
+    pub fn group_with_tail(group: Self, tail: Self) -> Self {
+        Self::GroupWithTail {
+            group: Rc::new(group),
+            tail: Rc::new(tail),
+        }
     }
 
     pub fn if_break(broken: Self, flat: Self) -> Self {

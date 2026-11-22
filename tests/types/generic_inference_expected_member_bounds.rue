@@ -1,0 +1,219 @@
+struct Left<A> {
+    tag: 0 = 0,
+    value: A,
+}
+
+struct Right<B> {
+    tag: 1 = 1,
+    value: B,
+}
+
+type Either<A, B> = Left<A> | Right<B>;
+
+fn left<A, B>(a: A) -> Either<A, B> {
+    Left::<A> { value: a }
+}
+
+fn right<A, B>(b: B) -> Either<A, B> {
+    Right::<B> { value: b }
+}
+
+// `B` is only bounded by the expected type, whose `Left<Int>` member gives `B`'s `Right<B>`
+// nothing, so `B ≤ Bytes` comes from `Right<Bytes>` alone. Every member's bounds used to be
+// taken, the first first, which made `B` `Int` from comparing `Right<B>` with `Left<Int>`
+test fn generic_of_the_other_member() -> Int {
+    let either: Either<Int, Bytes> = left(5);
+    if either is Left<Int> {
+        either.value
+    } else {
+        0
+    }
+}
+
+test fn generic_of_the_first_member() -> Int {
+    let either: Either<Bytes, Int> = right(5);
+    if either is Right<Int> {
+        either.value
+    } else {
+        0
+    }
+}
+
+enum Choice<A, B> {
+    First { value: A },
+    Second { value: B },
+}
+
+fn first<A, B>(a: A) -> Choice<A, B> {
+    Choice::First::<A, B> { value: a }
+}
+
+// The same for an enum's variants
+test fn generic_of_the_other_variant() -> Int {
+    let choice: Choice<Int, Bytes> = first(5);
+    if choice is Choice::First<Int, Bytes> {
+        choice.value
+    } else {
+        0
+    }
+}
+
+fn tagged<B>() -> (1, B) {
+    unchecked_cast(nil)
+}
+
+fn tagged_last<B>() -> (B, 1) {
+    unchecked_cast(nil)
+}
+
+// `(1, B)` can only be the `(1, Bytes)` member, whichever order the members are in
+test fn bound_from_the_member_that_holds_it() -> Int {
+    let _first: (0, Int) | (1, Bytes) = tagged();
+    let _second: (1, Bytes) | (0, Int) = tagged();
+    let _third: (Int, 0) | (Bytes, 1) = tagged_last();
+    1
+}
+
+fn either_tagged<A, B>() -> (0, A) | (1, B) {
+    unchecked_cast(nil)
+}
+
+// Each member of the return type is held by one member of the expected type
+test fn bounds_for_each_member_of_the_return_type() -> Int {
+    let _value: (0, Int) | (1, Bytes) = either_tagged();
+    1
+}
+
+struct Small<A> {
+    value: A,
+}
+
+struct Large<B> {
+    value: B,
+    more: Int,
+}
+
+fn large<B>() -> Large<B> {
+    unchecked_cast(nil)
+}
+
+// A struct isn't bounded through another struct's member
+test fn bound_from_the_same_struct() -> Int {
+    let _value: Small<Int> | Large<Bytes> = large();
+    1
+}
+
+fn swapped<A, B>() -> (A, B) {
+    unchecked_cast(nil)
+}
+
+// Both members hold `(A, B)`, so each one's bounds are kept, in their order, and generics that
+// nothing else constrains take the first, `(Int, Bytes)`, as they always did
+test fn first_of_the_members_that_hold_it() -> Int {
+    let _value: (Int, Bytes) | (Bytes, Int) = swapped();
+    1
+}
+
+fn map_both<A, B>(function: fn(a: A) -> B, value: A) -> (B, B) {
+    (function(value), function(value))
+}
+
+fn same<T>(value: T) -> T {
+    value
+}
+
+// Both members hold `(B, B)` too, but `B` is at least `5`, which only the second member's
+// `B ≤ 5` allows, so that's the bound it takes
+test fn member_that_the_arguments_allow() -> Int {
+    let result: (6, 6) | (5, 5) = map_both(same, 5);
+    result.first
+}
+
+type Result<T, E> = (0, T) | (1, E);
+
+fn ok<T, E>(value: T) -> Result<T, E> {
+    (0, value)
+}
+
+fn err<T, E>(error: E) -> Result<T, E> {
+    (1, error)
+}
+
+// The annotation reaches each branch, where `ok(1)`'s `E` and `err("x")`'s `T` are only
+// bounded by it: `E ≤ String` from the `(1, String)` member, and `T ≤ Int` from `(0, Int)`.
+// `E` used to be `Int`, from comparing `(1, E)` with `(0, Int)`
+fn pick_result(condition: Bool) -> Int {
+    let result: Result<Int, String> = if condition {
+        ok(1)
+    } else {
+        err("x")
+    };
+
+    if result is (0, Int) {
+        result.rest
+    } else {
+        0
+    }
+}
+
+test fn result_in_each_branch() -> Int {
+    pick_result(true) + pick_result(false)
+}
+
+fn swapped_through<A, B>(function: fn(a: A) -> Int) -> (A, B) {
+    unchecked_cast((function, nil))
+}
+
+// The first member's bound is the one that reaches an argument too: the lambda's `a` is an
+// `Int`, from `(Int, Bytes)`, which it couldn't add to as a `Bytes`
+test fn first_member_reaches_a_lambda() -> Int {
+    let _value: (Int, Bytes) | (Bytes, Int) = swapped_through(fn(a) => a + 1);
+    1
+}
+
+fn tagged_through<B>(function: fn(b: B) -> Int) -> (1, B) {
+    unchecked_cast((1, function))
+}
+
+fn only_five(value: 5) -> Int {
+    value
+}
+
+// `(1, Int)` and `(1, 5)` both hold `(1, B)`, with `(2, Bytes)` between them, which doesn't, so
+// `B` is at most `Int` and at most `5`, and the lambda's `b` is the narrower `5`
+test fn narrowest_of_the_members_that_hold_it() -> Int {
+    let _value: (1, Int) | (2, Bytes) | (1, 5) = tagged_through(fn(b) => only_five(b));
+    1
+}
+
+fn either<T>(first: T, _second: T) -> T {
+    first
+}
+
+fn tagged_from<B>(_seed: Int) -> (1, B) {
+    unchecked_cast(nil)
+}
+
+// The nested call is expected to be what the annotation allows `T` to be, which is wider than
+// the `(0, Int) | (1, Bytes)` that `held` makes it, and that narrower type is what bounds its
+// `B`, through the `(1, Bytes)` member again
+fn pick_either(held: (0, Int) | (1, Bytes)) -> Int {
+    let _value: (0, Int) | (1, Bytes) | nil = either(held, tagged_from(1));
+    1
+}
+
+test fn bound_from_the_member_of_a_narrower_type() -> Int {
+    pick_either((0, 5))
+}
+
+fn outer<U>(value: (1, U) | (2, Int)) -> (1, U) | (2, Int) {
+    value
+}
+
+// `U` is still being inferred when `tagged()` is compiled, so `(1, U)`, the member that holds
+// `(1, B)`, gives `B` nothing, and `B` keeps the `Int` of `(2, Int)` rather than being left
+// without a type
+test fn bound_kept_where_no_member_that_holds_it_has_one() -> Int {
+    let _value = outer(tagged());
+    1
+}

@@ -261,10 +261,12 @@ fn string_type() -> Int {
     text
 }
 
-// A generic that's inferred as a union of what every argument gave it is named in a note
+// A generic that's inferred as a union of what every argument gave it is named in a note. The
+// accumulator is typed, since one that isn't takes the union (see
+// `generic_inference_self_feeding_lambdas.rue`)
 fn inferred_union(any: Any) -> nil {
-    let text = fold([1, 2], 0, fn(accumulator, item) => "text");
-    let mixed = fold([1, 2], true, fn(accumulator, item) => item);
+    let text = fold([1, 2], 0, fn(accumulator: Int, item) => "text");
+    let mixed = fold([1, 2], true, fn(accumulator: Bool, item) => item);
 
     // But not one that's shown as a single type, or that's any value
     let bool = same(true, false, fn(x: true) => 1);

@@ -11,7 +11,7 @@ use rue_types::{
 
 use crate::{
     BlockKind, Compiler, CompletionContext, ReturnTarget, SyntaxItemKind, compile_block,
-    compile_expr, compile_generic_parameters, compile_type, create_binding,
+    compile_expr, compile_generic_parameters, compile_type, create_binding, list_of, pair_parts,
 };
 
 pub fn compile_lambda_expr(
@@ -172,6 +172,281 @@ pub(crate) fn parameter_count_site(
 /// of parameters to be too many or too few.
 pub(crate) fn has_rest_parameter(lambda: &AstLambdaExpr) -> bool {
     lambda.parameters().any(|param| param.spread().is_some())
+}
+
+/// Compiles a lambda that's an argument of a call whose generics are being inferred, as
+/// `compile_lambda` does, with each untyped parameter that feeds itself typed as the least fixpoint
+/// of what it's given joined with what the lambda returns (#362, R4).
+///
+/// A parameter feeds itself where it's expected to have the type the lambda is expected to return,
+/// as `acc` in `fn(acc: A, x: T) -> A` for `fold`, since what the lambda returns is passed back in
+/// as it. It's given what the call's generic is inferred as so far, such as `(0, 0)` from the seed
+/// in `fold(xs, (0, 0), fn(acc, x) => (acc.first + x, acc.rest + 1))`, but the generic has to
+/// hold what the lambda returns too, `(Int, Int)`, and the parameter has to take the generic, so
+/// where what it returns isn't assignable to what it was given, the lambda can't be assigned to the
+/// call's parameter, and the call is rejected. The least fixpoint is the least type `P` that holds
+/// what it was given and what the lambda returns with the parameter as `P`. Compiling the lambda is
+/// the first step, and where what it returns is assignable to what it was given, that's the
+/// fixpoint, so nothing else happens. Otherwise, it's compiled once more with the parameter as the
+/// next step:
+/// - what it was given joined with what it returned, as `(0, 0) | (Int, Int)`, which holds what
+///   it returns with it for a lambda whose return type doesn't grow with its parameter's;
+/// - or, for a lambda that conses onto the list it's given, as `fn(acc, x) => [x, ...acc]` does,
+///   returning a pair whose rest is the parameter (after any number of pairs), the list of their
+///   firsts, `List<X>`. That's the one step that isn't a join: joining `nil` with `(X, nil)` never
+///   stops growing, while `List<X>` is the least solution of `P ⊇ nil ∪ (X, P)`, and of
+///   `P ⊇ G ∪ (X, P)` for what it was given `G` where `G` is a list of `X`.
+///
+/// That's kept if the body compiles against it without errors and what it returns is assignable to
+/// it, and the lambda is then as if it had only been compiled with it, since what the first compile
+/// added is undone (see `Compiler::checkpoint`). Otherwise the lambda is compiled as it was first
+/// once more, and the call is rejected as before. So a lambda is compiled at most twice where the
+/// step is kept, and three times where it isn't, which only a call that's rejected anyway does, and
+/// a lambda that feeds itself inside another one is compiled at most three times for each time the
+/// other one is, down to `FEEDING_DEPTH` of them, past which a lambda is compiled once, as it is
+/// without this, and a call that needs a step there is rejected.
+///
+/// Only a parameter that feeds itself through one of the call's generics does, which is decided from
+/// the type the lambda is declared to have (`declared`), before the call's generics are substituted
+/// into it: the parameter's declared type and the declared return type are the same generic of the
+/// innermost call. Two different generics can be inferred as the same type, as `A` and `B` are as
+/// `nil` in `pick(nil, nil, fn(x) => [1, ...x])` for `fn pick<A, B>(a: A, b: B, f: fn(x: A) -> B)`,
+/// and then the parameter doesn't feed itself. It only does while the type it's
+/// expected to have can still change (see `Compiler::is_expected_type_provisional` and
+/// `Compiler::is_expected_type_hint`), and only where neither what it was given nor what the lambda
+/// returns has a generic in it, and the lambda compiles without errors as it is. A generic, such
+/// as one of the caller's that stands for one of the callee's renamed generics in a recursive call,
+/// is only resolved once the call is, which can make what the lambda returns assignable after all.
+pub(crate) fn compile_lambda_feeding_itself(
+    ctx: &mut Compiler,
+    expr: &AstLambdaExpr,
+    expected_type: Option<TypeId>,
+    declared: Option<TypeId>,
+    wrap: &ParameterWrap<'_>,
+) -> (Value, Vec<LambdaParameter>) {
+    let feeding = expected_type
+        .zip(declared)
+        .and_then(|(expected, declared)| feeding_parameters(ctx, expr, expected, declared));
+
+    let Some((expected, function, indices)) = feeding else {
+        return compile_lambda(ctx, expr, expected_type, Some(wrap));
+    };
+
+    // Each lambda that feeds itself inside another one multiplies how often the innermost body is
+    // compiled, so past a few levels they're compiled once, as they would be without this
+    if ctx.feeding_depth() >= FEEDING_DEPTH {
+        return compile_lambda(ctx, expr, Some(expected), Some(wrap));
+    }
+
+    ctx.set_feeding_depth(ctx.feeding_depth() + 1);
+    let compiled = compile_lambda_in_steps(ctx, expr, expected, &function, &indices, wrap);
+    ctx.set_feeding_depth(ctx.feeding_depth() - 1);
+    compiled
+}
+
+/// How many lambdas that feed themselves are compiled in steps inside one another, which bounds
+/// the innermost one's body to being compiled `3^4` times.
+const FEEDING_DEPTH: usize = 4;
+
+/// Compiles a lambda whose parameters at `indices` feed themselves (see
+/// `compile_lambda_feeding_itself`).
+fn compile_lambda_in_steps(
+    ctx: &mut Compiler,
+    expr: &AstLambdaExpr,
+    expected: TypeId,
+    function: &FunctionType,
+    indices: &[usize],
+    wrap: &ParameterWrap<'_>,
+) -> (Value, Vec<LambdaParameter>) {
+    let before = ctx.checkpoint();
+    let count = ctx.diagnostic_count();
+    let compiled = compile_lambda(ctx, expr, Some(expected), Some(wrap));
+
+    if ctx.has_errors_since(count) {
+        return compiled;
+    }
+
+    let Some(next) = next_step(ctx, compiled.0.ty, indices) else {
+        return compiled;
+    };
+
+    ctx.restore(&before);
+
+    // The lambda's expected type with the parameters that feed themselves, and its return type,
+    // as the next step, and the parameters' generics as it too for a wrap that has them
+    let mut stepped = function.clone();
+    for &index in indices {
+        stepped.params[index].ty = next;
+    }
+    stepped.ret = next;
+    let stepped_type = ctx.alloc_type(Type::Function(stepped));
+
+    let mappings: HashMap<TypeId, TypeId> = match wrap {
+        ParameterWrap::Whole => HashMap::new(),
+        ParameterWrap::Generics {
+            params, mappings, ..
+        } => {
+            let mut mappings = (*mappings).clone();
+            for &index in indices {
+                mappings.insert(params[index], next);
+            }
+            mappings
+        }
+    };
+    let stepped_wrap = match wrap {
+        ParameterWrap::Whole => ParameterWrap::Whole,
+        ParameterWrap::Generics {
+            params, generics, ..
+        } => ParameterWrap::Generics {
+            params,
+            generics,
+            mappings: &mappings,
+        },
+    };
+
+    let count = ctx.diagnostic_count();
+    let stepped_compile = compile_lambda(ctx, expr, Some(stepped_type), Some(&stepped_wrap));
+
+    if !ctx.has_errors_since(count)
+        && lambda_return(ctx, stepped_compile.0.ty).is_some_and(|ret| ctx.is_assignable(ret, next))
+    {
+        return stepped_compile;
+    }
+
+    // Undoing the step undoes what the first compile recorded too, since a checkpoint only knows
+    // where things ended, so the lambda is compiled as it was first once more
+    ctx.restore(&before);
+    compile_lambda(ctx, expr, Some(expected), Some(wrap))
+}
+
+/// The lambda's expected type, its one function type, and the untyped parameters that feed
+/// themselves through it (see `compile_lambda_feeding_itself`), if there are any.
+fn feeding_parameters(
+    ctx: &mut Compiler,
+    expr: &AstLambdaExpr,
+    expected: TypeId,
+    declared: TypeId,
+) -> Option<(TypeId, FunctionType, Vec<usize>)> {
+    if !ctx.is_expected_type_provisional() && !ctx.is_expected_type_hint() {
+        return None;
+    }
+
+    let functions = rue_types::extract_functions(ctx.types_mut(), expected, true);
+    let [function] = functions.as_slice() else {
+        return None;
+    };
+
+    if !function.generics.is_empty() {
+        return None;
+    }
+
+    // Whether a parameter feeds itself is decided before the generics are substituted, since two of
+    // them can be inferred as the same type
+    let Type::Function(declared) = ctx.ty(declared).clone() else {
+        return None;
+    };
+
+    if !declared.generics.is_empty()
+        || declared.params.len() != function.params.len()
+        || !ctx
+            .call_generics()
+            .is_some_and(|generics| generics.contains(&declared.ret))
+    {
+        return None;
+    }
+
+    // A lambda with a different number of parameters isn't assignable whatever they're typed as
+    if expr.parameters().count() != declared.params.len() {
+        return None;
+    }
+
+    let indices: Vec<usize> = expr
+        .parameters()
+        .enumerate()
+        .filter(|(_, parameter)| parameter.ty().is_none())
+        .map(|(index, _)| index)
+        .filter(|&index| declared.params[index].ty == declared.ret)
+        .collect();
+
+    // Only the parameters that feed themselves are typed as the next step, so the generic can't
+    // be in the type of any other parameter, as it is in `k: fn(a: A) -> Int`, which would be left
+    // as it was first given
+    for (index, parameter) in declared.params.iter().enumerate() {
+        if !indices.contains(&index)
+            && rue_types::referenced_generics(ctx.types_mut(), parameter.ty).contains(&declared.ret)
+        {
+            return None;
+        }
+    }
+
+    (!indices.is_empty()).then(|| (expected, function.clone(), indices))
+}
+
+/// The type the parameters that feed themselves are compiled as next, from the lambda as it was
+/// compiled (see `compile_lambda_feeding_itself`), if it isn't the fixpoint already.
+fn next_step(ctx: &mut Compiler, lambda: TypeId, indices: &[usize]) -> Option<TypeId> {
+    let functions = rue_types::extract_functions(ctx.types_mut(), lambda, true);
+    let [function] = functions.as_slice() else {
+        return None;
+    };
+
+    let given = function.params.get(indices[0])?.ty;
+    let returned = function.ret;
+
+    // A generic in either, the call's or one that stands for one of its renamed generics in a
+    // recursive call, is only resolved once the call is, which can make them assignable
+    if names_generics(ctx, given)
+        || names_generics(ctx, returned)
+        || ctx.is_assignable(returned, given)
+    {
+        return None;
+    }
+
+    // A pair, or pairs, whose rest is the parameter, as the lambda conses onto it
+    let mut firsts = Vec::new();
+    let mut rest = returned;
+
+    for _ in 0..CONS_DEPTH {
+        let Some((first, next)) = pair_parts(ctx, rest) else {
+            break;
+        };
+
+        firsts.push(first);
+        rest = next;
+
+        if ctx.is_assignable(rest, given) && ctx.is_assignable(given, rest) {
+            let item = ctx.alloc_type(Type::Union(Union::new(firsts)));
+            let list = list_of(ctx, item);
+
+            // The list has to hold what was given and what was returned, which a struct that's
+            // a pair underneath isn't, so that's joined instead
+            if ctx.is_assignable(given, list) && ctx.is_assignable(returned, list) {
+                return Some(list);
+            }
+
+            break;
+        }
+    }
+
+    Some(ctx.alloc_type(Type::Union(Union::new(vec![given, returned]))))
+}
+
+/// Whether the type has any generic in it.
+fn names_generics(ctx: &mut Compiler, ty: TypeId) -> bool {
+    !rue_types::referenced_generics(ctx.types_mut(), ty).is_empty()
+}
+
+/// How many pairs a lambda that conses onto its parameter is followed through, as `[x, y, ...acc]`
+/// is two.
+const CONS_DEPTH: usize = 8;
+
+/// The return type of the lambda's one function type.
+fn lambda_return(ctx: &mut Compiler, lambda: TypeId) -> Option<TypeId> {
+    let functions = rue_types::extract_functions(ctx.types_mut(), lambda, true);
+    match functions.as_slice() {
+        [function] => Some(function.ret),
+        _ => None,
+    }
 }
 
 /// Compiles a lambda, with its untyped parameters wrapped as `wrap` says, if it's given. It returns

@@ -1,0 +1,185 @@
+// Where a lambda that feeds itself has no fixpoint the next step reaches, or doesn't compile as
+// it is, the call is rejected as it was (#362, R4; see
+// `generic_inference_self_feeding_lambdas.rue`)
+
+fn fold<T, A>(list: List<T>, init: A, f: fn(acc: A, x: T) -> A) -> A {
+    if list is nil {
+        return init;
+    }
+
+    fold(list.rest, f(init, list.first), f)
+}
+
+// What it returns has the parameter inside another pair, which grows each step, so the joined type
+// isn't a fixpoint, and the call is rejected with the error it had
+#[expect(unused_function)]
+fn grows_each_step() -> Any {
+    fold([1, 2], (0, 0), fn(acc, x) => (acc, x))
+}
+
+// A body with an error as it is keeps it, and isn't compiled again
+#[expect(unused_function)]
+fn error_in_the_body() -> Any {
+    fold([1, 2], (0, 0), fn(acc, x) => (acc.missing + x, acc.rest + 1))
+}
+
+// A joined type the body doesn't compile against isn't kept: `acc + x` with `acc` as `nil | Int`
+#[expect(unused_function)]
+fn body_fails_with_the_join() -> Any {
+    fold([1, 2], nil, fn(acc, x) => acc + x)
+}
+
+// A step that isn't kept leaves the warnings, and everything else recorded of the lambda, as the
+// lambda compiled as it was gives them: the binding that isn't used, the arm that's never taken and
+// the guard that's unnecessary, and none for the bindings that are used
+#[expect(unused_function)]
+fn warnings_after_a_step_that_isnt_kept() -> Any {
+    fold(
+        [1, 2],
+        (0, 0),
+        fn(acc, x) => {
+            let f = acc.first;
+            let unused = acc.rest;
+            let m = match x {
+                1 => 1,
+                Int => 2,
+                _ => 3,
+            };
+            let n = if x is Int {
+                1
+            } else {
+                2
+            };
+            let q = --x;
+            ((acc, f), m + n + q)
+        },
+    )
+}
+
+fn iterate<A>(init: A, f: fn(acc: A) -> A) -> A {
+    f(init)
+}
+
+// A lambda with more or fewer parameters than it's expected to have is rejected as before
+fn wrong_parameter_count() -> Int {
+    let more = iterate(nil, fn(acc, extra) => 5);
+    let typed = iterate(0, fn(acc: Int, extra) => acc);
+    let fewer = iterate(nil, fn() => 5);
+    1
+}
+
+fn with_callback<A>(init: A, f: fn(acc: A, k: fn(a: A) -> Int) -> A) -> A {
+    f(init, fn(_a) => 1)
+}
+
+// The generic in another parameter's type would keep what it was first given, so a lambda with
+// one isn't compiled in steps
+fn generic_in_another_parameter() -> Int {
+    let unused = with_callback(nil, fn(_acc, _k) => 5);
+    let used = with_callback(nil, fn(acc, k) => [k(acc), ...acc]);
+    1
+}
+
+// Lambdas that feed themselves inside one another are compiled in steps four levels down, and
+// the fifth is rejected as before
+fn nested_too_deep() -> Int {
+    let four = fold(
+        [1],
+        (0, 0),
+        fn(a1, _x1) => {
+            let v1 = fold(
+                [1],
+                (0, 0),
+                fn(a2, _x2) => {
+                    let v2 = fold(
+                        [1],
+                        (0, 0),
+                        fn(a3, _x3) => {
+                            let v3 = fold([1], (0, 0), fn(a4, _x4) => (a4.first + 1, 2));
+                            (a3.first + v3.first, 1)
+                        },
+                    );
+                    (a2.first + v2.first, 1)
+                },
+            );
+            (a1.first + v1.first, 1)
+        },
+    );
+    let five = iterate(
+        (0, 0),
+        fn(a0) => {
+            let v0 = fold(
+                [1],
+                (0, 0),
+                fn(a1, _x1) => {
+                    let v1 = fold(
+                        [1],
+                        (0, 0),
+                        fn(a2, _x2) => {
+                            let v2 = fold(
+                                [1],
+                                (0, 0),
+                                fn(a3, _x3) => {
+                                    let v3 = fold([1], (0, 0), fn(a4, _x4) => (a4.first + 1, 2));
+                                    (a3.first + v3.first, 1)
+                                },
+                            );
+                            (a2.first + v2.first, 1)
+                        },
+                    );
+                    (a1.first + v1.first, 1)
+                },
+            );
+            (a0.first + v0.first, 1)
+        },
+    );
+    four.first + five.first
+}
+
+// What's given or returned having a generic in it is only settled once the call is, so it isn't
+// compiled in steps
+fn generic_returned<T>(x: T) -> T | nil {
+    iterate(nil, fn(_acc) => x)
+}
+
+fn generic_given<T>(x: T) -> T | nil {
+    iterate(x, fn(_acc) => nil)
+}
+
+fn generic_consed<T>(x: T) -> List<T> {
+    iterate(nil, fn(acc) => [x, ...acc])
+}
+
+// A list that doesn't hold what was given isn't the step, a step whose body has an error isn't
+// kept even where what it returns fits, and a lambda with an error as it is isn't compiled again
+fn steps_that_arent_taken(xs: List<Int>) -> Int {
+    let not_a_list: Int | nil = fold(xs, 0, fn(acc, x) => [x, ...acc]);
+    let pinned = fold(
+        xs,
+        (0, 0),
+        fn(acc, x) => {
+            let pin: (0, 0) = acc;
+            (pin.first + x, 1)
+        },
+    );
+    let guarded = fold(
+        xs,
+        [0],
+        fn(acc, x) => if acc is nil {
+            x
+        } else {
+            0
+        },
+    );
+    1
+}
+
+// A step that compiles doesn't make an annotation that doesn't fit what it's inferred as fit
+fn main() -> Int {
+    let mismatched: Bool = fold([1, 2], nil, fn(_acc, x) => x);
+    if mismatched {
+        1
+    } else {
+        0
+    }
+}

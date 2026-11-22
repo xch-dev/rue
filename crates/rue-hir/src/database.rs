@@ -23,6 +23,19 @@ pub struct Test {
     pub symbol: SymbolId,
 }
 
+/// Where a [`Database`] was, to go back to with [`Database::restore`] after compiling something
+/// that isn't kept (see [`Database::checkpoint`]).
+#[derive(Debug, Clone, Copy)]
+pub struct DatabaseCheckpoint {
+    hir: usize,
+    types: usize,
+    symbols: usize,
+    scopes: usize,
+    const_exprs: usize,
+    tests: usize,
+    relevant_declarations: usize,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Database {
     hir: Arena<Hir>,
@@ -39,6 +52,9 @@ pub struct Database {
     single_use_loop_rests: HashSet<SymbolId>,
     default_fields: HashMap<TypeId, IndexMap<String, Value>>,
     default_field_uses: HashMap<(TypeId, String), HirId>,
+    /// The nodes that take the rest of a list that can have run out (see
+    /// `Database::insert_unchecked_list_read`).
+    unchecked_list_reads: HashSet<HirId>,
     scopes: Arena<Scope>,
     imports: Arena<Import>,
     symbols: Arena<Symbol>,
@@ -76,6 +92,83 @@ pub struct Database {
 impl Database {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Where the database is, so that what's added after it can be undone with
+    /// [`Self::restore`], which takes as long as what was added, not as the database is. The
+    /// arenas only grow: the nodes, types, symbols and scopes made since are left in them, so that
+    /// anything still holding them can use them, but nothing records them anymore. That's the
+    /// types and locations of the nodes, and the declarations among the symbols and types, which
+    /// is what the lints and the language server find things through. A reference made since from
+    /// one of them to a declaration from before stays, since compiling the same code again makes
+    /// it again.
+    pub fn checkpoint(&self) -> DatabaseCheckpoint {
+        DatabaseCheckpoint {
+            hir: self.hir.len(),
+            types: self.types.len(),
+            symbols: self.symbols.len(),
+            scopes: self.scopes.len(),
+            const_exprs: self.const_exprs.len(),
+            tests: self.tests.len(),
+            relevant_declarations: self.relevant_declarations.len(),
+        }
+    }
+
+    /// Goes back to the checkpoint (see [`Self::checkpoint`]).
+    pub fn restore(&mut self, checkpoint: &DatabaseCheckpoint) {
+        for hir in self.hirs_since(checkpoint) {
+            self.hir_types.remove(&hir);
+            self.hir_srclocs.remove(&hir);
+            self.hir_scopes.remove(&hir);
+            self.independent_operands.remove(&hir);
+        }
+
+        let types: Vec<TypeId> = self
+            .types
+            .iter()
+            .skip(checkpoint.types)
+            .map(|(id, _)| id)
+            .collect();
+        for &ty in &types {
+            self.reported_types.remove(&ty);
+            self.declared_by.remove(&Declaration::Type(ty));
+            self.referenced_by.remove(&Declaration::Type(ty));
+        }
+
+        let symbols: Vec<SymbolId> = self
+            .symbols
+            .iter()
+            .skip(checkpoint.symbols)
+            .map(|(id, _)| id)
+            .collect();
+        for &symbol in &symbols {
+            self.declared_by.remove(&Declaration::Symbol(symbol));
+            self.referenced_by.remove(&Declaration::Symbol(symbol));
+            self.single_use_loop_rests.remove(&symbol);
+        }
+
+        self.const_exprs.truncate(checkpoint.const_exprs);
+        self.tests.truncate(checkpoint.tests);
+        self.relevant_declarations
+            .truncate(checkpoint.relevant_declarations);
+    }
+
+    /// The nodes made since the checkpoint.
+    pub fn hirs_since(&self, checkpoint: &DatabaseCheckpoint) -> Vec<HirId> {
+        self.hir
+            .iter()
+            .skip(checkpoint.hir)
+            .map(|(id, _)| id)
+            .collect()
+    }
+
+    /// The scopes made since the checkpoint.
+    pub fn scopes_since(&self, checkpoint: &DatabaseCheckpoint) -> Vec<ScopeId> {
+        self.scopes
+            .iter()
+            .skip(checkpoint.scopes)
+            .map(|(id, _)| id)
+            .collect()
     }
 
     pub fn alloc_hir(&mut self, hir: Hir) -> HirId {
@@ -151,7 +244,22 @@ impl Database {
         self.single_use_loop_rests.contains(&symbol)
     }
 
-    /// Whether the node is the call of a loop to itself with the rest of its list (see
+    /// Records that the node takes the rest of a list other than the first of a `for` expression
+    /// over several lists, such as `ys` in `for a in xs, b in ys`, for the loop's call to itself.
+    /// The loop ends when the first list does, so nothing checks that this one still has an item
+    /// before that.
+    pub fn insert_unchecked_list_read(&mut self, hir: HirId) {
+        self.unchecked_list_reads.insert(hir);
+    }
+
+    /// Whether the node takes the rest of a list that can have run out (see
+    /// [`Self::insert_unchecked_list_read`]). That fails if it has, unlike reading any other
+    /// value, whose shape is what its type says.
+    pub fn is_unchecked_list_read(&self, hir: HirId) -> bool {
+        self.unchecked_list_reads.contains(&hir)
+    }
+
+    /// Whether the node is the call of a loop to itself with the rest of its lists (see
     /// `FunctionKind::Loop`), which is the result of a `for` expression's fold for the rest of the
     /// list. A binding for it is evaluated once before the body, unless it can be evaluated where
     /// the body refers to it instead (see [`Self::is_single_use_loop_rest`]).
@@ -168,17 +276,16 @@ impl Database {
             return false;
         };
 
+        // Each argument is the rest of the parameter for its list
         function.kind == FunctionKind::Loop
-            && matches!(
-                call.args.as_slice(),
-                [arg] if matches!(
+            && call.args.len() == function.parameters.len()
+            && call.args.iter().zip(&function.parameters).all(|(arg, parameter)| {
+                matches!(
                     self.hir(*arg),
-                    Hir::Unary(UnaryOp::Rest, list) if matches!(
-                        self.hir(*list),
-                        Hir::Reference(parameter) if function.parameters.first() == Some(parameter)
-                    )
+                    Hir::Unary(UnaryOp::Rest, list)
+                        if matches!(self.hir(*list), Hir::Reference(reference) if reference == parameter)
                 )
-            )
+            })
     }
 
     /// The value inside of any casts, which is what's evaluated at runtime.

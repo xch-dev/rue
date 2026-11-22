@@ -32,7 +32,10 @@ const MAX_SHIFT_LEN: usize = 4;
 /// or `/` that's too long for `LIMITS` when compiling with `operand_limits`, `substr` out of
 /// range, or an invalid BLS point), and calls to functions whose bodies may fail, or that can't be
 /// resolved. Reading a value doesn't fail, including a field of a parameter or of a value
-/// returned by a call that can't be resolved, since its shape is trusted to match its type.
+/// returned by a call that can't be resolved, since its shape is trusted to match its type. The
+/// exception is the rest of a list other than the first of a `for` over several lists, which the
+/// loop takes for its call to itself, and which fails if that list has run out (see
+/// `Database::is_unchecked_list_read`).
 ///
 /// A substituted value (see [`AnalysisContext::substituted_value`]) is checked where it's
 /// referenced, since that's where it's evaluated.
@@ -231,7 +234,10 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
                     || self.visit_arguments(call.function, &call.args, in_body)
             }
             Hir::Unary(op, _) => {
+                // A `for` over several lists calls itself with the rest of each, without checking
+                // that it's there, which fails if a list other than the first has run out
                 matches!(op, UnaryOp::G1Negate | UnaryOp::G2Negate)
+                    || db.is_unchecked_list_read(hir)
                     || self.any(node.children(), in_body)
             }
             Hir::Binary(op, left, right) => {

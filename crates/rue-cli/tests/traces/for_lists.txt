@@ -1,0 +1,36 @@
+===== debug: ((1 2 3) (10 20)) =====
+error: InvalidOperatorArg: rest of non-cons
+  for_lists.rue:4:5, in main
+    for a in xs, b in ys { a + b }
+    xs = (1 2 3)
+    ys = (10 20)
+  for_lists.rue:3:52, in for
+    fn main(xs: List<Int>, ys: List<Int>) -> List<Int> {
+    list = (1 2 3)
+    list2 = (10 20)
+  for_lists.rue:3:52, in for
+    fn main(xs: List<Int>, ys: List<Int>) -> List<Int> {
+    list = (2 3)
+    list2 = (20)
+  for_lists.rue:3:52, in for
+    fn main(xs: List<Int>, ys: List<Int>) -> List<Int> {
+    list = (3)
+    list2 = ()
+===== release: ((1 2 3) (10 20)) =====
+error: path into atom
+  for_lists.rue:4:5, in main
+    for a in xs, b in ys { a + b }
+    xs = (1 2 3)
+    ys = (10 20)
+  for_lists.rue:3:52, in for
+    fn main(xs: List<Int>, ys: List<Int>) -> List<Int> {
+    list = (1 2 3)
+    list2 = (10 20)
+  for_lists.rue:3:52, in for
+    fn main(xs: List<Int>, ys: List<Int>) -> List<Int> {
+    list = (2 3)
+    list2 = (20)
+  for_lists.rue:3:52, in for
+    fn main(xs: List<Int>, ys: List<Int>) -> List<Int> {
+    list = (3)
+    list2 = ()

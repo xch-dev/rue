@@ -21,6 +21,9 @@ pub struct LintSites {
     /// Where each declaration is referenced through a module (such as `module::name`), rather
     /// than from the scope it's written in, which only resolves if it's exported.
     pub qualified_references: HashMap<Declaration, Vec<SrcLoc>>,
+    /// The declaration of each of those references, in the order they were added (see
+    /// [`Self::add_qualified_reference`]), to take them out again in [`Self::restore`].
+    qualified_reference_order: Vec<Declaration>,
     /// The `mod` items declared in the documents being linted, along with the location of the
     /// whole item. Modules aren't declarations, so they can't be found from the HIR.
     pub modules: Vec<(SymbolId, SrcLoc)>,
@@ -153,4 +156,75 @@ pub struct EnclosedPreludeReference {
     /// Whether the name is a struct field shorthand (such as `Point { x }`), which is both the
     /// field's name and the value.
     pub field_shorthand: bool,
+}
+
+/// Where [`LintSites`] were, to go back to with [`LintSites::restore`] after compiling something
+/// that isn't kept.
+#[derive(Debug, Clone, Copy)]
+pub struct LintSitesCheckpoint {
+    empty_imports: usize,
+    field_reads: usize,
+    modules: usize,
+    enclosed_prelude_references: usize,
+    unreachable_match_arms: usize,
+    indistinguishable_match_arms: usize,
+    imprecise_narrowings: usize,
+    qualified_references: usize,
+}
+
+impl LintSites {
+    /// Records that the declaration is referenced through a module there.
+    pub fn add_qualified_reference(&mut self, declaration: Declaration, srcloc: SrcLoc) {
+        self.qualified_references
+            .entry(declaration)
+            .or_default()
+            .push(srcloc);
+        self.qualified_reference_order.push(declaration);
+    }
+
+    /// Where the sites are: the length of each list, which only grows, and of the order the
+    /// references through modules were added in, which can be for a declaration from before.
+    pub fn checkpoint(&self) -> LintSitesCheckpoint {
+        LintSitesCheckpoint {
+            empty_imports: self.empty_imports.len(),
+            field_reads: self.field_reads.len(),
+            modules: self.modules.len(),
+            enclosed_prelude_references: self.enclosed_prelude_references.len(),
+            unreachable_match_arms: self.unreachable_match_arms.len(),
+            indistinguishable_match_arms: self.indistinguishable_match_arms.len(),
+            imprecise_narrowings: self.imprecise_narrowings.len(),
+            qualified_references: self.qualified_reference_order.len(),
+        }
+    }
+
+    /// Goes back to the checkpoint. The arms of `match` expressions inlined since are keyed by
+    /// their nodes, which are new (`hirs`).
+    pub fn restore(&mut self, checkpoint: &LintSitesCheckpoint, hirs: &[HirId]) {
+        self.empty_imports.truncate(checkpoint.empty_imports);
+        self.field_reads.truncate(checkpoint.field_reads);
+        self.modules.truncate(checkpoint.modules);
+        self.enclosed_prelude_references
+            .truncate(checkpoint.enclosed_prelude_references);
+        self.unreachable_match_arms
+            .truncate(checkpoint.unreachable_match_arms);
+        self.indistinguishable_match_arms
+            .truncate(checkpoint.indistinguishable_match_arms);
+        self.imprecise_narrowings
+            .truncate(checkpoint.imprecise_narrowings);
+        for declaration in self
+            .qualified_reference_order
+            .split_off(checkpoint.qualified_references)
+        {
+            if let Some(references) = self.qualified_references.get_mut(&declaration) {
+                references.pop();
+
+                if references.is_empty() {
+                    self.qualified_references.remove(&declaration);
+                }
+            }
+        }
+        for hir in hirs {
+            self.inline_match_arms.remove(hir);
+        }
+    }
 }

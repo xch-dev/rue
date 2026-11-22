@@ -1,0 +1,18 @@
+diagnostics:
+- Expected binding, found `{` at for_headers.rue:5:26
+- Expected binding, found `{` at for_headers.rue:6:27
+- |-
+  Binding `doubled` is returned directly after it's declared at for_headers.rue:7:9
+    help: Return the value directly
+- Expected binding, found `{` at for_headers.rue:12:27
+- Expected `;`, found identifier at for_headers.rue:13:5
+- Value returned by statement is unused at for_headers.rue:13:5
+- Unused binding `in` at for_headers.rue:16:20
+- Expected `in`, found identifier at for_headers.rue:16:23
+- Unused binding `rest` at for_headers.rue:19:20
+- Expected `in`, found `,` at for_headers.rue:19:24
+- Unused binding `more` at for_headers.rue:19:26
+- Unused binding `x` at for_headers.rue:22:17
+- Expected one of `,`, `if`, `fold`, `{`, found identifier at for_headers.rue:22:25
+- Unused binding `in` at for_headers.rue:25:26
+- Expected one of `,`, `in`, found identifier at for_headers.rue:25:29

@@ -7,7 +7,7 @@ use std::ops::Range;
 
 use rowan::{TextRange, TextSize, WalkEvent};
 use rue_ast::{
-    AstBinding, AstExpr, AstForExpr, AstForFold, AstFunctionCallExpr, AstLambdaExpr, AstLetStmt,
+    AstBinding, AstExpr, AstForClause, AstForFold, AstFunctionCallExpr, AstLambdaExpr, AstLetStmt,
     AstMatchArm, AstNode, AstPathSegment,
 };
 use rue_compiler::{Compiler, SyntaxCall, SyntaxItemKind};
@@ -142,13 +142,14 @@ impl Cache<Compiler> {
                 {
                     binding_types(&binding, &declarations, &mut pending);
                 }
-            } else if let Some(expr) = AstForExpr::cast(node.clone()) {
+            } else if let Some(clause) = AstForClause::cast(node.clone()) {
                 // The item of a `for` has the type of the list's items, which isn't written
-                // anywhere, like the type of a lambda's parameter that's left out
-                if options.types
-                    && let Some(binding) = expr.binding()
-                {
-                    binding_types(&binding, &declarations, &mut pending);
+                // anywhere, like the type of a lambda's parameter that's left out. So it is for
+                // what's left of the list after it
+                if options.types {
+                    for binding in clause.bindings() {
+                        binding_types(&binding, &declarations, &mut pending);
+                    }
                 }
             } else if let Some(fold) = AstForFold::cast(node.clone()) {
                 // The result of a fold is the type of its value, as a `let` binding is, except

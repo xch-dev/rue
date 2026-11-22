@@ -399,7 +399,14 @@ pub(crate) fn infer_call(
                                 None => ParameterWrap::Whole,
                             };
 
-                            compile_lambda_argument(ctx, expr, lambda, Some(expected), &wrap)
+                            compile_lambda_argument(
+                                ctx,
+                                expr,
+                                lambda,
+                                Some(expected),
+                                Some(param),
+                                &wrap,
+                            )
                         }
                         AstExpr::FunctionCallExpr(call) if narrower.is_some() => (
                             compile_call_argument(ctx, expr, call, Some(expected), narrower),
@@ -994,6 +1001,7 @@ fn compile_deferred_lambda(
                 &AstExpr::LambdaExpr(lambda.expr.clone()),
                 &lambda.expr,
                 Some(expected),
+                Some(lambda.lambda.ty),
                 &ParameterWrap::Whole,
             )
         })
@@ -3765,7 +3773,9 @@ pub(crate) fn compile_element(
         Value::new(hir, ty)
     } else if wrap && let AstExpr::LambdaExpr(lambda) = expr {
         let (value, parameters) =
-            compile_lambda_argument(ctx, expr, lambda, expected, &ParameterWrap::Whole);
+            // What it's declared to be before the generics are substituted isn't known here, so a
+            // parameter that feeds itself isn't looked for (see `compile_lambda_feeding_itself`)
+            compile_lambda_argument(ctx, expr, lambda, expected, None, &ParameterWrap::Whole);
 
         let renamed = ctx
             .argument_frame_mut()

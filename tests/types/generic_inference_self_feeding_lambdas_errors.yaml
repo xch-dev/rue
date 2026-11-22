@@ -1,0 +1,80 @@
+diagnostics:
+- |-
+  Cannot assign `fn(acc: (0, 0), x: Int) -> ((0, 0), Int)` to `fn(acc: (0, 0) | ((0, 0), Int), x: Int) -> (0, 0) | ((0, 0), Int)`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:17:26
+    note: `A` is inferred as `(0, 0) | ((0, 0), Int)` from the arguments of this call
+- Unknown field `missing` on type `(0, 0)` at generic_inference_self_feeding_lambdas_errors.rue:23:45
+- |-
+  Cannot assign `fn(acc: nil, x: Int) -> Bytes` to `fn(acc: nil | Bytes, x: Int) -> nil | Bytes`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:29:23
+    note: `A` is inferred as `nil | Bytes` from the arguments of this call
+- Cannot assign `Int` to `Bytes` without a cast, since they are semantically different at generic_inference_self_feeding_lambdas_errors.rue:29:41
+- |-
+  Cannot assign `fn(acc: (0, 0), x: Int) -> (((0, 0), 0), Int)` to `fn(acc: (0, 0) | (((0, 0), 0), Int), x: Int) -> (0, 0) | (((0, 0), 0), Int)`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:40:9
+    note: `A` is inferred as `(0, 0) | (((0, 0), 0), Int)` from the arguments of this call
+- Unused binding `unused` at generic_inference_self_feeding_lambdas_errors.rue:42:17
+- |-
+  Unreachable match arm, since an earlier arm handles every value that's left at generic_inference_self_feeding_lambdas_errors.rue:46:17
+    note: This arm handles every value that's left at generic_inference_self_feeding_lambdas_errors.rue:45:17
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at generic_inference_self_feeding_lambdas_errors.rue:48:24
+- Use of `--` in an expression will perform a double negation, but could be confused with the 'prefix decrement' operator in other languages at generic_inference_self_feeding_lambdas_errors.rue:53:21
+- Unused function `iterate` at generic_inference_self_feeding_lambdas_errors.rue:59:4
+- Unused function `wrong_parameter_count` at generic_inference_self_feeding_lambdas_errors.rue:64:4
+- Unused binding `more` at generic_inference_self_feeding_lambdas_errors.rue:65:9
+- Expected a function with 1 parameter, but the lambda has 2 parameters at generic_inference_self_feeding_lambdas_errors.rue:65:37
+- Unused binding `typed` at generic_inference_self_feeding_lambdas_errors.rue:66:9
+- Expected a function with 1 parameter, but the lambda has 2 parameters at generic_inference_self_feeding_lambdas_errors.rue:66:41
+- Unused binding `fewer` at generic_inference_self_feeding_lambdas_errors.rue:67:9
+- Expected a function with 1 parameter, but the lambda has 0 parameters at generic_inference_self_feeding_lambdas_errors.rue:67:30
+- Unused function `with_callback` at generic_inference_self_feeding_lambdas_errors.rue:71:4
+- Unused function `generic_in_another_parameter` at generic_inference_self_feeding_lambdas_errors.rue:77:4
+- Unused binding `unused` at generic_inference_self_feeding_lambdas_errors.rue:78:9
+- |-
+  Cannot assign `fn(_acc: nil, _k: fn(a: nil) -> Int) -> 5` to `fn(acc: nil | 5, k: fn(a: nil | 5) -> Int) -> nil | 5`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:78:37
+    note: `A` is inferred as `nil | 5` from the arguments of this call
+- Unused binding `used` at generic_inference_self_feeding_lambdas_errors.rue:79:9
+- |-
+  Cannot assign `fn(acc: nil, k: fn(a: nil) -> Int) -> (Int, nil)` to `fn(acc: nil | (Int, nil), k: fn(a: nil | (Int, nil)) -> Int) -> nil | (Int, nil)`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:79:35
+    note: `A` is inferred as `nil | (Int, nil)` from the arguments of this call
+- Unused function `nested_too_deep` at generic_inference_self_feeding_lambdas_errors.rue:85:4
+- |-
+  Cannot assign `fn(a0: (0, 0)) -> (Int, 1)` to `fn(acc: (0, 0) | (Int, 1)) -> (0, 0) | (Int, 1)`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:110:9
+    note: `A` is inferred as `(0, 0) | (Int, 1)` from the arguments of this call
+- |-
+  Cannot assign `fn(a1: (0, 0), _x1: Int) -> (Int, 1)` to `fn(acc: (0, 0) | (Int, 1), x: Int) -> (0, 0) | (Int, 1)`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:114:17
+    note: `A` is inferred as `(0, 0) | (Int, 1)` from the arguments of this call
+- |-
+  Cannot assign `fn(a2: (0, 0), _x2: Int) -> (Int, 1)` to `fn(acc: (0, 0) | (Int, 1), x: Int) -> (0, 0) | (Int, 1)`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:118:25
+    note: `A` is inferred as `(0, 0) | (Int, 1)` from the arguments of this call
+- |-
+  Cannot assign `fn(a3: (0, 0), _x3: Int) -> (Int, 1)` to `fn(acc: (0, 0) | (Int, 1), x: Int) -> (0, 0) | (Int, 1)`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:122:33
+    note: `A` is inferred as `(0, 0) | (Int, 1)` from the arguments of this call
+- |-
+  Cannot assign `fn(a4: (0, 0), _x4: Int) -> (Int, 2)` to `fn(acc: (0, 0) | (Int, 2), x: Int) -> (0, 0) | (Int, 2)`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:123:64
+    note: `A` is inferred as `(0, 0) | (Int, 2)` from the arguments of this call
+- Unused function `generic_returned` at generic_inference_self_feeding_lambdas_errors.rue:141:4
+- |-
+  Cannot assign `fn(_acc: nil) -> T` to `fn(acc: nil | T) -> nil | T`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:142:18
+    note: `A` is inferred as `nil | T` from the arguments of this call
+- Unused function `generic_given` at generic_inference_self_feeding_lambdas_errors.rue:145:4
+- |-
+  Cannot assign `fn(_acc: T) -> nil` to `fn(acc: T | nil) -> T | nil`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:146:16
+    note: `A` is inferred as `T | nil` from the arguments of this call
+- Unused function `generic_consed` at generic_inference_self_feeding_lambdas_errors.rue:149:4
+- |-
+  Cannot assign `fn(acc: nil) -> (T, nil)` to `fn(acc: nil | (T, nil)) -> nil | (T, nil)`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:150:18
+    note: `A` is inferred as `nil | (T, nil)` from the arguments of this call
+- Unused function `steps_that_arent_taken` at generic_inference_self_feeding_lambdas_errors.rue:155:4
+- Unused binding `not_a_list` at generic_inference_self_feeding_lambdas_errors.rue:156:9
+- Cannot assign `0 | (Int, Int)` to `Int | nil` without a type guard, since the value isn't always a valid `Int | nil` at generic_inference_self_feeding_lambdas_errors.rue:156:33
+- |-
+  Cannot assign `fn(acc: Int, x: Int) -> (Int, Int)` to `fn(acc: 0 | (Int, Int), x: Int) -> 0 | (Int, Int)`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:156:45
+    note: `A` is inferred as `0 | (Int, Int)` from the arguments of this call
+- Unused binding `pinned` at generic_inference_self_feeding_lambdas_errors.rue:157:9
+- |-
+  Cannot assign `fn(acc: (0, 0), x: Int) -> (Int, 1)` to `fn(acc: (0, 0) | (Int, 1), x: Int) -> (0, 0) | (Int, 1)`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:160:9
+    note: `A` is inferred as `(0, 0) | (Int, 1)` from the arguments of this call
+- Unused binding `guarded` at generic_inference_self_feeding_lambdas_errors.rue:165:9
+- |-
+  Cannot assign `fn(acc: (0, nil), x: Int) -> Int` to `fn(acc: (0, nil) | Int, x: Int) -> (0, nil) | Int`, since they are incompatible at generic_inference_self_feeding_lambdas_errors.rue:168:9
+    note: `A` is inferred as `(0, nil) | Int` from the arguments of this call
+- Cannot type guard from `(0, nil)` to `nil`, since they do not overlap at generic_inference_self_feeding_lambdas_errors.rue:168:26
+- Cannot assign `nil | Int` to `Bool` without a type guard, since the value isn't always a valid `Bool` at generic_inference_self_feeding_lambdas_errors.rue:179:28
