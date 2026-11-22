@@ -22,6 +22,21 @@ impl SyntaxMap {
     pub fn items(&self) -> impl Iterator<Item = &SyntaxItem> {
         self.items.iter()
     }
+
+    /// The number of items added so far, which [`Self::truncate`] goes back to.
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    /// Whether there are no items.
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    /// Removes the items added after there were `len` of them.
+    pub fn truncate(&mut self, len: usize) {
+        self.items.truncate(len);
+    }
 }
 
 #[derive(Debug, Clone)]
