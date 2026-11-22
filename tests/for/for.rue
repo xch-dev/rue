@@ -512,8 +512,9 @@ test fn attributes() -> Int {
 }
 
 // The result for the rest of the list is evaluated once, before the body, where it's an argument
-// of a call that's inlined into a body that refers to the parameter more than once, or the value
-// of a `let`. A function that's inlined evaluates its argument wherever it refers to its parameter
+// of a call that's inlined into a body that refers to the parameter more than once, since a
+// function that's inlined evaluates its argument wherever it refers to its parameter. In the value
+// of a `let` that's bound, it's evaluated in place, where the `let` is
 inline fn larger(a: Int, b: Int) -> Int {
     if a > b {
         a
@@ -576,19 +577,14 @@ test fn fold_as_an_argument_of_a_call_that_isnt_inlined() -> (Int, Int) {
 
 // An inlined call whose body refers to the parameter more than once would bind the argument, or
 // one that may fail where the body doesn't always get to it, which is no smaller than binding it
-// before the body. So it's bound there instead: for a function that's called once, a lambda that's
-// passed to an `inline fn`, and an `inline fn` whose `let` binds its parameter
+// before the body. So it's bound there instead: for a function that's called once, and a lambda
+// that's passed to an `inline fn`
 fn doubled_once(value: Int) -> Int {
     value + value
 }
 
 inline fn apply(f: fn(value: Int) -> Int, value: Int) -> Int {
     f(value)
-}
-
-inline fn doubled_through_a_let(value: Int) -> Int {
-    let bound = value;
-    bound + bound
 }
 
 test fn fold_as_an_argument_bound_by_the_call() -> Int {
@@ -601,9 +597,57 @@ test fn fold_as_an_argument_of_a_lambda_bound_by_the_call() -> Int {
     for x in xs fold total = 0 { apply(fn(value: Int) => value + value, total) + x }
 }
 
-test fn fold_as_an_argument_bound_by_a_let() -> Int {
+// So is one that's passed to such a call through a `let` that's substituted there
+test fn fold_as_an_argument_bound_by_the_call_through_a_let() -> (Int, Int) {
     let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
-    for x in xs fold total = 0 { doubled_through_a_let(total) + x }
+    (
+        for x in xs fold total = 0 {
+            let same = total;
+            doubled_once(same) + x
+        },
+        for x in xs fold total = 0 {
+            inline let same = total;
+            doubled_once(same) + x
+        },
+    )
+}
+
+// A `let` whose value is the result, and that's referenced more than once, is bound with the
+// result evaluated in place, where the `let` is, rather than bound before the body as well
+inline fn doubled_through_a_let(value: Int) -> Int {
+    let bound = value;
+    bound + bound
+}
+
+test fn fold_as_an_argument_bound_by_a_let() -> (Int, Int) {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    (
+        for x in xs fold total = 0 { doubled_through_a_let(total) + x },
+        for x in xs fold total = 0 {
+            let same = total;
+            apply(fn(value: Int) => value + same, same)
+        },
+    )
+}
+
+// An argument that the result is only part of is bound with the result evaluated in place in it,
+// and one whose parameter is never referenced is evaluated for its effect, so the result is
+// evaluated in place in either
+fn ignored_once(_value: Int) -> Int {
+    0
+}
+
+test fn fold_as_part_of_an_argument_bound_by_the_call() -> Int {
+    let xs = runtime([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    for x in xs fold total = 0 { apply(fn(value: Int) => value + value, total + x) }
+}
+
+test fn fold_as_an_argument_that_isnt_referenced() -> Int {
+    let xs = runtime([1, 2, 3, 0]);
+    for x in xs fold total = 0 {
+        assert x != 3;
+        ignored_once(total) + x
+    }
 }
 
 // A lambda that's passed to an `inline fn` and refers to its parameter once has it evaluated in
