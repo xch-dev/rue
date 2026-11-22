@@ -993,9 +993,9 @@ impl DependencyGraph {
     /// body is a `for` that calls it for each item, can be inlined where it's called without
     /// inlining itself again.
     ///
-    /// Inlining it can still go too deep where its loop passes one of its parameters back to it
-    /// as it is, since the parameter then stands for itself. That's only measured, and dropped
-    /// for going past the depth limit (see `Lowerer::trial`), so the function is called instead.
+    /// A loop that captures one of the function's own values, such as a parameter it passes back
+    /// to the function, doesn't count: inlined into that loop, the function would be given its
+    /// own parameter as an argument, which then stands for itself.
     pub fn calls_itself_outside_loops(&self, symbol: SymbolId) -> bool {
         let mut visited = HashSet::new();
         let mut stack: Vec<SymbolId> = self
@@ -1011,7 +1011,20 @@ impl DependencyGraph {
                 return true;
             }
 
-            if self.loops.contains(&current) || !visited.insert(current) {
+            if !visited.insert(current) {
+                continue;
+            }
+
+            if self.loops.contains(&current)
+                && !self
+                    .loop_dependencies
+                    .get(&current)
+                    .is_some_and(|captures| {
+                        captures.iter().any(|&capture| {
+                            !self.loops.contains(&capture) && self.is_defined_in(capture, symbol)
+                        })
+                    })
+            {
                 continue;
             }
 
