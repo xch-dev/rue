@@ -1,23 +1,23 @@
 ===== debug =====
-program: (a (q 16 (a 6 5) (a 4 11)) (c (c (q 2 (i (> 1 ()) (q 18 1 1) (q 8 (q . "assertion failed at duplicate_bodies.rue:13:5"))) 1) (q 2 (i (> 1 ()) (q 18 1 1) (q 8 (q . "assertion failed at duplicate_bodies.rue:8:5"))) 1)) 1))
+program: (a (q 16 (a 4 5) (a 6 11)) (c (c (q 2 (i (> 1 ()) (q 18 1 1) (q 8 (q . "assertion failed at duplicate_bodies.rue:8:5"))) 1) (q 2 (i (> 1 ()) (q 18 1 1) (q 8 (q . "assertion failed at duplicate_bodies.rue:13:5"))) 1)) 1))
 sidecar: 1888 bytes
 files:
   duplicate_bodies.rue
 functions:
   0: main ((_ . _) . (x@5: integer . (y@11: integer . _)))
-  1: second b@1: integer
-  2: first a@1: integer
+  1: first a@1: integer
+  2: second b@1: integer
 nodes:
-  duplicate_bodies.rue:3:32-5:2  (a (q 16 (a 6 5) (a 4 11)) (c (c (q 2 (i (> 1 ()) (q 18 1...
-    duplicate_bodies.rue:4:5-4:25 fn main  (+ (a 6 5) (a 4 11))
-      duplicate_bodies.rue:4:5-4:13  (a 6 5)
-      duplicate_bodies.rue:4:16-4:25  (a 4 11)
-    duplicate_bodies.rue:13:5-13:18 fn second  (a (i (> 1 ()) (q 18 1 1) (q 8 (q . "assertion failed at ...
-      duplicate_bodies.rue:13:12-13:17  (> 1 ())
-      duplicate_bodies.rue:14:5-14:10  (* 1 1)
+  duplicate_bodies.rue:3:32-5:2  (a (q 16 (a 4 5) (a 6 11)) (c (c (q 2 (i (> 1 ()) (q 18 1...
+    duplicate_bodies.rue:4:5-4:25 fn main  (+ (a 4 5) (a 6 11))
+      duplicate_bodies.rue:4:5-4:13  (a 4 5)
+      duplicate_bodies.rue:4:16-4:25  (a 6 11)
     duplicate_bodies.rue:8:5-8:18 fn first  (a (i (> 1 ()) (q 18 1 1) (q 8 (q . "assertion failed at ...
       duplicate_bodies.rue:8:12-8:17  (> 1 ())
       duplicate_bodies.rue:9:5-9:10  (* 1 1)
+    duplicate_bodies.rue:13:5-13:18 fn second  (a (i (> 1 ()) (q 18 1 1) (q 8 (q . "assertion failed at ...
+      duplicate_bodies.rue:13:12-13:17  (> 1 ())
+      duplicate_bodies.rue:14:5-14:10  (* 1 1)
 ===== release =====
 program: (+ (a (i (> 2 ()) (q 18 2 2) (q 8)) 1) (a (i (> 5 ()) (q 18 5 5) (q 8)) 1))
 sidecar: 1243 bytes
