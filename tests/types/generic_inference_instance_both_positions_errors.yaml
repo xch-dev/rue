@@ -1,0 +1,5 @@
+diagnostics:
+- Unused function `produce` at generic_inference_instance_both_positions_errors.rue:1:4
+- Unused function `call` at generic_inference_instance_both_positions_errors.rue:5:4
+- Unused function `instance_in_both_positions` at generic_inference_instance_both_positions_errors.rue:15:4
+- "Cannot assign `(Never, fn(x: Never) -> nil)` to `(Int, fn(x: Int) -> nil)`, since they are incompatible at generic_inference_instance_both_positions_errors.rue:16:45"
