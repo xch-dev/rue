@@ -626,6 +626,19 @@ impl Lowerer<'_, '_, '_> {
     pub(super) fn parameter_always_evaluated(&self, body: HirId, parameter: SymbolId) -> bool {
         self.graph.references(parameter) == 1 && Evaluation::new(self, parameter).hir(body)
     }
+
+    /// The arguments of the inlined calls around this one that the function captures and that may
+    /// fail. Building its closure would evaluate them, since they're captured by value, so a call
+    /// that's inlined instead binds them, unless its body always evaluates them.
+    pub(super) fn captured_arguments(&self, function: SymbolId, body: HirId) -> Vec<SymbolId> {
+        self.dependencies(function, true)
+            .iter()
+            .copied()
+            .filter(|&capture| {
+                self.is_failing_argument(capture) && !Evaluation::new(self, capture).hir(body)
+            })
+            .collect()
+    }
 }
 
 impl Lowerer<'_, '_, '_> {

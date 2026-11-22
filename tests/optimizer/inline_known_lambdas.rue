@@ -273,3 +273,66 @@ test fn named_closure_built_inside_its_inlined_call() -> Int {
 inline fn add(first: Int, second: Int) -> Int {
     first + second
 }
+
+// A lambda captures the arguments of the `inline fn` it's in by value, so they're evaluated when
+// its closure is built. A call that's inlined instead still evaluates the ones that may fail,
+// rather than only where the body refers to them (#573)
+inline fn pick_bound(x: Int, value: Int) -> Int {
+    let g = fn(y: Int) => if y > 0 {
+        1
+    } else {
+        value
+    };
+    g(x)
+}
+
+inline fn pick_direct(x: Int, value: Int) -> Int {
+    (
+        fn(y: Int) => if y > 0 {
+            1
+        } else {
+            value
+        }
+    )(x)
+}
+
+fn runtime<T>(value: T) -> T {
+    assert value is (Any, Any) || value is nil;
+    value
+}
+
+test fn captured_argument_of_a_bound_lambda_is_evaluated() -> Int {
+    let xs = runtime([1, 2]);
+    pick_bound(xs.first, positive(xs.first - 1))
+}
+
+test fn captured_argument_of_a_called_lambda_is_evaluated() -> Int {
+    let xs = runtime([1, 2]);
+    pick_direct(xs.first, positive(xs.first - 1))
+}
+
+// The same holds for the arguments of a function that's inlined because it's called once
+fn pick_through(value: Int, limit: Int) -> Int {
+    let f = fn() => limit > 5 && value > 100;
+    if f() {
+        1
+    } else {
+        2
+    }
+}
+
+test fn captured_argument_of_an_inlined_function_is_evaluated() -> Int {
+    let xs = runtime([1, 2]);
+    pick_through(positive(xs.first - 1), 1)
+}
+
+test fn captured_argument_of_an_inlined_lambda() -> List<Int> {
+    let xs = runtime([1, 2]);
+    [
+        pick_bound(xs.first, positive(xs.first)),
+        pick_bound(0, positive(7)),
+        pick_direct(xs.first, positive(xs.first)),
+        pick_direct(0, positive(7)),
+        pick_through(positive(xs.first), 1),
+    ]
+}

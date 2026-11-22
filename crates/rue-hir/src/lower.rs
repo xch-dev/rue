@@ -499,9 +499,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .borrow()
             .get(&function)
             .is_some_and(|arguments| arguments.contains(&parameter))
-            && self
-                .inline_argument(parameter)
-                .is_none_or(|argument| !may_fail(self, argument))
+            && !self.is_failing_argument(parameter)
     }
 
     pub fn base_path(&self) -> &Path {
@@ -1330,7 +1328,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// for its effect instead, and if it's only referenced some of the time, it's bound before
     /// the body like a let statement, so that it's still evaluated at the call. An argument whose
     /// parameter is referenced more than once is bound too, so that it's only evaluated once,
-    /// unless it's as cheap to evaluate each time (see [`Self::is_trivial_argument`]).
+    /// unless it's as cheap to evaluate each time (see [`Self::is_trivial_argument`]). The
+    /// arguments of the calls around it that the function captures are bound the same way if they
+    /// may fail, since building its closure would have evaluated them (see
+    /// [`Self::captured_arguments`]).
     fn lower_inline_call(
         &mut self,
         env: &Environment,
@@ -1340,6 +1341,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     ) -> LirId {
         let mut effects = Vec::new();
         let mut bound = Vec::new();
+        let mut captured = Vec::new();
         let mut args: HashMap<SymbolId, Option<HirId>> = args
             .into_iter()
             .map(|(parameter, arg)| (parameter, Some(arg)))
@@ -1370,13 +1372,24 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     bound.push((parameter, arg));
                 }
             }
+
+            for capture in self.captured_arguments(symbol, function.body) {
+                args.insert(capture, None);
+                captured.push(capture);
+            }
         }
 
         if let Some(debug) = &mut self.debug {
             debug.add_parameter_names(self.db, function);
         }
 
-        let group = SymbolGroup::Sequential(bound.iter().map(|&(symbol, _)| symbol).collect());
+        let group = SymbolGroup::Sequential(
+            bound
+                .iter()
+                .map(|&(symbol, _)| symbol)
+                .chain(captured.iter().copied())
+                .collect(),
+        );
         let body_env = Self::apply_group(env.clone(), &group, true);
 
         // The body has no frame of its own, so it's named after the function, which tells a
@@ -1406,12 +1419,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
         }
 
-        // The arguments that are referenced some of the time are bound like a let statement
-        if !bound.is_empty() {
-            let bound_args = bound
+        // The arguments that are referenced some of the time, and the captured arguments of the
+        // calls around this one, are bound like a let statement
+        if !bound.is_empty() || !captured.is_empty() {
+            let mut bound_args: HashMap<SymbolId, LirId> = bound
                 .iter()
                 .map(|&(parameter, arg)| (parameter, self.lower_hir(env, arg)))
                 .collect();
+
+            for &capture in &captured {
+                let value = self.lower_symbol_reference(env, capture);
+                bound_args.insert(capture, value);
+            }
 
             let body = self.arena.alloc(Lir::Quote(result));
             let rest = self.arena.alloc(Lir::Path(1u8.into()));
@@ -2139,6 +2158,13 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
     fn inline_argument(&self, symbol: SymbolId) -> Option<HirId> {
         self.inline_substitution(symbol).map(|(_, hir)| hir)
+    }
+
+    /// Whether the symbol is the parameter of a function that's being inlined, and its argument
+    /// may fail, so that a closure that captures it evaluates something that matters.
+    fn is_failing_argument(&self, symbol: SymbolId) -> bool {
+        self.inline_argument(symbol)
+            .is_some_and(|argument| may_fail(self, argument))
     }
 
     /// Whether the value can be lowered in any environment, since it doesn't depend on it.
