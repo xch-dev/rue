@@ -8,9 +8,7 @@
 
 use rue_lir::{ClvmTarget, CodegenOptions, LirId, compiled_size, is_pure, optimize};
 
-use rue_options::CompilerOptions;
-
-use crate::{Environment, HirId};
+use crate::{Environment, HirId, clvm_target};
 
 use super::{Lowerer, LoweringDebugInfo, TooDeep};
 
@@ -114,16 +112,8 @@ impl Lowerer<'_, '_, '_> {
     }
 
     /// What the program is compiled for.
-    pub(super) fn target(&self) -> ClvmTarget {
-        Self::target_of(&self.options)
-    }
-
-    /// What a program compiled with the options is compiled for.
-    pub(super) fn target_of(options: &CompilerOptions) -> ClvmTarget {
-        ClvmTarget {
-            operand_limits: options.operand_limits,
-            hard_fork_2: options.hard_fork_2,
-        }
+    fn target(&self) -> ClvmTarget {
+        clvm_target(&self.options)
     }
 
     /// How many bytes the LIR compiles to on its own, with the options the program is compiled

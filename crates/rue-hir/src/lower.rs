@@ -22,7 +22,7 @@ use std::{
 use id_arena::Arena;
 use indexmap::{IndexSet, set::Slice};
 use rue_diagnostic::SrcLoc;
-use rue_lir::{Lir, LirId, bigint_atom};
+use rue_lir::{ClvmTarget, Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
 
 use crate::{
@@ -179,6 +179,15 @@ enum Continuation {
     /// The rest of the block, which is lowered once and quoted, and passed to the branches along
     /// with the environment it runs in, so that each branch that falls through can run it.
     Shared { program: SymbolId, env: SymbolId },
+}
+
+/// What programs compiled with the options are compiled for, which decides the flags they're run
+/// with (see [`ClvmTarget::flags`]).
+pub fn clvm_target(options: &CompilerOptions) -> ClvmTarget {
+    ClvmTarget {
+        operand_limits: options.operand_limits,
+        hard_fork_2: options.hard_fork_2,
+    }
 }
 
 /// Lowering went deeper than [`MAX_LOWERING_DEPTH`], so the LIR it produced is incomplete.

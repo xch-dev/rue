@@ -11,7 +11,6 @@ use crate::{
     Symbol, SymbolId,
     analysis::{Callee, Effect, resolve_callee, resolve_function},
     lower::MAX_REPEATED_STATIC_SIZE,
-    program_value::ProgramValues,
     repeat_cost::is_cheap_to_repeat,
     small_static::{StaticContext, is_small_static, take},
 };
@@ -82,8 +81,6 @@ pub struct DependencyGraph {
     /// The functions that are used as values and lowered to the program they're compiled to on
     /// their own (see [`crate::program_value`]). They're constants, so they aren't dependencies.
     program_values: IndexSet<SymbolId>,
-    /// Decides which functions are lowered that way.
-    program_value_decisions: ProgramValues,
     /// The functions that `for` expressions are compiled to (see `FunctionKind::Loop`).
     loops: HashSet<SymbolId>,
     /// The symbols that are referenced inside of a loop they're defined outside of, which
@@ -235,7 +232,6 @@ impl DependencyGraph {
             inline_values: HashSet::new(),
             closures: HashSet::new(),
             program_values: IndexSet::new(),
-            program_value_decisions: ProgramValues::default(),
             loops: HashSet::new(),
             loop_captures: HashSet::new(),
             loop_dependencies: HashMap::new(),
@@ -1806,11 +1802,10 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
         Hir::Reference(symbol) => {
             // A function whose value is its own program is the constant with that program as its
             // value, so the function itself isn't a dependency
+            // The entrypoint refers to itself through the environment instead
             if !is_call
+                && *symbol != graph.main
                 && let Some(constant) = db.program_constant(*symbol)
-                && graph
-                    .program_value_decisions
-                    .is_program_value(db, graph.main, *symbol)
             {
                 visit_symbol_reference(graph, constant, usage(graph, hir, is_call));
                 return;

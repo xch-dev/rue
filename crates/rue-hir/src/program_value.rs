@@ -15,64 +15,40 @@
 //! at runtime. A function that uses itself as a value is fine, since it's the entrypoint of its
 //! own program, which refers to itself through the environment.
 
-use std::{
-    collections::{HashMap, HashSet},
-    rc::Rc,
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::{Database, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId};
 
-/// Which functions are lowered to the program they're compiled to on their own when they're used
-/// as a value (see the [module](self)), and what's needed to decide that.
-#[derive(Debug, Default, Clone)]
-pub(crate) struct ProgramValues {
-    /// Whether each function that's been asked about is.
-    decided: HashMap<SymbolId, bool>,
-    /// The functions that are used as values anywhere in each function's program.
-    value_references: HashMap<SymbolId, Rc<HashSet<SymbolId>>>,
-}
+/// Whether each of the candidates (see [`is_candidate`]) can be lowered to its own program where
+/// it's used as a value: it isn't in a program that its own program would contain as a value.
+pub(crate) fn decide_program_values(
+    db: &Database,
+    candidates: &[SymbolId],
+) -> Vec<(SymbolId, bool)> {
+    let mut value_references: HashMap<SymbolId, HashSet<SymbolId>> = HashMap::new();
+    let mut references_of = |symbol: SymbolId| -> HashSet<SymbolId> {
+        value_references
+            .entry(symbol)
+            .or_insert_with(|| find_value_references(db, symbol))
+            .clone()
+    };
 
-impl ProgramValues {
-    /// Whether the function is lowered to its own program where it's used as a value in the
-    /// program whose entrypoint is `main`. The entrypoint refers to itself through the
-    /// environment, so it's never one.
-    pub(crate) fn is_program_value(
-        &mut self,
-        db: &Database,
-        main: SymbolId,
-        symbol: SymbolId,
-    ) -> bool {
-        if symbol == main || !is_candidate(db, symbol) {
-            return false;
-        }
+    candidates
+        .iter()
+        .map(|&symbol| {
+            // Every program that the function's program would contain as a value, and every one
+            // those would contain, is found by following everything that it refers to. If any of
+            // them contains this function's program, it would contain itself. Following the
+            // functions that end up being closures instead is only more than is needed.
+            let references = references_of(symbol);
 
-        if let Some(&decided) = self.decided.get(&symbol) {
-            return decided;
-        }
+            let is_program_value = !references.iter().any(|&reference| {
+                reference != symbol && references_of(reference).contains(&symbol)
+            });
 
-        // Every program that the function's program would contain as a value, and every one
-        // those would contain, is found by following everything that it refers to. If any of
-        // them contains this function's program, it would contain itself. Following the
-        // functions that end up being closures instead is only more than is needed.
-        let references = self.value_references(db, symbol);
-
-        let decided = !references.iter().any(|&reference| {
-            reference != symbol && self.value_references(db, reference).contains(&symbol)
-        });
-
-        self.decided.insert(symbol, decided);
-        decided
-    }
-
-    fn value_references(&mut self, db: &Database, symbol: SymbolId) -> Rc<HashSet<SymbolId>> {
-        if let Some(references) = self.value_references.get(&symbol) {
-            return references.clone();
-        }
-
-        let references = Rc::new(find_value_references(db, symbol));
-        self.value_references.insert(symbol, references.clone());
-        references
-    }
+            (symbol, is_program_value)
+        })
+        .collect()
 }
 
 /// Whether the function can be the entrypoint of a program, and so be lowered to one: it's
@@ -122,6 +98,10 @@ fn find_value_references(db: &Database, root: SymbolId) -> HashSet<SymbolId> {
                 visit(*symbol, &mut stack);
             }
             Hir::Lambda(lambda) => visit(*lambda, &mut stack),
+            Hir::Program(function) => {
+                result.insert(*function);
+                visit(*function, &mut stack);
+            }
             Hir::FunctionCall(call) => {
                 if let Hir::Reference(symbol) = db.hir(db.without_casts(call.function)) {
                     visit(*symbol, &mut stack);

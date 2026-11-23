@@ -91,9 +91,9 @@ pub struct Database {
     /// [`Database::reference_target`]).
     reference_targets: HashMap<Declaration, Declaration>,
     /// The constant whose value is the program that each function is compiled to on its own,
-    /// which a reference to the function as a value is lowered as (see
-    /// [`Database::add_program_constants`]).
-    program_constants: HashMap<SymbolId, SymbolId>,
+    /// which a reference to the function as a value is lowered as, or `None` for a function that
+    /// would be in its own program (see [`Database::add_program_constants`]).
+    program_constants: HashMap<SymbolId, Option<SymbolId>>,
     /// The programs that functions have been compiled to on their own, as serialized CLVM, for
     /// each target, so that each is only compiled once.
     programs: HashMap<(SymbolId, ClvmTarget), Arc<[u8]>>,
@@ -205,7 +205,8 @@ impl Database {
 
         let symbols: HashSet<SymbolId> = symbols.into_iter().collect();
         self.program_constants.retain(|function, constant| {
-            !symbols.contains(function) && !symbols.contains(constant)
+            !symbols.contains(function)
+                && constant.is_none_or(|constant| !symbols.contains(&constant))
         });
         self.programs.clear();
 
@@ -553,32 +554,38 @@ impl Database {
     }
 
     /// Gives each function that can be the value of its own program a constant whose value is
-    /// that program, if it doesn't have one yet (see [`crate::program_value`]). A reference to
+    /// that program, if it hasn't been decided yet (see [`crate::program_value`]). A reference to
     /// the function as a value is lowered as a reference to the constant, so that a program that
-    /// uses it more than once binds it once, like any other constant.
+    /// uses it more than once binds it once, like any other constant. A function that's declared
+    /// later can't be referenced by one that's already been decided, so the decisions stay.
     pub fn add_program_constants(&mut self) {
-        let functions: Vec<SymbolId> = self
+        let types: IndexMap<SymbolId, TypeId> = self
             .symbols
             .iter()
-            .filter(|&(id, _)| {
-                !self.program_constants.contains_key(&id)
-                    && crate::program_value::is_candidate(self, id)
+            .filter_map(|(id, symbol)| match symbol {
+                Symbol::Function(function)
+                    if !self.program_constants.contains_key(&id)
+                        && crate::program_value::is_candidate(self, id) =>
+                {
+                    Some((id, function.ty))
+                }
+                _ => None,
             })
-            .map(|(id, _)| id)
             .collect();
+        let candidates: Vec<SymbolId> = types.keys().copied().collect();
 
-        for function in functions {
-            let Symbol::Function(symbol) = self.symbol(function) else {
-                continue;
-            };
-
-            let ty = symbol.ty;
-            let hir = self.alloc_hir(Hir::Program(function));
-            let constant = self.alloc_symbol(Symbol::Constant(ConstantSymbol {
-                name: None,
-                value: Value::new(hir, ty),
-                inline: false,
-            }));
+        for (function, is_program_value) in
+            crate::program_value::decide_program_values(self, &candidates)
+        {
+            let constant = is_program_value.then(|| {
+                let ty = types[&function];
+                let hir = self.alloc_hir(Hir::Program(function));
+                self.alloc_symbol(Symbol::Constant(ConstantSymbol {
+                    name: None,
+                    value: Value::new(hir, ty),
+                    inline: false,
+                }))
+            });
 
             self.program_constants.insert(function, constant);
         }
@@ -587,7 +594,7 @@ impl Database {
     /// The constant whose value is the program that the function is compiled to on its own, if
     /// it has one (see [`Self::add_program_constants`]).
     pub fn program_constant(&self, function: SymbolId) -> Option<SymbolId> {
-        self.program_constants.get(&function).copied()
+        self.program_constants.get(&function).copied().flatten()
     }
 
     /// The program that the function was compiled to on its own for the target, as serialized
