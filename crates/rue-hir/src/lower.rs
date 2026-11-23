@@ -1328,8 +1328,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     /// for its effect instead, and if it's only referenced some of the time, it's bound before
     /// the body like a let statement, so that it's still evaluated at the call. An argument whose
     /// parameter is referenced more than once is bound too, so that it's only evaluated once,
-    /// unless it's as cheap to evaluate each time (see [`Self::is_trivial_argument`]). The
-    /// arguments of the calls around it that the function captures are bound the same way if they
+    /// unless it's as cheap to evaluate each time (see [`Self::is_trivial_argument`]), or it's
+    /// only used by a loop that the body calls once, which evaluates it at that call (see
+    /// [`Self::loop_call_argument`]). The arguments of the calls around it that the function captures are bound the same way if they
     /// may fail, since building its closure would have evaluated them (see
     /// [`Self::captured_arguments`]).
     fn lower_inline_call(

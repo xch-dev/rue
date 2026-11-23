@@ -18,9 +18,5 @@ fn reverse_onto<T>(list: List<T>, reversed: List<T>) -> List<T> {
 
 // Whether any of the items in the list is equal to the item.
 export fn contains(list: List<Bytes>, item: Bytes) -> Bool {
-    if list is (Bytes, List<Bytes>) {
-        list.first == item || contains(list.rest, item)
-    } else {
-        false
-    }
+    for other in list fold found = false { other == item || found }
 }

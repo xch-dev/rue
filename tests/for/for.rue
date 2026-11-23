@@ -219,6 +219,40 @@ test fn in_a_function_inlined_automatically() -> List<Int> {
     scale_once(runtime([1, 2]), positive(4) + 1)
 }
 
+// A function whose body is a `for` over its parameters is inlined into each of its calls, which
+// call the loop directly with the other arguments evaluated where the loop's captures are, even
+// when they aren't paths. The loop is only in the program once
+fn has(list: List<Bytes>, item: Bytes) -> Bool {
+    for other in list fold found = false { other == item || found }
+}
+
+test fn in_a_function_called_several_times() -> List<Bool> {
+    let hashes = runtime([sha256("a"), sha256("b")]);
+    [has(hashes, sha256("a")), has(hashes, sha256("b")), has(hashes, sha256("c"))]
+}
+
+// An argument that may fail is still evaluated at the call when the loop it's captured by isn't
+// always called
+fn scale_some(xs: List<Int>, k: Int, scaled: Bool) -> List<Int> {
+    if scaled {
+        for x in xs { x * k }
+    } else {
+        xs
+    }
+}
+
+test fn argument_of_a_loop_called_some_of_the_time() -> (List<Int>, List<Int>) {
+    (
+        scale_some(runtime([1, 2]), positive(runtime([2]).first) + 1, true),
+        scale_some(runtime([3]), positive(runtime([4]).first) + 1, false),
+    )
+}
+
+// The second call fails, even though it doesn't scale the list
+test fn failing_argument_of_a_loop_called_some_of_the_time() -> (List<Int>, List<Int>) {
+    (scale_some(runtime([1]), positive(2), true), scale_some(runtime([3]), positive(-1), false))
+}
+
 // A binding that's only static with the arguments of an inlined call is captured too
 inline fn offset_all(xs: List<Int>, k: Int) -> List<Int> {
     let pair = (k, 1);
