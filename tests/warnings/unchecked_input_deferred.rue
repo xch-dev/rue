@@ -31,6 +31,7 @@ fn main(
     returned_early: Bytes32,
     partly_hashed: Bytes32,
     id: Bytes32,
+    either_owner: Bytes32,
     flag: Bool,
 ) -> List<Condition> {
     assert checked_owner is Bytes32;
@@ -60,6 +61,17 @@ fn main(
             }
         } else {
             CreateCoin { puzzle_hash: wrapper.other, amount: 1 }
+        },
+        // A condition that's one of two
+        CreateCoin {
+            puzzle_hash: tree_hash(
+                if flag {
+                    CreateCoin { puzzle_hash: either_owner, amount: 1 }
+                } else {
+                    CreateCoin { puzzle_hash: id, amount: 2 }
+                },
+            ),
+            amount: 1,
         },
         // Hashed by a helper, and passed through a function before being hashed
         CreateCoin {

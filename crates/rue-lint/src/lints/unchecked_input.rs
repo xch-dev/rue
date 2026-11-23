@@ -149,12 +149,9 @@ impl Flow {
     }
 
     /// The unchecked value that this value is exactly, if any, which is what a check of it checks.
-    fn exact_origins(&self) -> BTreeSet<Origin> {
-        if self.exact {
-            self.direct.clone()
-        } else {
-            BTreeSet::new()
-        }
+    /// A value that's exact is always exactly one.
+    fn exact(&self) -> Option<&Origin> {
+        self.exact.then(|| self.direct.first()).flatten()
     }
 
     /// The flow of a field of this value, or of the item or the rest of it if it's a pair
@@ -181,14 +178,62 @@ impl Flow {
 
     /// A pair of the two values, whose fields are `first` and `rest`.
     fn pair(first: Flow, rest: Flow) -> Self {
-        let mut flow = Flow::default();
-        flow.union(&first);
-        flow.union(&rest);
-        flow.fields = Some(BTreeMap::from([
+        Self::with_fields(BTreeMap::from([
             ("first".to_string(), first),
             ("rest".to_string(), rest),
-        ]));
+        ]))
+    }
+
+    /// A value made of the fields.
+    fn with_fields(fields: BTreeMap<String, Flow>) -> Self {
+        let mut flow = Flow::default();
+        for field in fields.values() {
+            flow.union(field);
+        }
+        flow.fields = Some(fields);
         flow
+    }
+
+    /// A value that's one of the two values. If they're both structs with the same fields, each
+    /// field is one of the two fields, so reading one doesn't read the others.
+    fn either(first: Flow, second: Flow) -> Self {
+        let first_deferred = first.deferred.clone();
+        let second_deferred = second.deferred.clone();
+
+        match (first.fields, second.fields) {
+            (Some(mut first), Some(second))
+                if first.len() == second.len()
+                    && second.keys().all(|name| first.contains_key(name)) =>
+            {
+                let mut flow = Self::with_fields(
+                    second
+                        .into_iter()
+                        .map(|(name, field)| {
+                            let other = first.remove(&name).unwrap_or_default();
+                            (name, Self::either(other, field))
+                        })
+                        .collect(),
+                );
+
+                // A condition's unchecked values are on the struct, not on its fields
+                for (origin, site) in first_deferred.into_iter().chain(second_deferred) {
+                    flow.deferred.entry(origin).or_insert(site);
+                }
+
+                flow
+            }
+            (first_fields, second_fields) => {
+                let mut flow = Flow {
+                    fields: first_fields,
+                    ..first
+                };
+                flow.union(&Flow {
+                    fields: second_fields,
+                    ..second
+                });
+                flow
+            }
+        }
     }
 
     fn union(&mut self, other: &Flow) {
@@ -455,7 +500,10 @@ fn origin_name(cx: &LintContext<'_>, main: SymbolId, origin: &Origin) -> (String
                 .parameters
                 .get(index)
                 .and_then(|param| cx.db().symbol(*param).name())
-                .map_or_else(|| "_".to_string(), |name| name.text().to_string())
+                .map_or_else(
+                    || format!("parameter {}", index + 1),
+                    |name| name.text().to_string(),
+                )
         }
         // The result of a call in another function is named after the call in `main` that it's
         // reached through, since the same call can be reached more than once
@@ -704,10 +752,9 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             Hir::Block(block) => self.block(&block.statements, block.body, always),
             Hir::If(condition, then, else_, _) => {
                 self.flow(condition, always);
-                let mut flow = self.branch(condition, then);
+                let then = self.branch(condition, then);
                 let else_ = self.flow(else_, false);
-                flow.union(&else_);
-                flow
+                Flow::either(then, else_)
             }
             Hir::FunctionCall(call) => self.call(hir, &call, always),
             Hir::Binary(BinaryOp::Concat, ..) => {
@@ -842,7 +889,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         for &operand in operands {
             let flow = self.flow(operand, always);
             if always {
-                self.summary.checked.extend(flow.exact_origins());
+                self.summary.checked.extend(flow.exact().cloned());
             }
         }
     }
@@ -1029,9 +1076,12 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
     /// The values that are empty atoms if the condition is true, such as the list in `list is nil`.
     fn empty_if(&mut self, condition: HirId) -> BTreeSet<Origin> {
         match self.cx.db().hir(condition).clone() {
-            Hir::Guard(guard) if self.cx.known_atom_length(guard.ty) == Some(0) => {
-                self.flow(guard.value, false).exact_origins()
-            }
+            Hir::Guard(guard) if self.cx.known_atom_length(guard.ty) == Some(0) => self
+                .flow(guard.value, false)
+                .exact()
+                .cloned()
+                .into_iter()
+                .collect(),
             _ => BTreeSet::new(),
         }
     }
@@ -1058,7 +1108,11 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                     && check_has_length(&guard.runtime_check());
 
                 if checks_length {
-                    self.flow(guard.value, false).exact_origins()
+                    self.flow(guard.value, false)
+                        .exact()
+                        .cloned()
+                        .into_iter()
+                        .collect()
                 } else {
                     BTreeSet::new()
                 }
@@ -1076,7 +1130,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                             .iter()
                             .all(|origin| origin.checked_by(&self.summary.checked))
                     {
-                        checks.extend(self.flow(value, false).exact_origins());
+                        checks.extend(self.flow(value, false).exact().cloned());
                     }
                 }
 
@@ -1202,16 +1256,15 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         // reached through this call.
         let translate = |origin: &Origin| -> Flow {
             match origin.root {
-                Root::Param(_) => {
-                    let mut args = arguments_for(origin.root)
-                        .into_iter()
-                        .map(|arg| arg.at(&origin.path));
-                    let first = args.next().unwrap_or_default();
-                    args.fold(first, |mut flow, arg| {
+                // A single argument keeps its exactness and fields
+                Root::Param(_) => arguments_for(origin.root)
+                    .into_iter()
+                    .map(|arg| arg.at(&origin.path))
+                    .reduce(|mut flow, arg| {
                         flow.union(&arg);
                         flow
                     })
-                }
+                    .unwrap_or_default(),
                 Root::Call { site, call, .. } => Flow::origin(Origin {
                     root: Root::Call {
                         site: hir,
@@ -1230,7 +1283,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             for origin in &summary.checked {
                 self.summary
                     .checked
-                    .extend(translate(origin).exact_origins());
+                    .extend(translate(origin).exact().cloned());
             }
         }
 
@@ -1258,17 +1311,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
 
         for deferred in summary.deferred.keys() {
             for origin in translate(&deferred.origin).direct {
-                if self.checked_in_branch(&origin) {
-                    continue;
-                }
-
-                self.summary
-                    .deferred
-                    .entry(Deferred {
-                        origin,
-                        site: deferred.site,
-                    })
-                    .or_insert(hir);
+                self.defer(origin, deferred.site, hir);
             }
         }
 
@@ -1287,16 +1330,17 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         self.summary.hashed.extend(value.direct.iter().cloned());
 
         for (origin, &site) in &value.deferred {
-            if self.checked_in_branch(origin) {
-                continue;
-            }
+            self.defer(origin.clone(), site, call);
+        }
+    }
 
+    /// Records an unchecked value in a deferred condition that's hashed, reached through the
+    /// call, unless the branch being analyzed checks it.
+    fn defer(&mut self, origin: Origin, site: HirId, call: HirId) {
+        if !self.checked_in_branch(&origin) {
             self.summary
                 .deferred
-                .entry(Deferred {
-                    origin: origin.clone(),
-                    site,
-                })
+                .entry(Deferred { origin, site })
                 .or_insert(call);
         }
     }
@@ -1353,20 +1397,13 @@ fn check_has_length(check: &Check) -> bool {
 /// struct are translated one by one, up to the same depth as paths.
 fn translate_flow(flow: &Flow, translate: &impl Fn(&Origin) -> Flow, depth: usize) -> Flow {
     let mut result = match (&flow.fields, flow.exact) {
-        (_, true) if flow.direct.len() == 1 => translate(flow.direct.first().expect("one origin")),
-        (Some(fields), _) if depth <= MAX_PATH => {
-            let fields: BTreeMap<String, Flow> = fields
+        _ if let Some(origin) = flow.exact() => translate(origin),
+        (Some(fields), _) if depth <= MAX_PATH => Flow::with_fields(
+            fields
                 .iter()
                 .map(|(name, field)| (name.clone(), translate_flow(field, translate, depth + 1)))
-                .collect();
-
-            let mut result = Flow::default();
-            for field in fields.values() {
-                result.union(field);
-            }
-            result.fields = Some(fields);
-            result
-        }
+                .collect(),
+        ),
         _ => {
             let mut result = Flow::default();
             for origin in &flow.direct {

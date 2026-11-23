@@ -42,6 +42,8 @@ fn main(
     checked_proof: Proof,
     s: Bytes32,
     t: Bytes32,
+    (u, v): (Bytes32, Bytes32),
+    (w, x): (Bytes32, Bytes32),
 ) -> List<Any> {
     // Checks that are always evaluated count, wherever they are in the function
     assert coinid(f, g, 1) != nil;
@@ -89,6 +91,8 @@ fn main(
         },
         sha256(checked_proof.hash + checked_proof.other),
         sha256(t + t + 0x01),
+        // Values from parameters that are destructured
+        sha256(u + w),
     ]
 }
 

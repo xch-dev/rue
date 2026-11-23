@@ -32,8 +32,19 @@ fn main(
     proof: Proof,
     my_puzzle_hash: Bytes32,
     unparsed: Proof,
+    early: Bytes32,
+    tail: Bytes,
+    merged_a: Proof,
+    merged_b: Proof,
+    shallow: Bytes32,
+    deep: Bytes32,
     flag: Bool,
 ) -> List<Any> {
+    let one = wrap_one(shallow);
+    assert coinid(one.a.d, sha256("x"), 1) != nil;
+    let nested = wrap_deep(deep);
+    assert coinid(nested.a.b.c.d, sha256("x"), 1) != nil;
+
     let hash = hash_pair;
 
     // Allowed at the call
@@ -69,6 +80,22 @@ fn main(
         // checks the value
         checked_through_parse(proof, my_puzzle_hash),
         hash_parsed(unparsed),
+        // A value returned early is returned too
+        sha256(tail + pick(early, flag)),
+        // A field of a returned struct that's one of two
+        sha256(
+            tail
+                + (
+                    if flag {
+                        parse(merged_a)
+                    } else {
+                        parse(merged_b)
+                    }
+                ).parent,
+        ),
+        // Checking a field of a nested struct returned from a helper checks the value in it
+        sha256(tail + one.a.d),
+        sha256(tail + nested.a.b.c.d),
         // The same call of a function value reached through two calls of a helper gives two
         // different results, even inside of another helper
         both(inner),
@@ -89,6 +116,42 @@ struct Proof {
 struct Info {
     parent: Bytes32,
     amount: Int,
+}
+
+struct L1 {
+    a: L2,
+}
+
+struct L2 {
+    b: L3,
+}
+
+struct L3 {
+    c: L4,
+}
+
+struct L4 {
+    d: Bytes32,
+    e: Int,
+}
+
+struct W1 {
+    a: L4,
+}
+
+fn wrap_one(value: Bytes32) -> W1 {
+    W1 { a: L4 { d: value, e: 1 } }
+}
+
+fn wrap_deep(value: Bytes32) -> L1 {
+    L1 { a: L2 { b: L3 { c: L4 { d: value, e: 1 } } } }
+}
+
+fn pick(value: Bytes32, flag: Bool) -> Bytes32 {
+    if flag {
+        return value;
+    }
+    sha256("y")
 }
 
 fn parse(proof: Proof) -> Info {
