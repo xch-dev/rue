@@ -1,4 +1,4 @@
-use clvm_traits::{ToClvm, clvm_list, clvm_quote, clvm_tuple};
+use clvm_traits::{ToClvm, clvm_list, clvm_quote};
 use clvmr::{Allocator, NodePtr, SExp, serde::node_to_bytes};
 use id_arena::Arena;
 use num_bigint::BigUint;
@@ -149,17 +149,22 @@ fn codegen_step(
             let atom = path_to_atom(path);
             Ok(allocator.new_atom(&atom)?)
         }
-        Lir::Run(callee, env) => {
+        Lir::Run(callee, env)
             if options.optimize_static_pairs
                 && matches!(&arena[*env], Lir::Path(path) if path == &BigUint::from(1u8))
-                && is_static_value(arena, *callee)
-            {
-                return codegen_static_value(arena, allocator, *callee);
-            }
-
-            let callee = codegen(arena, allocator, *callee)?;
-            let env = codegen(arena, allocator, *env)?;
-            Ok(clvm_list!(ClvmOp::Apply, callee, env).to_clvm(allocator)?)
+                && is_static_value(arena, *callee) =>
+        {
+            codegen_static_value(arena, allocator, *callee)
+        }
+        Lir::Cons(first, rest)
+            if options.optimize_static_pairs
+                && is_static_value(arena, *first)
+                && is_static_value(arena, *rest) =>
+        {
+            let first = codegen_static_value(arena, allocator, *first)?;
+            let rest = codegen_static_value(arena, allocator, *rest)?;
+            let pair = allocator.new_pair(first, rest)?;
+            Ok(clvm_quote!(pair).to_clvm(allocator)?)
         }
         Lir::Closure(function, captures, has_parameters) => {
             let function = codegen(arena, allocator, *function)?;
@@ -180,108 +185,6 @@ fn codegen_step(
 
             operator_code(allocator, ClvmOp::Apply, function, args, fold)
         }
-        Lir::First(arg) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            Ok(clvm_list!(ClvmOp::First, arg).to_clvm(allocator)?)
-        }
-        Lir::Rest(arg) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            Ok(clvm_list!(ClvmOp::Rest, arg).to_clvm(allocator)?)
-        }
-        Lir::Cons(first, rest) => {
-            if options.optimize_static_pairs
-                && is_static_value(arena, *first)
-                && is_static_value(arena, *rest)
-            {
-                let first = codegen_static_value(arena, allocator, *first)?;
-                let rest = codegen_static_value(arena, allocator, *rest)?;
-                let pair = allocator.new_pair(first, rest)?;
-                return Ok(clvm_quote!(pair).to_clvm(allocator)?);
-            }
-
-            let first = codegen(arena, allocator, *first)?;
-            let rest = codegen(arena, allocator, *rest)?;
-            Ok(clvm_list!(ClvmOp::Cons, first, rest).to_clvm(allocator)?)
-        }
-        Lir::Listp(arg) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            Ok(clvm_list!(ClvmOp::Listp, arg).to_clvm(allocator)?)
-        }
-        Lir::Add(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::Add, args).to_clvm(allocator)?)
-        }
-        Lir::Sub(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::Sub, args).to_clvm(allocator)?)
-        }
-        Lir::Mul(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::Mul, args).to_clvm(allocator)?)
-        }
-        Lir::Div(first, second) => {
-            let first = codegen(arena, allocator, *first)?;
-            let second = codegen(arena, allocator, *second)?;
-            Ok(clvm_list!(ClvmOp::Div, first, second).to_clvm(allocator)?)
-        }
-        Lir::Divmod(first, second) => {
-            let first = codegen(arena, allocator, *first)?;
-            let second = codegen(arena, allocator, *second)?;
-            Ok(clvm_list!(ClvmOp::Divmod, first, second).to_clvm(allocator)?)
-        }
-        Lir::Mod(first, second) => {
-            let first = codegen(arena, allocator, *first)?;
-            let second = codegen(arena, allocator, *second)?;
-            Ok(clvm_list!(ClvmOp::Mod, first, second).to_clvm(allocator)?)
-        }
-        Lir::Modpow(base, exponent, modulus) => {
-            let base = codegen(arena, allocator, *base)?;
-            let exponent = codegen(arena, allocator, *exponent)?;
-            let modulus = codegen(arena, allocator, *modulus)?;
-            Ok(clvm_list!(ClvmOp::Modpow, base, exponent, modulus).to_clvm(allocator)?)
-        }
-        Lir::Eq(first, second) => {
-            let first = codegen(arena, allocator, *first)?;
-            let second = codegen(arena, allocator, *second)?;
-            Ok(clvm_list!(ClvmOp::Eq, first, second).to_clvm(allocator)?)
-        }
-        Lir::Gt(first, second) => {
-            let first = codegen(arena, allocator, *first)?;
-            let second = codegen(arena, allocator, *second)?;
-            Ok(clvm_list!(ClvmOp::Gt, first, second).to_clvm(allocator)?)
-        }
-        Lir::GtBytes(first, second) => {
-            let first = codegen(arena, allocator, *first)?;
-            let second = codegen(arena, allocator, *second)?;
-            Ok(clvm_list!(ClvmOp::GtBytes, first, second).to_clvm(allocator)?)
-        }
-        Lir::Not(arg) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            Ok(clvm_list!(ClvmOp::Not, arg).to_clvm(allocator)?)
-        }
-        Lir::All(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::All, args).to_clvm(allocator)?)
-        }
-        Lir::Any(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::Any, args).to_clvm(allocator)?)
-        }
         Lir::If(cond, then_lir, else_lir, inline) => {
             let cond = codegen(arena, allocator, *cond)?;
             let then_ptr = codegen(arena, allocator, *then_lir)?;
@@ -299,186 +202,6 @@ fn codegen_step(
                 )
                 .to_clvm(allocator)?)
             }
-        }
-        Lir::Raise(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::Raise, args).to_clvm(allocator)?)
-        }
-        Lir::Concat(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::Concat, args).to_clvm(allocator)?)
-        }
-        Lir::Strlen(arg) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            Ok(clvm_list!(ClvmOp::Strlen, arg).to_clvm(allocator)?)
-        }
-        Lir::Substr(arg, start, end) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            let start = codegen(arena, allocator, *start)?;
-            let end = end.map(|end| codegen(arena, allocator, end)).transpose()?;
-            if let Some(end) = end {
-                Ok(clvm_list!(ClvmOp::Substr, arg, start, end).to_clvm(allocator)?)
-            } else {
-                Ok(clvm_list!(ClvmOp::Substr, arg, start).to_clvm(allocator)?)
-            }
-        }
-        Lir::Logand(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::Logand, args).to_clvm(allocator)?)
-        }
-        Lir::Logior(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::Logior, args).to_clvm(allocator)?)
-        }
-        Lir::Logxor(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::Logxor, args).to_clvm(allocator)?)
-        }
-        Lir::Lognot(arg) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            Ok(clvm_list!(ClvmOp::Lognot, arg).to_clvm(allocator)?)
-        }
-        Lir::Ash(arg, shift) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            let shift = codegen(arena, allocator, *shift)?;
-            Ok(clvm_list!(ClvmOp::Ash, arg, shift).to_clvm(allocator)?)
-        }
-        Lir::Lsh(arg, shift) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            let shift = codegen(arena, allocator, *shift)?;
-            Ok(clvm_list!(ClvmOp::Lsh, arg, shift).to_clvm(allocator)?)
-        }
-        Lir::PubkeyForExp(arg) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            Ok(clvm_list!(ClvmOp::PubkeyForExp, arg).to_clvm(allocator)?)
-        }
-        Lir::G1Add(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::G1Add, args).to_clvm(allocator)?)
-        }
-        Lir::G1Subtract(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::G1Subtract, args).to_clvm(allocator)?)
-        }
-        Lir::G1Multiply(first, second) => {
-            let first = codegen(arena, allocator, *first)?;
-            let second = codegen(arena, allocator, *second)?;
-            Ok(clvm_list!(ClvmOp::G1Multiply, first, second).to_clvm(allocator)?)
-        }
-        Lir::G1Negate(arg) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            Ok(clvm_list!(ClvmOp::G1Negate, arg).to_clvm(allocator)?)
-        }
-        Lir::G1Map(value, dst) => {
-            let value = codegen(arena, allocator, *value)?;
-            let dst = dst.map(|dst| codegen(arena, allocator, dst)).transpose()?;
-            if let Some(dst) = dst {
-                Ok(clvm_list!(ClvmOp::G1Map, value, dst).to_clvm(allocator)?)
-            } else {
-                Ok(clvm_list!(ClvmOp::G1Map, value).to_clvm(allocator)?)
-            }
-        }
-        Lir::G2Add(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::G2Add, args).to_clvm(allocator)?)
-        }
-        Lir::G2Subtract(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::G2Subtract, args).to_clvm(allocator)?)
-        }
-        Lir::G2Multiply(first, second) => {
-            let first = codegen(arena, allocator, *first)?;
-            let second = codegen(arena, allocator, *second)?;
-            Ok(clvm_list!(ClvmOp::G2Multiply, first, second).to_clvm(allocator)?)
-        }
-        Lir::G2Negate(arg) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            Ok(clvm_list!(ClvmOp::G2Negate, arg).to_clvm(allocator)?)
-        }
-        Lir::G2Map(value, dst) => {
-            let value = codegen(arena, allocator, *value)?;
-            let dst = dst.map(|dst| codegen(arena, allocator, dst)).transpose()?;
-            if let Some(dst) = dst {
-                Ok(clvm_list!(ClvmOp::G2Map, value, dst).to_clvm(allocator)?)
-            } else {
-                Ok(clvm_list!(ClvmOp::G2Map, value).to_clvm(allocator)?)
-            }
-        }
-        Lir::BlsPairingIdentity(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::BlsPairingIdentity, args).to_clvm(allocator)?)
-        }
-        Lir::BlsVerify(arg, args) => {
-            let arg = codegen(arena, allocator, *arg)?;
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok(clvm_tuple!(ClvmOp::BlsVerify, arg, args).to_clvm(allocator)?)
-        }
-        Lir::Sha256(args) | Lir::Sha256Inline(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::Sha256, args).to_clvm(allocator)?)
-        }
-        Lir::Keccak256(args) | Lir::Keccak256Inline(args) => {
-            let args = args
-                .iter()
-                .map(|arg| codegen(arena, allocator, *arg))
-                .collect::<Result<Vec<_>>>()?;
-            Ok((ClvmOp::Keccak256, args).to_clvm(allocator)?)
-        }
-        Lir::CoinId(parent, puzzle, amount) => {
-            let parent = codegen(arena, allocator, *parent)?;
-            let puzzle = codegen(arena, allocator, *puzzle)?;
-            let amount = codegen(arena, allocator, *amount)?;
-            Ok(clvm_list!(ClvmOp::CoinId, parent, puzzle, amount).to_clvm(allocator)?)
-        }
-        Lir::K1Verify(pubkey, message, signature) => {
-            let pubkey = codegen(arena, allocator, *pubkey)?;
-            let message = codegen(arena, allocator, *message)?;
-            let signature = codegen(arena, allocator, *signature)?;
-            let op = allocator.new_atom(&ClvmOp::Secp256K1Verify.to_target_atom(options.target))?;
-            Ok(clvm_list!(op, pubkey, message, signature).to_clvm(allocator)?)
-        }
-        Lir::R1Verify(pubkey, message, signature) => {
-            let pubkey = codegen(arena, allocator, *pubkey)?;
-            let message = codegen(arena, allocator, *message)?;
-            let signature = codegen(arena, allocator, *signature)?;
-            let op = allocator.new_atom(&ClvmOp::Secp256R1Verify.to_target_atom(options.target))?;
-            Ok(clvm_list!(op, pubkey, message, signature).to_clvm(allocator)?)
         }
         Lir::Keccak256Verify(value, hash) => {
             let value = codegen(arena, allocator, *value)?;
@@ -502,7 +225,28 @@ fn codegen_step(
             let value = codegen(arena, allocator, *value)?;
             Ok(clvm_list!(ClvmOp::DebugPrint, clvm_quote!(srcloc), value).to_clvm(allocator)?)
         }
+        node => operator_call(arena, allocator, node, options.target, codegen),
     }
+}
+
+/// Generates `(OPERATOR CHILD ...)` for a node that's called as its operator (see
+/// [`Lir::operator`]), with the code for each child as an operand.
+fn operator_call(
+    arena: &Arena<Lir>,
+    allocator: &mut Allocator,
+    node: &Lir,
+    target: ClvmTarget,
+    mut codegen: impl FnMut(&Arena<Lir>, &mut Allocator, LirId) -> Result<NodePtr>,
+) -> Result<NodePtr> {
+    let operator = node
+        .operator()
+        .expect("every other node is generated as a call to its operator");
+    let args = node
+        .children()
+        .map(|arg| codegen(arena, allocator, arg))
+        .collect::<Result<Vec<_>>>()?;
+    let operator = allocator.new_atom(&operator.to_target_atom(target))?;
+    Ok((operator, args).to_clvm(allocator)?)
 }
 
 /// Generates code that evaluates to the value, which is `(q . VALUE)`, or `()` for nil, since nil

@@ -89,316 +89,71 @@ fn optimize_step(
     target: ClvmTarget,
     trace: &mut Option<&mut Trace<'_>>,
 ) -> LirId {
-    match arena[lir].clone() {
+    let node = arena[lir]
+        .clone()
+        .map_children(|child| optimize_node(arena, child, target, trace));
+
+    match node {
         Lir::Atom(atom) => opt_atom(arena, atom),
         Lir::Path(path) => opt_path(arena, path),
-        Lir::Quote(value) => {
-            let value = optimize_node(arena, value, target, trace);
-            opt_quote(arena, value)
-        }
-        Lir::Run(callee, env) => {
-            let callee = optimize_node(arena, callee, target, trace);
-            let env = optimize_node(arena, env, target, trace);
-            opt_run(arena, callee, env)
-        }
+        Lir::Quote(value) => opt_quote(arena, value),
+        Lir::Run(callee, env) => opt_run(arena, callee, env),
         Lir::Closure(callee, args, has_parameters) => {
-            let callee = optimize_node(arena, callee, target, trace);
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
             opt_closure(arena, callee, args, has_parameters)
         }
-        Lir::First(value) => {
-            let value = optimize_node(arena, value, target, trace);
-            opt_first(arena, target, value)
-        }
-        Lir::Rest(value) => {
-            let value = optimize_node(arena, value, target, trace);
-            opt_rest(arena, target, value)
-        }
-        Lir::Cons(first, rest) => {
-            let first = optimize_node(arena, first, target, trace);
-            let rest = optimize_node(arena, rest, target, trace);
-            opt_cons(arena, first, rest)
-        }
-        Lir::Listp(value) => {
-            let value = optimize_node(arena, value, target, trace);
-            opt_listp(arena, value)
-        }
-        Lir::Add(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_add(arena, args)
-        }
-        Lir::Sub(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_sub(arena, args)
-        }
-        Lir::Mul(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_mul(arena, target, args)
-        }
-        Lir::Div(left, right) => {
-            let left = optimize_node(arena, left, target, trace);
-            let right = optimize_node(arena, right, target, trace);
-            opt_div(arena, target, left, right)
-        }
-        Lir::Divmod(left, right) => {
-            let left = optimize_node(arena, left, target, trace);
-            let right = optimize_node(arena, right, target, trace);
-            opt_divmod(arena, target, left, right)
-        }
-        Lir::Mod(left, right) => {
-            let left = optimize_node(arena, left, target, trace);
-            let right = optimize_node(arena, right, target, trace);
-            opt_mod(arena, target, left, right)
-        }
-        Lir::Modpow(base, exponent, modulus) => {
-            let base = optimize_node(arena, base, target, trace);
-            let exponent = optimize_node(arena, exponent, target, trace);
-            let modulus = optimize_node(arena, modulus, target, trace);
-            opt_modpow(arena, target, base, exponent, modulus)
-        }
-        Lir::Eq(left, right) => {
-            let left = optimize_node(arena, left, target, trace);
-            let right = optimize_node(arena, right, target, trace);
-            opt_eq(arena, target, left, right)
-        }
-        Lir::Gt(left, right) => {
-            let left = optimize_node(arena, left, target, trace);
-            let right = optimize_node(arena, right, target, trace);
-            opt_gt(arena, target, left, right)
-        }
-        Lir::GtBytes(left, right) => {
-            let left = optimize_node(arena, left, target, trace);
-            let right = optimize_node(arena, right, target, trace);
-            opt_gtbytes(arena, target, left, right)
-        }
-        Lir::Not(value) => {
-            let value = optimize_node(arena, value, target, trace);
-            opt_not(arena, value)
-        }
-        Lir::All(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_all(arena, args)
-        }
-        Lir::Any(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_any(arena, args)
-        }
+        Lir::First(value) => opt_first(arena, target, value),
+        Lir::Rest(value) => opt_rest(arena, target, value),
+        Lir::Cons(first, rest) => opt_cons(arena, first, rest),
+        Lir::Listp(value) => opt_listp(arena, value),
+        Lir::Add(args) => opt_add(arena, args),
+        Lir::Sub(args) => opt_sub(arena, args),
+        Lir::Mul(args) => opt_mul(arena, target, args),
+        Lir::Div(left, right) => opt_div(arena, target, left, right),
+        Lir::Divmod(left, right) => opt_divmod(arena, target, left, right),
+        Lir::Mod(left, right) => opt_mod(arena, target, left, right),
+        Lir::Eq(left, right) => opt_eq(arena, target, left, right),
+        Lir::Not(value) => opt_not(arena, value),
+        Lir::All(args) => opt_all(arena, args),
+        Lir::Any(args) => opt_any(arena, args),
         Lir::If(condition, then, otherwise, inline) => {
-            let condition = optimize_node(arena, condition, target, trace);
-            let then = optimize_node(arena, then, target, trace);
-            let otherwise = optimize_node(arena, otherwise, target, trace);
             opt_if(arena, target, condition, then, otherwise, inline)
         }
-        Lir::Raise(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_raise(arena, args)
-        }
-        Lir::Concat(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_concat(arena, args)
-        }
-        Lir::Strlen(value) => {
-            let value = optimize_node(arena, value, target, trace);
-            opt_strlen(arena, value)
-        }
-        Lir::Substr(string, start, end) => {
-            let string = optimize_node(arena, string, target, trace);
-            let start = optimize_node(arena, start, target, trace);
-            let end = end.map(|end| optimize_node(arena, end, target, trace));
-            opt_substr(arena, target, string, start, end)
-        }
-        Lir::Logand(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_logand(arena, args)
-        }
-        Lir::Logior(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_logior(arena, args)
-        }
-        Lir::Logxor(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_logxor(arena, args)
-        }
-        Lir::Lognot(value) => {
-            let value = optimize_node(arena, value, target, trace);
-            opt_lognot(arena, target, value)
-        }
-        Lir::Ash(value, shift) => {
-            let value = optimize_node(arena, value, target, trace);
-            let shift = optimize_node(arena, shift, target, trace);
-            opt_ash(arena, target, value, shift)
-        }
-        Lir::Lsh(value, shift) => {
-            let value = optimize_node(arena, value, target, trace);
-            let shift = optimize_node(arena, shift, target, trace);
-            opt_lsh(arena, target, value, shift)
-        }
-        Lir::PubkeyForExp(exp) => {
-            let exp = optimize_node(arena, exp, target, trace);
-            opt_pubkey_for_exp(arena, target, exp)
-        }
-        Lir::G1Add(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_g1_add(arena, target, args)
-        }
-        Lir::G1Subtract(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_g1_subtract(arena, target, args)
-        }
-        Lir::G1Multiply(left, right) => {
-            let left = optimize_node(arena, left, target, trace);
-            let right = optimize_node(arena, right, target, trace);
-            opt_g1_multiply(arena, target, left, right)
-        }
-        Lir::G1Negate(value) => {
-            let value = optimize_node(arena, value, target, trace);
-            opt_g1_negate(arena, target, value)
-        }
-        Lir::G1Map(value, map) => {
-            let value = optimize_node(arena, value, target, trace);
-            let map = map.map(|map| optimize_node(arena, map, target, trace));
-            opt_g1_map(arena, target, value, map)
-        }
-        Lir::G2Add(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_g2_add(arena, target, args)
-        }
-        Lir::G2Subtract(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_g2_subtract(arena, target, args)
-        }
-        Lir::G2Multiply(left, right) => {
-            let left = optimize_node(arena, left, target, trace);
-            let right = optimize_node(arena, right, target, trace);
-            opt_g2_multiply(arena, target, left, right)
-        }
-        Lir::G2Negate(value) => {
-            let value = optimize_node(arena, value, target, trace);
-            opt_g2_negate(arena, target, value)
-        }
-        Lir::G2Map(value, map) => {
-            let value = optimize_node(arena, value, target, trace);
-            let map = map.map(|map| optimize_node(arena, map, target, trace));
-            opt_g2_map(arena, target, value, map)
-        }
-        Lir::BlsPairingIdentity(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_bls_pairing_identity(arena, target, args)
-        }
-        Lir::BlsVerify(sig, args) => {
-            let sig = optimize_node(arena, sig, target, trace);
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_bls_verify(arena, target, sig, args)
-        }
-        Lir::Sha256(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_sha256(arena, args, false)
-        }
-        Lir::Sha256Inline(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_sha256(arena, args, true)
-        }
-        Lir::Keccak256(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_keccak256(arena, args, false)
-        }
-        Lir::Keccak256Inline(args) => {
-            let args = args
-                .iter()
-                .map(|arg| optimize_node(arena, *arg, target, trace))
-                .collect();
-            opt_keccak256(arena, args, true)
-        }
-        Lir::CoinId(parent_coin_info, puzzle_hash, amount) => {
-            let parent_coin_info = optimize_node(arena, parent_coin_info, target, trace);
-            let puzzle_hash = optimize_node(arena, puzzle_hash, target, trace);
-            let amount = optimize_node(arena, amount, target, trace);
-            opt_coin_id(arena, target, parent_coin_info, puzzle_hash, amount)
-        }
-        Lir::K1Verify(public_key, message, signature) => {
-            let public_key = optimize_node(arena, public_key, target, trace);
-            let message = optimize_node(arena, message, target, trace);
-            let signature = optimize_node(arena, signature, target, trace);
-            opt_k1_verify(arena, target, public_key, message, signature)
-        }
-        Lir::R1Verify(public_key, message, signature) => {
-            let public_key = optimize_node(arena, public_key, target, trace);
-            let message = optimize_node(arena, message, target, trace);
-            let signature = optimize_node(arena, signature, target, trace);
-            opt_r1_verify(arena, target, public_key, message, signature)
-        }
-        Lir::Keccak256Verify(value, hash) => {
-            let value = optimize_node(arena, value, target, trace);
-            let hash = optimize_node(arena, hash, target, trace);
-            opt_keccak256_verify(arena, value, hash)
-        }
-        Lir::Op(op, arg) => {
-            let arg = optimize_node(arena, arg, target, trace);
-            opt_op(arena, op, arg)
-        }
-        Lir::DebugPrint(srcloc, value) => {
-            let value = optimize_node(arena, value, target, trace);
-            opt_debug_print(arena, srcloc, value)
-        }
+        Lir::Raise(args) => opt_raise(arena, args),
+        Lir::Concat(args) => opt_concat(arena, args),
+        Lir::Strlen(value) => opt_strlen(arena, value),
+        Lir::Logand(args) => opt_bitwise(arena, Bitwise::And, args),
+        Lir::Logior(args) => opt_bitwise(arena, Bitwise::Or, args),
+        Lir::Logxor(args) => opt_bitwise(arena, Bitwise::Xor, args),
+        Lir::Sha256(args) => opt_sha256(arena, args, false),
+        Lir::Sha256Inline(args) => opt_sha256(arena, args, true),
+        Lir::Keccak256(args) => opt_keccak256(arena, args, false),
+        Lir::Keccak256Inline(args) => opt_keccak256(arena, args, true),
+        Lir::Keccak256Verify(value, hash) => opt_keccak256_verify(arena, value, hash),
+        Lir::Op(op, arg) => opt_op(arena, op, arg),
+        Lir::DebugPrint(srcloc, value) => opt_debug_print(arena, srcloc, value),
+        // These are only run at compile time if their operands are constants
+        node @ (Lir::Modpow(..)
+        | Lir::Gt(..)
+        | Lir::GtBytes(..)
+        | Lir::Substr(..)
+        | Lir::Lognot(_)
+        | Lir::Ash(..)
+        | Lir::Lsh(..)
+        | Lir::PubkeyForExp(_)
+        | Lir::G1Add(_)
+        | Lir::G1Subtract(_)
+        | Lir::G1Multiply(..)
+        | Lir::G1Negate(_)
+        | Lir::G1Map(..)
+        | Lir::G2Add(_)
+        | Lir::G2Subtract(_)
+        | Lir::G2Multiply(..)
+        | Lir::G2Negate(_)
+        | Lir::G2Map(..)
+        | Lir::BlsPairingIdentity(_)
+        | Lir::BlsVerify(..)
+        | Lir::CoinId(..)
+        | Lir::K1Verify(..)
+        | Lir::R1Verify(..)) => opt_fold(arena, target, node),
     }
 }
