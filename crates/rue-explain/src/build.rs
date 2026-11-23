@@ -1,0 +1,886 @@
+//! Decompiles a program into the [IR](crate::ir), by evaluating its code symbolically: the
+//! environment of each function (and each inline body) is a [`Value`] whose structure is known
+//! as far as the code that builds it shows, so that reading a path from it can be resolved to a
+//! name, a constant, or a value computed earlier.
+//!
+//! Each call to a function that the debug metadata describes is shown as a call. The parts of a
+//! function's environment that the metadata doesn't name (such as captured functions and
+//! constants) are hidden, and a call that passes constants for some of them is to a version of the
+//! function whose body uses those constants. That's sound for each call on its own, so nothing
+//! else about how the function is used matters: wherever its code is used as a value, it's the
+//! version that knows nothing about its environment.
+
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::mem;
+
+use rue_clvm::operator_name;
+
+use crate::ir::{
+    Block, Expr, ExprKind, Function, FunctionId, FunctionKind, KnownSlot, Root, Statement, Value,
+    VarId,
+};
+use crate::program::{
+    APPLY, CONS, IF, Layout, NodeId, NodeKind, Path, Program, QUOTE, RAISE, WHOLE_ENV, atom_path,
+};
+use crate::stack::{Deep, grow_stack};
+
+/// How many versions of a function there can be, for different constants in the hidden parts of
+/// its environment, before calls with other constants are to the version that knows none.
+const MAX_VERSIONS: usize = 8;
+
+/// How large a structure that's read from an environment can be before it's bound to a variable,
+/// which keeps a structure that's built from copies of itself from being shown (and walked) in
+/// full, which would take exponential time.
+const MAX_STRUCTURE: usize = 64;
+
+/// A function to decompile: one that's described or anonymous, or a version of one for the
+/// constants in the hidden parts of its environment.
+#[derive(Debug, Clone)]
+struct FunctionInfo {
+    name: String,
+    node: NodeId,
+    kind: FunctionKind,
+    layout: Option<Layout>,
+    known: Vec<KnownSlot>,
+    generic: FunctionId,
+    /// Where the function is first called from, if it's a version.
+    call: Option<NodeId>,
+}
+
+/// The result of decompiling a program.
+#[derive(Debug)]
+pub(crate) struct Built {
+    pub functions: Vec<Function>,
+    pub entry: FunctionId,
+    /// The function that each body of a function is, including copies of it, which is the version
+    /// that knows nothing about its environment.
+    pub function_of: HashMap<NodeId, FunctionId>,
+    /// Whether each node of the program is part of the decompiled code.
+    pub covered: Vec<bool>,
+}
+
+pub(crate) fn build(program: &Program) -> Built {
+    let (infos, function_of, entry) = described_functions(program);
+
+    let mut builder = Builder {
+        program,
+        infos,
+        function_of,
+        anonymous_of: HashMap::new(),
+        versions: HashMap::new(),
+        version_counts: HashMap::new(),
+        covered: vec![false; program.nodes.len()],
+        subtree_covered: vec![false; program.nodes.len()],
+        bodies: Vec::new(),
+    };
+
+    // Anonymous functions and versions are added as they're found
+    let mut id = 0;
+    while id < builder.infos.len() {
+        let function = builder.function(id);
+        builder.bodies.push(function);
+        id += 1;
+    }
+
+    let mut function_of = builder.function_of;
+    function_of.extend(builder.anonymous_of);
+
+    Built {
+        functions: builder.bodies,
+        entry,
+        function_of,
+        covered: builder.covered,
+    }
+}
+
+/// The functions that the debug metadata describes, the function each annotated node is the body
+/// of (the same function for each copy of a body), and the function the whole program is (which
+/// is added if the program isn't the body of one).
+fn described_functions(
+    program: &Program,
+) -> (Vec<FunctionInfo>, HashMap<NodeId, FunctionId>, FunctionId) {
+    let mut infos = Vec::<FunctionInfo>::new();
+    let mut function_of = HashMap::new();
+    let mut canonical = HashMap::<(usize, [u8; 32]), FunctionId>::new();
+
+    // In order of position, so that copies are numbered the way they're read
+    for node in program.subtree(program.root) {
+        let Some(index) = program.nodes[node].function else {
+            continue;
+        };
+
+        if program.pair(node).is_none() {
+            continue;
+        }
+
+        let id = *canonical
+            .entry((index, program.hashes[node]))
+            .or_insert_with(|| {
+                let metadata = program.functions.get(index);
+                let name = metadata
+                    .and_then(|function| function.name.clone())
+                    .unwrap_or_else(|| "<unknown>".to_string());
+
+                infos.push(FunctionInfo {
+                    name,
+                    node,
+                    kind: FunctionKind::Described,
+                    layout: metadata.and_then(|function| function.layout.clone()),
+                    known: Vec::new(),
+                    generic: infos.len(),
+                    call: None,
+                });
+                infos.len() - 1
+            });
+
+        function_of.insert(node, id);
+    }
+
+    let entry = if let Some(&id) = function_of.get(&program.root) {
+        id
+    } else {
+        infos.push(FunctionInfo {
+            name: "program".to_string(),
+            node: program.root,
+            kind: FunctionKind::Program,
+            layout: None,
+            known: Vec::new(),
+            generic: infos.len(),
+            call: None,
+        });
+        infos.len() - 1
+    };
+
+    (infos, function_of, entry)
+}
+
+/// A function, and the hashes of the constants that a call passes for the hidden parts of its
+/// environment (`None` for a part that isn't a constant).
+type VersionKey = (FunctionId, Vec<Option<[u8; 32]>>);
+
+/// The state of a function whose body is being decompiled.
+struct Frame {
+    /// The hidden parts of the environment that are known.
+    known: Vec<KnownSlot>,
+    vars: Vec<String>,
+    /// The structures that variables are bound to, which reads see through to the values in them
+    /// that aren't pairs.
+    structures: HashMap<VarId, Value>,
+    reserved: HashSet<String>,
+    /// The paths of the environment that the body reads, which tells which hidden parts calls
+    /// have to show.
+    reads: RefCell<HashSet<Path>>,
+}
+
+impl Frame {
+    /// Notes the parts of the environment that the value has in it, as it's used in the body.
+    /// Computed parts have noted what they use already. Parts of a value can be shared, so each is
+    /// only looked at once.
+    fn note(&self, value: &Value) {
+        let mut reads = self.reads.borrow_mut();
+        let mut seen = HashSet::new();
+        let mut stack = vec![value];
+
+        while let Some(value) = stack.pop() {
+            match value {
+                Value::Ref(Root::Env, path) => {
+                    reads.insert(path.clone());
+                }
+                Value::Cons(first, rest, _) => {
+                    if seen.insert(first.as_ptr()) {
+                        stack.push(first);
+                    }
+                    if seen.insert(rest.as_ptr()) {
+                        stack.push(rest);
+                    }
+                }
+                Value::Const(_) | Value::Nil | Value::Ref(Root::Var(_), _) | Value::Expr(_) => {}
+            }
+        }
+    }
+
+    /// A new variable, named so that it doesn't shadow a parameter.
+    fn new_var(&mut self) -> VarId {
+        let mut number = self.vars.len() + 1;
+        let name = loop {
+            let name = format!("v{number}");
+            if !self.reserved.contains(&name) {
+                break name;
+            }
+            number += 1;
+        };
+        self.reserved.insert(name.clone());
+        self.vars.push(name);
+        self.vars.len() - 1
+    }
+}
+
+/// Where statements are added as the code of a block is decompiled.
+struct Scope {
+    env: Value,
+    statements: Vec<Statement>,
+}
+
+struct Builder<'a> {
+    program: &'a Program,
+    /// The functions that the metadata describes, then the program if it's added, then the
+    /// anonymous functions and versions as they're found.
+    infos: Vec<FunctionInfo>,
+    function_of: HashMap<NodeId, FunctionId>,
+    anonymous_of: HashMap<NodeId, FunctionId>,
+    /// The version of each function for the constants in its hidden parts.
+    versions: HashMap<VersionKey, FunctionId>,
+    version_counts: HashMap<FunctionId, usize>,
+    covered: Vec<bool>,
+    /// Whether the whole subtree of each node is covered, so it's only walked once.
+    subtree_covered: Vec<bool>,
+    bodies: Vec<Function>,
+}
+
+impl Builder<'_> {
+    fn function(&mut self, id: FunctionId) -> Function {
+        let info = self.infos[id].clone();
+
+        let mut frame = Frame {
+            known: info.known.clone(),
+            vars: Vec::new(),
+            structures: HashMap::new(),
+            reserved: info
+                .layout
+                .iter()
+                .flat_map(|layout| layout.named.iter().map(|slot| slot.name.clone()))
+                .collect(),
+            reads: RefCell::default(),
+        };
+        let mut scope = Scope {
+            env: Value::Ref(Root::Env, Vec::new()),
+            statements: Vec::new(),
+        };
+
+        let value = self.expr(&mut frame, &mut scope, info.node);
+        let body = finish_block(self.program, scope.statements, value);
+
+        let reads = frame.reads.into_inner();
+
+        // A known value is used as data if a part of the environment it's in is
+        let mut known = info.known;
+        for slot in &mut known {
+            slot.exposed = reads
+                .iter()
+                .any(|read| slot.path.starts_with(read) && read.len() < slot.path.len());
+        }
+
+        let reads_hidden = info
+            .layout
+            .as_ref()
+            .map(|layout| {
+                layout
+                    .hidden
+                    .iter()
+                    .map(|hidden| {
+                        reads
+                            .iter()
+                            .any(|read| read.starts_with(hidden) || hidden.starts_with(read))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Function {
+            name: info.name,
+            kind: info.kind,
+            node: info.node,
+            layout: info.layout,
+            known,
+            generic: info.generic,
+            call: info.call,
+            reads_hidden,
+            body,
+            vars: frame.vars,
+        }
+    }
+
+    fn cover(&mut self, node: NodeId) {
+        self.covered[node] = true;
+    }
+
+    fn cover_subtree(&mut self, node: NodeId) {
+        let mut stack = vec![node];
+        while let Some(node) = stack.pop() {
+            if mem::replace(&mut self.subtree_covered[node], true) {
+                continue;
+            }
+            self.covered[node] = true;
+            if let Some((first, rest)) = self.program.pair(node) {
+                stack.push(rest);
+                stack.push(first);
+            }
+        }
+    }
+
+    /// Covers the pairs and the nil at the end of an argument list.
+    fn cover_list(&mut self, mut node: NodeId) {
+        loop {
+            self.covered[node] = true;
+            match self.program.pair(node) {
+                Some((_, rest)) => node = rest,
+                None => break,
+            }
+        }
+    }
+
+    /// The part of the value at the path, with the constant for a hidden part of the function's
+    /// environment that's known, or `None` if the path goes into a computed part or through an
+    /// atom constant (which fails at runtime).
+    fn resolve(&self, frame: &Frame, value: &Value, path: &[bool]) -> Option<Value> {
+        let mut value = value
+            .resolve(self.program, &frame.known, path)?
+            .into_owned();
+
+        // A part of a structure that a variable is bound to is itself if it isn't a pair
+        while let Value::Ref(Root::Var(var), path) = &value
+            && let Some(structure) = frame.structures.get(var)
+            && let Some(part) = structure.resolve(self.program, &frame.known, path)
+            && !matches!(*part, Value::Cons(..))
+        {
+            value = part.into_owned();
+        }
+
+        Some(value)
+    }
+
+    fn value_expr(frame: &Frame, value: Value, node: NodeId) -> Expr {
+        frame.note(&value);
+        Expr {
+            kind: ExprKind::Value(value),
+            node,
+        }
+    }
+
+    fn raw(&mut self, frame: &Frame, scope: &Scope, code: NodeId) -> Expr {
+        self.cover_subtree(code);
+        frame.note(&scope.env);
+        Expr {
+            kind: ExprKind::Raw {
+                code,
+                env: scope.env.clone(),
+            },
+            node: code,
+        }
+    }
+
+    fn expr(&mut self, frame: &mut Frame, scope: &mut Scope, code: NodeId) -> Expr {
+        grow_stack(|| self.expr_inner(frame, scope, code))
+    }
+
+    fn expr_inner(&mut self, frame: &mut Frame, scope: &mut Scope, code: NodeId) -> Expr {
+        let program = self.program;
+
+        let (op, args) = match program.kind(code) {
+            NodeKind::Atom(atom) => {
+                self.cover(code);
+                let Some(path) = atom_path(atom) else {
+                    return Self::value_expr(frame, nil_code(atom, code), code);
+                };
+                return match self.resolve(frame, &scope.env, &path) {
+                    Some(value) => Self::value_expr(frame, value, code),
+                    None => self.raw(frame, scope, code),
+                };
+            }
+            &NodeKind::Pair(op, args) => (op, args),
+        };
+
+        let Some(op_atom) = program.atom(op) else {
+            return self.raw(frame, scope, code);
+        };
+
+        if op_atom == QUOTE {
+            self.cover(code);
+            self.cover(op);
+            self.cover_subtree(args);
+            return Self::value_expr(frame, Value::Const(args), code);
+        }
+
+        let Some(operands) = program.list(args) else {
+            return self.raw(frame, scope, code);
+        };
+
+        match (op_atom, operands.as_slice()) {
+            (APPLY, &[callee, env]) => {
+                self.cover(code);
+                self.cover(op);
+                self.cover_list(args);
+                self.apply(frame, scope, callee, env, code)
+            }
+            (CONS, &[_, _]) => {
+                let value = self.sym(frame, scope, code);
+                Self::value_expr(frame, value, code)
+            }
+            (APPLY, _) => self.raw(frame, scope, code),
+            _ if operator_name(op_atom).is_some() => {
+                self.cover(code);
+                self.cover(op);
+                self.cover_list(args);
+
+                // From the last operand to the first, as they're evaluated
+                let mut args = operands
+                    .iter()
+                    .rev()
+                    .map(|&operand| self.expr(frame, scope, operand))
+                    .collect::<Vec<_>>();
+                args.reverse();
+
+                Expr {
+                    kind: ExprKind::Op {
+                        op,
+                        args: Deep::new(args),
+                    },
+                    node: code,
+                }
+            }
+            _ => self.raw(frame, scope, code),
+        }
+    }
+
+    /// The value of code as a structure, with the parts that it computes as expressions.
+    fn sym(&mut self, frame: &mut Frame, scope: &mut Scope, code: NodeId) -> Value {
+        grow_stack(|| self.sym_inner(frame, scope, code))
+    }
+
+    fn sym_inner(&mut self, frame: &mut Frame, scope: &mut Scope, code: NodeId) -> Value {
+        let program = self.program;
+
+        match program.kind(code) {
+            NodeKind::Atom(atom) => {
+                self.cover(code);
+                let Some(path) = atom_path(atom) else {
+                    return nil_code(atom, code);
+                };
+                match self.resolve(frame, &scope.env, &path) {
+                    Some(value) => read(frame, scope, value, code),
+                    None => Value::Expr(Deep::new(self.raw(frame, scope, code))),
+                }
+            }
+            &NodeKind::Pair(op, args) => {
+                if program.atom(op) == Some(QUOTE) {
+                    self.cover(code);
+                    self.cover(op);
+                    self.cover_subtree(args);
+                    return Value::Const(args);
+                }
+
+                if program.atom(op) == Some(CONS)
+                    && let Some(&[first, rest]) = program.list(args).as_deref()
+                {
+                    self.cover(code);
+                    self.cover(op);
+                    self.cover_list(args);
+                    let rest = self.sym(frame, scope, rest);
+                    let first = self.sym(frame, scope, first);
+                    return Value::cons(first, rest);
+                }
+
+                Value::Expr(Deep::new(self.expr(frame, scope, code)))
+            }
+        }
+    }
+
+    /// The program that quoted code is, if it's `(q . PROGRAM)`.
+    fn quoted(&self, code: NodeId) -> Option<NodeId> {
+        let (op, value) = self.program.pair(code)?;
+        (self.program.atom(op) == Some(QUOTE)).then_some(value)
+    }
+
+    /// Covers quoted code, other than the value it quotes.
+    fn cover_quote(&mut self, code: NodeId) {
+        self.cover(code);
+        if let Some((op, _)) = self.program.pair(code) {
+            self.cover(op);
+        }
+    }
+
+    fn apply(
+        &mut self,
+        frame: &mut Frame,
+        scope: &mut Scope,
+        callee: NodeId,
+        env: NodeId,
+        node: NodeId,
+    ) -> Expr {
+        let program = self.program;
+
+        // `(a (q . PROGRAM) ENV)`
+        if let Some(body) = self.quoted(callee) {
+            self.cover_quote(callee);
+            let env = self.sym(frame, scope, env);
+            return self.known(frame, scope, body, env, true, node);
+        }
+
+        // `(a (i CONDITION (q . THEN) (q . ELSE)) ENV)`, where a branch can also be nil
+        if let Some((op, args)) = program.pair(callee)
+            && program.atom(op) == Some(IF)
+            && let Some(&[condition, then, otherwise]) = program.list(args).as_deref()
+            && [then, otherwise]
+                .iter()
+                .all(|&branch| program.is_nil(branch) || self.quoted(branch).is_some())
+        {
+            self.cover(callee);
+            self.cover(op);
+            self.cover_list(args);
+
+            // The environment is evaluated before the condition
+            let env = if program.atom(env) == Some(WHOLE_ENV) {
+                self.cover(env);
+                scope.env.clone()
+            } else {
+                let env = self.sym(frame, scope, env);
+                bind(frame, scope, env, node)
+            };
+            let condition = self.expr(frame, scope, condition);
+
+            let then = self.branch(frame, then, env.clone(), node);
+            let otherwise = self.branch(frame, otherwise, env, node);
+
+            return Expr {
+                kind: ExprKind::If {
+                    condition: Deep::new(condition),
+                    then,
+                    otherwise,
+                },
+                node,
+            };
+        }
+
+        // A program that's a constant in the environment
+        if let Some(path) = program.atom(callee).and_then(atom_path)
+            && let Some(Value::Const(body)) = self.resolve(frame, &scope.env, &path)
+        {
+            self.cover(callee);
+            let env = self.sym(frame, scope, env);
+            return self.known(frame, scope, body, env, false, node);
+        }
+
+        // The environment is evaluated before the program
+        let env = self.sym(frame, scope, env);
+        let program_expr = self.expr(frame, scope, callee);
+        frame.note(&env);
+
+        Expr {
+            kind: ExprKind::Run {
+                program: Deep::new(program_expr),
+                env,
+            },
+            node,
+        }
+    }
+
+    fn branch(&mut self, frame: &mut Frame, branch: NodeId, env: Value, node: NodeId) -> Block {
+        let mut scope = Scope {
+            env: env.clone(),
+            statements: Vec::new(),
+        };
+
+        // A branch is quoted code, or nil
+        let value = if let Some(body) = self.quoted(branch) {
+            self.cover_quote(branch);
+            self.known(frame, &mut scope, body, env, true, node)
+        } else {
+            self.cover(branch);
+            Self::value_expr(frame, Value::Const(branch), branch)
+        };
+
+        finish_block(self.program, scope.statements, value)
+    }
+
+    /// Runs a program that's known with the environment, which is a call if it's a function, and
+    /// is otherwise inline (if it's quoted where it's run) or an anonymous function.
+    fn known(
+        &mut self,
+        frame: &mut Frame,
+        scope: &mut Scope,
+        body: NodeId,
+        env: Value,
+        inline: bool,
+        node: NodeId,
+    ) -> Expr {
+        let program = self.program;
+
+        if let Some(atom) = program.atom(body) {
+            // An atom reads from the environment it's run with
+            self.cover(body);
+            let env = bind(frame, scope, env, body);
+            let Some(path) = atom_path(atom) else {
+                return Self::value_expr(frame, nil_code(atom, body), body);
+            };
+            if let Some(value) = self.resolve(frame, &env, &path) {
+                return Self::value_expr(frame, value, body);
+            }
+            let saved = mem::replace(&mut scope.env, env);
+            let expr = self.raw(frame, scope, body);
+            scope.env = saved;
+            return expr;
+        }
+
+        if let Some(&id) = self.function_of.get(&body) {
+            if self.infos[id].node != body {
+                // A copy of the body of a function that's shown elsewhere
+                self.cover_subtree(body);
+            }
+
+            // A computed value that has more than one part of the environment in it is bound
+            // first, so that each part can be shown
+            let crossing = self.infos[id].layout.as_ref().is_some_and(|layout| {
+                let mut leaves = Vec::new();
+                computed_paths(&env, &mut Vec::new(), &mut leaves);
+                leaves.iter().any(|leaf| {
+                    layout
+                        .named
+                        .iter()
+                        .map(|slot| &slot.path)
+                        .chain(&layout.hidden)
+                        .any(|slot| slot.starts_with(leaf) && leaf.len() < slot.len())
+                })
+            });
+
+            let env = if crossing {
+                bind(frame, scope, env, node)
+            } else {
+                env
+            };
+
+            return self.call(frame, id, env, node);
+        }
+
+        if inline {
+            let env = bind(frame, scope, env, node);
+            let saved = mem::replace(&mut scope.env, env);
+            let expr = self.expr(frame, scope, body);
+            scope.env = saved;
+            return expr;
+        }
+
+        let id = if let Some(&id) = self.anonymous_of.get(&body) {
+            id
+        } else {
+            let id = self.infos.len();
+            self.infos.push(FunctionInfo {
+                name: format!("anonymous#{}", self.anonymous_of.len() + 1),
+                node: body,
+                kind: FunctionKind::Anonymous,
+                layout: None,
+                known: Vec::new(),
+                generic: id,
+                call: None,
+            });
+            self.anonymous_of.insert(body, id);
+            id
+        };
+
+        frame.note(&env);
+        Expr {
+            kind: ExprKind::Call { function: id, env },
+            node,
+        }
+    }
+
+    /// A call to the function, which is to the version of it for the constants that the
+    /// environment has in its hidden parts. Each version's body uses the constants it's for, which
+    /// is sound since only calls that pass them are to it, and the version that knows none of them
+    /// is what the function's code is wherever else it's used (and when there are too many
+    /// versions).
+    fn call(&mut self, frame: &Frame, id: FunctionId, env: Value, node: NodeId) -> Expr {
+        let mut key = Vec::new();
+        let mut known = Vec::new();
+
+        // What a call shows is used: each named part and each hidden part that isn't a known
+        // constant, or the whole environment if a part of it isn't known
+        let mut shown = Vec::new();
+        let mut whole = false;
+
+        match &self.infos[id].layout {
+            Some(layout) => {
+                for slot in &layout.named {
+                    match self.resolve(frame, &env, &slot.path) {
+                        Some(value) => shown.push(value),
+                        None => whole = true,
+                    }
+                }
+
+                for path in &layout.hidden {
+                    match self.resolve(frame, &env, path) {
+                        Some(Value::Const(value)) => {
+                            key.push(Some(self.program.hashes[value]));
+                            known.push(KnownSlot {
+                                path: path.clone(),
+                                value,
+                                exposed: false,
+                            });
+                        }
+                        Some(value) => {
+                            key.push(None);
+                            shown.push(value);
+                        }
+                        None => {
+                            key.push(None);
+                            whole = true;
+                        }
+                    }
+                }
+            }
+            None => whole = true,
+        }
+
+        if whole {
+            frame.note(&env);
+        } else {
+            for value in &shown {
+                frame.note(value);
+            }
+        }
+
+        let function = if known.is_empty() {
+            id
+        } else if let Some(&version) = self.versions.get(&(id, key.clone())) {
+            version
+        } else if self.version_counts.get(&id).copied().unwrap_or(0) < MAX_VERSIONS {
+            *self.version_counts.entry(id).or_insert(0) += 1;
+            let version = self.infos.len();
+            let info = FunctionInfo {
+                known,
+                call: Some(node),
+                ..self.infos[id].clone()
+            };
+            self.infos.push(info);
+            self.versions.insert((id, key), version);
+            version
+        } else {
+            id
+        };
+
+        Expr {
+            kind: ExprKind::Call { function, env },
+            node,
+        }
+    }
+}
+
+/// The value that's read from an environment, which is bound to a variable if it's a large
+/// structure.
+fn read(frame: &mut Frame, scope: &mut Scope, value: Value, node: NodeId) -> Value {
+    if !matches!(value, Value::Cons(_, _, shape) if !shape.computed && shape.size > MAX_STRUCTURE) {
+        return value;
+    }
+
+    frame.note(&value);
+    let var = frame.new_var();
+    frame.structures.insert(var, value.clone());
+    scope.statements.push(Statement::Let {
+        var,
+        value: Deep::new(Expr {
+            kind: ExprKind::Value(value),
+            node,
+        }),
+    });
+    Value::Ref(Root::Var(var), Vec::new())
+}
+
+/// Binds the computed parts of the value to variables, in the order they're evaluated (the rest
+/// of a pair first), with `let`s before the statement, and returns the value that refers to them
+/// instead. Everything but the branches of an `if` is evaluated strictly, so this only changes
+/// which of several failures is reported when the value is part of a larger expression.
+fn bind(frame: &mut Frame, scope: &mut Scope, value: Value, node: NodeId) -> Value {
+    match value {
+        Value::Expr(expr) => {
+            let var = frame.new_var();
+            scope.statements.push(Statement::Let { var, value: expr });
+            Value::Ref(Root::Var(var), Vec::new())
+        }
+        // A read from a long path is only shown once
+        Value::Ref(..) if value.has_computed() => {
+            frame.note(&value);
+            let var = frame.new_var();
+            scope.statements.push(Statement::Let {
+                var,
+                value: Deep::new(Expr {
+                    kind: ExprKind::Value(value),
+                    node,
+                }),
+            });
+            Value::Ref(Root::Var(var), Vec::new())
+        }
+        // Only the parts with computed values in them are rebuilt
+        Value::Cons(first, rest, shape) if shape.computed => grow_stack(|| {
+            let rest = bind(frame, scope, rest.into_inner(), node);
+            let first = bind(frame, scope, first.into_inner(), node);
+            Value::cons(first, rest)
+        }),
+        value => value,
+    }
+}
+
+/// The value of an atom of code that doesn't read from the environment, which is nil. Nil itself
+/// is shown as its own node, and an atom of zero bytes evaluates to nil too.
+fn nil_code(atom: &[u8], code: NodeId) -> Value {
+    if atom.is_empty() {
+        Value::Const(code)
+    } else {
+        Value::Nil
+    }
+}
+
+fn computed_paths(value: &Value, path: &mut Path, paths: &mut Vec<Path>) {
+    match value {
+        Value::Expr(_) => paths.push(path.clone()),
+        Value::Ref(..) if value.has_computed() => paths.push(path.clone()),
+        Value::Cons(first, rest, shape) if shape.computed => grow_stack(|| {
+            path.push(false);
+            computed_paths(first, path, paths);
+            path.pop();
+            path.push(true);
+            computed_paths(rest, path, paths);
+            path.pop();
+        }),
+        Value::Cons(..) | Value::Const(_) | Value::Nil | Value::Ref(..) => {}
+    }
+}
+
+/// A block of the statements and the value, where an `if` that fails unless its condition holds
+/// (an `assert`) at the end is merged into it.
+fn finish_block(program: &Program, mut statements: Vec<Statement>, mut value: Expr) -> Block {
+    loop {
+        match value.kind {
+            ExprKind::If {
+                condition,
+                then,
+                otherwise,
+            } if is_raise(program, &otherwise) => {
+                let ExprKind::Op { args, .. } = otherwise.value.into_inner().kind else {
+                    unreachable!("the branch is a raise");
+                };
+                statements.push(Statement::Assert {
+                    condition,
+                    raise: args,
+                    node: value.node,
+                });
+                statements.extend(then.statements);
+                value = then.value.into_inner();
+            }
+            kind => {
+                return Block {
+                    statements,
+                    value: Deep::new(Expr {
+                        kind,
+                        node: value.node,
+                    }),
+                };
+            }
+        }
+    }
+}
+
+/// Whether the block is only a `raise` (`x`).
+fn is_raise(program: &Program, block: &Block) -> bool {
+    block.statements.is_empty()
+        && matches!(&block.value.kind, ExprKind::Op { op, .. } if program.atom(*op) == Some(RAISE))
+}

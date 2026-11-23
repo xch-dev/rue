@@ -25,9 +25,11 @@ use rue_lir::{ClvmTarget, DebugDialect};
 use rue_options::{CompilerOptions, Manifest, Project, find_project};
 
 mod compact;
+mod explain;
 mod fmt;
 mod trace;
 
+use explain::*;
 use fmt::*;
 use trace::{Sidecars, run_with_trace};
 
@@ -41,6 +43,21 @@ pub enum Command {
     Test(TestArgs),
     /// Run a compiled program with a solution, and print its output
     Debug(DebugArgs),
+    /// Show a compiled program as pseudocode, with where each line is in the source
+    ///
+    /// The pseudocode comes from the program's debug metadata sidecar (`rue build
+    /// --debug-metadata`), and works without one, though nothing is named then.
+    ///
+    /// Function calls, `if`s and operators are shown as Rue code, and values from the environment by
+    /// the names of the parameters they're in (or as `env@PATH` if they have no name). A call that
+    /// passes constants for hidden parts of an environment, such as captured functions, is to a
+    /// version of the function that shows them (`f`, `f#2` and so on, if they differ). A large
+    /// constant that's used more than once is shown once, as `C1` and so on. `select(c, a, b)` is
+    /// CLVM's `i`, which evaluates both values; `if` only evaluates the branch it takes, and tests
+    /// whether the condition isn't nil. A closure is shown as `function{capture: value}`, and
+    /// calling a value runs it with the arguments as its environment. Code that isn't recognized
+    /// is shown as CLVM, in `clvm!(...)`.
+    Explain(ExplainArgs),
     /// Format source files, or check that they're formatted
     Fmt(FmtArgs),
     /// List every lint and lint group, along with each lint's default level
@@ -317,6 +334,10 @@ fn main() -> Result<()> {
         Command::Test(args) => test(args),
         Command::Debug(args) => {
             println!("{}", debug(args)?);
+            Ok(())
+        }
+        Command::Explain(args) => {
+            println!("{}", explain(&args)?);
             Ok(())
         }
         Command::Fmt(args) => format(&args),
@@ -1706,6 +1727,85 @@ mod tests {
             run_and_trace_test(&mut ctx, &mut allocator, &returns_one, &project.path, cost)
                 .unwrap_err();
         assert_eq!(traced, None);
+    }
+
+    /// Runs `rue explain` with the arguments, and returns its output or error message.
+    fn run_explain(args: &[&str]) -> Result<String, String> {
+        let Ok(Command::Explain(args)) =
+            Command::try_parse_from(["rue", "explain"].iter().chain(args))
+        else {
+            panic!("expected explain command");
+        };
+        crate::explain(&args).map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn explain_shows_a_program() {
+        let project = TempProject::new(
+            "explain",
+            "fn main(amount: Int, skip: Bool) -> Int {\n    let doubled = amount + amount;\n    if skip { 0 } else { doubled }\n}\n",
+        );
+        run_build(&project.path, &["--all", "--debug-metadata"]);
+        let program = project.path.join("main.rue.hex");
+        let program = program.to_str().unwrap();
+        let hex = fs::read_to_string(program).unwrap();
+        let sidecar = project.path.join("main.rue.debug.clvm.bin");
+
+        // A program file is explained with the sidecar next to it
+        let named = run_explain(&[program]).unwrap();
+        assert!(
+            named.contains("fn main(amount: Int, skip: Atom) {"),
+            "{named}"
+        );
+        assert!(named.contains("amount + amount"), "{named}");
+        assert!(named.contains("main.rue:3:5-35"), "{named}");
+
+        // As is the hex of the program, with the sidecar given
+        assert_eq!(
+            run_explain(&[
+                "-x",
+                hex.trim(),
+                "--debug-metadata",
+                sidecar.to_str().unwrap()
+            ]),
+            Ok(named.clone())
+        );
+
+        // Without a sidecar, nothing is named
+        let unnamed = run_explain(&["-x", hex.trim()]).unwrap();
+        assert_eq!(hex.trim(), "ff02ffff03ff05ff80ffff01ff10ff02ff028080ff0180");
+        assert!(unnamed.contains("solution@2 + solution@2"), "{unnamed}");
+
+        // A program file that isn't hex is CLVM, and without a sidecar next to it, nothing is
+        // named, unless one is given
+        let text = project.path.join("program.clvm");
+        fs::write(&text, "(a (i 5 () (q 16 2 2)) 1)\n").unwrap();
+        let text = text.to_str().unwrap();
+        assert_eq!(run_explain(&[text]), Ok(unnamed.clone()));
+        assert_eq!(
+            run_explain(&[text, "--debug-metadata", sidecar.to_str().unwrap()]),
+            Ok(named.clone())
+        );
+
+        // A file of hex that isn't named `.hex` is read as hex with `-x`
+        let copy = project.path.join("program.txt");
+        fs::write(&copy, &hex).unwrap();
+        assert_eq!(
+            run_explain(&["-x", copy.to_str().unwrap()]),
+            Ok(unnamed.clone())
+        );
+
+        // A sidecar for another program is rejected, even if there's a valid one next to the
+        // file, since a sidecar that's given is used instead
+        let error =
+            run_explain(&["(q . 1)", "--debug-metadata", sidecar.to_str().unwrap()]).unwrap_err();
+        assert!(error.contains("isn't valid for the program"), "{error}");
+        let other = TempProject::new("explain-other", "fn main() -> Int {\n    1\n}\n");
+        run_build(&other.path, &["--all", "--debug-metadata"]);
+        let other = other.path.join("main.rue.debug.clvm.bin");
+        let error =
+            run_explain(&[program, "--debug-metadata", other.to_str().unwrap()]).unwrap_err();
+        assert!(error.contains("isn't valid for the program"), "{error}");
     }
 
     #[test]

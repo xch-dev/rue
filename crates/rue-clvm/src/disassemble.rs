@@ -10,77 +10,72 @@ const MAX_DECIMAL_LEN: usize = 8;
 /// The shortest atom that is written as a string. Shorter atoms are usually small integers.
 const MIN_STRING_LEN: usize = 3;
 
-type WriteFn = fn(&Allocator, NodePtr, &mut String);
-
 /// Converts a CLVM program to its textual representation.
 ///
 /// The first item of every list is written as an operator keyword where possible. This includes
 /// quoted values, since programs often quote code to run later.
 pub fn disassemble_program(allocator: &Allocator, node: NodePtr) -> String {
     let mut output = String::new();
-    write_program(allocator, node, &mut output);
+    write(allocator, node, true, &mut output);
     output
 }
 
 /// Converts a CLVM value to its textual representation, without any operator keywords.
 pub fn disassemble_value(allocator: &Allocator, node: NodePtr) -> String {
     let mut output = String::new();
-    write_value(allocator, node, &mut output);
+    write(allocator, node, false, &mut output);
     output
 }
 
-fn write_program(allocator: &Allocator, node: NodePtr, output: &mut String) {
-    let SExp::Pair(operator, args) = allocator.sexp(node) else {
-        write_atom(allocator.atom(node).as_ref(), output);
-        return;
-    };
-
-    let name = match allocator.sexp(operator) {
-        SExp::Atom => operator_name(allocator.atom(operator).as_ref()),
-        SExp::Pair(..) => None,
-    };
-
-    output.push('(');
-
-    match name {
-        Some(name) => output.push_str(name),
-        None => write_program(allocator, operator, output),
-    }
-
-    write_rest(allocator, args, write_program, output);
+enum Step {
+    /// Writes a node.
+    Node(NodePtr),
+    /// Writes the items of a list after the first, then the closing parenthesis.
+    Rest(NodePtr),
 }
 
-fn write_value(allocator: &Allocator, node: NodePtr, output: &mut String) {
-    let SExp::Pair(first, rest) = allocator.sexp(node) else {
-        write_atom(allocator.atom(node).as_ref(), output);
-        return;
-    };
+/// Writes the node, with operator keywords if it's a program. Values can be nested arbitrarily
+/// deeply, so this doesn't recurse.
+fn write(allocator: &Allocator, node: NodePtr, program: bool, output: &mut String) {
+    let mut steps = vec![Step::Node(node)];
 
-    output.push('(');
-    write_value(allocator, first, output);
-    write_rest(allocator, rest, write_value, output);
-}
+    while let Some(step) = steps.pop() {
+        match step {
+            Step::Node(node) => {
+                let SExp::Pair(first, rest) = allocator.sexp(node) else {
+                    write_atom(allocator.atom(node).as_ref(), output);
+                    continue;
+                };
 
-/// Writes the items after the first in a list, then the closing parenthesis.
-fn write_rest(allocator: &Allocator, mut rest: NodePtr, write_item: WriteFn, output: &mut String) {
-    loop {
-        match allocator.sexp(rest) {
-            SExp::Pair(item, next) => {
-                output.push(' ');
-                write_item(allocator, item, output);
-                rest = next;
-            }
-            SExp::Atom => {
-                if !allocator.atom(rest).as_ref().is_empty() {
-                    output.push_str(" . ");
-                    write_item(allocator, rest, output);
+                output.push('(');
+                steps.push(Step::Rest(rest));
+
+                let name = match allocator.sexp(first) {
+                    SExp::Atom if program => operator_name(allocator.atom(first).as_ref()),
+                    _ => None,
+                };
+                match name {
+                    Some(name) => output.push_str(name),
+                    None => steps.push(Step::Node(first)),
                 }
-                break;
             }
+            Step::Rest(rest) => match allocator.sexp(rest) {
+                SExp::Pair(item, next) => {
+                    output.push(' ');
+                    steps.push(Step::Rest(next));
+                    steps.push(Step::Node(item));
+                }
+                SExp::Atom => {
+                    let atom = allocator.atom(rest);
+                    if !atom.as_ref().is_empty() {
+                        output.push_str(" . ");
+                        write_atom(atom.as_ref(), output);
+                    }
+                    output.push(')');
+                }
+            },
         }
     }
-
-    output.push(')');
 }
 
 fn write_atom(atom: &[u8], output: &mut String) {
@@ -193,6 +188,22 @@ mod tests {
         let mut a = Allocator::new();
         let node = assemble(&mut a, "(2 (1 . 1) 3 . 4)").unwrap();
         assert_eq!(disassemble_value(&a, node), "(2 (1 . 1) 3 . 4)");
+    }
+
+    #[test]
+    fn test_deeply_nested() {
+        // Nested in the first of each pair, which is where an operator is
+        let mut a = Allocator::new();
+        let mut node = NodePtr::NIL;
+        for _ in 0..1_000_000 {
+            node = a.new_pair(node, NodePtr::NIL).unwrap();
+        }
+        let output = disassemble_program(&a, node);
+        assert_eq!(
+            output,
+            format!("{}(){}", "(".repeat(1_000_000), ")".repeat(1_000_000))
+        );
+        assert_eq!(disassemble_value(&a, node), output);
     }
 
     #[test]

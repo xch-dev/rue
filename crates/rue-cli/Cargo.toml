@@ -29,6 +29,7 @@ clvmr = { workspace = true, features = ["pre-eval"] }
 chialisp = { workspace = true }
 clvm-utils = { workspace = true }
 rue-clvm = { workspace = true }
+rue-explain = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 anyhow = { workspace = true }
 hex = { workspace = true }

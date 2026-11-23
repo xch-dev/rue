@@ -1763,6 +1763,7 @@ dependencies = [
  "rue-clvm",
  "rue-compiler",
  "rue-diagnostic",
+ "rue-explain",
  "rue-formatter",
  "rue-lir",
  "rue-options",
@@ -1816,6 +1817,24 @@ name = "rue-diagnostic"
 version = "0.13.0"
 dependencies = [
  "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "rue-explain"
+version = "0.13.0"
+dependencies = [
+ "chialisp",
+ "clvmr",
+ "expect-test",
+ "hex",
+ "num-bigint",
+ "rue-clvm",
+ "rue-compiler",
+ "rue-lir",
+ "rue-options",
+ "sha2 0.11.1",
+ "stacker",
  "thiserror",
 ]
 
@@ -1957,6 +1976,7 @@ dependencies = [
  "rue-clvm",
  "rue-compiler",
  "rue-diagnostic",
+ "rue-explain",
  "rue-formatter",
  "rue-hir",
  "rue-lir",

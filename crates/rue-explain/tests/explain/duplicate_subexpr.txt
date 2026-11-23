@@ -1,0 +1,27 @@
+===== release =====
+// The types of parameters are what the debug metadata says about their declared types, which the program doesn't check
+// The program is the body of `main`
+fn main(x: Int, y: Int) {  // duplicate_subexpr.rue:4:5-31
+    (if x > nil { x + y } else { raise() }) + (if y > nil { y * x } else { raise() })  // duplicate_subexpr.rue:4:5-31
+}
+===== debug =====
+// The types of parameters are what the debug metadata says about their declared types, which the program doesn't check
+program(solution) {                         // duplicate_subexpr.rue:3:32-5:2
+    main(x: solution@2, y: solution@5)      // duplicate_subexpr.rue:3:32-5:2
+}
+
+fn main(x: Int, y: Int) {                   // duplicate_subexpr.rue:4:5-31
+    // env@4 is always second
+    // env@6 is always first
+    first(a: x, b: y) + second(a: y, b: x)  // duplicate_subexpr.rue:4:5-31
+}
+
+fn second(a: Int, b: Int) {                 // duplicate_subexpr.rue:13:5-18
+    assert a > nil else raise("assertion failed at duplicate_subexpr.rue:13:5")  // duplicate_subexpr.rue:13:5-18
+    a * b                                   // duplicate_subexpr.rue:14:5-10
+}
+
+fn first(a: Int, b: Int) {                  // duplicate_subexpr.rue:8:5-18
+    assert a > nil else raise("assertion failed at duplicate_subexpr.rue:8:5")  // duplicate_subexpr.rue:8:5-18
+    a + b                                   // duplicate_subexpr.rue:9:5-10
+}

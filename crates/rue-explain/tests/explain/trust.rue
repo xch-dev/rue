@@ -1,0 +1,7 @@
+// solution: (5 ())
+// solution: (5 1)
+
+fn main(amount: Int, skip: Bool) -> Int {
+    let doubled = amount + amount;
+    if skip { 0 } else { doubled }
+}
