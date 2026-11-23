@@ -50,11 +50,10 @@ diagnostics:
 - Expected `=>`, found `{` at match_errors.rue:156:26
 - Expected one of `,`, `}`, found `else` at match_errors.rue:156:32
 - Expected expression, found `=` at match_errors.rue:163:16
-- Expected symbol, but found type `Pair` at match_errors.rue:171:26
-- Expected `=>`, found `{` at match_errors.rue:171:31
-- Undeclared symbol `first` at match_errors.rue:171:33
-- Expected one of `;`, `}`, found `:` at match_errors.rue:171:38
-- Expected one of `,`, `}`, found `=` at match_errors.rue:171:53
+- Cannot use `==` operator with `Pair` and `Pair` at match_errors.rue:171:17
+- |-
+  Struct initializer needs parentheses here, since a `{` after `Pair` would start a block at match_errors.rue:171:26
+    help: Wrap it in parentheses: `(Pair { ... })`
 - Unused binding `first` at match_errors.rue:178:16
 - Unused binding `rest` at match_errors.rue:178:23
 - Expected one of `:`, `,`, `}`, found `=` at match_errors.rue:178:28

@@ -39,20 +39,20 @@ diagnostics:
   Cannot assign `Bool | (Int, Int)` to `Bool` without a type guard, since the value isn't always a valid `Bool` at inline_narrowing_notes.rue:79:12
     note: Every arm of an `inline match` is evaluated, so the arm doesn't narrow the type of `value`; use `match` instead
 - |-
-  Cannot use `!` operator with `Bool | Int` at inline_narrowing_notes.rue:88:44
-    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `flag`; use `if` instead
+  Cannot use `-` operator with `Int | (Int, Int)` at inline_narrowing_notes.rue:93:45
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `number`; use `if` instead
 - |-
-  Cannot destructure type `(Int, Int) | nil` into a pair at inline_narrowing_notes.rue:92:13
+  Cannot destructure type `(Int, Int) | nil` into a pair at inline_narrowing_notes.rue:97:13
     note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `pair`; use `if` instead
 - |-
-  Cannot spread a value of type `Point | nil` in an initializer of `Point`, since it isn't a `Point` at inline_narrowing_notes.rue:95:53
+  Cannot spread a value of type `Point | nil` in an initializer of `Point`, since it isn't a `Point` at inline_narrowing_notes.rue:100:53
     note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `point`; use `if` instead
 - |-
-  Unknown field `x` on type `Point | nil` at inline_narrowing_notes.rue:102:65
+  Unknown field `x` on type `Point | nil` at inline_narrowing_notes.rue:106:65
     note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `point`; use `if` instead
-- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:106:62
+- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:110:62
 - |-
-  Cannot assign `Bytes32 | nil` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at inline_narrowing_notes.rue:107:27
+  Cannot assign `Bytes32 | nil` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at inline_narrowing_notes.rue:111:27
     note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
-- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:113:48
-- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:133:45
+- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:117:48
+- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:137:45

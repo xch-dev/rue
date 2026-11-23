@@ -84,8 +84,13 @@ fn match_condition(value: Bool | (Int, Int)) -> Bool {
 }
 
 // Other errors that narrowing would avoid
-fn kinds(flag: Bool | Int, pair: (Int, Int) | nil, point: Point | nil, fallback: Point) -> Int {
-    let negated = inline if flag is Bool { !flag } else { false };
+fn kinds(
+    number: Int | (Int, Int),
+    pair: (Int, Int) | nil,
+    point: Point | nil,
+    fallback: Point,
+) -> Int {
+    let negated = inline if number is Int { -number } else { 0 };
     let first = inline if pair is nil {
         0
     } else {
@@ -93,8 +98,7 @@ fn kinds(flag: Bool | Int, pair: (Int, Int) | nil, point: Point | nil, fallback:
         first
     };
     let spread = inline if point is Point { Point { ...point } } else { fallback };
-    let _ = negated;
-    first + spread.x
+    first + spread.x + negated
 }
 
 // A branch of an inline expression in another one has the note once
@@ -147,7 +151,6 @@ export fn main(
     point: Point | nil,
     pair: Int | (Int, Int),
     flag: Bool | (Int, Int),
-    choice: Bool | Int,
     maybe_pair: (Int, Int) | nil,
 ) -> List<Any> {
     [
@@ -169,6 +172,6 @@ export fn main(
         untyped(value),
         match_condition(flag),
         nested(point),
-        kinds(choice, maybe_pair, point, Point { x: 1 }),
+        kinds(pair, maybe_pair, point, Point { x: 1 }),
     ]
 }
