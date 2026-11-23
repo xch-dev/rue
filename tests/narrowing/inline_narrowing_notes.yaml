@@ -1,0 +1,58 @@
+diagnostics:
+- |-
+  Unknown field `first` on type `List<Int>` at inline_narrowing_notes.rue:9:45
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `list`; use `if` instead
+- |-
+  Cannot assign `Bytes32 | nil` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at inline_narrowing_notes.rue:12:65
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
+- |-
+  Cannot assign `Bytes32 | nil` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at inline_narrowing_notes.rue:17:27
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
+- |-
+  Cannot assign `Bytes32 | nil` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at inline_narrowing_notes.rue:22:10
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
+- |-
+  Cannot use `+` operator with `Int | (Int, Int)` and `1` at inline_narrowing_notes.rue:26:30
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
+- |-
+  Unknown field `x` on type `Point | nil` at inline_narrowing_notes.rue:31:24
+    note: Every arm of an `inline match` is evaluated, so the arm doesn't narrow the type of `point`; use `match` instead
+- |-
+  Cannot assign `Bytes32 | nil` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at inline_narrowing_notes.rue:36:66
+    note: Every arm of an `inline match` is evaluated, so the arm doesn't narrow the type of `value`; use `match` instead
+- |-
+  Unknown field `first` on type `Int | (Int, Int)` at inline_narrowing_notes.rue:45:43
+    note: Every arm of an `inline match` is evaluated, so the arm doesn't narrow the type of `value`; use `match` instead
+- Unknown field `x` on type `Point | nil` at inline_narrowing_notes.rue:52:40
+- |-
+  Cannot assign `Bytes32 | nil` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at inline_narrowing_notes.rue:57:39
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
+- Unknown field `x` on type `Point | nil` at inline_narrowing_notes.rue:57:52
+- Unknown field `x` on type `Point | nil` at inline_narrowing_notes.rue:64:20
+- |-
+  Cannot assign `Bool | (Int, Int)` to `Bool` without a type guard, since the value isn't always a valid `Bool` at inline_narrowing_notes.rue:70:12
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
+- |-
+  Cannot assign `Bool | (Int, Int)` to `Bool` without a type guard, since the value isn't always a valid `Bool` at inline_narrowing_notes.rue:71:8
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
+- |-
+  Cannot assign `Bool | (Int, Int)` to `Bool` without a type guard, since the value isn't always a valid `Bool` at inline_narrowing_notes.rue:79:12
+    note: Every arm of an `inline match` is evaluated, so the arm doesn't narrow the type of `value`; use `match` instead
+- |-
+  Cannot use `-` operator with `Int | (Int, Int)` at inline_narrowing_notes.rue:93:45
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `number`; use `if` instead
+- |-
+  Cannot destructure type `(Int, Int) | nil` into a pair at inline_narrowing_notes.rue:97:13
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `pair`; use `if` instead
+- |-
+  Cannot spread a value of type `Point | nil` in an initializer of `Point`, since it isn't a `Point` at inline_narrowing_notes.rue:100:53
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `point`; use `if` instead
+- |-
+  Unknown field `x` on type `Point | nil` at inline_narrowing_notes.rue:106:65
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `point`; use `if` instead
+- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:110:62
+- |-
+  Cannot assign `Bytes32 | nil` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at inline_narrowing_notes.rue:111:27
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
+- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:117:48
+- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:137:45

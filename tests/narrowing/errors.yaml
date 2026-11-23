@@ -23,6 +23,8 @@ diagnostics:
 - Unused function `same_path_any` at errors.rue:71:4
 - Cannot assign `Bytes32 | (Int, Int)` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at errors.rue:71:60
 - Unused function `inline_if` at errors.rue:80:4
-- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:80:42
+- |-
+  Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:80:42
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `x`; use `if` instead
 - Unused function `if_expr_escape` at errors.rue:85:4
 - Cannot use `+` operator with `Int | (Int, Int)` and `Int` at errors.rue:91:5

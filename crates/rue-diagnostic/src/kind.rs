@@ -68,6 +68,11 @@ pub enum DiagnosticKind {
     #[error("Expected {}, found {}", list_of(.1), .0)]
     UnexpectedToken(String, Vec<String>),
 
+    #[error(
+        "Struct initializer needs parentheses here, since a `{{` after `{0}` would start a block"
+    )]
+    UnparenthesizedStructInitializer(String),
+
     #[error("Unterminated block comment")]
     UnterminatedBlockComment,
 

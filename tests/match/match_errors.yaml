@@ -24,7 +24,9 @@ diagnostics:
 - Undeclared type `Missing` at match_errors.rue:153:10
 - Undeclared type `Missing` at match_errors.rue:163:9
 - Match on `FirstPair | SecondPair | nil` is not exhaustive, since it doesn't handle `(Int, Int)` at match_errors.rue:175:11
-- Unknown field `value` on type `WithValue | A` at match_errors.rue:189:28
+- |-
+  Unknown field `value` on type `WithValue | A` at match_errors.rue:189:28
+    note: Every arm of an `inline match` is evaluated, so the arm doesn't narrow the type of `value`; use `match` instead
 - Match on `U` is not exhaustive, since it doesn't handle `C` at match_errors.rue:195:18
 - Undeclared type `Missing` at match_errors.rue:213:9
 - Cannot type guard from `Int | nil` to `(Int, Int)`, since they do not overlap at match_errors.rue:221:9

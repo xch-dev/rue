@@ -1,0 +1,36 @@
+diagnostics:
+- |-
+  Struct initializer needs parentheses here, since a `{` after `Summary` would start a block at struct_initializer_before_body.rue:15:52
+    help: Wrap it in parentheses: `(Summary { ... })`
+- |-
+  Struct initializer needs parentheses here, since a `{` after `Summary` would start a block at struct_initializer_before_body.rue:23:52
+    help: Wrap it in parentheses: `(Summary { ... })`
+- |-
+  Struct initializer needs parentheses here, since a `{` after `Summary` would start a block at struct_initializer_before_body.rue:31:52
+    help: Wrap it in parentheses: `(Summary { ... })`
+- Unused binding `item` at struct_initializer_before_body.rue:39:23
+- |-
+  Expected symbol, but found type `Holder` at struct_initializer_before_body.rue:39:31
+    note: A `{` after `Holder` starts the body here, so a struct initializer needs parentheses: `(Holder { ... })`
+- Unknown field `items` on type `List<List<Int>>` at struct_initializer_before_body.rue:39:48
+- Expected `;`, found `{` at struct_initializer_before_body.rue:39:54
+- |-
+  Struct initializer needs parentheses here, since a `{` after `Summary` would start a block at struct_initializer_before_body.rue:42:35
+    help: Wrap it in parentheses: `(Summary { ... })`
+- |-
+  Struct initializer needs parentheses here, since a `{` after `Summary` would start a block at struct_initializer_before_body.rue:48:16
+    help: Wrap it in parentheses: `(Summary { ... })`
+- |-
+  Struct initializer needs parentheses here, since a `{` after `Summary` would start a block at struct_initializer_before_body.rue:50:23
+    help: Wrap it in parentheses: `(Summary { ... })`
+- |-
+  Struct initializer needs parentheses here, since a `{` after `Summary` would start a block at struct_initializer_before_body.rue:58:11
+    help: Wrap it in parentheses: `(Summary { ... })`
+- Unused binding `item` at struct_initializer_before_body.rue:66:23
+- Unused binding `summary` at struct_initializer_before_body.rue:66:42
+- |-
+  Expected symbol, but found type `Summary` at struct_initializer_before_body.rue:66:52
+    note: A `{` after `Summary` starts the body here, so a struct initializer needs parentheses: `(Summary { ... })`
+- Expected `;`, found `{` at struct_initializer_before_body.rue:67:5
+- Value returned by statement is unused at struct_initializer_before_body.rue:67:5
+- Undeclared symbol `item` at struct_initializer_before_body.rue:68:54

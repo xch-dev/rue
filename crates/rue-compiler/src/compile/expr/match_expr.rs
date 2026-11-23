@@ -12,9 +12,9 @@ use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason
 use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
 use crate::{
-    BoundValue, Branches, Compiler, CompletionContext, SyntaxItemKind, bind_unless_path,
-    compile_branching_expr, compile_expr, compile_type, create_binding, narrows_only_atoms,
-    type_at_path,
+    BoundValue, Branches, Compiler, CompletionContext, InlineBranch, SyntaxItemKind,
+    bind_unless_path, compile_branching_expr, compile_expr, compile_type, create_binding,
+    narrows_only_atoms, type_at_path,
 };
 
 /// Compiles a `match` expression into the `if` and `else if` chain of type guards that it's
@@ -97,6 +97,7 @@ pub fn compile_match_expr(
     };
 
     let matched = Matched {
+        expression: expr.syntax().text_range(),
         scrutinee: &scrutinee,
         reference: &reference,
         recast,
@@ -441,6 +442,8 @@ pub fn compile_match_expr(
 
 /// The value that a `match` is on, and what its arms are compiled with.
 struct Matched<'a> {
+    /// The range of the whole `match`.
+    expression: TextRange,
     scrutinee: &'a Value,
     /// What the arms narrow: the path that the value is or that the block it is ends in, and
     /// otherwise the binding of the value.
@@ -508,6 +511,8 @@ fn compile_arm(
         }
     }
 
+    let mut guarded = HashSet::new();
+
     let condition = guard.map(|guard| {
         // The condition is only evaluated once the arm's type has been checked, even in an
         // `inline match`, whose arms don't see the value narrowed since they're always evaluated
@@ -531,7 +536,9 @@ fn compile_arm(
         if let Some(index) = narrowing {
             ctx.revert_mappings(index, guard.syntax().text_range().end());
         }
-        if !matched.inline {
+        if matched.inline {
+            guarded.extend(value.then_map.keys().copied());
+        } else {
             ctx.push_mappings(value.then_map, range.start());
         }
 
@@ -539,25 +546,40 @@ fn compile_arm(
     });
 
     let expected_type = matched.expected_type;
+    let start = ctx.branch_start(InlineBranch::Match, matched.expression);
 
-    let body = match (body, matched.branches) {
+    let value = match (&body, matched.branches) {
         (None, _) => {
             debug!("Unresolved match arm body");
             ctx.unresolved()
         }
         (Some(body), Some(branches)) if branches.is_statement() && !arm.ends_with_brace() => {
             ctx.diagnostic(body.syntax(), DiagnosticKind::StatementMatchArmValue);
-            compile_expr(ctx, &body, expected_type)
+            compile_expr(ctx, body, expected_type)
         }
         (Some(body), Some(branches)) => {
-            compile_branching_expr(ctx, &body, expected_type, branches).0
+            compile_branching_expr(ctx, body, expected_type, branches).0
         }
-        (Some(body), None) => compile_expr(ctx, &body, expected_type),
+        (Some(body), None) => compile_expr(ctx, body, expected_type),
     };
+
+    // The body of an arm of an `inline match` sees neither the value narrowed to the arm's type
+    // nor what its condition narrows
+    if matched.inline
+        && let Some(body) = &body
+    {
+        // An arm without a type narrows the value to what the arms before it didn't handle, if
+        // they handled anything
+        if pattern.is_some() || !ctx.is_assignable(matched.scrutinee.ty, remaining) {
+            guarded.insert(matched.reference.symbol);
+        }
+
+        ctx.note_unnarrowed_branch(start, &guarded, body.syntax(), value.ty, expected_type);
+    }
 
     ctx.revert_mappings(index, range.end());
 
-    (body, condition)
+    (value, condition)
 }
 
 /// Compiles the condition and body of an arm that's never taken, so that their errors are

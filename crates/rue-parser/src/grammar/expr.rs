@@ -80,9 +80,16 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
         || p.at_quiet(T![super])
         || p.at_quiet(T![project])
     {
+        let start = p.next_start();
         path_expr(p, checkpoint);
+        let path_end = p.previous_end();
 
-        if p.at(T!['{']) && options.allow_struct_initializer {
+        // Where a `{` starts the body of an `if`, `match` or `for`, a struct initializer needs
+        // parentheses, but one that can't be the body is parsed as one anyway, so that the error
+        // says so, rather than the body and everything after it being misread
+        let unparenthesized = !options.allow_struct_initializer && at_struct_initializer_braces(p);
+
+        if p.at(T!['{']) && (options.allow_struct_initializer || unparenthesized) {
             p.start_at(checkpoint, SyntaxKind::StructInitializerExpr);
             p.expect(T!['{']);
             delimited_list(p, T!['}'], |p| {
@@ -109,6 +116,11 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
                 p.finish();
             });
             p.finish();
+
+            if unparenthesized {
+                let end = p.previous_end();
+                p.error_unparenthesized_struct_initializer(start..end, path_end);
+            }
         }
     } else if !options.inline
         && let Some(kind) = p.at_any_quiet(SyntaxKind::LITERAL)
@@ -468,10 +480,34 @@ fn for_expr(p: &mut Parser, checkpoint: Checkpoint) {
     p.finish();
 }
 
+/// Whether the braces at the current token, after a path in an expression where a `{` starts a
+/// body (see [`condition_expr`]), are a struct initializer's rather than the body: what's in them
+/// starts with a field (`x:`, `x,`) or a spread (`...`), which a body can't, or they're empty or
+/// hold one name (`{}`, `{ x }`) and are followed on the same line by another `{`, which is the
+/// body.
+fn at_struct_initializer_braces(p: &mut Parser) -> bool {
+    if !p.at_quiet(T!['{']) {
+        return false;
+    }
+
+    match (p.lookahead(1), p.lookahead(2), p.lookahead(3)) {
+        (SyntaxKind::Ident, T![:], next) => next != T![:],
+        // A spread is lexed as three `.`s, and a block can't start with one either
+        (SyntaxKind::Ident, T![,], _) | (T![.], _, _) => true,
+        // In a header inside another one, such as the list of a `for` in the value of a `match`,
+        // the braces can be the body of the inner one, followed by the body of the outer one
+        (T!['}'], _, _) | (SyntaxKind::Ident, T!['}'], _) => {
+            p.header_depth == 1 && p.past_group_on_line_at(T!['{'])
+        }
+        _ => false,
+    }
+}
+
 /// The expression before the braces of an `if` or `match`, or before the `=>` of a match arm with
 /// a condition. A brace after it starts what comes next, so it can't be a struct initializer
 /// without parentheses.
 fn condition_expr(p: &mut Parser) {
+    p.header_depth += 1;
     let checkpoint = p.checkpoint();
     expr_with(
         p,
@@ -484,6 +520,7 @@ fn condition_expr(p: &mut Parser) {
             allow_range: false,
         },
     );
+    p.header_depth -= 1;
 }
 
 /// A `match` expression, such as `match value { Int => 1, _ => 2 }`, or an `inline match`. Each
@@ -4451,6 +4488,265 @@ mod tests {
               Block@12..12
         "#]],
             expect!["Expected binding, found eof at main.rue:1:13"],
+        );
+    }
+
+    #[test]
+    fn struct_initializer_before_body() {
+        // Braces that can only be a struct initializer's are parsed as one, and reported
+        check(
+            expr,
+            "if Point { x: 1 } == p { 1 } else { 2 }",
+            expect![[r#"
+                IfExpr@0..39
+                  If@0..2 "if"
+                  Whitespace@2..3 " "
+                  BinaryExpr@3..23
+                    StructInitializerExpr@3..17
+                      PathExpr@3..9
+                        PathSegment@3..9
+                          Ident@3..8 "Point"
+                          Whitespace@8..9 " "
+                      OpenBrace@9..10 "{"
+                      Whitespace@10..11 " "
+                      StructInitializerField@11..16
+                        Ident@11..12 "x"
+                        Colon@12..13 ":"
+                        Whitespace@13..14 " "
+                        LiteralExpr@14..15
+                          Integer@14..15 "1"
+                        Whitespace@15..16 " "
+                      CloseBrace@16..17 "}"
+                    Whitespace@17..18 " "
+                    Equals@18..20 "=="
+                    Whitespace@20..21 " "
+                    PathExpr@21..23
+                      PathSegment@21..23
+                        Ident@21..22 "p"
+                        Whitespace@22..23 " "
+                  Block@23..28
+                    OpenBrace@23..24 "{"
+                    Whitespace@24..25 " "
+                    LiteralExpr@25..26
+                      Integer@25..26 "1"
+                    Whitespace@26..27 " "
+                    CloseBrace@27..28 "}"
+                  Whitespace@28..29 " "
+                  Else@29..33 "else"
+                  Whitespace@33..34 " "
+                  Block@34..39
+                    OpenBrace@34..35 "{"
+                    Whitespace@35..36 " "
+                    LiteralExpr@36..37
+                      Integer@36..37 "2"
+                    Whitespace@37..38 " "
+                    CloseBrace@38..39 "}"
+            "#]],
+            expect![
+                "Struct initializer needs parentheses here, since a `{` after `Point` would start a block at main.rue:1:4"
+            ],
+        );
+
+        // Empty braces with the body after them on the same line
+        check(
+            expr,
+            "for x in xs fold s = Summary {} { s }",
+            expect![[r#"
+                ForExpr@0..37
+                  For@0..3 "for"
+                  Whitespace@3..4 " "
+                  ForClause@4..12
+                    NamedBinding@4..5
+                      Ident@4..5 "x"
+                    Whitespace@5..6 " "
+                    Ident@6..8 "in"
+                    Whitespace@8..9 " "
+                    PathExpr@9..12
+                      PathSegment@9..12
+                        Ident@9..11 "xs"
+                        Whitespace@11..12 " "
+                  ForFold@12..32
+                    Ident@12..16 "fold"
+                    Whitespace@16..17 " "
+                    NamedBinding@17..18
+                      Ident@17..18 "s"
+                    Whitespace@18..19 " "
+                    Assign@19..20 "="
+                    Whitespace@20..21 " "
+                    StructInitializerExpr@21..31
+                      PathExpr@21..29
+                        PathSegment@21..29
+                          Ident@21..28 "Summary"
+                          Whitespace@28..29 " "
+                      OpenBrace@29..30 "{"
+                      CloseBrace@30..31 "}"
+                    Whitespace@31..32 " "
+                  Block@32..37
+                    OpenBrace@32..33 "{"
+                    Whitespace@33..34 " "
+                    PathExpr@34..36
+                      PathSegment@34..36
+                        Ident@34..35 "s"
+                        Whitespace@35..36 " "
+                    CloseBrace@36..37 "}"
+            "#]],
+            expect![
+                "Struct initializer needs parentheses here, since a `{` after `Summary` would start a block at main.rue:1:22"
+            ],
+        );
+
+        // Braces that can be a body still are one: a single name followed by `else`, a path, and
+        // braces with a block after them on the next line, which is a statement of its own
+        check(
+            expr,
+            "if flag { x } else { y }",
+            expect![[r#"
+            IfExpr@0..24
+              If@0..2 "if"
+              Whitespace@2..3 " "
+              PathExpr@3..8
+                PathSegment@3..8
+                  Ident@3..7 "flag"
+                  Whitespace@7..8 " "
+              Block@8..13
+                OpenBrace@8..9 "{"
+                Whitespace@9..10 " "
+                PathExpr@10..12
+                  PathSegment@10..12
+                    Ident@10..11 "x"
+                    Whitespace@11..12 " "
+                CloseBrace@12..13 "}"
+              Whitespace@13..14 " "
+              Else@14..18 "else"
+              Whitespace@18..19 " "
+              Block@19..24
+                OpenBrace@19..20 "{"
+                Whitespace@20..21 " "
+                PathExpr@21..23
+                  PathSegment@21..23
+                    Ident@21..22 "y"
+                    Whitespace@22..23 " "
+                CloseBrace@23..24 "}"
+        "#]],
+            expect![],
+        );
+        check(
+            expr,
+            "if flag { a::b } else { c }",
+            expect![[r#"
+            IfExpr@0..27
+              If@0..2 "if"
+              Whitespace@2..3 " "
+              PathExpr@3..8
+                PathSegment@3..8
+                  Ident@3..7 "flag"
+                  Whitespace@7..8 " "
+              Block@8..16
+                OpenBrace@8..9 "{"
+                Whitespace@9..10 " "
+                PathExpr@10..15
+                  PathSegment@10..11
+                    Ident@10..11 "a"
+                  PathSegment@11..15
+                    PathSeparator@11..13 "::"
+                    Ident@13..14 "b"
+                    Whitespace@14..15 " "
+                CloseBrace@15..16 "}"
+              Whitespace@16..17 " "
+              Else@17..21 "else"
+              Whitespace@21..22 " "
+              Block@22..27
+                OpenBrace@22..23 "{"
+                Whitespace@23..24 " "
+                PathExpr@24..26
+                  PathSegment@24..26
+                    Ident@24..25 "c"
+                    Whitespace@25..26 " "
+                CloseBrace@26..27 "}"
+        "#]],
+            expect![],
+        );
+        // The body of a `for` in the value of a `match`, followed by the body of the `match`
+        check(
+            expr,
+            "match for x in xs { x } { _ => 1 }",
+            expect![[r#"
+            MatchExpr@0..34
+              Match@0..5 "match"
+              Whitespace@5..6 " "
+              ForExpr@6..23
+                For@6..9 "for"
+                Whitespace@9..10 " "
+                ForClause@10..18
+                  NamedBinding@10..11
+                    Ident@10..11 "x"
+                  Whitespace@11..12 " "
+                  Ident@12..14 "in"
+                  Whitespace@14..15 " "
+                  PathExpr@15..18
+                    PathSegment@15..18
+                      Ident@15..17 "xs"
+                      Whitespace@17..18 " "
+                Block@18..23
+                  OpenBrace@18..19 "{"
+                  Whitespace@19..20 " "
+                  PathExpr@20..22
+                    PathSegment@20..22
+                      Ident@20..21 "x"
+                      Whitespace@21..22 " "
+                  CloseBrace@22..23 "}"
+              Whitespace@23..24 " "
+              OpenBrace@24..25 "{"
+              Whitespace@25..26 " "
+              MatchArm@26..33
+                PathType@26..28
+                  PathSegment@26..28
+                    Ident@26..27 "_"
+                    Whitespace@27..28 " "
+                FatArrow@28..30 "=>"
+                Whitespace@30..31 " "
+                LiteralExpr@31..32
+                  Integer@31..32 "1"
+                Whitespace@32..33 " "
+              CloseBrace@33..34 "}"
+        "#]],
+            expect![],
+        );
+        check(
+            block,
+            "{ if flag { x }\n{ y } }",
+            expect![[r#"
+            Block@0..23
+              OpenBrace@0..1 "{"
+              Whitespace@1..2 " "
+              IfStmt@2..16
+                If@2..4 "if"
+                Whitespace@4..5 " "
+                PathExpr@5..10
+                  PathSegment@5..10
+                    Ident@5..9 "flag"
+                    Whitespace@9..10 " "
+                Block@10..15
+                  OpenBrace@10..11 "{"
+                  Whitespace@11..12 " "
+                  PathExpr@12..14
+                    PathSegment@12..14
+                      Ident@12..13 "x"
+                      Whitespace@13..14 " "
+                  CloseBrace@14..15 "}"
+                Whitespace@15..16 "\n"
+              Block@16..21
+                OpenBrace@16..17 "{"
+                Whitespace@17..18 " "
+                PathExpr@18..20
+                  PathSegment@18..20
+                    Ident@18..19 "y"
+                    Whitespace@19..20 " "
+                CloseBrace@20..21 "}"
+              Whitespace@21..22 " "
+              CloseBrace@22..23 "}"
+        "#]],
+            expect![],
         );
     }
 }

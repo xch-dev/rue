@@ -1,0 +1,53 @@
+// A struct initializer right before the body of an `if`, `match` or `for` needs its parentheses,
+// since the parser would read its braces as the body without them
+struct Summary {
+    total: Int = 0,
+    count: Int = 0,
+}
+
+struct Holder {
+    items: List<Int>,
+}
+
+fn folded(items: List<Int>) -> Summary {
+    for item in items fold summary = (Summary {}) {
+        Summary { total: summary.total + item, count: summary.count + 1 }
+    }
+}
+
+fn folded_with_fields(items: List<Int>) -> Summary {
+    for item in items fold summary = (Summary { total: 0, count: 0 }) {
+        Summary { ...summary, total: summary.total + item }
+    }
+}
+
+fn listed(items: List<Int>) -> List<Int> {
+    for item in (Holder { items }).items { item + 1 }
+}
+
+fn matched(total: Int) -> Int {
+    match (Summary { total }) {
+        Summary { total, count } => total + count,
+    }
+}
+
+fn condition(total: Int) -> Int {
+    if total > (Summary { ...Summary {}, total: 1 }).total {
+        return 1;
+    }
+    0
+}
+
+// Parentheses that the body doesn't need are still reported
+fn unneeded(items: List<Int>) -> Int {
+    for item in (items) fold sum = (0) { sum + item }
+}
+
+export fn main(items: List<Int>) -> Int {
+    folded(items).total
+        + folded_with_fields(items).count
+        + length(listed(items))
+        + matched(1)
+        + condition(2)
+        + unneeded(items)
+}

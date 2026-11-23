@@ -1,0 +1,177 @@
+// The branches of an `inline if` and the arms of an `inline match` are all evaluated, so they
+// don't see what the condition or pattern narrows. An error on a value that it would have
+// narrowed says so.
+struct Point {
+    x: Int,
+}
+
+fn field(list: List<Int>) -> Int {
+    inline if list is nil { 0 } else { list.first }
+}
+
+fn returned(value: Bytes32 | nil, fallback: Bytes32) -> Bytes32 {
+    inline if value is nil { fallback } else { value }
+}
+
+fn annotated(value: Bytes32 | nil, fallback: Bytes32) -> Bytes32 {
+    let result: Bytes32 = inline if value is Bytes32 { value } else { fallback };
+    sha256(result)
+}
+
+fn argument(value: Bytes32 | nil, fallback: Bytes32) -> Bytes32 {
+    hash(inline if value is Bytes32 { value } else { fallback })
+}
+
+fn operand(value: Int | (Int, Int)) -> Int {
+    inline if value is Int { value + 1 } else { 0 }
+}
+
+fn arm_field(point: Point | nil) -> Int {
+    inline match point {
+        Point => point.x,
+        nil => 0,
+    }
+}
+
+fn arm_value(value: Bytes32 | nil, fallback: Bytes32) -> Bytes32 {
+    inline match value {
+        nil => fallback,
+        _ => value,
+    }
+}
+
+fn arm_condition(value: Int | (Int, Int)) -> Int {
+    inline match value {
+        _ if value is (Int, Int) => value.first,
+        _ => 0,
+    }
+}
+
+// An error on a value that the condition doesn't narrow has no note
+fn unrelated(value: Bytes32 | nil, point: Point | nil) -> Int {
+    inline if value is Bytes32 { point.x } else { 0 }
+}
+
+// In a branch that uses the narrowed value, an error on another value has no note
+fn mixed(value: Bytes32 | nil, fallback: Bytes32, point: Point | nil) -> Bytes32 {
+    inline if value is Bytes32 { pick(value, point.x) } else { fallback }
+}
+
+// An arm without a type, before any arm handles part of the value, has no note either, since a
+// `match` wouldn't narrow the value there
+fn wildcard(point: Point | nil) -> Int {
+    inline match point {
+        _ => point.x,
+    }
+}
+
+// Where the expression itself is checked against a type, such as in a condition or an assertion
+fn condition(value: Bool | (Int, Int)) -> Int {
+    assert inline if value is Bool { value } else { false };
+    if inline if value is Bool { value } else { true } {
+        1
+    } else {
+        0
+    }
+}
+
+fn match_condition(value: Bool | (Int, Int)) -> Bool {
+    assert inline match value {
+        Bool => value,
+        _ => false,
+    };
+    true
+}
+
+// Other errors that narrowing would avoid
+fn kinds(
+    number: Int | (Int, Int),
+    pair: (Int, Int) | nil,
+    point: Point | nil,
+    fallback: Point,
+) -> Int {
+    let negated = inline if number is Int { -number } else { 0 };
+    let first = inline if pair is nil {
+        0
+    } else {
+        let (first, _) = pair;
+        first
+    };
+    let spread = inline if point is Point { Point { ...point } } else { fallback };
+    first + spread.x + negated
+}
+
+// A branch of an inline expression in another one has the note once
+fn nested(point: Point | nil) -> Int {
+    inline if point is Point { inline if point is Point { point.x } else { 0 } } else { 0 }
+}
+
+// Nor does a later error about the code around a branch that was already reported
+fn later(value: Bytes32 | nil, fallback: Bytes32) -> Bytes32 {
+    let result: Bytes32 = inline if value is Bytes32 { value } else { fallback };
+    let _ = result;
+    "text"
+}
+
+// A branch whose value is assignable has no note, even with an error elsewhere
+fn assignable(value: Bytes32 | nil) -> Bytes32 {
+    let result: Bytes32 | nil = inline if value is Bytes32 { value } else { nil };
+    let _ = result;
+    "text"
+}
+
+// An `if` narrows, so it has no error
+fn narrowed(list: List<Int>) -> Int {
+    if list is nil {
+        0
+    } else {
+        list.first
+    }
+}
+
+fn pick(value: Bytes32, _index: Int) -> Bytes32 {
+    value
+}
+
+// A later error about the code around a branch without an expected type has no note
+fn untyped(value: Bytes32 | nil) -> Bytes32 {
+    let result = inline if value is Bytes32 { value } else { nil };
+    let _ = result;
+    "text"
+}
+
+fn hash(value: Bytes32) -> Bytes32 {
+    sha256(value)
+}
+
+export fn main(
+    list: List<Int>,
+    value: Bytes32 | nil,
+    fallback: Bytes32,
+    point: Point | nil,
+    pair: Int | (Int, Int),
+    flag: Bool | (Int, Int),
+    maybe_pair: (Int, Int) | nil,
+) -> List<Any> {
+    [
+        field(list),
+        returned(value, fallback),
+        annotated(value, fallback),
+        argument(value, fallback),
+        operand(pair),
+        arm_field(point),
+        arm_value(value, fallback),
+        arm_condition(pair),
+        unrelated(value, point),
+        later(value, fallback),
+        assignable(value),
+        narrowed(list),
+        mixed(value, fallback, point),
+        wildcard(point),
+        condition(flag),
+        untyped(value),
+        match_condition(flag),
+        nested(point),
+        kinds(pair, maybe_pair, point, Point { x: 1 }),
+    ]
+}

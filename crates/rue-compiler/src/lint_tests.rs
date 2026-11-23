@@ -3804,3 +3804,53 @@ fn main(
 "
     );
 }
+
+#[test]
+fn suggestions_fix_struct_initializers_before_bodies() {
+    let source = "\
+struct Summary {
+    total: Int = 0,
+}
+
+fn main(items: List<Int>) -> Int {
+    let summary = for item in items fold summary = Summary {} {
+        Summary { total: summary.total + item }
+    };
+    if summary.total > Summary { total: 1 }.total {
+        return 1;
+    }
+    match Summary { ...summary } {
+        Summary { total } => total,
+    }
+}
+";
+
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+struct Summary {
+    total: Int = 0,
+}
+
+fn main(items: List<Int>) -> Int {
+    let summary = for item in items fold summary = (Summary {}) {
+        Summary { total: summary.total + item }
+    };
+    if summary.total > (Summary { total: 1 }).total {
+        return 1;
+    }
+    match (Summary { ...summary }) {
+        Summary { total } => total,
+    }
+}
+"
+    );
+
+    // The parentheses are needed, so they aren't reported as unnecessary
+    let (reports, has_errors) = reports(&fixed, |_| {});
+
+    assert_eq!(reports, Vec::<String>::new());
+    assert!(!has_errors);
+}

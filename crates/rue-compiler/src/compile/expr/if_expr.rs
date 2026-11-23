@@ -1,10 +1,12 @@
+use std::collections::HashSet;
+
 use log::debug;
 use rue_ast::{AstExpr, AstIfExpr, AstNode};
 use rue_diagnostic::DiagnosticKind;
-use rue_hir::{Block, Hir, Mappings, Value, control_fallthroughs};
+use rue_hir::{Block, Hir, Mappings, SymbolId, Value, control_fallthroughs};
 use rue_types::{Type, TypeId, Union};
 
-use crate::{Branches, Compiler, compile_branching_expr, compile_expr};
+use crate::{Branches, Compiler, InlineBranch, compile_branching_expr, compile_expr};
 
 /// Compiles an `if` expression. If its branches are blocks of a given kind (see
 /// [`compile_branching_expr`]), such as the branches of a statement, so are those of the `else if`
@@ -25,10 +27,21 @@ pub fn compile_if_expr(
         ctx.unresolved()
     };
 
+    // The values that the condition would narrow, which the branches of an `inline if` don't see
+    // narrowed
+    let unnarrowed = expr.inline().map(|_| {
+        condition
+            .then_map
+            .keys()
+            .chain(condition.else_map.keys())
+            .copied()
+            .collect::<HashSet<_>>()
+    });
+
     let (then_expr, _) = if let Some(then_expr) = expr.then_expr() {
-        if expr.inline().is_some() {
+        if let Some(unnarrowed) = &unnarrowed {
             // We can't type guard if the branches are eagerly evaluated
-            compile_branch(ctx, &then_expr, expected_type, branches)
+            compile_inline_branch(ctx, expr, &then_expr, unnarrowed, expected_type, branches)
         } else {
             let range = then_expr.syntax().text_range();
             let index = ctx.push_mappings(condition.then_map.clone(), range.start());
@@ -42,9 +55,9 @@ pub fn compile_if_expr(
     };
 
     let (else_expr, else_narrowing) = if let Some(else_expr) = expr.else_expr() {
-        if expr.inline().is_some() {
+        if let Some(unnarrowed) = &unnarrowed {
             // We can't type guard if the branches are eagerly evaluated
-            compile_branch(ctx, &else_expr, expected_type, branches)
+            compile_inline_branch(ctx, expr, &else_expr, unnarrowed, expected_type, branches)
         } else {
             let range = else_expr.syntax().text_range();
             let index = ctx.push_mappings(condition.else_map.clone(), range.start());
@@ -100,6 +113,30 @@ pub fn compile_if_expr(
     ));
 
     (Value::new(hir, ty), narrowing)
+}
+
+/// Compiles a branch of an `inline if`, which doesn't see what the condition narrows, and explains
+/// the errors that are likely because of that (see [`Compiler::note_unnarrowed_branch`]).
+fn compile_inline_branch(
+    ctx: &mut Compiler,
+    if_expr: &AstIfExpr,
+    branch: &AstExpr,
+    unnarrowed: &HashSet<SymbolId>,
+    expected_type: Option<TypeId>,
+    branches: Option<Branches>,
+) -> (Value, Option<Mappings>) {
+    let start = ctx.branch_start(InlineBranch::If, if_expr.syntax().text_range());
+    let result = compile_branch(ctx, branch, expected_type, branches);
+
+    ctx.note_unnarrowed_branch(
+        start,
+        unnarrowed,
+        branch.syntax(),
+        result.0.ty,
+        expected_type,
+    );
+
+    result
 }
 
 fn compile_branch(

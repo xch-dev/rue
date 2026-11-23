@@ -8,7 +8,7 @@ use rue_ast::{
     AstMatchArm, AstNode, AstPrefixExpr, AstStmtOrExpr, AstStructFieldBinding,
     AstStructInitializerField,
 };
-use rue_diagnostic::{Applicability, Lint, Source, Suggestion};
+use rue_diagnostic::{Applicability, DiagnosticKind, Lint, Source, Suggestion};
 use rue_lexer::Lexer;
 use rue_parser::{Parser, SyntaxKind, SyntaxNode, T};
 
@@ -332,12 +332,24 @@ fn parses_without_parens(
     }
 
     let tokens = Lexer::new(&text).collect::<Vec<_>>();
-    let reparsed = Parser::new(
+    let result = Parser::new(
         Source::new(Arc::from(text.as_str()), source.kind.clone()),
         tokens,
     )
-    .parse()
-    .node;
+    .parse();
+
+    // A struct initializer before the body of an `if`, `match` or `for` is parsed as one even
+    // without the parentheses, but it's an error
+    if result.diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic.kind,
+            DiagnosticKind::UnparenthesizedStructInitializer(..)
+        )
+    }) {
+        return false;
+    }
+
+    let reparsed = result.node;
 
     let container = if in_block {
         reparsed

@@ -37,9 +37,13 @@ diagnostics:
 - |-
   Unknown field `value` on type `Tagged | Int` at match_guard_errors.rue:93:18
     note: Every arm of an `inline match` is evaluated, so the value isn't narrowed to `Tagged` before it's destructured
-- Unknown field `value` on type `Tagged | Int` at match_guard_errors.rue:94:47
+- |-
+  Unknown field `value` on type `Tagged | Int` at match_guard_errors.rue:94:47
+    note: Every arm of an `inline match` is evaluated, so the arm doesn't narrow the type of `value`; use `match` instead
 - Unused function `inline_wildcard_condition` at match_guard_errors.rue:100:4
-- Unknown field `first` on type `Int | (Int, Int)` at match_guard_errors.rue:102:43
+- |-
+  Unknown field `first` on type `Int | (Int, Int)` at match_guard_errors.rue:102:43
+    note: Every arm of an `inline match` is evaluated, so the arm doesn't narrow the type of `value`; use `match` instead
 - Unused function `inline_only_condition` at match_guard_errors.rue:108:4
 - |-
   Match on `Int | (Int, Int)` is not exhaustive, since it doesn't handle `Int` and `(Int, Int)` at match_guard_errors.rue:109:18
