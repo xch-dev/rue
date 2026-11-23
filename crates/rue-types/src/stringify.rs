@@ -1,5 +1,5 @@
-use std::cell::Cell;
 use std::collections::HashSet;
+use std::mem;
 
 use id_arena::Arena;
 use indexmap::{IndexMap, IndexSet};
@@ -15,17 +15,13 @@ use crate::{
 
 pub fn stringify(arena: &mut Arena<Type>, id: TypeId) -> String {
     let id = substitute(arena, id);
-    stringify_impl(arena, id, &mut IndexMap::new())
+    stringify_substituted(arena, id)
 }
 
-thread_local! {
-    /// How many more parts of a type [`stringify_bounded`] writes before it leaves the rest out.
-    static BUDGET: Cell<Option<usize>> = const { Cell::new(None) };
-}
-
-thread_local! {
-    /// Whether [`stringify_bounded`] has left any part of the type out.
-    static CUT: Cell<bool> = const { Cell::new(false) };
+/// Like [`stringify`], for a type that's already substituted, such as the ones the operations on
+/// types log.
+pub(crate) fn stringify_substituted(arena: &Arena<Type>, id: TypeId) -> String {
+    Stringifier::new(arena).write(id)
 }
 
 /// What's written for a type, or a part of one, that couldn't be compiled. An error has been
@@ -44,20 +40,12 @@ pub const ELIDED: &str = "...";
 pub fn stringify_bounded(arena: &mut Arena<Type>, id: TypeId, parts: usize) -> (String, bool) {
     let id = substitute(arena, id);
 
-    // The budget is cleared even if writing the type panics, so that it's only ever this type's
-    let _unbounded = Unbounded;
+    let mut stringifier = Stringifier::new(arena);
+    stringifier.budget = Some(parts);
 
-    BUDGET.set(Some(parts));
-    CUT.set(false);
+    let result = stringifier.write(id);
 
-    let result = stringify_impl(arena, id, &mut IndexMap::new());
-
-    (result, CUT.get())
-}
-
-thread_local! {
-    /// Whether [`stringify_exact`] is writing a type, with every member of each union.
-    static EXACT: Cell<bool> = const { Cell::new(false) };
+    (result, stringifier.cut)
 }
 
 /// Like [`stringify`], but every member of a union is written, including the ones that are the
@@ -67,20 +55,9 @@ thread_local! {
 pub fn stringify_exact(arena: &mut Arena<Type>, id: TypeId) -> String {
     let id = substitute(arena, id);
 
-    // Cleared even if writing the type panics, so that it's only ever for this type
-    let _displayed = Displayed;
-    EXACT.set(true);
-
-    stringify_impl(arena, id, &mut IndexMap::new())
-}
-
-/// Has unions displayed as they usually are again when it's dropped.
-struct Displayed;
-
-impl Drop for Displayed {
-    fn drop(&mut self) {
-        EXACT.set(false);
-    }
+    let mut stringifier = Stringifier::new(arena);
+    stringifier.exact = true;
+    stringifier.write(id)
 }
 
 /// The names of a union's members as they're displayed, given each member and its name: without
@@ -100,321 +77,313 @@ pub fn distinct_member_names(arena: &Arena<Type>, members: Vec<(TypeId, String)>
     distinct_members(arena, members)
 }
 
-/// Clears the budget when it's dropped.
-struct Unbounded;
-
-impl Drop for Unbounded {
-    fn drop(&mut self) {
-        BUDGET.set(None);
-    }
+/// Writes a type, and the types it's made of, as a string.
+struct Stringifier<'a> {
+    arena: &'a Arena<Type>,
+    /// The types being written, and whether each one has been reached again from inside itself
+    /// (in which case it's written with a label that the inner occurrences refer to).
+    stack: IndexMap<TypeId, bool>,
+    /// How many more parts of the type are written before the rest are left out, if that's
+    /// limited (see [`stringify_bounded`]).
+    budget: Option<usize>,
+    /// Whether any part of the type has been left out.
+    cut: bool,
+    /// Whether every member of each union is written (see [`stringify_exact`]).
+    exact: bool,
 }
 
-/// Counts a part of a type against the budget, and returns whether there was any of it left.
-fn spend() -> bool {
-    match BUDGET.get() {
-        None => true,
-        Some(0) => {
-            CUT.set(true);
-            false
+impl<'a> Stringifier<'a> {
+    fn new(arena: &'a Arena<Type>) -> Self {
+        Self {
+            arena,
+            stack: IndexMap::new(),
+            budget: None,
+            cut: false,
+            exact: false,
         }
-        Some(parts) => {
-            BUDGET.set(Some(parts - 1));
-            true
-        }
-    }
-}
-
-pub fn stringify_without_substitution(arena: &Arena<Type>, id: TypeId) -> String {
-    stringify_impl(arena, id, &mut IndexMap::new())
-}
-
-pub(crate) fn stringify_impl(
-    arena: &Arena<Type>,
-    id: TypeId,
-    stack: &mut IndexMap<TypeId, bool>,
-) -> String {
-    grow_stack(|| stringify_impl_inner(arena, id, stack))
-}
-
-fn stringify_impl_inner(
-    arena: &Arena<Type>,
-    id: TypeId,
-    stack: &mut IndexMap<TypeId, bool>,
-) -> String {
-    step();
-
-    if !spend() {
-        return ELIDED.to_string();
     }
 
-    let len = stack.len();
-
-    if stack.contains_key(&id) {
-        stack.insert(id, true);
-        return format!("<{}>", stack.get_index_of(&id).unwrap());
-    }
-
-    stack.insert(id, false);
-
-    let result = match &arena[id] {
-        &Type::Ref(id) => stringify_impl(arena, id, stack),
-        Type::Unresolved => UNRESOLVED.to_string(),
-        Type::Generic(generic) => {
-            if let Some(name) = &generic.name {
-                name.text().to_string()
-            } else {
-                format!("{{generic {}}}", id.index())
+    /// Counts a part of a type against the budget, and returns whether there was any of it left.
+    fn spend(&mut self) -> bool {
+        match self.budget {
+            None => true,
+            Some(0) => {
+                self.cut = true;
+                false
+            }
+            Some(parts) => {
+                self.budget = Some(parts - 1);
+                true
             }
         }
-        Type::Never => "Never".to_string(),
-        Type::Any => "Any".to_string(),
-        Type::Atom(atom) => atom.to_string(),
-        Type::Pair(pair) => {
-            let first = stringify_impl(arena, pair.first, stack);
-            let rest = stringify_impl(arena, pair.rest, stack);
-            format!("({first}, {rest})")
+    }
+
+    fn write(&mut self, id: TypeId) -> String {
+        grow_stack(|| self.write_inner(id))
+    }
+
+    fn write_inner(&mut self, id: TypeId) -> String {
+        step();
+
+        if !self.spend() {
+            return ELIDED.to_string();
         }
-        Type::Struct(ty) => {
-            if let Some(name) = &ty.name {
-                if ty.narrowed {
-                    narrowed_struct(arena, name.text(), ty, stack)
+
+        let arena = self.arena;
+        let len = self.stack.len();
+
+        if self.stack.contains_key(&id) {
+            self.stack.insert(id, true);
+            return format!("<{}>", self.stack.get_index_of(&id).unwrap());
+        }
+
+        self.stack.insert(id, false);
+
+        let result = match &arena[id] {
+            &Type::Ref(id) => self.write(id),
+            Type::Unresolved => UNRESOLVED.to_string(),
+            Type::Generic(generic) => {
+                if let Some(name) = &generic.name {
+                    name.text().to_string()
                 } else {
-                    with_generics(arena, name.text(), &ty.generics, stack)
+                    format!("{{generic {}}}", id.index())
                 }
-            } else {
-                stringify_impl(arena, ty.inner, stack)
             }
-        }
-        Type::Alias(alias) => {
-            if let Some(name) = &alias.name {
-                with_generics(arena, name.text(), &alias.generics, stack)
-            } else {
-                stringify_impl(arena, alias.inner, stack)
+            Type::Never => "Never".to_string(),
+            Type::Any => "Any".to_string(),
+            Type::Atom(atom) => atom.to_string(),
+            Type::Pair(pair) => {
+                let first = self.write(pair.first);
+                let rest = self.write(pair.rest);
+                format!("({first}, {rest})")
             }
-        }
-        Type::Apply(apply) => {
-            // Order the arguments by the generic parameters they're applied to, if known.
-            let (inner, parameters) = match &arena[apply.inner] {
-                Type::Alias(Alias {
-                    name: Some(name),
-                    generics,
-                    ..
-                })
-                | Type::Struct(Struct {
-                    name: Some(name),
-                    generics,
-                    ..
-                }) => (name.text().to_string(), generics.clone()),
-                _ => (
-                    stringify_impl(arena, apply.inner, stack),
-                    apply.generics.keys().copied().collect(),
-                ),
-            };
-
-            let arguments = parameters
-                .iter()
-                .map(|parameter| apply.generics.get(parameter).copied().unwrap_or(*parameter))
-                .collect::<Vec<_>>();
-
-            with_generics(arena, &inner, &arguments, stack)
-        }
-        Type::Function(function) => {
-            let len = function.params.len();
-            let params = function
-                .params
-                .iter()
-                .enumerate()
-                .map(|(i, param)| {
-                    let spread = if !function.nil_terminated && i == len - 1 {
-                        "..."
+            Type::Struct(ty) => {
+                if let Some(name) = &ty.name {
+                    if ty.narrowed {
+                        self.narrowed_struct(name.text(), ty)
                     } else {
-                        ""
-                    };
-                    format!(
-                        "{spread}{}: {}",
-                        param.name,
-                        stringify_impl(arena, param.ty, stack)
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            let ret = stringify_impl(arena, function.ret, stack);
-            format!(
-                "{}({params}) -> {ret}",
-                with_generics(arena, "fn", &function.generics, stack)
-            )
-        }
-        // A member is shown once however many times it's in the union. References to the same
-        // struct are substituted into distinct types, and inference collects the same type into
-        // a union once for each argument that it came from, so members that are the same type
-        // written out are only displayed once. So is a member that another one already
-        // includes, such as the `0` in `Int | 0`, and `true | false` is displayed as `Bool`.
-        // Members that are only shown the same are kept apart, since two structs can have the
-        // same name
-        Type::Union(_) => {
-            // Each member takes at least one part to write, so the members that there's no
-            // budget for aren't looked at, however many there are
-            let limit = BUDGET.get().unwrap_or(usize::MAX);
-            let mut members = IndexSet::new();
-            let mut elided = !union_variants(arena, id, limit, &mut members);
-
-            // Whether a member was cut short is told apart from whether anything before it was
-            let cut_before = CUT.replace(false);
-
-            let members = members
-                .into_iter()
-                .map(|id| {
-                    let name = stringify_impl(arena, id, stack);
-                    let cut = CUT.replace(false);
-                    Member { id, name, cut }
-                })
-                .collect::<Vec<_>>();
-
-            if cut_before || members.iter().any(|member| member.cut) {
-                CUT.set(true);
-            }
-
-            let mut variants = if EXACT.get() {
-                members.into_iter().map(|member| member.name).collect()
-            } else {
-                distinct_members(arena, members)
-            };
-
-            // The members that were left out are shown once, after the ones that weren't
-            let written = variants.len();
-            variants.retain(|name| name != ELIDED);
-            elided |= variants.len() < written;
-
-            if elided {
-                CUT.set(true);
-                variants.push(ELIDED.to_string());
-            }
-
-            variants.join(" | ")
-        }
-    };
-
-    let recursed = stack.pop().unwrap().1;
-
-    if recursed {
-        if result.starts_with('(') {
-            format!("{len} @ {result}")
-        } else {
-            format!("{len} @ ({result})")
-        }
-    } else {
-        result
-    }
-}
-
-fn with_generics(
-    arena: &Arena<Type>,
-    name: &str,
-    generics: &[TypeId],
-    stack: &mut IndexMap<TypeId, bool>,
-) -> String {
-    if generics.is_empty() {
-        return name.to_string();
-    }
-
-    let generics = generics
-        .iter()
-        .map(|&id| stringify_impl(arena, id, stack))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    format!("{name}<{generics}>")
-}
-
-/// Renders a struct whose fields have been narrowed, e.g. `Box { value: Int }`, since its generic
-/// arguments no longer describe them.
-fn narrowed_struct(
-    arena: &Arena<Type>,
-    name: &str,
-    ty: &Struct,
-    stack: &mut IndexMap<TypeId, bool>,
-) -> String {
-    let Some(variants) = narrowed_fields(arena, ty, 0, ty.inner, stack) else {
-        return with_generics(arena, name, &ty.generics, stack);
-    };
-
-    variants
-        .into_iter()
-        .map(|fields| {
-            if fields.is_empty() {
-                name.to_string()
-            } else {
-                format!("{name} {{ {} }}", fields.join(", "))
-            }
-        })
-        .collect::<IndexSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>()
-        .join(" | ")
-}
-
-/// Renders the fields of a struct starting at `index`, where `current` is the type of the rest of
-/// the struct. If the fields are correlated, each variant is rendered separately. Returns `None` if
-/// the type doesn't have the structure of the fields.
-fn narrowed_fields(
-    arena: &Arena<Type>,
-    ty: &Struct,
-    index: usize,
-    current: TypeId,
-    stack: &mut IndexMap<TypeId, bool>,
-) -> Option<Vec<Vec<String>>> {
-    grow_stack(|| narrowed_fields_inner(arena, ty, index, current, stack))
-}
-
-fn narrowed_fields_inner(
-    arena: &Arena<Type>,
-    ty: &Struct,
-    index: usize,
-    mut current: TypeId,
-    stack: &mut IndexMap<TypeId, bool>,
-) -> Option<Vec<Vec<String>>> {
-    let Some(field) = ty.fields.get_index(index) else {
-        return Some(vec![vec![]]);
-    };
-
-    // The discriminant of an enum variant is part of the variant's name, so it isn't shown
-    let hidden = field == DISCRIMINANT_FIELD;
-
-    if !ty.nil_terminated && index == ty.fields.len() - 1 {
-        if hidden {
-            return Some(vec![vec![]]);
-        }
-
-        let value = stringify_impl(arena, current, stack);
-        return Some(vec![vec![format!("...{field}: {value}")]]);
-    }
-
-    current = unwrap_refs(arena, current);
-
-    match &arena[current] {
-        Type::Pair(pair) => {
-            let mut variants = narrowed_fields(arena, ty, index + 1, pair.rest, stack)?;
-
-            if !hidden {
-                let first = format!("{field}: {}", stringify_impl(arena, pair.first, stack));
-
-                for fields in &mut variants {
-                    fields.insert(0, first.clone());
+                        self.with_generics(name.text(), &ty.generics)
+                    }
+                } else {
+                    self.write(ty.inner)
                 }
             }
+            Type::Alias(alias) => {
+                if let Some(name) = &alias.name {
+                    self.with_generics(name.text(), &alias.generics)
+                } else {
+                    self.write(alias.inner)
+                }
+            }
+            Type::Apply(apply) => {
+                // Order the arguments by the generic parameters they're applied to, if known.
+                let (inner, parameters) = match &arena[apply.inner] {
+                    Type::Alias(Alias {
+                        name: Some(name),
+                        generics,
+                        ..
+                    })
+                    | Type::Struct(Struct {
+                        name: Some(name),
+                        generics,
+                        ..
+                    }) => (name.text().to_string(), generics.clone()),
+                    _ => (
+                        self.write(apply.inner),
+                        apply.generics.keys().copied().collect(),
+                    ),
+                };
 
-            Some(variants)
+                let arguments = parameters
+                    .iter()
+                    .map(|parameter| apply.generics.get(parameter).copied().unwrap_or(*parameter))
+                    .collect::<Vec<_>>();
+
+                self.with_generics(&inner, &arguments)
+            }
+            Type::Function(function) => {
+                let len = function.params.len();
+                let params = function
+                    .params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, param)| {
+                        let spread = if !function.nil_terminated && i == len - 1 {
+                            "..."
+                        } else {
+                            ""
+                        };
+                        format!("{spread}{}: {}", param.name, self.write(param.ty))
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let ret = self.write(function.ret);
+                format!(
+                    "{}({params}) -> {ret}",
+                    self.with_generics("fn", &function.generics)
+                )
+            }
+            // A member is shown once however many times it's in the union. References to the same
+            // struct are substituted into distinct types, and inference collects the same type into
+            // a union once for each argument that it came from, so members that are the same type
+            // written out are only displayed once. So is a member that another one already
+            // includes, such as the `0` in `Int | 0`, and `true | false` is displayed as `Bool`.
+            // Members that are only shown the same are kept apart, since two structs can have the
+            // same name
+            Type::Union(_) => {
+                // Each member takes at least one part to write, so the members that there's no
+                // budget for aren't looked at, however many there are
+                let limit = self.budget.unwrap_or(usize::MAX);
+                let mut members = IndexSet::new();
+                let mut elided = !union_variants(arena, id, limit, &mut members);
+
+                // Whether a member was cut short is told apart from whether anything before it was
+                let cut_before = mem::take(&mut self.cut);
+
+                let members = members
+                    .into_iter()
+                    .map(|id| {
+                        let name = self.write(id);
+                        let cut = mem::take(&mut self.cut);
+                        Member { id, name, cut }
+                    })
+                    .collect::<Vec<_>>();
+
+                if cut_before || members.iter().any(|member| member.cut) {
+                    self.cut = true;
+                }
+
+                let mut variants = if self.exact {
+                    members.into_iter().map(|member| member.name).collect()
+                } else {
+                    distinct_members(arena, members)
+                };
+
+                // The members that were left out are shown once, after the ones that weren't
+                let written = variants.len();
+                variants.retain(|name| name != ELIDED);
+                elided |= variants.len() < written;
+
+                if elided {
+                    self.cut = true;
+                    variants.push(ELIDED.to_string());
+                }
+
+                variants.join(" | ")
+            }
+        };
+
+        let recursed = self.stack.pop().unwrap().1;
+
+        if recursed {
+            if result.starts_with('(') {
+                format!("{len} @ {result}")
+            } else {
+                format!("{len} @ ({result})")
+            }
+        } else {
+            result
         }
-        Type::Union(union) => {
-            let mut variants = Vec::new();
+    }
 
-            for &id in &union.types {
-                variants.extend(narrowed_fields(arena, ty, index, id, stack)?);
+    fn with_generics(&mut self, name: &str, generics: &[TypeId]) -> String {
+        if generics.is_empty() {
+            return name.to_string();
+        }
+
+        let generics = generics
+            .iter()
+            .map(|&id| self.write(id))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!("{name}<{generics}>")
+    }
+
+    /// Renders a struct whose fields have been narrowed, e.g. `Box { value: Int }`, since its
+    /// generic arguments no longer describe them.
+    fn narrowed_struct(&mut self, name: &str, ty: &Struct) -> String {
+        let Some(variants) = self.narrowed_fields(ty, 0, ty.inner) else {
+            return self.with_generics(name, &ty.generics);
+        };
+
+        variants
+            .into_iter()
+            .map(|fields| {
+                if fields.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{name} {{ {} }}", fields.join(", "))
+                }
+            })
+            .collect::<IndexSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join(" | ")
+    }
+
+    /// Renders the fields of a struct starting at `index`, where `current` is the type of the rest
+    /// of the struct. If the fields are correlated, each variant is rendered separately. Returns
+    /// `None` if the type doesn't have the structure of the fields.
+    fn narrowed_fields(
+        &mut self,
+        ty: &Struct,
+        index: usize,
+        current: TypeId,
+    ) -> Option<Vec<Vec<String>>> {
+        grow_stack(|| self.narrowed_fields_inner(ty, index, current))
+    }
+
+    fn narrowed_fields_inner(
+        &mut self,
+        ty: &Struct,
+        index: usize,
+        mut current: TypeId,
+    ) -> Option<Vec<Vec<String>>> {
+        let Some(field) = ty.fields.get_index(index) else {
+            return Some(vec![vec![]]);
+        };
+
+        // The discriminant of an enum variant is part of the variant's name, so it isn't shown
+        let hidden = field == DISCRIMINANT_FIELD;
+
+        if !ty.nil_terminated && index == ty.fields.len() - 1 {
+            if hidden {
+                return Some(vec![vec![]]);
             }
 
-            Some(variants)
+            let value = self.write(current);
+            return Some(vec![vec![format!("...{field}: {value}")]]);
         }
-        _ => None,
+
+        let arena = self.arena;
+        current = unwrap_refs(arena, current);
+
+        match &arena[current] {
+            Type::Pair(pair) => {
+                let mut variants = self.narrowed_fields(ty, index + 1, pair.rest)?;
+
+                if !hidden {
+                    let first = format!("{field}: {}", self.write(pair.first));
+
+                    for fields in &mut variants {
+                        fields.insert(0, first.clone());
+                    }
+                }
+
+                Some(variants)
+            }
+            Type::Union(union) => {
+                let mut variants = Vec::new();
+
+                for &id in &union.types {
+                    variants.extend(self.narrowed_fields(ty, index, id)?);
+                }
+
+                Some(variants)
+            }
+            _ => None,
+        }
     }
 }
 

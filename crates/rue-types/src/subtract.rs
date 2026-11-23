@@ -1,11 +1,10 @@
 use id_arena::Arena;
-use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
     Alias, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxHashSet, IntersectContext,
     Pair, Type, TypeId, Union, compare_impl, extract_pairs_substituted, grow_stack,
-    intersect_substituted, reachable, reaches_non_contractive_cycle, step, stringify_impl,
+    intersect_substituted, reachable, reaches_non_contractive_cycle, step, stringify_substituted,
     substitute,
 };
 
@@ -50,8 +49,8 @@ pub fn subtract_detailed(
 
     let names = log_enabled!(Level::Trace).then(|| {
         (
-            stringify_impl(arena, lhs_id, &mut IndexMap::new()),
-            stringify_impl(arena, rhs_id, &mut IndexMap::new()),
+            stringify_substituted(arena, lhs_id),
+            stringify_substituted(arena, rhs_id),
         )
     });
 
@@ -62,7 +61,7 @@ pub fn subtract_detailed(
     let result = subtract_impl(arena, builtins, lhs_id, rhs_id);
 
     if let Some((lhs_name, rhs_name)) = &names {
-        let new_name = stringify_impl(arena, result.type_id, &mut IndexMap::new());
+        let new_name = stringify_substituted(arena, result.type_id);
         trace!("Subtraction from {lhs_name} to {rhs_name} yielded {new_name}");
     }
 

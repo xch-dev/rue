@@ -7,7 +7,6 @@ use std::{
 };
 
 use id_arena::Arena;
-use indexmap::IndexMap;
 use log::{Level, debug, log_enabled, trace};
 
 use crate::{
@@ -15,8 +14,8 @@ use crate::{
     FailedPair, FixpointFrame, FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Generic,
     Inference, InferenceCandidates, InferenceSnapshot, InstancePolicy, Join, Memo, Type, TypeId,
     compare_memo_enabled, comparison_step_limit, free_generics, grow_stack,
-    has_non_contractive_cycle, reachable, references_generic, step, stringify_impl, substitute,
-    substitute_with_mappings,
+    has_non_contractive_cycle, reachable, references_generic, step, stringify_substituted,
+    substitute, substitute_with_mappings,
     summary::{self, Branch, ChoiceRecord, Constraint, Summary, Var},
 };
 
@@ -1610,8 +1609,8 @@ pub fn compare_with_inference_limited(
     let rhs = substitute(arena, rhs);
     let names = log_enabled!(Level::Trace).then(|| {
         (
-            stringify_impl(arena, lhs, &mut IndexMap::new()),
-            stringify_impl(arena, rhs, &mut IndexMap::new()),
+            stringify_substituted(arena, lhs),
+            stringify_substituted(arena, rhs),
         )
     });
 
@@ -2274,8 +2273,8 @@ fn compare_structure(
         {
             debug!(
                 "Inferring {} must be assignable to {}",
-                stringify_impl(arena, lhs, &mut IndexMap::new()),
-                stringify_impl(arena, rhs, &mut IndexMap::new())
+                stringify_substituted(arena, lhs),
+                stringify_substituted(arena, rhs)
             );
             ctx.add_candidate(arena, lhs, CandidateKind::Upper, rhs, ctx.rhs_env);
             Comparison::Assign
@@ -2287,8 +2286,8 @@ fn compare_structure(
         {
             debug!(
                 "Inferring {} could include {}",
-                stringify_impl(arena, rhs, &mut IndexMap::new()),
-                stringify_impl(arena, lhs, &mut IndexMap::new())
+                stringify_substituted(arena, rhs),
+                stringify_substituted(arena, lhs)
             );
             let kind = if ctx.holding {
                 CandidateKind::Held

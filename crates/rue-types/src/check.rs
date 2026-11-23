@@ -1,14 +1,14 @@
 use std::cmp::max;
 
 use id_arena::Arena;
-use indexmap::{IndexMap, IndexSet, indexset};
+use indexmap::{IndexSet, indexset};
 use log::{Level, log_enabled, trace};
 use thiserror::Error;
 
 use crate::{
     AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxHashSet,
     FxIndexSet, Memo, Pair, Type, TypeId, compare_impl, grow_stack, reaches_non_contractive_cycle,
-    step, stringify_impl, substitute,
+    step, stringify_substituted, substitute,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -240,8 +240,8 @@ pub fn check(
 
     let names = log_enabled!(Level::Trace).then(|| {
         (
-            stringify_impl(arena, lhs, &mut IndexMap::new()),
-            stringify_impl(arena, rhs, &mut IndexMap::new()),
+            stringify_substituted(arena, lhs),
+            stringify_substituted(arena, rhs),
         )
     });
 
