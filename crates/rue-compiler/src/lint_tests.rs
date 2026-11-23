@@ -3711,3 +3711,22 @@ fn main(first: Int, rest: List<Int>, keys: List<PublicKey>, parts: List<Bytes>) 
         ]
     );
 }
+
+#[test]
+fn spread_list_builtins_have_no_fix_for_a_missing_argument() {
+    let source = "fn main(first: Int, rest: List<Int>) -> Int {\n    sum(first, , ...rest)\n}\n";
+
+    let (diagnostics, _) = compile_source(source, |_| {});
+    let spread = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic
+                .kind
+                .to_string()
+                .starts_with("`sum` takes the list")
+        })
+        .expect("the spread is reported");
+
+    // Putting the arguments in a list would keep the missing one, so nothing is suggested
+    assert!(spread.suggestions.is_empty());
+}

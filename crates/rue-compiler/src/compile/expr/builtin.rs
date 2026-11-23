@@ -362,13 +362,10 @@ impl<'a> BuiltinCall<'a> {
         let suggestion = match args.as_slice() {
             [_] => {
                 // The whitespace after the `...` goes with it, but not a comment
-                let mut end = spread.text_range().end();
-                let mut next = spread.next_token();
-                while let Some(token) = next.filter(|token| token.kind() == SyntaxKind::Whitespace)
-                {
-                    end = token.text_range().end();
-                    next = token.next_token();
-                }
+                let end = spread
+                    .next_token()
+                    .filter(|token| token.kind() == SyntaxKind::Whitespace)
+                    .map_or(spread.text_range().end(), |token| token.text_range().end());
                 let srcloc = ctx.srcloc(&TextRange::new(spread.text_range().start(), end));
                 Some(Suggestion::replace(
                     "Remove the `...`",
