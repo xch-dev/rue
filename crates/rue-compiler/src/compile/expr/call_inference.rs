@@ -87,6 +87,19 @@ impl ArgumentState {
             waited_own: Vec::new(),
         }
     }
+
+    /// Whether it's been compiled and has caller's generics of its own, which change its
+    /// candidates for solving the call (see `merged_with_own` and `solve_compiled_call`).
+    fn has_own_candidates(&self) -> bool {
+        self.check.is_some() && !self.own.is_empty()
+    }
+}
+
+/// Whether any argument has a lambda with untyped parameters.
+fn has_lambda_parameters(arguments: &[ArgumentState]) -> bool {
+    arguments
+        .iter()
+        .any(|argument| !argument.lambda_parameters.is_empty())
 }
 
 /// The arguments' checks, by parameter.
@@ -612,9 +625,7 @@ fn solve_compiled_call(
     // Only a call that the arguments don't solve otherwise is solved again with lambdas' untyped
     // parameters as vars, so that nothing that compiled before changes, and only for a final
     // expected type. The checks are made with the renamed generics restored, as the call is checked
-    let has_lambda_parameters = arguments
-        .iter()
-        .any(|argument| !argument.lambda_parameters.is_empty());
+    let has_lambda_parameters = has_lambda_parameters(arguments);
 
     // The caller's generics that are their own in some lambdas' parameters only change those
     // arguments' candidates, and only for solving the call: the arguments are compiled with them
@@ -633,7 +644,7 @@ fn solve_compiled_call(
     let solution = loop {
         if has_own {
             for (i, argument) in arguments.iter_mut().enumerate() {
-                if argument.own.is_empty() || argument.check.is_none() {
+                if !argument.has_own_candidates() {
                     continue;
                 }
 
@@ -766,10 +777,7 @@ fn restored_solution(
 
     let mut checks = checks_of(arguments);
 
-    if arguments
-        .iter()
-        .any(|argument| !argument.lambda_parameters.is_empty())
-    {
+    if has_lambda_parameters(arguments) {
         instantiate_generic_parameters(ctx, function, arguments, &mappings, &mut checks);
     }
 
@@ -922,13 +930,15 @@ impl CallCandidates<'_> {
             restored,
             own_generics,
         );
-        // The lambdas' untyped parameters that were compiled as the caller's generics standing for the
-        // callee's renamed ones count as those for what the argument infers, as they do where the
-        // lambdas are checked (see `generic_parameter_types`), so that it doesn't take the caller's
-        // generic as itself, such as `T` from `x7` in `[(fn(x6: Int) => x6, 1), (fn(x7) => x7, 1)]`
-        // where the first element of a pair is compiled where it is, which doesn't refine it (see
-        // `compile_pair_expr` and `DeferredLambda`). Not where a lambda's body names that generic, as
-        // `let y: T = x` does, which keeps it as main had it (#362, 13k6)
+
+        // The lambdas' untyped parameters that were compiled as the caller's generics standing for
+        // the callee's renamed ones count as those for what the argument infers, as they do where
+        // the lambdas are checked (see `generic_parameter_types`), so that it doesn't take the
+        // caller's generic as itself, such as `T` from `x7` in
+        // `[(fn(x6: Int) => x6, 1), (fn(x7) => x7, 1)]` where the first element of a pair is
+        // compiled where it is, which doesn't refine it (see `compile_pair_expr` and
+        // `DeferredLambda`). Not where a lambda's body names that generic, as `let y: T = x` does,
+        // which keeps it as main had it (#362, 13k6)
         let originals: Vec<TypeId> = restored.keys().copied().collect();
         let references: HashMap<TypeId, TypeId> = parameters
             .iter()
@@ -950,8 +960,9 @@ impl CallCandidates<'_> {
             ctx.infer_type(ty, param, &mut infer);
 
             // Where that gives a generic a candidate with itself in it, such as from
-            // `fn(y) => if c { y } else { y }`, which returns the renamed generic twice, the caller's
-            // generic it stands for is what's known of it, as where nothing counts as the renamed one
+            // `fn(y) => if c { y } else { y }`, which returns the renamed generic twice, the
+            // caller's generic it stands for is what's known of it, as where nothing counts as the
+            // renamed one
             if !names_its_own_generic(ctx, function, &infer) {
                 return (generic_types, infer);
             }
@@ -1956,7 +1967,7 @@ fn merged_with_own(
     let replaced: Vec<Option<Inference>> = arguments
         .iter()
         .map(|argument| {
-            if argument.own.is_empty() || argument.check.is_none() {
+            if !argument.has_own_candidates() {
                 return None;
             }
 

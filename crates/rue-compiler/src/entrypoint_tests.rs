@@ -8,7 +8,7 @@ use rue_diagnostic::SourceKind;
 use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
 
-use crate::test_utils::{Compiled, compile_with};
+use crate::test_utils::{Compiled, compile_with_options};
 
 const SOURCE: &str = "
 fn main() -> Int { 1 }
@@ -31,12 +31,7 @@ export const VALUE: Any = f;
 
 /// [`SOURCE`], compiled with the options.
 fn compile(options: CompilerOptions) -> Compiled {
-    let compiled = compile_with(SOURCE, |o| {
-        *o = CompilerOptions {
-            std: false,
-            ..options
-        };
-    });
+    let compiled = compile_with_options(SOURCE, options);
     compiled.assert_no_errors();
     compiled
 }

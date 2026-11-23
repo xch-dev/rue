@@ -1116,6 +1116,7 @@ mod tests {
         run_and_trace_test, run_test, single_debug_metadata_path, trace_test,
     };
     use clap::{CommandFactory, Parser, error::ErrorKind};
+    use clvm_utils::tree_hash;
     use clvmr::{Allocator, SExp, serde::node_from_bytes};
     use rue_clvm::assemble;
     use rue_compiler::{CompiledTest, Compiler, FileTree};
@@ -1521,6 +1522,50 @@ mod tests {
             fs::read(&path).unwrap(),
             fs::read(dir.join("main.rue_double.rue.debug.clvm.bin")).unwrap()
         );
+    }
+
+    /// With `--all`, each program is written next to its source, or to the manifest's `dist_dir`
+    /// if it has one, with its tree hash beside it for `--hash`, and with its hex split into lines
+    /// of 64 characters for `--split`.
+    #[test]
+    fn build_all_writes_programs_and_hashes() {
+        let project = TempProject::new(
+            "build-all",
+            "fn main() -> String {\n    \"a string that's long enough for its program to take more than one line\"\n}\n",
+        );
+        let dir = &project.path;
+
+        let check = |hex_path: &Path, hash_path: &Path| {
+            let hex = fs::read_to_string(hex_path).unwrap();
+            let lines: Vec<&str> = hex.lines().collect();
+            assert!(lines.len() > 1, "{hex}");
+            assert!(lines[..lines.len() - 1].iter().all(|line| line.len() == 64));
+            assert!(!lines[lines.len() - 1].is_empty() && lines[lines.len() - 1].len() <= 64);
+
+            let mut allocator = Allocator::new();
+            let program =
+                node_from_bytes(&mut allocator, &hex::decode(lines.concat()).unwrap()).unwrap();
+            assert_eq!(
+                fs::read_to_string(hash_path).unwrap(),
+                format!("{}\n", tree_hash(&allocator, program))
+            );
+        };
+
+        run_build(dir, &["--all", "--hash", "--split"]);
+        check(&dir.join("main.rue.hex"), &dir.join("main.rue.hash"));
+
+        let dist = dir.join("dist");
+        fs::write(
+            dir.join("Rue.toml"),
+            format!(
+                "[compiler]\nentrypoint = \".\"\ndist_dir = \"{}\"\n",
+                dist.display()
+            ),
+        )
+        .unwrap();
+
+        run_build(dir, &["--all", "--hash", "--split"]);
+        check(&dist.join("main.rue.hex"), &dist.join("main.rue.hash"));
     }
 
     /// A failing assertion shows its message after its location, and the trace shows the statement.

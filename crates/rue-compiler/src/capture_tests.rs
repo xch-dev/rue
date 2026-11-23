@@ -7,7 +7,7 @@ use clvmr::Allocator;
 use rue_clvm::assemble;
 use rue_options::CompilerOptions;
 
-use crate::test_utils::{compile, compile_with, run_with_solution};
+use crate::test_utils::{compile, compile_with_options, run_with_solution};
 
 const HELPERS: &str = "
 fn total(xs: List<Int>) -> Int {
@@ -536,12 +536,7 @@ fn main(n: Int) -> Int {
     ] {
         assert!(!program(source).is_empty(), "{source}");
 
-        let mut debug = compile_with(&self::source(source), |options| {
-            *options = CompilerOptions {
-                std: false,
-                ..CompilerOptions::debug()
-            };
-        });
+        let mut debug = compile_with_options(&self::source(source), CompilerOptions::debug());
         assert!(!debug.main_program().is_empty(), "{source}");
     }
 }
