@@ -1,4 +1,5 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 // The program is the body of `main`
 fn main(payment: List, pair: Pair) {  // struct_param.rue:10:5-66
     payment.rest.first + (            // struct_param.rue:10:5-66
@@ -6,6 +7,7 @@ fn main(payment: List, pair: Pair) {  // struct_param.rue:10:5-66
     ) + (if pair.rest > pair.first { pair.rest - pair.first } else { raise() })
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                                          // struct_param.rue:9:52-11:2
     main(payment: solution@2, pair: solution@5)              // struct_param.rue:9:52-11:2
 }

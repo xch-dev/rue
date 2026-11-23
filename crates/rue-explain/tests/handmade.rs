@@ -79,7 +79,7 @@ fn check(
     let bytes = node_to_bytes(&allocator, ptr).unwrap();
     let metadata = sidecar(&allocator, ptr, functions);
     let explanation = Explanation::new(&bytes, Some(&metadata)).unwrap();
-    assert_eq!(explanation.uncovered(), Vec::<usize>::new());
+    assert_eq!(explanation.uncovered(), 0);
 
     let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
     for solution in solutions {
@@ -165,6 +165,125 @@ fn escaping_function_has_unknown_values() {
             }
         "#]],
     );
+}
+
+#[test]
+fn escaping_through_the_environment() {
+    // `wrap` returns its whole environment, which includes the `add` that it was passed
+    check(
+        "(+ (a (q . (+ 2 5)) (c (q . 10) (c 2 ()))) (a (a (q . (f 1)) (c (q . (+ 2 5)) ())) (c (q . 20) (c 2 ()))))",
+        |builder| {
+            let mut functions = add_hidden(builder);
+            functions.push((
+                "(f 1)".to_string(),
+                Described {
+                    name: "wrap",
+                    parameters: pair(Parameter::Nil, Parameter::Nil),
+                },
+            ));
+            functions
+        },
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                add(x: solution@2, env@2: 10) + wrap()(20, solution@2)
+            }
+
+            fn add(x) {
+                env@2 + x
+            }
+
+            fn wrap() {
+                // env@2 is always add
+                env.first
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn computed_values_are_shown_even_if_unread() {
+    // The hidden value isn't read, but computing it can fail
+    check(
+        "(a (q . (+ 5 (q . 1))) (c (/ 2 5) (c 2 ())))",
+        add_hidden_unread,
+        &["(6 3)", "(6 ())"],
+        &expect![[r#"
+            program(solution) {
+                increment(x: solution@2, env@2: solution@2 / solution@5)
+            }
+
+            fn increment(x) {
+                x + 1
+            }
+        "#]],
+    );
+}
+
+/// A function like `add`, which doesn't read its hidden first value.
+fn add_hidden_unread(builder: &mut DebugMetadataBuilder) -> Vec<(String, Described)> {
+    vec![(
+        "(+ 5 (q . 1))".to_string(),
+        Described {
+            name: "increment",
+            parameters: pair(Parameter::Nil, pair(name(builder, "x", 5), Parameter::Nil)),
+        },
+    )]
+}
+
+#[test]
+fn raw_code_with_its_environment() {
+    check(
+        "(a (q . (100 2 5)) (c (q . 5) 1))",
+        |_| Vec::new(),
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                clvm!((100 2 5), env = (5, solution))
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn large_constants_are_clvm() {
+    check(
+        "(c (q 1 2 3) (q 1 2 3 4 5 6 7 8 9 10))",
+        |_| Vec::new(),
+        &["()"],
+        &expect![[r#"
+            program(solution) {
+                ([1, 2, 3], clvm!(q . (q 2 3 4 5 6 7 8 9 10)))
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn deeply_nested_programs() {
+    // `(f (f ... 1))`, and a list built from `(c (q . 1) ...)`, both too deep to recurse on
+    // without growing the stack
+    let depth = 20_000;
+    let firsts = format!("{}01{}", "ff05ff".repeat(depth), "80".repeat(depth));
+    let list = format!("{}80{}", "ff04ffff0101ff".repeat(depth), "80".repeat(depth));
+
+    for (hex, solution) in [(firsts, "1"), (list, "()")] {
+        let mut allocator = Allocator::new();
+        let bytes = hex::decode(hex).unwrap();
+        let ptr = clvmr::serde::node_from_bytes(&mut allocator, &bytes).unwrap();
+        let explanation = Explanation::new(&bytes, None).unwrap();
+        assert_eq!(explanation.uncovered(), 0);
+        assert!(!explanation.render().is_empty());
+
+        let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
+        let env = assemble(&mut allocator, solution).unwrap();
+        let expected = run_program(&mut allocator, &dialect, ptr, env, MAX_COST)
+            .map(|reduction| disassemble_value(&allocator, reduction.1));
+        let actual = explanation
+            .evaluate(&mut allocator, &dialect, env, MAX_COST)
+            .map(|value| disassemble_value(&allocator, value));
+        assert_eq!(actual.ok(), expected.ok());
+    }
 }
 
 #[test]

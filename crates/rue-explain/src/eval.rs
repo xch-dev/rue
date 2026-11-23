@@ -5,6 +5,9 @@
 //! Programs that are built at runtime (such as closures) are run by a small interpreter that
 //! runs the decompiled body of a function whenever one of them runs a function's code, so those
 //! bodies are checked too.
+//!
+//! Operands are evaluated in the same order as `clvmr` evaluates them, from the last to the first,
+//! so that a program that fails fails with the same error.
 
 use std::collections::HashMap;
 
@@ -17,6 +20,7 @@ use rue_clvm::operator_name;
 use crate::Explanation;
 use crate::ir::{Block, Expr, ExprKind, FunctionId, Root, Statement, Value};
 use crate::program::{NodeId, NodeKind, atom_path};
+use crate::stack::grow_stack;
 
 /// What a step of evaluation costs, on top of the operators, so that a program that doesn't
 /// terminate runs out.
@@ -145,10 +149,7 @@ impl<D: Dialect> Evaluator<'_, D> {
                 } => {
                     let condition = self.expr(frame, condition)?;
                     if self.is_nil(condition) {
-                        let args = raise
-                            .iter()
-                            .map(|arg| self.expr(frame, arg))
-                            .collect::<Result<Vec<_>>>()?;
+                        let args = self.exprs(frame, raise)?;
                         let op = self.allocator.new_atom(&[8])?;
                         self.op(op, &args)?;
                         unreachable!("raise fails");
@@ -160,8 +161,19 @@ impl<D: Dialect> Evaluator<'_, D> {
         self.expr(frame, &block.value)
     }
 
+    /// The values of the operands, which are evaluated from the last to the first.
+    fn exprs(&mut self, frame: &mut Frame, exprs: &[Expr]) -> Result<Vec<NodePtr>> {
+        let mut values = exprs
+            .iter()
+            .rev()
+            .map(|expr| self.expr(frame, expr))
+            .collect::<Result<Vec<_>>>()?;
+        values.reverse();
+        Ok(values)
+    }
+
     fn expr(&mut self, frame: &mut Frame, expr: &Expr) -> Result<NodePtr> {
-        stacker::maybe_grow(256 * 1024, 4 * 1024 * 1024, || self.expr_inner(frame, expr))
+        grow_stack(|| self.expr_inner(frame, expr))
     }
 
     fn expr_inner(&mut self, frame: &mut Frame, expr: &Expr) -> Result<NodePtr> {
@@ -170,10 +182,7 @@ impl<D: Dialect> Evaluator<'_, D> {
         match &expr.kind {
             ExprKind::Value(value) => self.value(frame, value),
             ExprKind::Op { op, args } => {
-                let args = args
-                    .iter()
-                    .map(|arg| self.expr(frame, arg))
-                    .collect::<Result<Vec<_>>>()?;
+                let args = self.exprs(frame, args)?;
                 let op = self.materialize(*op)?;
                 self.op(op, &args)
             }
@@ -194,8 +203,8 @@ impl<D: Dialect> Evaluator<'_, D> {
                 self.function(*function, env)
             }
             ExprKind::Run { program, env } => {
-                let program = self.expr(frame, program)?;
                 let env = self.value(frame, env)?;
+                let program = self.expr(frame, program)?;
                 self.run(program, env)
             }
             ExprKind::Raw { code, env } => {
@@ -207,36 +216,41 @@ impl<D: Dialect> Evaluator<'_, D> {
     }
 
     fn value(&mut self, frame: &mut Frame, value: &Value) -> Result<NodePtr> {
-        match value {
+        grow_stack(|| match value {
             Value::Const(node) => self.materialize(*node),
             Value::Ref(root, path) => {
-                let mut ptr = match root {
+                let value = match root {
                     Root::Env => frame.env,
                     Root::Var(var) => {
                         frame.vars[*var].expect("a variable is bound before it's used")
                     }
                 };
-                for &step in path {
-                    ptr = match self.allocator.sexp(ptr) {
-                        SExp::Pair(first, rest) => {
-                            if step {
-                                rest
-                            } else {
-                                first
-                            }
-                        }
-                        SExp::Atom => return Err(EvalFailure::Clvm(EvalErr::PathIntoAtom)),
-                    };
-                }
-                Ok(ptr)
+                self.descend(value, path.iter().copied())
             }
             Value::Cons(first, rest) => {
-                let first = self.value(frame, first)?;
                 let rest = self.value(frame, rest)?;
+                let first = self.value(frame, first)?;
                 Ok(self.allocator.new_pair(first, rest)?)
             }
             Value::Expr(expr) => self.expr(frame, expr),
+        })
+    }
+
+    /// The part of a value at a path, which fails if the path goes through an atom.
+    fn descend(&self, mut value: NodePtr, path: impl IntoIterator<Item = bool>) -> Result<NodePtr> {
+        for step in path {
+            value = match self.allocator.sexp(value) {
+                SExp::Pair(first, rest) => {
+                    if step {
+                        rest
+                    } else {
+                        first
+                    }
+                }
+                SExp::Atom => return Err(EvalFailure::Clvm(EvalErr::PathIntoAtom)),
+            };
         }
+        Ok(value)
     }
 
     fn is_nil(&self, value: NodePtr) -> bool {
@@ -276,75 +290,56 @@ impl<D: Dialect> Evaluator<'_, D> {
     /// Runs code like CLVM does, except that the programs it runs (with `a`) are run by
     /// [`run`](Self::run). Anything unusual is left to `clvmr`.
     fn interpret(&mut self, code: NodePtr, env: NodePtr) -> Result<NodePtr> {
-        stacker::maybe_grow(256 * 1024, 4 * 1024 * 1024, || {
-            self.interpret_inner(code, env)
-        })
+        grow_stack(|| self.interpret_inner(code, env))
     }
 
     fn interpret_inner(&mut self, code: NodePtr, env: NodePtr) -> Result<NodePtr> {
         self.charge(STEP_COST)?;
 
         let SExp::Pair(op, args) = self.allocator.sexp(code) else {
-            let atom = self.allocator.atom(code).as_ref().to_vec();
-            let Some(path) = atom_path(&atom) else {
-                return Ok(NodePtr::NIL);
+            return match atom_path(self.allocator.atom(code).as_ref()) {
+                Some(path) => self.descend(env, path),
+                None => Ok(NodePtr::NIL),
             };
-            let mut ptr = env;
-            for step in path {
-                ptr = match self.allocator.sexp(ptr) {
-                    SExp::Pair(first, rest) => {
-                        if step {
-                            rest
-                        } else {
-                            first
-                        }
-                    }
-                    SExp::Atom => return Err(EvalFailure::Clvm(EvalErr::PathIntoAtom)),
-                };
-            }
-            return Ok(ptr);
         };
 
         let op_atom = match self.allocator.sexp(op) {
-            SExp::Atom => self.allocator.atom(op).as_ref().to_vec(),
+            SExp::Atom => self.allocator.atom(op),
             SExp::Pair(..) => return self.clvm(code, env),
         };
 
-        if operator_name(&op_atom).is_none() {
+        let (known, quote, apply) = (
+            operator_name(op_atom.as_ref()).is_some(),
+            op_atom.as_ref() == [1],
+            op_atom.as_ref() == [2],
+        );
+
+        if !known {
             return self.clvm(code, env);
         }
 
-        if op_atom == [1] {
+        if quote {
             return Ok(args);
         }
 
         let mut operands = Vec::new();
         let mut rest = args;
-        loop {
-            match self.allocator.sexp(rest) {
-                SExp::Pair(first, next) => {
-                    operands.push(first);
-                    rest = next;
-                }
-                SExp::Atom => {
-                    if self.allocator.atom_len(rest) != 0 {
-                        return self.clvm(code, env);
-                    }
-                    break;
-                }
-            }
+        while let SExp::Pair(first, next) = self.allocator.sexp(rest) {
+            operands.push(first);
+            rest = next;
         }
-
-        if op_atom == [2] && operands.len() != 2 {
+        if !self.is_nil(rest) || (apply && operands.len() != 2) {
             return self.clvm(code, env);
         }
 
-        let values = operands
+        let mut values = operands
             .iter()
+            .rev()
             .map(|&operand| self.interpret(operand, env))
             .collect::<Result<Vec<_>>>()?;
+        values.reverse();
 
-        if op_atom == [2] {
+        if apply {
             return self.run(values[0], values[1]);
         }
 

@@ -1,9 +1,11 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 // The program is the body of `main`
 fn main(a: Int, b: Int) {  // inline_small_function.rue:10:5-28
     (if a > nil { a } else { raise() }) * (if b > nil { b } else { raise() })  // inline_small_function.rue:10:5-28
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                        // inline_small_function.rue:9:32-11:2
     main(a: solution@2, b: solution@5)     // inline_small_function.rue:9:32-11:2
 }

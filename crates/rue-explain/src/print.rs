@@ -6,9 +6,11 @@ use chialisp::compiler::debug_metadata::ParameterConstraint;
 use rue_clvm::operator_name;
 
 use crate::Explanation;
-use crate::build::FunctionKind;
-use crate::ir::{Block, Expr, ExprKind, Function, FunctionId, Root, Statement, Value};
-use crate::program::{NodeId, NodeKind, Path, is_prefix, path_number};
+use crate::ir::{
+    Block, Expr, ExprKind, Function, FunctionId, FunctionKind, Root, Statement, Value, known_env,
+};
+use crate::program::{NodeId, Path, path_number};
+use crate::stack::grow_stack;
 
 /// How many nodes a constant can have to be shown as a Rue value rather than as CLVM.
 const MAX_LITERAL_NODES: usize = 16;
@@ -20,6 +22,10 @@ const INDENT: &str = "    ";
 
 /// How long a line can be before it's wrapped.
 const MAX_WIDTH: usize = 100;
+
+/// How many times a line is wrapped inside of itself at most, which keeps wrapping a deeply nested
+/// line from taking quadratic time.
+const MAX_WRAP_DEPTH: usize = 32;
 
 /// Precedences, from the loosest to the tightest.
 const PREC_IF: u8 = 0;
@@ -36,8 +42,24 @@ struct Line {
     node: Option<NodeId>,
 }
 
-pub fn render(explanation: &Explanation) -> String {
+pub(crate) fn render(explanation: &Explanation) -> String {
     let mut lines = Vec::new();
+
+    let typed = explanation.functions.iter().any(|function| {
+        function.layout.as_ref().is_some_and(|layout| {
+            layout
+                .named
+                .iter()
+                .any(|slot| constraint(&slot.constraint).is_some())
+        })
+    });
+    if typed {
+        lines.push(Line {
+            indent: 0,
+            text: "// The types of parameters are as declared, and aren't checked".to_string(),
+            node: None,
+        });
+    }
 
     let mut order = vec![explanation.entry];
     order.extend((0..explanation.functions.len()).filter(|&id| id != explanation.entry));
@@ -59,7 +81,7 @@ pub fn render(explanation: &Explanation) -> String {
             });
         }
 
-        if id == explanation.entry && explanation.kinds[id] == FunctionKind::Described {
+        if id == explanation.entry && explanation.functions[id].kind == FunctionKind::Described {
             lines.push(Line {
                 indent: 0,
                 text: format!(
@@ -73,7 +95,6 @@ pub fn render(explanation: &Explanation) -> String {
         Printer {
             explanation,
             function: &explanation.functions[id],
-            kind: explanation.kinds[id],
             lines: &mut lines,
         }
         .function();
@@ -136,7 +157,6 @@ fn location(explanation: &Explanation, node: NodeId) -> Option<String> {
 struct Printer<'a> {
     explanation: &'a Explanation,
     function: &'a Function,
-    kind: FunctionKind,
     lines: &'a mut Vec<Line>,
 }
 
@@ -148,7 +168,7 @@ impl Printer<'_> {
         for part in text.split('\n') {
             let leading = part.len() - part.trim_start_matches(' ').len();
             let width = MAX_WIDTH.saturating_sub(indent * INDENT.len() + leading);
-            for wrapped in wrap(&part[leading..], width) {
+            for wrapped in wrap(&part[leading..], width, MAX_WRAP_DEPTH) {
                 self.lines.push(Line {
                     indent,
                     text: format!("{}{wrapped}", &part[..leading]),
@@ -161,7 +181,7 @@ impl Printer<'_> {
     fn function(&mut self) {
         let function = self.function;
 
-        let header = match self.kind {
+        let header = match function.kind {
             FunctionKind::Program => "program(solution) {".to_string(),
             FunctionKind::Anonymous => format!("fn {}(env) {{", function.name),
             FunctionKind::Described => {
@@ -222,7 +242,10 @@ impl Printer<'_> {
                     let text = if raise.is_empty() {
                         format!("assert {condition}")
                     } else {
-                        format!("assert {condition} else raise({})", self.args(raise))
+                        format!(
+                            "assert {condition} else raise({})",
+                            self.args(raise.as_slice())
+                        )
                     };
                     self.line(indent, &text, Some(*node));
                 }
@@ -280,7 +303,7 @@ impl Printer<'_> {
     /// An expression as text, which can span several lines (for a block inside of it). It's in
     /// parentheses if it binds more loosely than `min`.
     fn expr(&self, expr: &Expr, min: u8) -> String {
-        let (text, prec) = self.expr_prec(expr);
+        let (text, prec) = grow_stack(|| self.expr_prec(expr));
         if prec < min {
             format!("({text})")
         } else {
@@ -292,7 +315,7 @@ impl Printer<'_> {
         match &expr.kind {
             ExprKind::Value(Value::Expr(expr)) => self.expr_prec(expr),
             ExprKind::Value(value) => (self.value(value), PREC_ATOM),
-            ExprKind::Op { op, args } => self.op(*op, args),
+            ExprKind::Op { op, args } => self.op(*op, args.as_slice()),
             ExprKind::If {
                 condition,
                 then,
@@ -332,7 +355,6 @@ impl Printer<'_> {
         let mut printer = Printer {
             explanation: self.explanation,
             function: self.function,
-            kind: self.kind,
             lines: &mut lines,
         };
         printer.block(1, block);
@@ -443,7 +465,7 @@ impl Printer<'_> {
                     && matches!(value, Value::Const(node) if self.explanation.program.same_value(node, known.value))
             });
             let unread =
-                !callee.reads_hidden.get(index).copied().unwrap_or(true) && !has_computed(&value);
+                !callee.reads_hidden.get(index).copied().unwrap_or(true) && !value.has_computed();
 
             if known || unread {
                 continue;
@@ -458,44 +480,50 @@ impl Printer<'_> {
     /// The part of a value at a path, with the constant for a part of the environment that's
     /// known.
     fn resolve(&self, value: &Value, path: &[bool]) -> Option<Value> {
-        let value = resolve(self.explanation, value, path)?;
-        Some(match value {
-            Value::Ref(Root::Env, path) => self.env_value(path),
+        Some(match value.at(&self.explanation.program, path)? {
+            Value::Ref(Root::Env, path) => {
+                known_env(&self.explanation.program, &self.function.known, path)
+            }
             value => value,
         })
-    }
-
-    /// A part of the environment, which is the constant every call passes if it's known.
-    fn env_value(&self, path: Path) -> Value {
-        for known in &self.function.known {
-            if is_prefix(&known.path, &path)
-                && let Some(part) = self
-                    .explanation
-                    .program
-                    .descend(known.value, &path[known.path.len()..])
-            {
-                return Value::Const(part);
-            }
-        }
-        Value::Ref(Root::Env, path)
     }
 
     /// The items of the list that a program is run with, as the arguments of a call, with
     /// whatever ends the list spread (`...rest`) if it isn't nil.
     fn list_args(&self, env: &Value) -> String {
-        let mut items = Vec::new();
-        let mut value = env.clone();
+        let (mut items, tail) = self.items(env);
+        if let Some(tail) = tail {
+            items.push(format!("...{tail}"));
+        }
+        items.join(", ")
+    }
 
-        while let Some((first, rest)) = self.parts(&value) {
-            items.push(self.value(&first));
+    /// The items of a list, and whatever ends it if it isn't nil. The items of a constant are
+    /// only shown separately if it's small.
+    fn items(&self, value: &Value) -> (Vec<String>, Option<String>) {
+        let program = &self.explanation.program;
+        let mut items = Vec::new();
+        let mut value = value;
+
+        while let Value::Cons(first, rest) = value {
+            items.push(self.value(first));
             value = rest;
         }
 
-        if !self.is_nil(&value) {
-            items.push(format!("...{}", self.value(&value)));
-        }
+        let tail = match value {
+            &Value::Const(mut node) => {
+                if !program.contains_function[node] && program.sizes[node] <= MAX_LITERAL_NODES {
+                    while let Some((first, rest)) = program.pair(node) {
+                        items.push(self.constant(first));
+                        node = rest;
+                    }
+                }
+                (!program.is_nil(node)).then(|| self.constant(node))
+            }
+            value => Some(self.value(value)),
+        };
 
-        items.join(", ")
+        (items, tail)
     }
 
     /// The first and rest of a value that's known to be a pair.
@@ -520,6 +548,10 @@ impl Printer<'_> {
     }
 
     fn value(&self, value: &Value) -> String {
+        grow_stack(|| self.value_inner(value))
+    }
+
+    fn value_inner(&self, value: &Value) -> String {
         match value {
             Value::Const(node) => self.constant(*node),
             Value::Ref(Root::Env, path) => self.env_name(path),
@@ -531,20 +563,11 @@ impl Printer<'_> {
 
     /// A pair or list, in Rue's syntax.
     fn list(&self, value: &Value) -> String {
-        let mut items = Vec::new();
-        let mut value = value.clone();
-
-        while let Value::Cons(first, rest) = value {
-            items.push(self.value(&first));
-            value = *rest;
-        }
-
-        if self.is_nil(&value) {
-            format!("[{}]", items.join(", "))
-        } else if items.len() == 1 {
-            format!("({}, {})", items[0], self.value(&value))
-        } else {
-            format!("[{}, ...{}]", items.join(", "), self.value(&value))
+        match self.items(value) {
+            (items, None) => format!("[{}]", items.join(", ")),
+            (items, Some(tail)) if items.len() == 1 => format!("({}, {tail})", items[0]),
+            (items, Some(tail)) if items.is_empty() => tail,
+            (items, Some(tail)) => format!("[{}, ...{tail}]", items.join(", ")),
         }
     }
 
@@ -650,47 +673,25 @@ impl Printer<'_> {
             return program.disassemble_value(node);
         }
 
-        if !program.contains_function[node] && program.subtree(node).len() <= MAX_LITERAL_NODES {
-            return self.literal(node);
+        if !program.contains_function[node] && program.sizes[node] <= MAX_LITERAL_NODES {
+            return self.list(&Value::Const(node));
         }
 
         format!("clvm!(q . {})", program.disassemble(node))
     }
 
-    /// A small constant in Rue's syntax.
-    fn literal(&self, node: NodeId) -> String {
-        let program = &self.explanation.program;
-
-        match program.kind(node) {
-            NodeKind::Atom(atom) if atom.is_empty() => "nil".to_string(),
-            NodeKind::Atom(_) => program.disassemble_value(node),
-            NodeKind::Pair(..) => {
-                let mut items = Vec::new();
-                let mut node = node;
-                while let Some((first, rest)) = program.pair(node) {
-                    items.push(self.literal(first));
-                    node = rest;
-                }
-                if program.is_nil(node) {
-                    format!("[{}]", items.join(", "))
-                } else if items.len() == 1 {
-                    format!("({}, {})", items[0], self.literal(node))
-                } else {
-                    format!("[{}, ...{}]", items.join(", "), self.literal(node))
-                }
-            }
-        }
-    }
-
     /// The name of a part of the environment: the parameter it's in, or its path.
     fn env_name(&self, path: &Path) -> String {
-        let base = match self.kind {
+        let base = match self.function.kind {
             FunctionKind::Program => "solution",
             FunctionKind::Described | FunctionKind::Anonymous => "env",
         };
 
         if let Some(layout) = &self.function.layout
-            && let Some(slot) = layout.named.iter().find(|slot| is_prefix(&slot.path, path))
+            && let Some(slot) = layout
+                .named
+                .iter()
+                .find(|slot| path.starts_with(&slot.path))
         {
             return project(&slot.name, &path[slot.path.len()..]);
         }
@@ -704,9 +705,10 @@ impl Printer<'_> {
 }
 
 /// Wraps a line that's longer than the width, by putting each item of its longest bracketed
-/// group on a line of its own (and wrapping those in turn). Text in string literals is left alone.
-fn wrap(text: &str, width: usize) -> Vec<String> {
-    if text.chars().count() <= width {
+/// group on a line of its own (and wrapping those in turn, up to the depth). Text in string
+/// literals is left alone.
+fn wrap(text: &str, width: usize, depth: usize) -> Vec<String> {
+    if depth == 0 || text.chars().count() <= width {
         return vec![text.to_string()];
     }
 
@@ -714,17 +716,18 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
         return vec![text.to_string()];
     };
 
-    let mut lines = vec![text[..=open].to_string()];
-    let inner_width = width.saturating_sub(INDENT.len());
-    // Items of a block aren't separated by commas
-    let separator = if text[open..].starts_with('{') {
+    // A block (which has a single item) isn't separated by commas, but a closure's captures are
+    let separator = if text[open..].starts_with('{') && items.len() == 1 {
         ""
     } else {
         ","
     };
+
+    let mut lines = vec![text[..=open].to_string()];
+    let inner_width = width.saturating_sub(INDENT.len());
     for item in items {
         let item = format!("{}{separator}", text[item.0..item.1].trim());
-        for line in wrap(&item, inner_width) {
+        for line in wrap(&item, inner_width, depth - 1) {
             lines.push(format!("{INDENT}{line}"));
         }
     }
@@ -813,28 +816,34 @@ fn constraint(constraint: &ParameterConstraint) -> Option<String> {
     })
 }
 
-fn has_computed(value: &Value) -> bool {
-    match value {
-        Value::Expr(_) => true,
-        Value::Cons(first, rest) => has_computed(first) || has_computed(rest),
-        Value::Const(_) | Value::Ref(..) => false,
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// The part of a value at a path, if it doesn't go into a computed part or through an atom.
-pub(crate) fn resolve(explanation: &Explanation, value: &Value, path: &[bool]) -> Option<Value> {
-    let Some((&step, rest)) = path.split_first() else {
-        return Some(value.clone());
-    };
+    #[test]
+    fn wrapping_keeps_the_commas_between_items() {
+        // A closure's captures are separated by commas, and a block's value isn't followed by one
+        assert_eq!(
+            wrap("f(g{alpha: a, beta: b}, h)", 12, MAX_WRAP_DEPTH),
+            [
+                "f(",
+                "    g{",
+                "        alpha: a,",
+                "        beta: b,",
+                "    },",
+                "    h,",
+                ")"
+            ]
+        );
+        assert_eq!(
+            wrap("if c { value_value } else { nil }", 12, MAX_WRAP_DEPTH),
+            ["if c {", "    value_value", "} else { nil }"]
+        );
 
-    match value {
-        Value::Cons(first, second) => resolve(explanation, if step { second } else { first }, rest),
-        Value::Const(node) => explanation.program.descend(*node, path).map(Value::Const),
-        Value::Ref(root, prefix) => {
-            let mut full = prefix.clone();
-            full.extend_from_slice(path);
-            Some(Value::Ref(*root, full))
-        }
-        Value::Expr(_) => None,
+        // Commas in strings don't separate anything
+        assert_eq!(
+            wrap("raise(\"a, b, c, d\")", 10, MAX_WRAP_DEPTH),
+            ["raise(", "    \"a, b, c, d\",", ")"]
+        );
     }
 }

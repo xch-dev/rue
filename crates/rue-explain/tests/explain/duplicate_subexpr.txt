@@ -1,9 +1,11 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 // The program is the body of `main`
 fn main(x: Int, y: Int) {  // duplicate_subexpr.rue:4:5-31
     (if x > nil { x + y } else { raise() }) + (if y > nil { y * x } else { raise() })  // duplicate_subexpr.rue:4:5-31
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                         // duplicate_subexpr.rue:3:32-5:2
     main(x: solution@2, y: solution@5)      // duplicate_subexpr.rue:3:32-5:2
 }

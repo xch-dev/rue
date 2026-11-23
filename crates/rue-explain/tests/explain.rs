@@ -69,6 +69,24 @@ fn explain(path: &Path, options: CompilerOptions) -> (Allocator, clvmr::NodePtr,
     (allocator, program, explanation)
 }
 
+/// Solutions for the ports of Chia's puzzles, which can't have `// solution:` lines of their own.
+fn port_solutions(path: &Path) -> &'static [&'static str] {
+    let key = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let _ = key;
+    match path.file_stem().and_then(|stem| stem.to_str()) {
+        // The delegated puzzle is run with its solution, and its output is signed by the key
+        Some("p2_delegated_puzzle_or_hidden_puzzle") => &[
+            "(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa () (q (51 0xcafe 1)) ())",
+            "(0xaaaa () (q . 2) ((60 1)))",
+        ],
+        Some("p2_conditions") => &["(((51 0xcafe 1)))", "(())"],
+        Some("p2_singleton") => &[
+            "(0x1111111111111111111111111111111111111111111111111111111111111111 0x2222222222222222222222222222222222222222222222222222222222222222 0x3333333333333333333333333333333333333333333333333333333333333333 0x4444444444444444444444444444444444444444444444444444444444444444 0x5555555555555555555555555555555555555555555555555555555555555555)",
+        ],
+        _ => &[],
+    }
+}
+
 /// Checks that running the explanation gives the same result as running the program.
 fn check_solutions(
     path: &Path,
@@ -83,6 +101,7 @@ fn check_solutions(
     for solution in source
         .lines()
         .filter_map(|line| line.trim().strip_prefix("// solution: "))
+        .chain(port_solutions(path).iter().copied())
     {
         let env = assemble(allocator, solution).unwrap();
         let expected = run_program(allocator, &dialect, program, env, MAX_COST);
@@ -95,7 +114,12 @@ fn check_solutions(
                 "{} with {solution}",
                 path.display()
             ),
-            (Err(_), Err(EvalFailure::Clvm(_))) | (_, Err(EvalFailure::OutOfCost)) => {}
+            (Err(expected), Err(EvalFailure::Clvm(actual))) => assert_eq!(
+                actual.to_string(),
+                expected.to_string(),
+                "{} with {solution}",
+                path.display()
+            ),
             (expected, actual) => panic!(
                 "{} with {solution}: expected {expected:?}, got {actual:?}",
                 path.display()
@@ -117,7 +141,7 @@ fn explanations() {
 
             assert_eq!(
                 explanation.uncovered(),
-                Vec::<usize>::new(),
+                0,
                 "{} ({build}) has nodes that aren't shown",
                 path.display()
             );

@@ -1,4 +1,5 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                                      // closure_capture.rue:3:46-9:2
     main(limit: solution@2, items: solution@5)           // closure_capture.rue:3:46-9:2
 }
@@ -22,6 +23,7 @@ fn total(items: List, f) {                               // closure_capture.rue:
     }
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                                      // closure_capture.rue:3:46-9:2
     main(limit: solution@2, items: solution@5)           // closure_capture.rue:3:46-9:2
 }

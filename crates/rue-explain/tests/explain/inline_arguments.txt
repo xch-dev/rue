@@ -1,4 +1,5 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                              // inline_arguments.rue:6:24-9:2
     main(a: solution@2)                          // inline_arguments.rue:6:24-9:2
 }
@@ -13,6 +14,7 @@ fn check(v: Int) {                               // inline_arguments.rue:24:5-19
     v                                            // inline_arguments.rue:24:5-19
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                 // inline_arguments.rue:6:24-9:2
     main(a: solution@2)             // inline_arguments.rue:6:24-9:2
 }

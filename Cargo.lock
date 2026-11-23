@@ -1827,6 +1827,7 @@ dependencies = [
  "chialisp",
  "clvmr",
  "expect-test",
+ "hex",
  "num-bigint",
  "rue-clvm",
  "rue-compiler",

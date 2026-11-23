@@ -1,10 +1,12 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 // The program is the body of `main`
 fn main(owner: Bytes(48), target: Bytes32, amount: Int, memo: Atom, enabled: Atom) {  // typed_param.rue:9:5-20 (validate (inlined))
     assert all(enabled, !(target == sha256(owner)), 5 > strlen(memo))  // typed_param.rue:9:5-20 (validate (inlined))
     amount                                                             // typed_param.rue:9:5-20
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                                                       // typed_param.rue:4:93-6:2
     main(                                                                 // typed_param.rue:4:93-6:2
         owner: solution@2,

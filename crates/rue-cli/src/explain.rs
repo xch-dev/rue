@@ -22,7 +22,6 @@ use crate::debug_metadata_path;
 /// shown as `function{capture: value}`, and calling a value runs it with the arguments as its
 /// environment. Code that isn't recognized is shown as CLVM, in `clvm!(...)`.
 #[derive(Debug, Parser)]
-#[allow(clippy::struct_field_names)]
 pub struct ExplainArgs {
     /// The program, as CLVM or hex (with `--hex`), or a file that contains it (such as one from
     /// `rue build --all`, which is read as hex if its name ends in `.hex`)

@@ -29,3 +29,4 @@ expect-test = { workspace = true }
 rue-compiler = { workspace = true }
 rue-options = { workspace = true }
 rue-lir = { workspace = true }
+hex = { workspace = true }

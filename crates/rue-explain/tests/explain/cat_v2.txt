@@ -1,4 +1,5 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                                               // cat_v2.rue:87:22-151:2
     main(                                                         // cat_v2.rue:87:22-151:2
         mod_hash: solution@2,
@@ -31,28 +32,27 @@ fn main(                                                          // cat_v2.rue:
     // env@28 is always for#2
     // env@10 is always tree_hash
     // env@14 is always spread
-    let v1 = sha256(1, mod_hash)                                  // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
-    let v2 = coinid(this_coin_info.first, this_coin_info.rest.first, this_coin_info.rest.rest.first)  // cat_v2.rue:89:17-93:6
-    let v3 = for(                                                 // cat_v2.rue:162:5-205:6 (morph_conditions (inlined))
-        cat_info: [mod_hash, v1, tail_program_hash],
-        list: inner_puzzle(...inner_puzzle_solution),
-    )
-    let v4 = if lineage_proof {                                   // cat_v2.rue:119:25-127:6
+    let v1 = coinid(this_coin_info.first, this_coin_info.rest.first, this_coin_info.rest.rest.first)  // cat_v2.rue:89:17-93:6
+    let v2 = sha256(1, mod_hash)                                  // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
+    let v3 = if lineage_proof {                                   // cat_v2.rue:119:25-127:6
         this_coin_info.first == coinid(
             lineage_proof.first,
             cat_puzzle_hash(
-                cat_info: [mod_hash, v1, tail_program_hash],
+                cat_info: [mod_hash, v2, tail_program_hash],
                 inner_puzzle_hash: lineage_proof.rest.first,
             ),
             lineage_proof.rest.rest.first,
         )
     } else { nil }
-    let v5 = concat(-53, tree_hash(value: [prev_coin_id, prev_subtotal]))  // cat_v2.rue:111:22-80
-    let v6 = sha256(                                              // cat_v2.rue:114:17-86
+    let v4 = for(                                                 // cat_v2.rue:162:5-205:6 (morph_conditions (inlined))
+        cat_info: [mod_hash, v2, tail_program_hash],
+        list: inner_puzzle(...inner_puzzle_solution),
+    )
+    let v5 = sha256(                                              // cat_v2.rue:114:17-86
         coinid(
             next_coin_proof.first,
             cat_puzzle_hash(
-                cat_info: [mod_hash, v1, tail_program_hash],
+                cat_info: [mod_hash, v2, tail_program_hash],
                 inner_puzzle_hash: next_coin_proof.rest.first,
             ),
             next_coin_proof.rest.rest.first,
@@ -60,31 +60,32 @@ fn main(                                                          // cat_v2.rue:
         -53,
         tree_hash(
             value: [
-                v2,
-                prev_subtotal + this_coin_info.rest.rest.first + extra_delta - v3.rest.first,
+                v1,
+                prev_subtotal + this_coin_info.rest.rest.first + extra_delta - v4.rest.first,
             ],
         ),
     )
-    ([70, v2], if v3.rest.rest {                                  // cat_v2.rue:129:5-150:6
-        assert tree_hash(value: v3.rest.rest.first) == tail_program_hash
+    let v6 = concat(-53, tree_hash(value: [prev_coin_id, prev_subtotal]))  // cat_v2.rue:111:22-80
+    ([70, v1], if v4.rest.rest {                                  // cat_v2.rue:129:5-150:6
+        assert tree_hash(value: v4.rest.rest.first) == tail_program_hash
         spread(
-            items: v3.rest.rest.first(
+            items: v4.rest.rest.first(
                 [
-                    [tree_hash(value: inner_puzzle), mod_hash, v1, tail_program_hash],
-                    v2,
+                    [tree_hash(value: inner_puzzle), mod_hash, v2, tail_program_hash],
+                    v1,
                     ...this_coin_info,
                 ],
-                v4,
+                v3,
                 lineage_proof,
                 extra_delta,
-                [[60, v5], [61, v6], ...v3.first],
-                v3.rest.rest.rest,
+                [[60, v6], [61, v5], ...v4.first],
+                v4.rest.rest.rest,
             ),
-            rest: [[60, v5], [61, v6], ...v3.first],
+            rest: [[60, v6], [61, v5], ...v4.first],
         )
     } else {
-        assert all(v4, !extra_delta)
-        [[60, v5], [61, v6], ...v3.first]
+        assert all(v3, !extra_delta)
+        [[60, v6], [61, v5], ...v4.first]
     })
 }
 
@@ -196,6 +197,7 @@ fn spread(items, rest) {                                          // cat_v2.rue:
     }
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                                                       // cat_v2.rue:87:22-151:2
     main(                                                                 // cat_v2.rue:87:22-151:2
         mod_hash: solution@2,
@@ -233,53 +235,53 @@ fn main(                                                                  // cat
     // env@46 is always curried_params_hash
     // env@94 is always update_hash_with_parameter
     // env@126 is always apply_hash
-    let v1 = sha256(concat(1, mod_hash))                                  // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
-    let v2 = coinid(this_coin_info.first, this_coin_info.rest.first, this_coin_info.rest.rest.first)  // cat_v2.rue:89:17-93:6
-    let v3 = morph_conditions(                                            // cat_v2.rue:99:19-85
-        conditions: inner_puzzle(...inner_puzzle_solution),
-        cat_info: [mod_hash, v1, tail_program_hash],
+    let v1 = coinid(this_coin_info.first, this_coin_info.rest.first, this_coin_info.rest.rest.first)  // cat_v2.rue:89:17-93:6
+    let v2 = sha256(concat(1, mod_hash))                                  // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
+    let v3 = coinid(                                                      // cat_v2.rue:101:24-105:6
+        next_coin_proof.first,
+        cat_puzzle_hash(
+            cat_info: [mod_hash, v2, tail_program_hash],
+            inner_puzzle_hash: next_coin_proof.rest.first,
+        ),
+        next_coin_proof.rest.rest.first,
     )
-    let v4 = if !lineage_proof { nil } else {                             // cat_v2.rue:119:25-127:6
+    let v4 = tree_hash(value: inner_puzzle)                               // cat_v2.rue:95:51-74
+    let v5 = if !lineage_proof { nil } else {                             // cat_v2.rue:119:25-127:6
         this_coin_info.first == coinid(
             lineage_proof.first,
             cat_puzzle_hash(
-                cat_info: [mod_hash, v1, tail_program_hash],
+                cat_info: [mod_hash, v2, tail_program_hash],
                 inner_puzzle_hash: lineage_proof.rest.first,
             ),
             lineage_proof.rest.rest.first,
         )
     }
-    let v5 = tree_hash(value: inner_puzzle)                               // cat_v2.rue:95:51-74
-    let v6 = coinid(                                                      // cat_v2.rue:101:24-105:6
-        next_coin_proof.first,
-        cat_puzzle_hash(
-            cat_info: [mod_hash, v1, tail_program_hash],
-            inner_puzzle_hash: next_coin_proof.rest.first,
-        ),
-        next_coin_proof.rest.rest.first,
+    let v6 = morph_conditions(                                            // cat_v2.rue:99:19-85
+        conditions: inner_puzzle(...inner_puzzle_solution),
+        cat_info: [mod_hash, v2, tail_program_hash],
     )
-    let v7 = prev_subtotal + (this_coin_info.rest.rest.first - v3.rest.first) + extra_delta  // cat_v2.rue:106:20-94
-    let v8 = concat(-53, tree_hash(value: [prev_coin_id, prev_subtotal]))  // cat_v2.rue:111:22-80
-    let v9 = sha256(concat(concat(v6, -53), tree_hash(value: [v2, v7])))  // cat_v2.rue:114:17-86
-    let v10 = v3.first                                                    // cat_v2.rue:116:12-30
-    ([70, v2], if !v3.rest.rest {                                         // cat_v2.rue:129:5-150:6
-        assert all(v4, extra_delta == nil) else raise("assertion failed at cat_v2.rue:133:13")
-        [[60, v8], [61, v9], ...v10]
+    let v7 = prev_subtotal + (this_coin_info.rest.rest.first - v6.rest.first) + extra_delta  // cat_v2.rue:106:20-94
+    let v8 = v6.first                                                     // cat_v2.rue:116:12-30
+    let v9 = sha256(concat(concat(v3, -53), tree_hash(value: [v1, v7])))  // cat_v2.rue:114:17-86
+    let v10 = concat(-53, tree_hash(value: [prev_coin_id, prev_subtotal]))  // cat_v2.rue:111:22-80
+    ([70, v1], if !v6.rest.rest {                                         // cat_v2.rue:129:5-150:6
+        assert all(v5, extra_delta == nil) else raise("assertion failed at cat_v2.rue:133:13")
+        [[60, v10], [61, v9], ...v8]
     } else {
-        let v11 = v3.rest.rest
+        let v11 = v6.rest.rest
         assert tree_hash(value: v11.first) == tail_program_hash else raise(
             "assertion failed at cat_v2.rue:137:13",
         )
         spread(
             items: v11.first(
-                [[v5, mod_hash, v1, tail_program_hash], v2, ...this_coin_info],
-                v4,
+                [[v4, mod_hash, v2, tail_program_hash], v1, ...this_coin_info],
+                v5,
                 lineage_proof,
                 extra_delta,
-                [[60, v8], [61, v9], ...v10],
+                [[60, v10], [61, v9], ...v8],
                 v11.rest,
             ),
-            rest: [[60, v8], [61, v9], ...v10],
+            rest: [[60, v10], [61, v9], ...v8],
         )
     })
 }
@@ -331,17 +333,17 @@ fn for(cat_info: List, list: List) {                                      // cat
         if list.first.first == 51 {                                       // cat_v2.rue:165:9-204:10
             if list.first.rest.rest.first == nil - 113 {                  // cat_v2.rue:166:13-194:14
                 let v2 = list.first                                       // cat_v2.rue:169:58-67 (for)
-                let v3 = v2.rest.rest.rest.first                          // cat_v2.rue:171:34-54
-                let v4 = v2.rest.rest.rest.rest.first                     // cat_v2.rue:172:36-58
-                [v1.first, v1.rest.first, ...select(!v1.rest.rest, (v3, v4), v1.rest.rest)]  // cat_v2.rue:175:17-182:18
+                let v3 = v2.rest.rest.rest.rest.first                     // cat_v2.rue:172:36-58
+                let v4 = v2.rest.rest.rest.first                          // cat_v2.rue:171:34-54
+                [v1.first, v1.rest.first, ...select(!v1.rest.rest, (v4, v3), v1.rest.rest)]  // cat_v2.rue:175:17-182:18
             } else {
-                let v5 = cat_puzzle_hash(                                 // cat_v2.rue:186:34-82
+                let v5 = list.first.rest.rest                             // cat_v2.rue:184:31-187:18
+                let v6 = cat_puzzle_hash(                                 // cat_v2.rue:186:34-82
                     cat_info: cat_info,
                     inner_puzzle_hash: list.first.rest.first,
                 )
-                let v6 = list.first.rest.rest                             // cat_v2.rue:184:31-187:18
                 [                                                         // cat_v2.rue:189:17-193:18
-                    ([51, v5, ...v6], v1.first),
+                    ([51, v6, ...v5], v1.first),
                     v1.rest.first + list.first.rest.rest.first,
                     ...v1.rest.rest,
                 ]

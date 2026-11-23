@@ -1,4 +1,5 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 // The program is the body of `main`
 fn main(amount: Int, skip: Atom) {  // trust.rue:6:5-35
     if skip {                       // trust.rue:6:5-35
@@ -8,6 +9,7 @@ fn main(amount: Int, skip: Atom) {  // trust.rue:6:5-35
     }
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 // The program is the body of `main`
 fn main(amount: Int, skip: Atom) {  // trust.rue:4:41-7:2
     let v1 = amount + amount        // trust.rue:5:19-34

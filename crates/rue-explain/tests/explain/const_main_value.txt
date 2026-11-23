@@ -4,6 +4,7 @@ fn main() {  // const_main_value.rue:7:5-18 (check (inlined))
     raise()  // const_main_value.rue:7:5-18 (check (inlined))
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {  // const_main_value.rue:11:19-27
     main()           // const_main_value.rue:11:19-27
 }

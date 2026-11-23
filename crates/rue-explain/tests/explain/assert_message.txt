@@ -1,4 +1,5 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 // The program is the body of `main`
 fn main(amount: Int, minimum: Int) {  // assert_message.rue:4:5-83
     if minimum > amount {             // assert_message.rue:4:5-83
@@ -8,6 +9,7 @@ fn main(amount: Int, minimum: Int) {  // assert_message.rue:4:5-83
     }
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                                // assert_message.rue:3:43-6:2
     main(amount: solution@2, minimum: solution@5)  // assert_message.rue:3:43-6:2
 }

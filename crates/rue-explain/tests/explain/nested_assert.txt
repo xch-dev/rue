@@ -1,10 +1,12 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 // The program is the body of `main`
 fn main(amount: Int) {                                       // nested_assert.rue:4:5-22
     let v1 = amount * 2                                      // nested_assert.rue:8:19-28
     (if v1 > 100 { v1 - amount } else { raise() }) + v1 + 1  // nested_assert.rue:4:5-22
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                     // nested_assert.rue:3:29-5:2
     main(amount: solution@2)            // nested_assert.rue:3:29-5:2
 }

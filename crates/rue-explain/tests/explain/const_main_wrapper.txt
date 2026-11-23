@@ -1,4 +1,5 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 // The program is the body of `main`
 fn main(x: Int, y: Int) {      // const_main_wrapper.rue:12:41-44
     <lambda>(x: x, y: y)       // const_main_wrapper.rue:12:41-44
@@ -9,6 +10,7 @@ fn <lambda>(x: Int, y: Int) {  // const_main_wrapper.rue:8:5-18
     x + y                      // const_main_wrapper.rue:9:5-10
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                                        // const_main_wrapper.rue:12:41-44
     main(x: solution@2, y: solution@5, env@2: <lambda>{})  // const_main_wrapper.rue:12:41-44
 }

@@ -1,4 +1,5 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 // The program is the body of `main`
 fn main(  // constraints.rue:20:10-35:2
     number: Int,
@@ -14,6 +15,7 @@ fn main(  // constraints.rue:20:10-35:2
     [number, [number, maybe, key, flag, empty, hashes, anything, shapes, either, number + number]]  // constraints.rue:34:5-41
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                                                // constraints.rue:20:10-35:2
     main(                                                          // constraints.rue:20:10-35:2
         number: solution@2,

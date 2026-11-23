@@ -5,38 +5,40 @@
 //!
 //! What's shown is meant to mean exactly what the CLVM does, which [`Explanation::evaluate`]
 //! checks by running the decompiled form: code whose structure isn't recognized is shown as CLVM
-//! (`clvm!(...)`) and evaluated as it is. Two things are left out on purpose: reading from the
-//! environment is shown where the value is used (in CLVM, a read through an atom fails, which
-//! only happens if the environment doesn't have the shape the code expects), and the order of
-//! strict evaluation, which only changes which of several failures is reported.
+//! (`clvm!(...)`) and evaluated as it is. Operands are evaluated strictly, from the last to the
+//! first as `clvmr` does, and `let`s are in that order too. One thing is left out on purpose:
+//! reading from the environment is shown where the value is used, while in CLVM it's read where
+//! it's passed. A read through an atom fails, which only happens if the environment doesn't have
+//! the shape the code expects, so the decompiled form can fail later (or not at all) for an
+//! environment like that.
 
 mod build;
 mod eval;
 mod ir;
 mod print;
 mod program;
+mod stack;
 
 use std::collections::HashMap;
 
-pub use build::FunctionKind;
 pub use eval::EvalFailure;
-pub use ir::*;
-pub use program::{Layout, NamedSlot, Node, NodeId, NodeKind, Path, Program};
+
+use crate::ir::{Function, FunctionId};
+use crate::program::{NodeId, Program};
 
 /// A program that's been decompiled.
 #[derive(Debug)]
 pub struct Explanation {
-    pub program: Program,
-    pub functions: Vec<Function>,
-    pub kinds: Vec<FunctionKind>,
+    program: Program,
+    functions: Vec<Function>,
     /// The function that's the whole program.
-    pub entry: FunctionId,
+    entry: FunctionId,
     /// The function each body of a function is (including copies of it).
-    pub function_of: HashMap<NodeId, FunctionId>,
+    function_of: HashMap<NodeId, FunctionId>,
     /// Whether each node of the program is part of what's shown.
-    pub covered: Vec<bool>,
+    covered: Vec<bool>,
     /// Whether the hidden values of environments had to be given up on.
-    pub gave_up: bool,
+    gave_up: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -48,23 +50,20 @@ pub enum ExplainError {
 }
 
 impl Explanation {
-    /// Decompiles the serialized program, with its debug metadata sidecar if there is one.
+    /// Decompiles the serialized program, with its debug metadata sidecar if there is one (which
+    /// must be for exactly this program).
     pub fn new(program: &[u8], sidecar: Option<&[u8]>) -> Result<Self, ExplainError> {
-        Ok(Self::from_program(Program::new(program, sidecar)?))
-    }
-
-    pub fn from_program(program: Program) -> Self {
+        let program = Program::new(program, sidecar)?;
         let built = build::build(&program);
 
-        Self {
+        Ok(Self {
             program,
             functions: built.functions,
-            kinds: built.kinds,
             entry: built.entry,
             function_of: built.function_of,
             covered: built.covered,
             gave_up: built.gave_up,
-        }
+        })
     }
 
     /// The pseudocode, with a source location on each line that has one.
@@ -72,13 +71,8 @@ impl Explanation {
         print::render(self)
     }
 
-    /// The nodes of the program that aren't part of what's shown, which should be none.
-    pub fn uncovered(&self) -> Vec<NodeId> {
-        self.covered
-            .iter()
-            .enumerate()
-            .filter(|(_, covered)| !**covered)
-            .map(|(node, _)| node)
-            .collect()
+    /// How many nodes of the program aren't part of what's shown, which should be none.
+    pub fn uncovered(&self) -> usize {
+        self.covered.iter().filter(|covered| !**covered).count()
     }
 }

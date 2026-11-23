@@ -1,4 +1,5 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                    // recursion_tabs.rue:3:24-5:2
     main(n: solution@2)                // recursion_tabs.rue:3:24-5:2
 }
@@ -14,6 +15,7 @@ fn countdown(n: Int, acc: Int) {       // recursion_tabs.rue:7:39-13:2
     countdown(n: n - 1, acc: acc + n)  // recursion_tabs.rue:12:8-33
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                                                   // recursion_tabs.rue:3:24-5:2
     main(n: solution@2)                                               // recursion_tabs.rue:3:24-5:2
 }

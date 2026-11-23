@@ -12,20 +12,20 @@ use crate::ExplainError;
 
 /// The index of a node in [`Program::nodes`]. Each position in the program is a node of its own,
 /// even if it has the same value as another.
-pub type NodeId = usize;
+pub(crate) type NodeId = usize;
 
 /// The steps from the root of a value to a part of it, where `false` is the first of a pair and
 /// `true` is the rest.
-pub type Path = Vec<bool>;
+pub(crate) type Path = Vec<bool>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NodeKind {
+pub(crate) enum NodeKind {
     Atom(Vec<u8>),
     Pair(NodeId, NodeId),
 }
 
 #[derive(Debug, Clone)]
-pub struct Node {
+pub(crate) struct Node {
     pub kind: NodeKind,
     /// The index of the node's source span in the metadata.
     pub span: Option<usize>,
@@ -37,7 +37,7 @@ pub struct Node {
 
 /// A program, along with the tables of its debug metadata (which are empty without it).
 #[derive(Debug)]
-pub struct Program {
+pub(crate) struct Program {
     pub nodes: Vec<Node>,
     pub root: NodeId,
     pub files: Vec<DebugSourceFile>,
@@ -48,6 +48,8 @@ pub struct Program {
     pub hashes: Vec<[u8; 32]>,
     /// Whether each node is or contains the body of a function.
     pub contains_function: Vec<bool>,
+    /// How many nodes are in the subtree of each node, saturating.
+    pub sizes: Vec<usize>,
     /// The program, for disassembling parts of it.
     pub allocator: Allocator,
     pub ptrs: Vec<NodePtr>,
@@ -56,7 +58,7 @@ pub struct Program {
 impl Program {
     /// Reads a serialized program, along with its debug metadata sidecar if there is one, which
     /// must be for exactly this program.
-    pub fn new(program: &[u8], sidecar: Option<&[u8]>) -> Result<Self, ExplainError> {
+    pub(crate) fn new(program: &[u8], sidecar: Option<&[u8]>) -> Result<Self, ExplainError> {
         let mut allocator = Allocator::new();
         let root = node_from_bytes(&mut allocator, program)
             .map_err(|error| ExplainError::Program(error.to_string()))?;
@@ -90,17 +92,19 @@ impl Program {
         };
 
         // Children are always added before their parents, so one pass in order finds both
-        let mut hashes = Vec::with_capacity(nodes.len());
+        let mut hashes = Vec::<[u8; 32]>::with_capacity(nodes.len());
         let mut contains_function = Vec::with_capacity(nodes.len());
+        let mut sizes = Vec::<usize>::with_capacity(nodes.len());
 
         for node in &nodes {
-            let (hash, contains) = match &node.kind {
+            let (hash, contains, size) = match &node.kind {
                 NodeKind::Atom(atom) => (
                     Sha256::new()
                         .chain_update([1])
                         .chain_update(atom)
                         .finalize(),
                     false,
+                    1,
                 ),
                 &NodeKind::Pair(first, rest) => (
                     Sha256::new()
@@ -109,10 +113,12 @@ impl Program {
                         .chain_update(hashes[rest])
                         .finalize(),
                     contains_function[first] || contains_function[rest],
+                    sizes[first].saturating_add(sizes[rest]).saturating_add(1),
                 ),
             };
             hashes.push(hash.into());
             contains_function.push(contains || node.function.is_some());
+            sizes.push(size);
         }
 
         Ok(Self {
@@ -124,35 +130,36 @@ impl Program {
             functions,
             hashes,
             contains_function,
+            sizes,
             allocator,
             ptrs,
         })
     }
 
-    pub fn kind(&self, node: NodeId) -> &NodeKind {
+    pub(crate) fn kind(&self, node: NodeId) -> &NodeKind {
         &self.nodes[node].kind
     }
 
-    pub fn atom(&self, node: NodeId) -> Option<&[u8]> {
+    pub(crate) fn atom(&self, node: NodeId) -> Option<&[u8]> {
         match &self.nodes[node].kind {
             NodeKind::Atom(atom) => Some(atom),
             NodeKind::Pair(..) => None,
         }
     }
 
-    pub fn pair(&self, node: NodeId) -> Option<(NodeId, NodeId)> {
+    pub(crate) fn pair(&self, node: NodeId) -> Option<(NodeId, NodeId)> {
         match self.nodes[node].kind {
             NodeKind::Atom(_) => None,
             NodeKind::Pair(first, rest) => Some((first, rest)),
         }
     }
 
-    pub fn is_nil(&self, node: NodeId) -> bool {
+    pub(crate) fn is_nil(&self, node: NodeId) -> bool {
         self.atom(node).is_some_and(<[u8]>::is_empty)
     }
 
     /// The items of a list, if it's a proper list.
-    pub fn list(&self, mut node: NodeId) -> Option<Vec<NodeId>> {
+    pub(crate) fn list(&self, mut node: NodeId) -> Option<Vec<NodeId>> {
         let mut items = Vec::new();
 
         loop {
@@ -167,7 +174,7 @@ impl Program {
     }
 
     /// The part of the node at the path, if every step but the last is through a pair.
-    pub fn descend(&self, mut node: NodeId, path: &[bool]) -> Option<NodeId> {
+    pub(crate) fn descend(&self, mut node: NodeId, path: &[bool]) -> Option<NodeId> {
         for &step in path {
             let (first, rest) = self.pair(node)?;
             node = if step { rest } else { first };
@@ -176,12 +183,12 @@ impl Program {
     }
 
     /// Whether two nodes have the same value.
-    pub fn same_value(&self, a: NodeId, b: NodeId) -> bool {
+    pub(crate) fn same_value(&self, a: NodeId, b: NodeId) -> bool {
         a == b || self.hashes[a] == self.hashes[b]
     }
 
     /// Every node in the subtree of the node, including itself.
-    pub fn subtree(&self, node: NodeId) -> Vec<NodeId> {
+    pub(crate) fn subtree(&self, node: NodeId) -> Vec<NodeId> {
         let mut nodes = Vec::new();
         let mut stack = vec![node];
 
@@ -197,15 +204,15 @@ impl Program {
         nodes
     }
 
-    pub fn disassemble(&self, node: NodeId) -> String {
+    pub(crate) fn disassemble(&self, node: NodeId) -> String {
         rue_clvm::disassemble_program(&self.allocator, self.ptrs[node])
     }
 
-    pub fn disassemble_value(&self, node: NodeId) -> String {
+    pub(crate) fn disassemble_value(&self, node: NodeId) -> String {
         rue_clvm::disassemble_value(&self.allocator, self.ptrs[node])
     }
 
-    pub fn string(&self, index: usize) -> Option<&str> {
+    pub(crate) fn string(&self, index: usize) -> Option<&str> {
         self.strings.get(index).map(String::as_str)
     }
 }
@@ -290,7 +297,7 @@ impl Builder<'_> {
 
 /// The path that an atom of code reads from the environment, which is `None` for nil (which
 /// evaluates to nil rather than reading anything). Leading zero bytes don't change the path.
-pub fn atom_path(atom: &[u8]) -> Option<Path> {
+pub(crate) fn atom_path(atom: &[u8]) -> Option<Path> {
     let number = BigUint::from_bytes_be(atom);
     let bits = number.bits();
 
@@ -302,7 +309,7 @@ pub fn atom_path(atom: &[u8]) -> Option<Path> {
 }
 
 /// The number of a path, as it's written in CLVM.
-pub fn path_number(path: &[bool]) -> BigUint {
+pub(crate) fn path_number(path: &[bool]) -> BigUint {
     let mut number = BigUint::from(1u8) << path.len();
 
     for (bit, &step) in path.iter().enumerate() {
@@ -316,7 +323,7 @@ pub fn path_number(path: &[bool]) -> BigUint {
 
 /// A value of a function's environment that the debug metadata names.
 #[derive(Debug, Clone)]
-pub struct NamedSlot {
+pub(crate) struct NamedSlot {
     pub name: String,
     pub path: Path,
     pub constraint: ParameterConstraint,
@@ -325,7 +332,7 @@ pub struct NamedSlot {
 /// The layout of a function's environment, from its parameter tree: the values it names, and the
 /// parts that are hidden (such as captured functions and constants, and the end of the list).
 #[derive(Debug, Clone, Default)]
-pub struct Layout {
+pub(crate) struct Layout {
     pub named: Vec<NamedSlot>,
     pub hidden: Vec<Path>,
 }
@@ -333,7 +340,7 @@ pub struct Layout {
 impl Layout {
     /// The layout of the function's environment, unless its parameter tree is inconsistent (a
     /// name whose path isn't where it is in the tree), in which case none of it is trusted.
-    pub fn new(program: &Program, function: &DebugFunction) -> Option<Self> {
+    pub(crate) fn new(program: &Program, function: &DebugFunction) -> Option<Self> {
         let mut layout = Self::default();
         let mut stack = vec![(&function.parameters, Vec::new())];
 
@@ -368,11 +375,6 @@ impl Layout {
 
         Some(layout)
     }
-}
-
-/// Whether `prefix` is a prefix of `path`, so the value at `path` is part of the one at `prefix`.
-pub fn is_prefix(prefix: &[bool], path: &[bool]) -> bool {
-    path.starts_with(prefix)
 }
 
 #[cfg(test)]

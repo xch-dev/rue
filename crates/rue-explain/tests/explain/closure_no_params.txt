@@ -1,9 +1,11 @@
 ===== release =====
+// The types of parameters are as declared, and aren't checked
 // The program is the body of `main`
 fn main(x: Int) {                              // closure_no_params.rue:8:5-19
     (if x > 5 { x } else { raise() }) * 2 + 1  // closure_no_params.rue:8:5-19
 }
 ===== debug =====
+// The types of parameters are as declared, and aren't checked
 program(solution) {                                // closure_no_params.rue:3:24-9:2
     main(x: solution@2)                            // closure_no_params.rue:3:24-9:2
 }

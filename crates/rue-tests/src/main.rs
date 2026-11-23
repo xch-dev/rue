@@ -882,36 +882,60 @@ fn check_explanation<D: clvmr::dialect::Dialect>(
 
     let uncovered = explanation.uncovered();
     anyhow::ensure!(
-        uncovered.is_empty(),
-        "the explanation of {} leaves out {} of its nodes",
+        uncovered == 0,
+        "the explanation of {} leaves out {uncovered} of its nodes",
         disassemble_program(allocator, program),
-        uncovered.len()
     );
 
     let actual = explanation.evaluate(allocator, dialect, env, 100_000_000);
 
-    match (expected, actual) {
-        (Ok(expected), Ok(actual)) => anyhow::ensure!(
-            node_to_bytes(allocator, expected.1)? == node_to_bytes(allocator, actual)?,
-            "the explanation of {} gives {} rather than {}:\n{}",
-            disassemble_program(allocator, program),
-            disassemble_value(allocator, actual),
-            disassemble_value(allocator, expected.1),
-            explanation.render()
+    // Running out of cost isn't compared, since the explanation's cost isn't the program's
+    let matches = match (expected, &actual) {
+        (Err(EvalErr::CostExceeded), _) | (_, Err(EvalFailure::OutOfCost)) => true,
+        (Ok(expected), Ok(actual)) => {
+            node_to_bytes(allocator, expected.1)? == node_to_bytes(allocator, *actual)?
+        }
+        (Err(EvalErr::Raise(expected)), Err(EvalFailure::Clvm(EvalErr::Raise(actual)))) => {
+            node_to_bytes(allocator, *expected)? == node_to_bytes(allocator, *actual)?
+        }
+        (Err(expected), Err(EvalFailure::Clvm(actual))) => {
+            !matches!(expected, EvalErr::Raise(_))
+                && !matches!(actual, EvalErr::Raise(_))
+                && expected.to_string() == actual.to_string()
+        }
+        _ => false,
+    };
+
+    let describe = |allocator: &Allocator, result: Result<NodePtr, String>| match result {
+        Ok(value) => disassemble_value(allocator, value),
+        Err(error) => error,
+    };
+
+    anyhow::ensure!(
+        matches,
+        "the explanation of {} gives {} rather than {}:\n{}",
+        disassemble_program(allocator, program),
+        describe(
+            allocator,
+            actual.map_err(|error| match error {
+                EvalFailure::Clvm(EvalErr::Raise(value)) =>
+                    format!("clvm raise {}", disassemble_value(allocator, value)),
+                error => error.to_string(),
+            })
         ),
-        (Err(EvalErr::CostExceeded), _)
-        | (_, Err(EvalFailure::OutOfCost))
-        | (Err(_), Err(EvalFailure::Clvm(_))) => {}
-        (expected, actual) => anyhow::bail!(
-            "the explanation of {} gives {actual:?} rather than {}:\n{}",
-            disassemble_program(allocator, program),
+        describe(
+            allocator,
             match expected {
-                Ok(output) => disassemble_value(allocator, output.1),
-                Err(error) => error.to_string(),
-            },
-            explanation.render()
+                Ok(output) => Ok(output.1),
+                Err(EvalErr::Raise(value)) => Err(format!(
+                    "clvm raise {}",
+                    disassemble_value(allocator, *value)
+                )),
+                Err(error) => Err(error.to_string()),
+            }
         ),
-    }
+        explanation.render()
+    );
 
     Ok(())
 }
