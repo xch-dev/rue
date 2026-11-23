@@ -47,4 +47,6 @@ pub use types::*;
 pub use unwrap::*;
 
 #[cfg(test)]
+mod test_types;
+#[cfg(test)]
 mod tests;

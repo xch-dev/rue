@@ -3,50 +3,22 @@
 //! Expanding the references separately would make the work (and the number of types allocated)
 //! exponential in the depth of the type, so these would never finish if that were the case.
 
+mod common;
+
+use common::Types;
+
 use std::collections::HashMap;
 
-use id_arena::Arena;
 use rue_types::{
-    Alias, Apply, Atoms, BuiltinTypes, Check, Comparison, FunctionParameter, FunctionType, Generic,
-    Inference, Pair, Struct, Type, TypeId, Union, check, compare, compare_with_inference,
-    count_steps, extract_atoms, extract_functions, extract_pairs, extract_structs, intersect,
-    substitute, subtract, with_step_limit,
+    Alias, Apply, Atoms, Check, Comparison, FunctionParameter, FunctionType, Generic, Inference,
+    Struct, Type, TypeId, check, compare_with_inference, count_steps, extract_atoms,
+    extract_functions, extract_pairs, extract_structs, intersect, substitute, subtract,
+    with_step_limit,
 };
 
 const DEPTH: usize = 32;
 
-struct Types {
-    arena: Arena<Type>,
-    builtins: BuiltinTypes,
-}
-
 impl Types {
-    fn new() -> Self {
-        let mut arena = Arena::new();
-        let builtins = BuiltinTypes::new(&mut arena);
-        Self { arena, builtins }
-    }
-
-    fn alloc(&mut self, ty: Type) -> TypeId {
-        self.arena.alloc(ty)
-    }
-
-    fn alias(&mut self, inner: TypeId) -> TypeId {
-        self.alloc(Type::Alias(Alias {
-            name: None,
-            inner,
-            generics: vec![],
-        }))
-    }
-
-    fn pair(&mut self, first: TypeId, rest: TypeId) -> TypeId {
-        self.alloc(Type::Pair(Pair::new(first, rest)))
-    }
-
-    fn union(&mut self, types: Vec<TypeId>) -> TypeId {
-        self.alloc(Type::Union(Union::new(types)))
-    }
-
     /// `type T0 = leaf; type T1 = (T0, T0); ...`
     fn pairs(&mut self, leaf: TypeId, depth: usize) -> TypeId {
         let mut ty = self.alias(leaf);
@@ -132,10 +104,6 @@ impl Types {
         let len = self.arena.len();
         substitute(&mut self.arena, ty);
         self.arena.len() - len
-    }
-
-    fn compare(&mut self, lhs: TypeId, rhs: TypeId) -> Comparison {
-        compare(&mut self.arena, &self.builtins, lhs, rhs)
     }
 }
 

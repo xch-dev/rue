@@ -1184,26 +1184,9 @@ type Signature<'a> = (usize, Vec<(usize, &'a [usize])>);
 
 #[cfg(test)]
 mod tests {
-    use id_arena::Arena;
 
     use super::*;
-    use crate::{Generic, Type};
-
-    struct Types {
-        arena: Arena<Type>,
-    }
-
-    impl Types {
-        fn new() -> Self {
-            Self {
-                arena: Arena::new(),
-            }
-        }
-
-        fn generic(&mut self) -> TypeId {
-            self.arena.alloc(Type::Generic(Generic { name: None }))
-        }
-    }
+    use crate::test_types::Db;
 
     fn bound(var: Var, upper: bool, ty: TypeId, env: Env) -> Constraint {
         Constraint {
@@ -1218,8 +1201,8 @@ mod tests {
 
     /// `K0 ≥ ty` and `K0 ≤ ty`, where `ty` is a generic bound inside the comparison, like the
     /// bounds of an instance `U` from comparing it with a rigid `V` both ways.
-    fn local_both_ways(types: &mut Types) -> Summary {
-        let generic = types.generic();
+    fn local_both_ways(types: &mut Db) -> Summary {
+        let generic = types.unnamed_generic();
         let mut summary = Summary::default();
         let local = summary.local();
         summary.add(bound(Var::Key(0), false, generic, vec![(generic, local)]));
@@ -1229,7 +1212,7 @@ mod tests {
 
     #[test]
     fn test_apply_maps_key_binders_and_renames_locals() {
-        let mut types = Types::new();
+        let mut types = Db::new();
         let child = local_both_ways(&mut types);
         let generic = child.constraints()[0].ty;
 
@@ -1256,8 +1239,8 @@ mod tests {
 
     #[test]
     fn test_canonicalize_dedupes_constraints_without_locals() {
-        let mut types = Types::new();
-        let [a, b] = [types.generic(), types.generic()];
+        let mut types = Db::new();
+        let [a, b] = [types.unnamed_generic(), types.unnamed_generic()];
         let mut summary = Summary::default();
         summary.add(bound(Var::Key(1), true, b, vec![]));
         summary.add(bound(Var::Key(0), false, a, vec![(a, Var::Key(1))]));
@@ -1277,7 +1260,7 @@ mod tests {
     /// different bounds to check against each other than one copy has.
     #[test]
     fn test_canonicalize_keeps_two_copies() {
-        let mut types = Types::new();
+        let mut types = Db::new();
         let child = local_both_ways(&mut types);
         let mut twice = Summary::default();
 
@@ -1308,7 +1291,7 @@ mod tests {
     /// Copies that bound different key binders aren't the same shape.
     #[test]
     fn test_canonicalize_keeps_copies_of_other_shapes() {
-        let mut types = Types::new();
+        let mut types = Db::new();
         let child = local_both_ways(&mut types);
         let mut summary = Summary::default();
 
@@ -1324,8 +1307,8 @@ mod tests {
     /// Local binders that share a constraint are one component, which is kept or dropped whole.
     #[test]
     fn test_canonicalize_keeps_components_whole() {
-        let mut types = Types::new();
-        let [a, b] = [types.generic(), types.generic()];
+        let mut types = Db::new();
+        let [a, b] = [types.unnamed_generic(), types.unnamed_generic()];
         let mut child = Summary::default();
         let (x, y) = (child.local(), child.local());
         child.add(bound(Var::Key(0), false, a, vec![(a, x)]));
@@ -1373,9 +1356,13 @@ mod tests {
     /// copies of them in each order are one shape.
     #[test]
     fn test_canonicalize_numbers_alike_locals_by_structure() {
-        let mut types = Types::new();
-        let ty = types.generic();
-        let generics = [types.generic(), types.generic(), types.generic()];
+        let mut types = Db::new();
+        let ty = types.unnamed_generic();
+        let generics = [
+            types.unnamed_generic(),
+            types.unnamed_generic(),
+            types.unnamed_generic(),
+        ];
 
         let child = |reversed: bool| {
             let mut child = Summary::default();
@@ -1463,8 +1450,12 @@ mod tests {
         let second = [2, 3, 1, 4, 0];
         let identity = [0, 1, 2, 3, 4];
 
-        let mut types = Types::new();
-        let generics = [types.generic(), types.generic(), types.generic()];
+        let mut types = Db::new();
+        let generics = [
+            types.unnamed_generic(),
+            types.unnamed_generic(),
+            types.unnamed_generic(),
+        ];
         let expected = permutations(generics, first, second, identity);
 
         for numbering in [
@@ -1482,8 +1473,8 @@ mod tests {
     /// would take more numberings than `SHAPE_SEARCH_LIMIT` to try otherwise.
     #[test]
     fn test_canonicalize_refines_until_stable() {
-        let mut types = Types::new();
-        let [ty, a] = [types.generic(), types.generic()];
+        let mut types = Db::new();
+        let [ty, a] = [types.unnamed_generic(), types.unnamed_generic()];
 
         let chain = |numbering: &dyn Fn(usize) -> usize| {
             let mut summary = Summary::default();
@@ -1516,8 +1507,8 @@ mod tests {
     /// five bounds each of the others, so there are 120) still keeps all of its constraints.
     #[test]
     fn test_canonicalize_stops_searching() {
-        let mut types = Types::new();
-        let [ty, a] = [types.generic(), types.generic()];
+        let mut types = Db::new();
+        let [ty, a] = [types.unnamed_generic(), types.unnamed_generic()];
         let mut summary = Summary::default();
         let locals: Vec<Var> = (0..5).map(|_| summary.local()).collect();
 
@@ -1538,9 +1529,9 @@ mod tests {
     /// the same as without the duplicate, and canonicalizing it again doesn't change it.
     #[test]
     fn test_canonicalize_ignores_duplicates() {
-        let mut types = Types::new();
-        let ty = types.generic();
-        let generics = [types.generic(), types.generic()];
+        let mut types = Db::new();
+        let ty = types.unnamed_generic();
+        let generics = [types.unnamed_generic(), types.unnamed_generic()];
 
         let summary = |duplicate: bool| {
             let mut summary = Summary::default();
@@ -1596,8 +1587,8 @@ mod tests {
     /// the same shape however it's numbered.
     #[test]
     fn test_canonicalize_numbers_symmetric_locals() {
-        let mut types = Types::new();
-        let [ty, a] = [types.generic(), types.generic()];
+        let mut types = Db::new();
+        let [ty, a] = [types.unnamed_generic(), types.unnamed_generic()];
 
         let cycle = |order: [usize; 4]| {
             let mut child = Summary::default();
@@ -1621,9 +1612,9 @@ mod tests {
     /// change the canonical form.
     #[test]
     fn test_canonicalize_is_independent_of_order() {
-        let mut types = Types::new();
+        let mut types = Db::new();
         let both_ways = local_both_ways(&mut types);
-        let ty = types.generic();
+        let ty = types.unnamed_generic();
         let mut lower = Summary::default();
         let local = lower.local();
         lower.add(bound(Var::Key(0), false, ty, vec![(ty, local)]));
@@ -1668,8 +1659,8 @@ mod tests {
     /// alternatives that are the same to pick, so all but one are left out.
     #[test]
     fn test_canonicalize_merges_alike_members() {
-        let mut types = Types::new();
-        let (a, b) = (types.generic(), types.generic());
+        let mut types = Db::new();
+        let (a, b) = (types.unnamed_generic(), types.unnamed_generic());
         let mut summary = Summary::default();
         let choice = summary.local();
         let assign = [Comparison::Assign, Comparison::Assign];
@@ -1714,8 +1705,12 @@ mod tests {
     /// component.
     #[test]
     fn test_canonicalize_leaves_out_a_third_copy_of_a_union() {
-        let mut types = Types::new();
-        let (a, b, c) = (types.generic(), types.generic(), types.generic());
+        let mut types = Db::new();
+        let (a, b, c) = (
+            types.unnamed_generic(),
+            types.unnamed_generic(),
+            types.unnamed_generic(),
+        );
         let assign = [Comparison::Assign, Comparison::Assign];
         let mut summary = Summary::default();
         let outer = summary.local();
@@ -1754,8 +1749,8 @@ mod tests {
     /// `Cast` is kept.
     #[test]
     fn test_canonicalize_leaves_out_held_unions() {
-        let mut types = Types::new();
-        let a = types.generic();
+        let mut types = Db::new();
+        let a = types.unnamed_generic();
 
         for (second, kept) in [(Comparison::Assign, 0), (Comparison::Cast, 1)] {
             let mut summary = Summary::default();
@@ -1783,8 +1778,8 @@ mod tests {
     /// another (so it has no result), is kept.
     #[test]
     fn test_canonicalize_leaves_out_unions_held_by_a_member_with_nothing_under_it() {
-        let mut types = Types::new();
-        let a = types.generic();
+        let mut types = Db::new();
+        let a = types.unnamed_generic();
 
         for (first, kept) in [
             (Some(Comparison::Assign), 0),
@@ -1812,8 +1807,8 @@ mod tests {
     /// keeps what was added.
     #[test]
     fn test_join_after_adding_keeps_it() {
-        let mut types = Types::new();
-        let (a, b) = (types.generic(), types.generic());
+        let mut types = Db::new();
+        let (a, b) = (types.unnamed_generic(), types.unnamed_generic());
         let mut summary = Summary::default();
         summary.add(bound(Var::Key(0), true, a, vec![]));
         summary.canonicalize();
@@ -1830,8 +1825,8 @@ mod tests {
     /// in, so the fourth, three deep, is past the cap.
     #[test]
     fn test_canonicalize_caps_union_depth() {
-        let mut types = Types::new();
-        let generics: Vec<TypeId> = (0..8).map(|_| types.generic()).collect();
+        let mut types = Db::new();
+        let generics: Vec<TypeId> = (0..8).map(|_| types.unnamed_generic()).collect();
         let mut summary = Summary::default();
         let unions: Vec<Var> = (0..4).map(|_| summary.local()).collect();
 
@@ -1918,8 +1913,8 @@ mod tests {
     /// would have more bounds to check against each other than one.
     #[test]
     fn test_join_is_idempotent() {
-        let mut types = Types::new();
-        let [a, b] = [types.generic(), types.generic()];
+        let mut types = Db::new();
+        let [a, b] = [types.unnamed_generic(), types.unnamed_generic()];
         let mut summary = Summary::default();
         let choice = summary.local();
         summary.add_choice(ChoiceRecord {

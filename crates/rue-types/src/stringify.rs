@@ -845,6 +845,7 @@ mod tests {
     use crate::{FunctionParameter, FunctionType, Generic, Pair, Union};
 
     use super::*;
+    use crate::test_types::{literal, pair};
 
     fn bounded(arena: &mut Arena<Type>, id: TypeId, parts: usize) -> String {
         let (name, cut) = stringify_bounded(arena, id, parts);
@@ -961,17 +962,6 @@ mod tests {
         stringify(arena, union)
     }
 
-    fn pair(arena: &mut Arena<Type>, first: TypeId, rest: TypeId) -> TypeId {
-        arena.alloc(Type::Pair(Pair::new(first, rest)))
-    }
-
-    fn value(arena: &mut Arena<Type>, semantic: AtomSemantic, value: &[u8]) -> TypeId {
-        arena.alloc(Type::Atom(Atom::new(
-            semantic,
-            Some(AtomRestriction::Value(value.to_vec().into())),
-        )))
-    }
-
     #[test]
     fn test_union_members_shown_once() {
         let mut arena = Arena::new();
@@ -991,8 +981,8 @@ mod tests {
         );
 
         // Whatever the order of the members of a union inside of them
-        let one = value(arena, AtomSemantic::Int, &[1]);
-        let two = value(arena, AtomSemantic::Int, &[2]);
+        let one = literal(arena, AtomSemantic::Int, &[1]);
+        let two = literal(arena, AtomSemantic::Int, &[2]);
         let one_two = arena.alloc(Type::Union(Union::new(vec![one, two])));
         let two_one = arena.alloc(Type::Union(Union::new(vec![two, one])));
         let first = pair(arena, int, one_two);
@@ -1112,8 +1102,8 @@ mod tests {
         let (first, second) = (spread(arena), spread(arena));
         assert_eq!(union(arena, &[first, second]), "fn(...x: Int) -> Int");
 
-        let first = value(arena, AtomSemantic::String, b"wait...");
-        let second = value(arena, AtomSemantic::String, b"wait...");
+        let first = literal(arena, AtomSemantic::String, b"wait...");
+        let second = literal(arena, AtomSemantic::String, b"wait...");
         assert_eq!(union(arena, &[first, second, int]), "\"wait...\" | Int");
         let first = pair(arena, first, int);
         let second = pair(arena, second, int);
@@ -1156,8 +1146,8 @@ mod tests {
         );
 
         // A struct that's been narrowed is the same as one that's been narrowed to the same type
-        let zero = value(arena, AtomSemantic::Int, &[]);
-        let one = value(arena, AtomSemantic::Int, &[1]);
+        let zero = literal(arena, AtomSemantic::Int, &[]);
+        let one = literal(arena, AtomSemantic::Int, &[1]);
         let narrowed = |arena: &mut Arena<Type>, inner| {
             arena.alloc(Type::Struct(Struct {
                 name: Some(Name::new("Box", None)),
@@ -1246,7 +1236,7 @@ mod tests {
         let bytes = arena.alloc(Type::Atom(Atom::BYTES));
 
         let values = (0..20_000u32)
-            .map(|i| value(arena, AtomSemantic::Bytes, &i.to_be_bytes()))
+            .map(|i| literal(arena, AtomSemantic::Bytes, &i.to_be_bytes()))
             .collect::<Vec<_>>();
         let name = union(arena, &values);
         assert_eq!(name.split(" | ").count(), values.len());
@@ -1297,7 +1287,7 @@ mod tests {
         // The members of a union inside of a member count towards the limit, so two pairs of
         // large unions aren't compared member by member for long
         let int_values = (0..20_000u32)
-            .map(|i| value(arena, AtomSemantic::Int, &(i + 256).to_be_bytes()[2..]))
+            .map(|i| literal(arena, AtomSemantic::Int, &(i + 256).to_be_bytes()[2..]))
             .collect::<Vec<_>>();
         let with_int = arena.alloc(Type::Union(Union::new(
             [vec![int], int_values.clone()].concat(),
@@ -1321,7 +1311,7 @@ mod tests {
         // Each of these is a union of all the others' members in another order, so each
         // includes the others, which takes more comparisons to tell than the limit
         let values = (1..=400u32)
-            .map(|i| value(arena, AtomSemantic::Int, &i.to_be_bytes()[2..]))
+            .map(|i| literal(arena, AtomSemantic::Int, &i.to_be_bytes()[2..]))
             .collect::<Vec<_>>();
         let ascending = arena.alloc(Type::Union(Union::new(
             [vec![int], values.clone()].concat(),
@@ -1371,10 +1361,10 @@ mod tests {
         let bytes = arena.alloc(Type::Atom(Atom::BYTES));
         let bytes32 = arena.alloc(Type::Atom(Atom::BYTES_32));
         let nil = arena.alloc(Type::Atom(Atom::NIL));
-        let zero = value(arena, AtomSemantic::Int, &[]);
-        let one = value(arena, AtomSemantic::Int, &[1]);
-        let text = value(arena, AtomSemantic::String, b"a");
-        let hash = value(arena, AtomSemantic::Bytes, &[7; 32]);
+        let zero = literal(arena, AtomSemantic::Int, &[]);
+        let one = literal(arena, AtomSemantic::Int, &[1]);
+        let text = literal(arena, AtomSemantic::String, b"a");
+        let hash = literal(arena, AtomSemantic::Bytes, &[7; 32]);
 
         // A value or a length of an atom is included in the atom, whichever comes first
         assert_eq!(union(arena, &[int, zero]), "Int");
@@ -1383,7 +1373,7 @@ mod tests {
         assert_eq!(union(arena, &[bytes32, hash]), "Bytes32");
 
         // A value of another length isn't one of the atom's
-        let short = value(arena, AtomSemantic::Bytes, &[7]);
+        let short = literal(arena, AtomSemantic::Bytes, &[7]);
         assert_eq!(union(arena, &[bytes32, short]), "Bytes32 | 0x07");
         let first = pair(arena, bytes32, int);
         let second = pair(arena, short, int);
@@ -1401,8 +1391,8 @@ mod tests {
 
         // Atoms that are written the same are shown once, even if they're of different kinds,
         // as an `Int` that isn't the shortest form of its number is written like `Bytes`
-        let long_int = value(arena, AtomSemantic::Int, &[0, 1]);
-        let long_bytes = value(arena, AtomSemantic::Bytes, &[0, 1]);
+        let long_int = literal(arena, AtomSemantic::Int, &[0, 1]);
+        let long_bytes = literal(arena, AtomSemantic::Bytes, &[0, 1]);
         assert_eq!(union(arena, &[long_int, long_bytes, one]), "0x0001 | 1");
 
         // But not in an atom of another kind, which it can't be assigned to without a cast
@@ -1467,8 +1457,8 @@ mod tests {
         );
 
         // A function that returns a union isn't the same as one that returns more of them
-        let one = value(arena, AtomSemantic::Int, &[1]);
-        let two = value(arena, AtomSemantic::Int, &[2]);
+        let one = literal(arena, AtomSemantic::Int, &[1]);
+        let two = literal(arena, AtomSemantic::Int, &[2]);
         let fewer = arena.alloc(Type::Union(Union::new(vec![zero, one])));
         let more = arena.alloc(Type::Union(Union::new(vec![zero, one, two])));
         let returns_fewer = function(arena, int, fewer);
@@ -1504,7 +1494,7 @@ mod tests {
         let arena = &mut arena;
 
         let int = arena.alloc(Type::Atom(Atom::INT));
-        let zero = value(arena, AtomSemantic::Int, &[]);
+        let zero = literal(arena, AtomSemantic::Int, &[]);
         let yes = arena.alloc(Type::Atom(Atom::TRUE));
         let no = arena.alloc(Type::Atom(Atom::FALSE));
         let first = pair(arena, int, int);

@@ -341,36 +341,14 @@ mod tests {
     use indexmap::IndexSet;
     use rue_diagnostic::Name;
 
-    use crate::{Alias, Atom, AtomRestriction, AtomSemantic, Generic, stringify};
+    use crate::{Alias, Atom, AtomRestriction, AtomSemantic, Generic};
 
     use super::*;
-
-    struct Db {
-        arena: Arena<Type>,
-        builtins: BuiltinTypes,
-    }
+    use crate::test_types::Db;
 
     impl Db {
-        fn new() -> Self {
-            let mut arena = Arena::new();
-            let builtins = BuiltinTypes::new(&mut arena);
-            Self { arena, builtins }
-        }
-
         fn intersect(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
             intersect(&mut self.arena, &self.builtins, lhs, rhs)
-        }
-
-        fn name(&mut self, id: TypeId) -> String {
-            stringify(&mut self.arena, id)
-        }
-
-        fn pair(&mut self, first: TypeId, rest: TypeId) -> TypeId {
-            self.arena.alloc(Type::Pair(Pair::new(first, rest)))
-        }
-
-        fn union(&mut self, types: &[TypeId]) -> TypeId {
-            self.arena.alloc(Type::Union(Union::new(types.to_vec())))
         }
 
         fn atom(&mut self, atom: Atom) -> TypeId {
@@ -384,7 +362,8 @@ mod tests {
             (atom.semantic, atom.restriction)
         }
 
-        fn strukt(&mut self, name: &str, inner: TypeId) -> TypeId {
+        /// A struct without fields, whose inner type isn't nil-terminated.
+        fn unterminated_struct(&mut self, name: &str, inner: TypeId) -> TypeId {
             let id = self.arena.alloc(Type::Unresolved);
             *self.arena.get_mut(id).unwrap() = Type::Struct(Struct {
                 name: Some(Name::new(name, None)),
@@ -399,7 +378,7 @@ mod tests {
         }
 
         /// Creates `type Name = nil | (item, Name)`.
-        fn list(&mut self, name: &str, item: TypeId) -> TypeId {
+        fn named_list(&mut self, name: &str, item: TypeId) -> TypeId {
             let id = self.arena.alloc(Type::Unresolved);
             let pair = self.pair(item, id);
             let inner = self.union(&[self.builtins.nil, pair]);
@@ -449,7 +428,7 @@ mod tests {
 
         // A struct isn't wrapped around a generic type
         let inner = db.pair(b.int, b.nil);
-        let point = db.strukt("Point", inner);
+        let point = db.unterminated_struct("Point", inner);
         assert_eq!(db.intersect(point, generic), generic);
     }
 
@@ -591,7 +570,7 @@ mod tests {
         let first = db.union(&[b.int, b.nil]);
         let rest = db.union(&[b.bytes32, b.nil]);
         let inner = db.pair(first, rest);
-        let point = db.strukt("Point", inner);
+        let point = db.unterminated_struct("Point", inner);
 
         // The struct is kept, with its fields intersected
         let any_bytes32 = db.pair(b.permissive_any, b.bytes32);
@@ -635,13 +614,13 @@ mod tests {
 
         // Different structs with disjoint fields can't overlap
         let other_inner = db.pair(b.recursive_any_pair, b.nil);
-        let other = db.strukt("Other", other_inner);
+        let other = db.unterminated_struct("Other", other_inner);
         assert_eq!(db.intersect(point, other), b.never);
 
         // But different structs with overlapping fields keep the older struct, with the fields
         // of the newer one intersected into it
         let other_inner = db.pair(b.int, b.nil);
-        let other = db.strukt("Other", other_inner);
+        let other = db.unterminated_struct("Other", other_inner);
         let ty = db.intersect(point, other);
         let Type::Struct(ty_struct) = db.arena[ty].clone() else {
             panic!("expected a struct");
@@ -702,10 +681,10 @@ mod tests {
         let mut db = Db::new();
         let b = db.builtins;
 
-        let ints = db.list("Ints", b.int);
-        let bytes = db.list("Bytes32s", b.bytes32);
+        let ints = db.named_list("Ints", b.int);
+        let bytes = db.named_list("Bytes32s", b.bytes32);
         let pairs_item = db.pair(b.int, b.int);
-        let pairs = db.list("Pairs", pairs_item);
+        let pairs = db.named_list("Pairs", pairs_item);
 
         // The first item of the list is narrowed, keeping its semantic, and the rest falls back
         // to the older type since it would recurse forever otherwise

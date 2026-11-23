@@ -6,6 +6,10 @@
 //! can be exponential, so the types are kept small, and each case without the memo gives up after a
 //! number of steps (`with_step_limit`).
 
+mod common;
+
+use common::Types;
+
 use std::{
     any::Any,
     cell::Cell,
@@ -15,99 +19,20 @@ use std::{
     sync::Once,
 };
 
-use id_arena::Arena;
-use indexmap::IndexSet;
-use rue_diagnostic::Name;
 use rue_types::{
-    Alias, Apply, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, CheckError, Comparison,
-    FunctionParameter, FunctionType, Generic, Inference, Pair, Struct, TooComplex, Type, TypeId,
-    Union, check, compare, compare_limited, compare_with_inference, count_abandoned_passes,
-    count_steps, intersect, is_non_contractive, is_non_regular, reaches_non_contractive_cycle,
-    resolve_inference, stringify, substitute, with_comparison_step_limit, with_fixpoint_budget,
-    with_step_limit, without_compare_memo,
+    Alias, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, CheckError, Comparison, Inference,
+    TooComplex, Type, TypeId, check, compare, compare_limited, compare_with_inference,
+    count_abandoned_passes, count_steps, intersect, is_non_contractive, is_non_regular,
+    reaches_non_contractive_cycle, resolve_inference, stringify, substitute,
+    with_comparison_step_limit, with_fixpoint_budget, with_step_limit, without_compare_memo,
 };
 
-struct Types {
-    arena: Arena<Type>,
-    builtins: BuiltinTypes,
-}
-
 impl Types {
-    fn new() -> Self {
-        let mut arena = Arena::new();
-        let builtins = BuiltinTypes::new(&mut arena);
-        Self { arena, builtins }
-    }
-
-    fn alloc(&mut self, ty: Type) -> TypeId {
-        self.arena.alloc(ty)
-    }
-
-    fn generic(&mut self) -> TypeId {
-        self.alloc(Type::Generic(Generic { name: None }))
-    }
-
-    fn pair(&mut self, first: TypeId, rest: TypeId) -> TypeId {
-        self.alloc(Type::Pair(Pair::new(first, rest)))
-    }
-
-    fn union(&mut self, types: Vec<TypeId>) -> TypeId {
-        self.alloc(Type::Union(Union::new(types)))
-    }
-
-    fn function(&mut self, generics: Vec<TypeId>, params: Vec<TypeId>, ret: TypeId) -> TypeId {
-        self.alloc(Type::Function(FunctionType {
-            generics,
-            params: params
-                .into_iter()
-                .enumerate()
-                .map(|(i, ty)| FunctionParameter::new(format!("p{i}"), ty))
-                .collect(),
-            nil_terminated: true,
-            ret,
-        }))
-    }
-
-    fn structure(&mut self, inner: TypeId) -> TypeId {
-        let id = self.alloc(Type::Unresolved);
-        self.arena[id] = Type::Struct(Struct {
-            name: None,
-            semantic: id,
-            inner,
-            generics: vec![],
-            fields: IndexSet::new(),
-            nil_terminated: true,
-            narrowed: false,
-        });
-        id
-    }
-
-    /// Declares an alias whose inner type is filled in later by `define`, to allow recursion.
-    fn declare_alias(&mut self, name: &str, generics: Vec<TypeId>) -> TypeId {
-        let inner = self.alloc(Type::Unresolved);
-        self.alloc(Type::Alias(Alias {
-            name: Some(Name::new(name, None)),
-            inner,
-            generics,
-        }))
-    }
-
-    fn define(&mut self, alias: TypeId, resolved: TypeId) {
-        let Type::Alias(Alias { inner, .. }) = self.arena[alias] else {
-            panic!("expected an alias");
-        };
-        self.arena[inner] = Type::Ref(resolved);
-    }
-
     fn int_literal(&mut self, value: u8) -> TypeId {
         self.alloc(Type::Atom(Atom::new(
             AtomSemantic::Int,
             Some(AtomRestriction::Value(vec![value].into())),
         )))
-    }
-
-    fn apply(&mut self, inner: TypeId, generics: HashMap<TypeId, TypeId>) -> TypeId {
-        self.alloc(Type::Apply(Apply::new(inner, generics)))
     }
 }
 
@@ -117,9 +42,8 @@ fn rotating_function(db: &mut Types) -> TypeId {
     let alias = db.declare_alias("G", vec![a, b, c, d]);
     let ret = db.generic();
 
-    let apply = |db: &mut Types, args: [TypeId; 4]| {
-        db.apply(alias, [a, b, c, d].into_iter().zip(args).collect())
-    };
+    let apply =
+        |db: &mut Types, args: [TypeId; 4]| db.apply(alias, [a, b, c, d].into_iter().zip(args));
 
     let p0 = apply(db, [b, c, d, a]);
     let p1 = apply(db, [a, a, b, c]);
@@ -319,8 +243,7 @@ fn permuted_arguments(db: &mut Types) -> (TypeId, TypeId) {
     let one = db.int_literal(1);
     let two = db.int_literal(2);
 
-    let apply =
-        |db: &mut Types, args: [TypeId; 3]| db.apply(n1, [a, b, c].into_iter().zip(args).collect());
+    let apply = |db: &mut Types, args: [TypeId; 3]| db.apply(n1, [a, b, c].into_iter().zip(args));
 
     let inner_n1 = apply(db, [bytes, two, one]);
     let first = db.pair(bool, inner_n1);
@@ -703,12 +626,7 @@ fn apply_each<const N: usize>(db: &mut Types, alias: TypeId, args: [&[TypeId]; N
         panic!("expected an alias");
     };
 
-    args.map(|args| {
-        db.apply(
-            alias,
-            generics.iter().copied().zip(args.iter().copied()).collect(),
-        )
-    })
+    args.map(|args| db.apply(alias, generics.iter().copied().zip(args.iter().copied())))
 }
 
 /// `type N0 = (fn<U00>(p0: N0, p1: N1<nil>) -> U00, N1<Bool> | N1<Bytes32>);`
@@ -1382,7 +1300,7 @@ impl Generator<'_> {
                 let count = 2 + self.rng.below(2);
                 let types = (0..count)
                     .map(|_| self.random_type(depth + 1, generics))
-                    .collect();
+                    .collect::<Vec<_>>();
                 self.db.union(types)
             }
             11..=13 => self.function(depth, generics),
@@ -1424,7 +1342,7 @@ impl Generator<'_> {
                 };
                 (param, arg)
             })
-            .collect();
+            .collect::<Vec<_>>();
 
         self.db.apply(alias, args)
     }
@@ -1451,7 +1369,9 @@ impl Generator<'_> {
             }
         };
 
-        let params = (0..=self.rng.below(3)).map(|_| component(self)).collect();
+        let params = (0..=self.rng.below(3))
+            .map(|_| component(self))
+            .collect::<Vec<_>>();
         let ret = component(self);
         self.db.function(own, params, ret)
     }
@@ -2364,7 +2284,7 @@ fn union_member_type(
         5..=8 => {
             let members = (0..rng.below(2) + 2)
                 .map(|_| union_member_type(db, rng, depth + 1, generics, aliases))
-                .collect();
+                .collect::<Vec<_>>();
             db.union(members)
         }
         _ => {
