@@ -36,13 +36,14 @@ fn extract_atoms_impl_inner(
         return None;
     }
 
-    let result = match arena[id].clone() {
+    let result = match &arena[id] {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => extract_atoms_impl(arena, id, strict, stack),
+        &Type::Ref(id) => extract_atoms_impl(arena, id, strict, stack),
         Type::Unresolved => Some(Atoms::Unrestricted),
         Type::Generic(_) | Type::Never | Type::Function(_) | Type::Pair(_) | Type::Any => None,
         Type::Atom(atom) => atom
             .restriction
+            .clone()
             .map_or(Some(Atoms::Unrestricted), |restriction| {
                 Some(Atoms::Restricted(indexset![restriction]))
             }),
@@ -51,7 +52,7 @@ fn extract_atoms_impl_inner(
         Type::Union(ty) => {
             let mut result = None;
 
-            for ty in ty.types {
+            for &ty in &ty.types {
                 let inner = extract_atoms_impl(arena, ty, strict, stack);
 
                 let inner = if strict {
@@ -112,19 +113,19 @@ fn extract_pairs_impl_inner(
         return Some(vec![]);
     }
 
-    let result = match arena[id].clone() {
+    let result = match &arena[id] {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => extract_pairs_impl(arena, id, strict, stack),
+        &Type::Ref(id) => extract_pairs_impl(arena, id, strict, stack),
         Type::Unresolved => Some(vec![]),
         Type::Generic(_) | Type::Atom(_) | Type::Function(_) | Type::Any => None,
         Type::Never => Some(vec![]),
-        Type::Pair(pair) => Some(vec![pair]),
+        &Type::Pair(pair) => Some(vec![pair]),
         Type::Struct(ty) => extract_pairs_impl(arena, ty.inner, strict, stack),
         Type::Alias(alias) => extract_pairs_impl(arena, alias.inner, strict, stack),
         Type::Union(ty) => {
             let mut pairs = Vec::new();
 
-            for ty in ty.types {
+            for &ty in &ty.types {
                 let inner = extract_pairs_impl(arena, ty, strict, stack);
 
                 if strict {
@@ -168,18 +169,18 @@ fn extract_functions_impl_inner(
         return Some(vec![]);
     }
 
-    let result = match arena[id].clone() {
+    let result = match &arena[id] {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => extract_functions_impl(arena, id, strict, stack),
+        &Type::Ref(id) => extract_functions_impl(arena, id, strict, stack),
         Type::Unresolved | Type::Never => Some(vec![]),
         Type::Generic(_) | Type::Atom(_) | Type::Pair(_) | Type::Any => None,
-        Type::Function(function) => Some(vec![function]),
+        Type::Function(function) => Some(vec![function.clone()]),
         Type::Struct(ty) => extract_functions_impl(arena, ty.inner, strict, stack),
         Type::Alias(alias) => extract_functions_impl(arena, alias.inner, strict, stack),
         Type::Union(ty) => {
             let mut functions = Vec::new();
 
-            for ty in ty.types {
+            for &ty in &ty.types {
                 let inner = extract_functions_impl(arena, ty, strict, stack);
 
                 if strict {
@@ -241,9 +242,9 @@ fn extract_structs_impl_inner(
         return true;
     }
 
-    let result = match arena[id].clone() {
+    let result = match &arena[id] {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => extract_structs_impl(arena, id, structs, stack),
+        &Type::Ref(id) => extract_structs_impl(arena, id, structs, stack),
         Type::Never => true,
         Type::Unresolved
         | Type::Generic(_)
@@ -252,14 +253,14 @@ fn extract_structs_impl_inner(
         | Type::Function(_)
         | Type::Any => false,
         Type::Struct(ty) => {
-            structs.push(ty);
+            structs.push(ty.clone());
             true
         }
         Type::Alias(alias) => extract_structs_impl(arena, alias.inner, structs, stack),
         Type::Union(ty) => ty
             .types
-            .into_iter()
-            .all(|ty| extract_structs_impl(arena, ty, structs, stack)),
+            .iter()
+            .all(|&ty| extract_structs_impl(arena, ty, structs, stack)),
     };
 
     stack.remove(&id);

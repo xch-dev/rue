@@ -2049,12 +2049,12 @@ fn compare_structure(
     lhs_semantic: Option<TypeId>,
     rhs_semantic: Option<TypeId>,
 ) -> Comparison {
-    match (arena[lhs].clone(), arena[rhs].clone()) {
+    match (&arena[lhs], &arena[rhs]) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
-        (Type::Ref(lhs), _) => {
+        (&Type::Ref(lhs), _) => {
             compare_impl(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
         }
-        (_, Type::Ref(rhs)) => {
+        (_, &Type::Ref(rhs)) => {
             compare_impl(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
         }
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
@@ -2100,7 +2100,7 @@ fn compare_structure(
                 Comparison::Cast
             };
 
-            let restriction = match (lhs.restriction, rhs.restriction) {
+            let restriction = match (&lhs.restriction, &rhs.restriction) {
                 (_, None) => Comparison::Assign,
                 (None, _) => Comparison::Invalid,
                 (Some(AtomRestriction::Length(lhs)), Some(AtomRestriction::Length(rhs))) => {
@@ -2121,7 +2121,7 @@ fn compare_structure(
                     Comparison::Invalid
                 }
                 (Some(AtomRestriction::Value(lhs)), Some(AtomRestriction::Length(rhs))) => {
-                    if lhs.len() == rhs {
+                    if lhs.len() == *rhs {
                         Comparison::Assign
                     } else {
                         Comparison::Invalid
@@ -2299,7 +2299,7 @@ fn compare_structure(
             ctx.add_candidate(arena, rhs, kind, lhs, ctx.lhs_env);
             Comparison::Assign
         }
-        (_, Type::Generic(_)) => match arena[lhs].clone() {
+        (_, Type::Generic(_)) => match &arena[lhs] {
             Type::Union(lhs) => {
                 let mut result = Comparison::Assign;
 
@@ -2474,7 +2474,7 @@ fn compare_structure(
             // A struct can still be cast to a union that holds its inner type as a whole, such as
             // `struct W { ...value: Int | (Int, Int) }` to `Int | (Int, Int)`
             if result == Comparison::Invalid
-                && let Type::Struct(lhs) = arena[lhs].clone()
+                && let Type::Struct(lhs) = &arena[lhs]
             {
                 result = ctx.compare_member(choice, FALLBACK, |ctx| {
                     max(
@@ -2786,9 +2786,9 @@ fn semantics_of_impl_inner(
         return HashSet::new();
     }
 
-    match arena[id].clone() {
+    match &arena[id] {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => semantics_of_impl(arena, id, visited),
+        &Type::Ref(id) => semantics_of_impl(arena, id, visited),
         Type::Alias(alias) => semantics_of_impl(arena, alias.inner, visited),
         Type::Never => HashSet::new(),
         Type::Any => HashSet::from_iter([Some(Semantic::All)]),

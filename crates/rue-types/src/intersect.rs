@@ -186,13 +186,21 @@ fn intersect_structure(
     lhs: TypeId,
     rhs: TypeId,
 ) -> TypeId {
-    match (arena[lhs].clone(), arena[rhs].clone()) {
+    // The arena is only borrowed until each arm has copied what it needs, since the arms allocate
+    match (&arena[lhs], &arena[rhs]) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
-        (Type::Ref(lhs), _) => intersect_impl(arena, builtins, ctx, lhs, rhs),
-        (_, Type::Ref(rhs)) => intersect_impl(arena, builtins, ctx, lhs, rhs),
-        (Type::Alias(alias), _) => intersect_impl(arena, builtins, ctx, alias.inner, rhs),
-        (_, Type::Alias(alias)) => intersect_impl(arena, builtins, ctx, lhs, alias.inner),
+        (&Type::Ref(lhs), _) => intersect_impl(arena, builtins, ctx, lhs, rhs),
+        (_, &Type::Ref(rhs)) => intersect_impl(arena, builtins, ctx, lhs, rhs),
+        (Type::Alias(alias), _) => {
+            let inner = alias.inner;
+            intersect_impl(arena, builtins, ctx, inner, rhs)
+        }
+        (_, Type::Alias(alias)) => {
+            let inner = alias.inner;
+            intersect_impl(arena, builtins, ctx, lhs, inner)
+        }
         (Type::Union(union), _) => {
+            let union = union.clone();
             let variants = union
                 .types
                 .iter()
@@ -201,6 +209,7 @@ fn intersect_structure(
             repackage_union(arena, builtins, lhs, &union, variants)
         }
         (_, Type::Union(union)) => {
+            let union = union.clone();
             let variants = union
                 .types
                 .iter()
@@ -212,19 +221,25 @@ fn intersect_structure(
         (Type::Unresolved | Type::Generic(_) | Type::Any | Type::Function(_), _)
         | (_, Type::Unresolved | Type::Generic(_) | Type::Any | Type::Function(_)) => rhs,
         (Type::Struct(lhs_struct), Type::Struct(rhs_struct)) => {
-            let inner = intersect_impl(arena, builtins, ctx, lhs_struct.inner, rhs_struct.inner);
+            let (lhs_struct, rhs_inner) = (lhs_struct.clone(), rhs_struct.inner);
+            let inner = intersect_impl(arena, builtins, ctx, lhs_struct.inner, rhs_inner);
 
             // The value keeps the struct it had before it was narrowed, even if it's checked
             // against another one, since changing it needs a cast
             repackage_struct(arena, builtins, lhs, lhs_struct, inner)
         }
         (Type::Struct(ty), _) => {
+            let ty = ty.clone();
             let inner = intersect_impl(arena, builtins, ctx, ty.inner, rhs);
             repackage_struct(arena, builtins, lhs, ty, inner)
         }
         // Likewise, a value that wasn't an instance of the struct only takes on its structure
-        (_, Type::Struct(ty)) => intersect_impl(arena, builtins, ctx, lhs, ty.inner),
+        (_, Type::Struct(ty)) => {
+            let inner = ty.inner;
+            intersect_impl(arena, builtins, ctx, lhs, inner)
+        }
         (Type::Pair(lhs_pair), Type::Pair(rhs_pair)) => {
+            let (lhs_pair, rhs_pair) = (*lhs_pair, *rhs_pair);
             let first = intersect_impl(arena, builtins, ctx, lhs_pair.first, rhs_pair.first);
             let rest = intersect_impl(arena, builtins, ctx, lhs_pair.rest, rhs_pair.rest);
 
@@ -239,6 +254,10 @@ fn intersect_structure(
             }
         }
         (Type::Atom(lhs_atom), Type::Atom(rhs_atom)) => {
+            let (semantic, same_semantic) =
+                (lhs_atom.semantic, lhs_atom.semantic == rhs_atom.semantic);
+            let restriction = rhs_atom.restriction.clone();
+
             // An atom's restriction is either a single value or a fixed length, so if both atoms
             // overlap, one restriction contains the other and only the semantics can differ. The
             // narrower restriction is kept, with the semantic of `lhs`, since changing it needs a
@@ -246,13 +265,10 @@ fn intersect_structure(
             if compare(arena, builtins, lhs, rhs) <= Comparison::Cast {
                 lhs
             } else if compare(arena, builtins, rhs, lhs) <= Comparison::Cast {
-                if lhs_atom.semantic == rhs_atom.semantic {
+                if same_semantic {
                     rhs
                 } else {
-                    arena.alloc(Type::Atom(Atom::new(
-                        lhs_atom.semantic,
-                        rhs_atom.restriction,
-                    )))
+                    arena.alloc(Type::Atom(Atom::new(semantic, restriction)))
                 }
             } else {
                 builtins.never

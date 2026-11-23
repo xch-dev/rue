@@ -625,9 +625,9 @@ fn variants_of_inner(
     id: TypeId,
     seen: &mut FxHashSet<TypeId>,
 ) -> Vec<TypeId> {
-    match arena[id].clone() {
+    match &arena[id] {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => variants_of_impl(arena, builtins, id, seen),
+        &Type::Ref(id) => variants_of_impl(arena, builtins, id, seen),
         // A function is kept as is, rather than as the atom or pair that it's compiled to, so that
         // a check which has to look at it is an error. How a function is represented depends on
         // how it's compiled, so the result would differ between debug and release builds.
@@ -642,7 +642,7 @@ fn variants_of_inner(
         Type::Union(ty) => {
             let mut variants = Vec::new();
 
-            for variant in ty.types {
+            for &variant in &ty.types {
                 variants.extend(variants_of_impl(arena, builtins, variant, seen));
             }
 
@@ -680,15 +680,15 @@ fn atoms_of_inner(
     target: bool,
     seen: &mut FxHashSet<TypeId>,
 ) -> Result<Option<Atoms>, CheckError> {
-    Ok(match arena[id].clone() {
+    Ok(match &arena[id] {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => atoms_of_impl(arena, id, target, seen)?,
+        &Type::Ref(id) => atoms_of_impl(arena, id, target, seen)?,
         Type::Unresolved | Type::Never | Type::Pair(_) => None,
         Type::Generic(_) if target => return Err(CheckError::GenericType),
         Type::Generic(_) => Some(Atoms::Unrestricted),
         Type::Any => Some(Atoms::Unrestricted),
         Type::Atom(atom) => {
-            let Some(restriction) = atom.restriction else {
+            let Some(restriction) = atom.restriction.clone() else {
                 return Ok(Some(Atoms::Unrestricted));
             };
             Some(Atoms::Restricted(indexset![restriction]))
@@ -699,7 +699,7 @@ fn atoms_of_inner(
         Type::Union(ty) => {
             let mut restrictions = IndexSet::new();
 
-            for variant in ty.types {
+            for &variant in &ty.types {
                 match atoms_of_impl(arena, variant, target, seen)? {
                     None => {}
                     Some(Atoms::Unrestricted) => return Ok(Some(Atoms::Unrestricted)),
@@ -769,11 +769,11 @@ fn pairs_of_inner(
     target: bool,
     seen: &mut FxHashSet<TypeId>,
 ) -> Result<Vec<Pair>, CheckError> {
-    Ok(match arena[id].clone() {
+    Ok(match &arena[id] {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => pairs_of_impl(arena, builtins, id, target, seen)?,
+        &Type::Ref(id) => pairs_of_impl(arena, builtins, id, target, seen)?,
         Type::Unresolved | Type::Never | Type::Atom(_) => vec![],
-        Type::Pair(pair) => vec![pair],
+        &Type::Pair(pair) => vec![pair],
         Type::Generic(_) if target => return Err(CheckError::GenericType),
         Type::Generic(_) | Type::Any => {
             vec![Pair::new(builtins.recursive_any, builtins.recursive_any)]
@@ -784,7 +784,7 @@ fn pairs_of_inner(
         Type::Union(ty) => {
             let mut pairs = Vec::new();
 
-            for variant in ty.types {
+            for &variant in &ty.types {
                 pairs.extend(pairs_of_impl(arena, builtins, variant, target, seen)?);
             }
 

@@ -156,11 +156,11 @@ fn stringify_impl_inner(
 
     stack.insert(id, false);
 
-    let result = match arena[id].clone() {
-        Type::Ref(id) => stringify_impl(arena, id, stack),
+    let result = match &arena[id] {
+        &Type::Ref(id) => stringify_impl(arena, id, stack),
         Type::Unresolved => UNRESOLVED.to_string(),
         Type::Generic(generic) => {
-            if let Some(name) = generic.name {
+            if let Some(name) = &generic.name {
                 name.text().to_string()
             } else {
                 format!("{{generic {}}}", id.index())
@@ -177,7 +177,7 @@ fn stringify_impl_inner(
         Type::Struct(ty) => {
             if let Some(name) = &ty.name {
                 if ty.narrowed {
-                    narrowed_struct(arena, name.text(), &ty, stack)
+                    narrowed_struct(arena, name.text(), ty, stack)
                 } else {
                     with_generics(arena, name.text(), &ty.generics, stack)
                 }
@@ -186,7 +186,7 @@ fn stringify_impl_inner(
             }
         }
         Type::Alias(alias) => {
-            if let Some(name) = alias.name {
+            if let Some(name) = &alias.name {
                 with_generics(arena, name.text(), &alias.generics, stack)
             } else {
                 stringify_impl(arena, alias.inner, stack)
