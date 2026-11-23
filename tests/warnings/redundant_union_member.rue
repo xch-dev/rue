@@ -68,19 +68,25 @@ fn grouped(value: (Int | 7) | (Bytes32, Int)) -> Any {
     value
 }
 
-// Each call compiles the inline function again, but it's only reported once
+// An inline function is reported once, however many times it's called
 inline fn twice(value: Int | 8) -> Int {
     value
 }
 
 // Unions that the compiler infers aren't written, so they aren't reported
-fn inferred(flag: Bool) -> Int {
+fn inferred(flag: Bool, number: Int) -> Int {
     let value = if flag {
         5
     } else {
-        6
+        number
     };
     value + 1
+}
+
+// Removing a generic member could stop the generic from being inferred, so it's not fixed
+// automatically
+fn generic_member<T>(value: T | Any) -> List<T> {
+    nil
 }
 
 // Members that only partly overlap at runtime, or are generic, aren't redundant

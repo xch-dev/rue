@@ -63,8 +63,17 @@ pub struct LintSites {
 /// A union type written in the source, such as `Int | nil` (see [`LintSites::written_unions`]).
 #[derive(Debug, Clone)]
 pub struct WrittenUnion {
-    /// Each member as it's written, along with its type, in order.
-    pub members: Vec<(SrcLoc, TypeId)>,
+    /// The members, in the order they're written.
+    pub members: Vec<UnionMember>,
+}
+
+/// A member of a [`WrittenUnion`].
+#[derive(Debug, Clone)]
+pub struct UnionMember {
+    /// The member as it's written.
+    pub srcloc: SrcLoc,
+    /// The member's type.
+    pub ty: TypeId,
 }
 
 /// Why nothing is read from a value spread in a struct initializer.

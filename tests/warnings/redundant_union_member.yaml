@@ -107,3 +107,7 @@ diagnostics:
   Redundant union member `8`, since `Int` is already in the union, and it includes every `8` at redundant_union_member.rue:72:30
     note: `Int` is in the union here at redundant_union_member.rue:72:24
     help: Remove `8` from the union
+- |-
+  Redundant union member `T`, since `Any` is already in the union, and it includes every `T` at redundant_union_member.rue:88:29
+    note: `Any` is in the union here at redundant_union_member.rue:88:33
+    help: Remove `T` from the union

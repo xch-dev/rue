@@ -1,6 +1,6 @@
 use log::debug;
 use rue_ast::{AstNode, AstUnionType};
-use rue_lint::WrittenUnion;
+use rue_lint::{UnionMember, WrittenUnion};
 use rue_types::{Type, TypeId, Union};
 
 use crate::{Compiler, compile_type};
@@ -10,7 +10,8 @@ pub fn compile_union_type(ctx: &mut Compiler, union: &AstUnionType) -> TypeId {
 
     for ty in union.types() {
         let srcloc = ctx.trimmed_srcloc(ty.syntax());
-        members.push((srcloc, compile_type(ctx, &ty)));
+        let ty = compile_type(ctx, &ty);
+        members.push(UnionMember { srcloc, ty });
     }
 
     if members.is_empty() {
@@ -18,7 +19,7 @@ pub fn compile_union_type(ctx: &mut Compiler, union: &AstUnionType) -> TypeId {
         return ctx.unresolved().ty;
     }
 
-    let types = members.iter().map(|&(_, ty)| ty).collect();
+    let types = members.iter().map(|member| member.ty).collect();
 
     ctx.lint_sites_mut()
         .written_unions

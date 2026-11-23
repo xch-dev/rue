@@ -3734,8 +3734,8 @@ fn spread_list_builtins_have_no_fix_for_a_missing_argument() {
 #[test]
 fn suggestions_fix_redundant_union_members() {
     // Removing every redundant member at once leaves a valid union, whether they're before,
-    // between or after the members that are kept. A member with a comment in what's removed is
-    // left for the user.
+    // between or after the members that are kept. A member with a comment in what's removed, or
+    // that references a generic, is left for the user.
     let source = "\
 type Before = 5 | 6 | Int;
 type After = Int | 5 | 6;
@@ -3743,6 +3743,7 @@ type Around = 5 | Int | 6 | Bytes32;
 type Twice = Int | Int;
 type Spaced = Bytes   |   Bytes32;
 type Commented = Int | /* five */ 5;
+type Generic<T> = T | Any;
 
 fn main(
     a: Before,
@@ -3769,6 +3770,7 @@ type Around = Int | Bytes32;
 type Twice = Int;
 type Spaced = Bytes;
 type Commented = Int | /* five */ 5;
+type Generic<T> = T | Any;
 
 fn main(
     a: Before,
