@@ -278,9 +278,9 @@ dependencies = [
 
 [[package]]
 name = "chia-sha2"
-version = "0.54.0"
+version = "0.55.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a818dc6fd35e597bd80cbead89667d71f2a559ae3b92bd56b87b07c190812299"
+checksum = "7bb2b35973ad93ba0bef74605f04006f4cec8231cad090eec25dbd85bf1dc01f"
 dependencies = [
  "sha2 0.10.9",
 ]
@@ -377,9 +377,9 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "clvm-traits"
-version = "0.54.0"
+version = "0.55.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a376bd9cf2a39a57fd6631d2fdee0a05dd3900d3a123a74f5ded4745ef90489"
+checksum = "7de81c9a95c2d310fc162db35d31c25b3c35ee45e5161f5c86205dd9549fe5ca"
 dependencies = [
  "clvmr",
  "num-bigint",
@@ -388,11 +388,11 @@ dependencies = [
 
 [[package]]
 name = "clvm-utils"
-version = "0.54.0"
+version = "0.55.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1859273a1e33a029715ee330c7933ca95b809a7009cdcccc5388eb36615d4320"
+checksum = "315ddd5157358c8949d3b9d15257c07caccc14dacb5b22fb68c40a736782abff"
 dependencies = [
- "chia-sha2 0.54.0",
+ "chia-sha2 0.55.0",
  "clvm-traits",
  "clvmr",
  "hex",
@@ -421,7 +421,7 @@ dependencies = [
  "p256",
  "rand",
  "sha1",
- "sha3",
+ "sha3 0.10.9",
  "thiserror",
 ]
 
@@ -1192,6 +1192,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "keccak"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8f198d1db720e4940b5a493201d199d9f24f568f8f746bd13706243a2f71598"
+dependencies = [
+ "cfg-if 1.0.5",
+ "cpufeatures 0.3.1",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1756,7 +1766,7 @@ dependencies = [
  "rue-formatter",
  "rue-lir",
  "rue-options",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "tempfile",
  "toml",
  "walkdir",
@@ -1796,7 +1806,7 @@ dependencies = [
  "rue-options",
  "rue-parser",
  "rue-types",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "tempfile",
  "thiserror",
 ]
@@ -1875,8 +1885,8 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "rue-clvm",
- "sha2 0.10.9",
- "sha3",
+ "sha2 0.11.1",
+ "sha3 0.12.0",
  "stacker",
  "thiserror",
 ]
@@ -2151,9 +2161,9 @@ dependencies = [
 
 [[package]]
 name = "serde_spanned"
-version = "1.0.3"
+version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e24345aa0fe688594e73770a5f6d1b216508b4f93484c0026d521acd30134392"
+checksum = "9c187e0a369471c550af028cba56d4f4fa2a489ad28151ae95a4d340a2a8b782"
 dependencies = [
  "serde_core",
 ]
@@ -2208,7 +2218,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77fd7028345d415a4034cf8777cd4f8ab1851274233b45f84e3d955502d93874"
 dependencies = [
  "digest 0.10.7",
- "keccak",
+ "keccak 0.1.6",
+]
+
+[[package]]
+name = "sha3"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc9bad02c26382724b2d2692c6f179285e4b54eeecd7968f52a50059c3c11759"
+dependencies = [
+ "digest 0.11.3",
+ "keccak 0.2.2",
+ "sponge-cursor",
 ]
 
 [[package]]
@@ -2273,6 +2294,12 @@ dependencies = [
  "base64ct",
  "der",
 ]
+
+[[package]]
+name = "sponge-cursor"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a0219bd7d979d58245a4f41f695e1ac9f8befdffadd7f61f1bae9e39abc6620"
 
 [[package]]
 name = "stacker"
@@ -2424,17 +2451,17 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.9.8"
+version = "1.2.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0dc8b1fb61449e27716ec0e1bdf0f6b8f3e8f6b05391e8497b8b6d7804ea6d8"
+checksum = "5426cb1b964690d913f6c5c1a1ae0b42f428ec506bb4d452876d7a209c9bca3b"
 dependencies = [
  "indexmap",
  "serde_core",
  "serde_spanned",
- "toml_datetime 0.7.3",
+ "toml_datetime 1.1.3+spec-1.1.0",
  "toml_parser",
  "toml_writer",
- "winnow 0.7.13",
+ "winnow 1.0.5",
 ]
 
 [[package]]
@@ -2442,15 +2469,6 @@ name = "toml_datetime"
 version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22cddaf88f4fbc13c51aebbf5f8eceb5c7c5a9da2ac40a13519eb5b0a0e8f11c"
-
-[[package]]
-name = "toml_datetime"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2cdb639ebbc97961c51720f858597f7f24c4fc295327923af55b74c3c724533"
-dependencies = [
- "serde_core",
-]
 
 [[package]]
 name = "toml_datetime"
@@ -2486,18 +2504,18 @@ dependencies = [
 
 [[package]]
 name = "toml_parser"
-version = "1.1.5+spec-1.1.0"
+version = "1.1.6+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
+checksum = "e6769c452d71ba30696c6b37770c439a9cc9110f47f7d5cdbeda79840ef5ea31"
 dependencies = [
  "winnow 1.0.5",
 ]
 
 [[package]]
 name = "toml_writer"
-version = "1.0.4"
+version = "1.2.0+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df8b2b54733674ad286d16267dcfc7a71ed5c776e4ac7aa3c3e2561f7c637bf2"
+checksum = "009dbb7700f11c55ef83aebbe4c0e9cf1f1ac0844bd8d6f00dc38f302026e13a"
 
 [[package]]
 name = "tower"
@@ -2885,12 +2903,6 @@ checksum = "f593a95398737aeed53e489c785df13f3618e41dbcd6718c6addbf1395aa6876"
 dependencies = [
  "memchr",
 ]
-
-[[package]]
-name = "winnow"
-version = "0.7.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21a0236b59786fed61e2a80582dd500fe61f18b5dca67a4a067d0bc9039339cf"
 
 [[package]]
 name = "winnow"
