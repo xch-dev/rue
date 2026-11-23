@@ -263,6 +263,15 @@ impl Builder<'_> {
         let body = finish_block(self.program, scope.statements, value);
 
         let reads = frame.reads.into_inner();
+
+        // A known value is used as data if a part of the environment it's in is
+        let mut known = info.known;
+        for slot in &mut known {
+            slot.exposed = reads
+                .iter()
+                .any(|read| slot.path.starts_with(read) && read.len() < slot.path.len());
+        }
+
         let reads_hidden = info
             .layout
             .as_ref()
@@ -284,7 +293,7 @@ impl Builder<'_> {
             kind: info.kind,
             node: info.node,
             layout: info.layout,
-            known: info.known,
+            known,
             generic: info.generic,
             call: info.call,
             reads_hidden,
@@ -706,6 +715,7 @@ impl Builder<'_> {
                             known.push(KnownSlot {
                                 path: path.clone(),
                                 value,
+                                exposed: false,
                             });
                         }
                         Some(value) => {

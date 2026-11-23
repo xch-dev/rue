@@ -353,8 +353,8 @@ fn for(cat_info: List, list: List) {                                      // cat
         } else {
             assert !(                                                     // cat_v2.rue:197:13-201:15
                 if (
-                    if list.first.first == 60 { strlen(list.first.rest.first) == 33 } else { nil },
-                ) { substr(list.first.rest.first, nil, 1) == -53 } else { nil },
+                    if list.first.first == 60 { strlen(list.first.rest.first) == 33 } else { nil }
+                ) { substr(list.first.rest.first, nil, 1) == -53 } else { nil }
             ) else raise("assertion failed at cat_v2.rue:197:13")
             ((list.first, v1.first), v1.rest)                             // cat_v2.rue:203:13-77
         }

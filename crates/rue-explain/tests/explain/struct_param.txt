@@ -30,7 +30,7 @@ fn by_tuple((low, high): Pair) {                             // struct_param.rue
 
 fn by_destructure({ puzzle_hash, amount }: List) {           // struct_param.rue:25:5-42
     assert !(                                                // struct_param.rue:25:5-42
-        { puzzle_hash, amount }.first == sha256("burn"),
+        { puzzle_hash, amount }.first == sha256("burn")
     ) else raise("assertion failed at struct_param.rue:25:5")
     { puzzle_hash, amount }.rest.first                       // struct_param.rue:26:5-11
 }

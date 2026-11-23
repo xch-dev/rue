@@ -215,10 +215,14 @@ fn function_in_a_returned_environment() {
         &["(1)"],
         &expect![[r#"
             program(solution) {
-                add(x: solution@2) + wrap()(20, solution@2)
+                add#2(x: solution@2) + wrap()(20, solution@2)
             }
 
             fn add(x) {
+                env@2 + x
+            }
+
+            fn add#2(x) {
                 // env@2 is always 10
                 10 + x
             }
@@ -1329,6 +1333,232 @@ fn large_values_are_shown_once() {
             program(solution) {
                 let v1 = solution@604462909807314587353087
                 v1 + v1 + v1
+            }
+        "#]],
+    );
+}
+
+/// A function `f(_, x)` with the body.
+fn hidden_first(
+    body: &'static str,
+) -> impl FnOnce(&mut DebugMetadataBuilder) -> Vec<(String, Described)> {
+    move |builder| {
+        vec![(
+            body.to_string(),
+            Described {
+                name: "f",
+                parameters: pair(Parameter::Nil, pair(name(builder, "x", 5), Parameter::Nil)),
+            },
+        )]
+    }
+}
+
+#[test]
+fn calls_show_the_hidden_values_that_are_used() {
+    // The body reads a part of its hidden value
+    check(
+        "(a (q . (+ 4 5)) (c 2 (c 5 ())))",
+        hidden_first("(+ 4 5)"),
+        &["((7) 8)"],
+        &expect![[r#"
+            program(solution) {
+                f(x: solution@5, env@2: solution@2)
+            }
+
+            fn f(x) {
+                env@4 + x
+            }
+        "#]],
+    );
+
+    // The body runs raw code with its whole environment
+    check(
+        "(a (q . (100 1)) (c 2 (c 5 ())))",
+        hidden_first("(100 1)"),
+        &["(7 8)"],
+        &expect![[r#"
+            program(solution) {
+                f(x: solution@5, env@2: solution@2)
+            }
+
+            fn f(x) {
+                clvm!((100 1))
+            }
+        "#]],
+    );
+
+    // The body runs a program with its whole environment
+    check(
+        "(a (q . (a 5 1)) (c 2 (c 5 ())))",
+        hidden_first("(a 5 1)"),
+        &["(7 (q . 9))"],
+        &expect![[r#"
+            program(solution) {
+                f(x: solution@5, env@2: solution@2)
+            }
+
+            fn f(x) {
+                x(...env)
+            }
+        "#]],
+    );
+
+    // The body doesn't use its hidden value, which isn't computed, so it isn't shown
+    check(
+        "(a (q . (+ 5 (q . 1))) (c 2 (c 5 ())))",
+        hidden_first("(+ 5 (q . 1))"),
+        &["(7 8)"],
+        &expect![[r#"
+            program(solution) {
+                f(x: solution@5)
+            }
+
+            fn f(x) {
+                x + 1
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn versions_are_for_the_constants_of_each_part() {
+    // `g` has two hidden values, and each call passes 7 for a different one
+    check(
+        "(c (a (q . (+ 2 5 11)) (c (q . 7) (c 2 (c 5 ())))) (a (q . (+ 2 5 11)) (c 2 (c (q . 7) (c 5 ())))))",
+        |builder| {
+            vec![(
+                "(+ 2 5 11)".to_string(),
+                Described {
+                    name: "g",
+                    parameters: pair(
+                        Parameter::Nil,
+                        pair(Parameter::Nil, pair(name(builder, "x", 11), Parameter::Nil)),
+                    ),
+                },
+            )]
+        },
+        &["(1 2)"],
+        &expect![[r#"
+            program(solution) {
+                (g(x: solution@5, env@5: solution@2), g#2(x: solution@5, env@2: solution@2))
+            }
+
+            fn g(x) {
+                // env@2 is always 7
+                7 + env@5 + x
+            }
+
+            fn g#2(x) {
+                // env@5 is always 7
+                env@2 + 7 + x
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn functions_are_named_apart_from_generated_names() {
+    // Functions named like a constant, a variable and the environment, none of which are names
+    // that are used here
+    let large = format!("0x{}", "ab".repeat(100));
+    check(
+        &format!(
+            "(c (a (q . (c 2 (q . {large}))) (c (q . {large}) ())) (c (a (q . (* 2 (q . 3))) (c 2 ())) (a (q . (* 2 (q . 4))) (c 2 ()))))"
+        ),
+        |builder| {
+            vec![
+                (
+                    format!("(c 2 (q . {large}))"),
+                    Described {
+                        name: "C1",
+                        parameters: pair(name(builder, "y", 2), Parameter::Nil),
+                    },
+                ),
+                (
+                    "(* 2 (q . 3))".to_string(),
+                    Described {
+                        name: "v7",
+                        parameters: pair(name(builder, "y", 2), Parameter::Nil),
+                    },
+                ),
+                (
+                    "(* 2 (q . 4))".to_string(),
+                    Described {
+                        name: "env",
+                        parameters: pair(name(builder, "y", 2), Parameter::Nil),
+                    },
+                ),
+            ]
+        },
+        &["(1)"],
+        &expect![[r#"
+            const C1 = 0xabababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab
+
+            program(solution) {
+                [C1#2(y: C1), v7#2(y: solution@2), ...env#2(y: solution@2)]
+            }
+
+            fn C1#2(y) {
+                (y, C1)
+            }
+
+            fn v7#2(y) {
+                y * 3
+            }
+
+            fn env#2(y) {
+                y * 4
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn computed_environments_across_parameters_are_bound() {
+    // The environment is computed, and has both parameters in it, so it's bound first and each
+    // parameter is shown as a part of it
+    check(
+        "(a (q . (+ 2 5)) (f 1))",
+        |builder| {
+            vec![(
+                "(+ 2 5)".to_string(),
+                Described {
+                    name: "add",
+                    parameters: pair(
+                        name(builder, "a", 2),
+                        pair(name(builder, "b", 5), Parameter::Nil),
+                    ),
+                },
+            )]
+        },
+        &["((1 2))"],
+        &expect![[r#"
+            program(solution) {
+                let v1 = solution.first
+                add(a: v1.first, b: v1.rest.first)
+            }
+
+            fn add(a, b) {
+                a + b
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn functions_only_in_raw_code_are_shown() {
+    // `add` is never called or used as a value, but it's in raw code
+    check(
+        "(c (100 (q . (+ 2 5))) (q . 1))",
+        add_hidden,
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                (clvm!((100 (q 16 2 5))), 1)
+            }
+
+            fn add(x) {
+                env@2 + x
             }
         "#]],
     );

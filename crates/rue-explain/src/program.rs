@@ -20,6 +20,12 @@ pub(crate) const RAISE: &[u8] = &[8];
 /// The atom of code that reads the whole environment.
 pub(crate) const WHOLE_ENV: &[u8] = &[1];
 
+/// How much stack decoding a level of a sidecar can take, which is more than it does.
+const STACK_PER_LEVEL: usize = 1024;
+
+/// How much stack reading a program takes other than for the levels of its sidecar.
+const STACK_BASE: usize = 1024 * 1024;
+
 /// The index of a node in [`Program::nodes`]. Each position in the program is a node of its own,
 /// even if it has the same value as another.
 pub(crate) type NodeId = usize;
@@ -69,6 +75,20 @@ impl Program {
     /// Reads a serialized program, along with its debug metadata sidecar if there is one, which
     /// must be for exactly this program.
     pub(crate) fn new(program: &[u8], sidecar: Option<&[u8]>) -> Result<Self, ExplainError> {
+        // The sidecar is decoded (and dropped) recursively, as deeply as the program or its
+        // parameter trees are nested, which is at most a level for each byte
+        let levels = program.len() + sidecar.map_or(0, <[u8]>::len);
+        let needed = levels
+            .saturating_mul(STACK_PER_LEVEL)
+            .saturating_add(STACK_BASE);
+        if stacker::remaining_stack().is_some_and(|remaining| remaining > needed) {
+            Self::read(program, sidecar)
+        } else {
+            stacker::grow(needed, || Self::read(program, sidecar))
+        }
+    }
+
+    fn read(program: &[u8], sidecar: Option<&[u8]>) -> Result<Self, ExplainError> {
         let mut allocator = Allocator::new();
         let root = node_from_bytes(&mut allocator, program)
             .map_err(|error| ExplainError::Program(error.to_string()))?;
@@ -331,6 +351,10 @@ pub(crate) fn path_number(path: &[bool]) -> BigUint {
     number
 }
 
+/// How many steps the paths of a function's parameters can have in all, which is far more than any
+/// function has, before the parameters aren't used.
+const MAX_LAYOUT_STEPS: usize = 4096;
+
 /// A value of a function's environment that the debug metadata names.
 #[derive(Debug, Clone)]
 pub(crate) struct NamedSlot {
@@ -349,12 +373,19 @@ pub(crate) struct Layout {
 
 impl Layout {
     /// The layout of the function's environment, unless its parameter tree is inconsistent (a
-    /// name whose path isn't where it is in the tree), in which case none of it is trusted.
+    /// name whose path isn't where it is in the tree), in which case none of it is trusted, or
+    /// larger than any function's is (since each call looks at each of its parts).
     pub(crate) fn new(program: &Program, function: &DebugFunction) -> Option<Self> {
         let mut layout = Self::default();
         let mut stack = vec![(&function.parameters, Vec::new())];
+        let mut steps = 0usize;
 
         while let Some((parameter, position)) = stack.pop() {
+            steps += position.len();
+            if steps > MAX_LAYOUT_STEPS {
+                return None;
+            }
+
             match parameter {
                 DebugParameter::Nil => layout.hidden.push(position),
                 DebugParameter::Name {

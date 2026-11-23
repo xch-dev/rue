@@ -187,6 +187,9 @@ pub(crate) enum Statement {
 pub(crate) struct KnownSlot {
     pub path: Path,
     pub value: NodeId,
+    /// Whether the body uses a part of the environment that has the value in it as data (other
+    /// than by reading the value itself), so that it can be run with another environment.
+    pub exposed: bool,
 }
 
 /// The value at a path of a function's environment, which is the constant every call passes if

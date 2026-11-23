@@ -77,21 +77,23 @@ struct Record {
 
 pub(crate) fn render(explanation: &Explanation) -> String {
     let (shown, record) = shown_functions(explanation);
-    let mut names = function_names(explanation, &shown);
+    let mut used = reserved_names(explanation, &shown);
+    let mut names = function_names(explanation, &shown, &mut used);
 
     // Large constants that are used more than once are named, and shown once
-    let mut reserved = reserved_names(explanation, &shown);
     let mut definitions = Vec::new();
+    let mut number = 0;
     for (hash, node) in record.constants {
         if record.counts[&hash] < 2 {
             continue;
         }
-        // One of these isn't reserved
-        let name = (1..=reserved.len() + 1)
-            .map(|number| format!("C{number}"))
-            .find(|name| !reserved.contains(name))
-            .expect("there's a free name");
-        reserved.insert(name.clone());
+        let name = loop {
+            number += 1;
+            let name = format!("C{number}");
+            if !used.contains(&name) {
+                break name;
+            }
+        };
         definitions.push((name.clone(), node));
         names.constants.insert(hash, name);
     }
@@ -201,54 +203,45 @@ fn shown_functions(explanation: &Explanation) -> (Vec<FunctionId>, Record) {
     let names = Names::default();
     let record = RefCell::new(Record::default());
 
-    let mut shown = HashSet::from([explanation.entry]);
+    let mut shown = HashSet::new();
+    let mut versions = HashMap::<FunctionId, usize>::new();
     let mut queue = vec![explanation.entry];
-    let versions_shown = |shown: &HashSet<FunctionId>, generic: FunctionId| {
-        shown
-            .iter()
-            .filter(|&&id| functions[id].generic == generic)
-            .count()
-    };
 
     loop {
         while let Some(id) = queue.pop() {
-            printer(explanation, id, &names, Some(&record), &mut Vec::new()).function();
-            for id in record.borrow_mut().functions.drain(..) {
-                if shown.insert(id) {
-                    queue.push(id);
-                }
+            if !shown.insert(id) {
+                continue;
             }
+            *versions.entry(functions[id].generic).or_default() += 1;
+            printer(explanation, id, &names, Some(&record), &mut Vec::new()).function();
+            queue.append(&mut record.borrow_mut().functions);
         }
 
         // A function that's named in a comment is shown as it is unless exactly one version of
-        // it is, which the name is then for
-        let mut added = record
+        // it is, which the name is then for, and a function the metadata describes is shown if no
+        // version of it is
+        let shown_versions = |id: &FunctionId| versions.get(id).copied().unwrap_or(0);
+        queue = record
             .borrow()
             .comments
             .iter()
             .copied()
-            .filter(|&id| !shown.contains(&id) && versions_shown(&shown, id) != 1)
-            .collect::<Vec<_>>();
-
-        if added.is_empty() {
-            added = (0..functions.len())
-                .filter(|&id| {
-                    functions[id].kind == FunctionKind::Described
-                        && functions[id].generic == id
-                        && versions_shown(&shown, id) == 0
+            .filter(|id| !shown.contains(id) && shown_versions(id) != 1)
+            .collect();
+        if queue.is_empty() {
+            queue = (0..functions.len())
+                .filter(|id| {
+                    functions[*id].kind == FunctionKind::Described
+                        && functions[*id].generic == *id
+                        && shown_versions(id) == 0
                 })
                 .collect();
         }
 
-        if added.is_empty() {
+        if queue.is_empty() {
             break;
         }
-
-        added.sort_unstable();
-        for id in added {
-            shown.insert(id);
-            queue.push(id);
-        }
+        queue.sort_unstable_by(|a, b| b.cmp(a));
     }
 
     // The program first, then each function with its versions
@@ -281,24 +274,38 @@ fn reserved_names(explanation: &Explanation, shown: &[FunctionId]) -> HashSet<St
 
 /// The name of each function that's shown, and of the code of each function: its own name, unless
 /// another function that's shown has it (or it's the name of a value), in which case it's numbered.
-fn function_names(explanation: &Explanation, shown: &[FunctionId]) -> Names {
+/// The names are added to the ones that are used.
+fn function_names(
+    explanation: &Explanation,
+    shown: &[FunctionId],
+    used: &mut HashSet<String>,
+) -> Names {
     let functions = &explanation.functions;
-    let mut used = reserved_names(explanation, shown);
     let mut names = Names::default();
+    let mut numbers = HashMap::<&str, usize>::new();
 
     for &id in shown {
-        let base = &functions[id].name;
-        let name = std::iter::once(base.clone())
-            .chain((2..=used.len() + 2).map(|number| format!("{base}#{number}")))
-            .find(|name| !used.contains(name) && !is_generated(name))
-            .expect("there's a free name");
+        let base = functions[id].name.as_str();
+        let number = numbers.entry(base).or_insert(1);
+        let name = loop {
+            let name = if *number == 1 {
+                base.to_string()
+            } else {
+                format!("{base}#{number}")
+            };
+            *number += 1;
+            if !used.contains(&name) && !is_generated(&name) {
+                break name;
+            }
+        };
         used.insert(name.clone());
         names.functions.insert(id, name);
     }
 
+    let shown_set = shown.iter().copied().collect::<HashSet<_>>();
     for &id in shown {
         let generic = functions[id].generic;
-        if generic == id || !shown.contains(&generic) {
+        if generic == id || !shown_set.contains(&generic) {
             names
                 .code
                 .entry(generic)
@@ -358,12 +365,21 @@ struct Printer<'a> {
 
 impl Printer<'_> {
     fn line(&mut self, indent: usize, text: &str, node: Option<NodeId>) {
+        // Nothing is shown when only finding out what's referred to
+        if self.record.is_some() {
+            return;
+        }
+
         // A multi-line expression is indented along with its first line, and long lines are
-        // wrapped
+        // wrapped, other than comments (whose other lines would look like code)
         let mut node = node;
         for part in text.split('\n') {
             let leading = part.len() - part.trim_start_matches(' ').len();
-            let width = MAX_WIDTH.saturating_sub(indent * INDENT.len() + leading);
+            let width = if part[leading..].starts_with("//") {
+                usize::MAX
+            } else {
+                MAX_WIDTH.saturating_sub(indent * INDENT.len() + leading)
+            };
             for wrapped in wrap(&part[leading..], width, MAX_WRAP_DEPTH) {
                 self.lines.push(Line {
                     indent,
@@ -406,7 +422,9 @@ impl Printer<'_> {
             .iter()
             .filter(|known| !self.explanation.program.is_nil(known.value))
         {
-            self.in_comment = true;
+            // The name of code that's only run with this environment can be that of the version
+            // that's run, but code that's used as data is named as it is
+            self.in_comment = !known.exposed;
             let value = self.constant(known.value);
             self.in_comment = false;
             self.line(
@@ -548,13 +566,6 @@ impl Printer<'_> {
 
     /// A block inside of an expression, which is on one line if it's only a value.
     fn block_text(&self, block: &Block) -> String {
-        if block.statements.is_empty() && !matches!(block.value.kind, ExprKind::If { .. }) {
-            let value = self.expr(&block.value, PREC_IF);
-            if !value.contains('\n') {
-                return format!("{{ {value} }}");
-            }
-        }
-
         let mut lines = Vec::new();
         let mut printer = Printer {
             explanation: self.explanation,
@@ -566,7 +577,20 @@ impl Printer<'_> {
             depth: self.depth + 1,
             lines: &mut lines,
         };
-        printer.block(1, block);
+
+        // The value is only rendered once, since it can have blocks in it in turn
+        if printer.depth < MAX_NESTING
+            && block.statements.is_empty()
+            && !matches!(block.value.kind, ExprKind::If { .. })
+        {
+            let value = printer.expr(&block.value, PREC_IF);
+            if !value.contains('\n') {
+                return format!("{{ {value} }}");
+            }
+            printer.line(1, &value, Some(block.value.node));
+        } else {
+            printer.block(1, block);
+        }
 
         let mut text = "{".to_string();
         for line in lines {
@@ -997,9 +1021,9 @@ impl Printer<'_> {
     }
 }
 
-/// Wraps a line that's longer than the width, by putting each item of its longest bracketed
-/// group on a line of its own (and wrapping those in turn, up to the depth). Text in string
-/// literals is left alone.
+/// Wraps a line that's longer than the width, by breaking it before the loosest operators of a
+/// chain of them, or by putting each item of its longest bracketed group on a line of its own
+/// (and wrapping those in turn, up to the depth). Text in string literals and CLVM is left alone.
 fn wrap(text: &str, width: usize, depth: usize) -> Vec<String> {
     if depth == 0 || text.chars().count() <= width {
         return vec![text.to_string()];
@@ -1025,11 +1049,17 @@ fn wrap(text: &str, width: usize, depth: usize) -> Vec<String> {
         return vec![text.to_string()];
     };
 
-    // A block (which has a single item) isn't separated by commas, but a closure's captures are
-    let separator = if text[open..].starts_with('{') && items.len() == 1 {
-        ""
-    } else {
-        ","
+    // Arguments, items and captures are separated by commas, but blocks and parenthesized values
+    // (which have a single item) aren't
+    let named = text[..open]
+        .chars()
+        .next_back()
+        .is_some_and(|char| char.is_alphanumeric() || "_>)]}@#".contains(char));
+    let separator = match text[open..].chars().next() {
+        Some('[') => ",",
+        Some('(') if named || items.len() > 1 => ",",
+        Some('{') if named => ",",
+        _ => "",
     };
 
     let mut lines = vec![text[..=open].to_string()];
@@ -1042,6 +1072,30 @@ fn wrap(text: &str, width: usize, depth: usize) -> Vec<String> {
     }
     lines.push(text[close..].to_string());
     lines
+}
+
+/// The characters of the text that aren't in string literals, with their byte offsets.
+fn outside_strings(text: &str) -> impl Iterator<Item = (usize, char)> + '_ {
+    let mut in_string = false;
+    let mut escaped = false;
+
+    text.char_indices().filter(move |&(_, char)| {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if char == '\\' {
+                escaped = true;
+            } else if char == '"' {
+                in_string = false;
+            }
+            false
+        } else if char == '"' {
+            in_string = true;
+            false
+        } else {
+            true
+        }
+    })
 }
 
 /// The text split before each of the loosest binary operators outside of brackets and strings,
@@ -1059,23 +1113,9 @@ fn operator_parts(text: &str) -> Option<Vec<&str>> {
 
     let mut found = Vec::new();
     let mut depth = 0usize;
-    let mut in_string = false;
-    let mut escaped = false;
 
-    for (offset, char) in text.char_indices() {
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if char == '\\' {
-                escaped = true;
-            } else if char == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-
+    for (offset, char) in outside_strings(text) {
         match char {
-            '"' => in_string = true,
             '(' | '[' | '{' => depth += 1,
             ')' | ']' | '}' => depth = depth.saturating_sub(1),
             // The operators of an `if` or an `assert` are in its parts, which are wrapped instead
@@ -1119,25 +1159,14 @@ fn longest_group(text: &str) -> Option<(usize, usize, Vec<(usize, usize)>)> {
     let mut start = 0;
     let mut items = Vec::new();
     let mut item_start = 0;
-    let mut in_string = false;
-    let mut escaped = false;
+    let mut raw = false;
 
-    for (offset, char) in text.char_indices() {
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if char == '\\' {
-                escaped = true;
-            } else if char == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-
+    for (offset, char) in outside_strings(text) {
         match char {
-            '"' => in_string = true,
             '(' | '[' | '{' => {
                 if depth == 0 {
+                    // CLVM is shown exactly as it is, so it isn't wrapped
+                    raw = text[..offset].ends_with("clvm!");
                     start = offset;
                     item_start = offset + 1;
                     items.clear();
@@ -1154,6 +1183,7 @@ fn longest_group(text: &str) -> Option<(usize, usize, Vec<(usize, usize)>)> {
                         .as_ref()
                         .is_none_or(|(open, close, _)| close - open < offset - start)
                         && !items.is_empty()
+                        && !raw
                     {
                         best = Some((start, offset, items.clone()));
                     }
@@ -1223,6 +1253,29 @@ mod tests {
     }
 
     #[test]
+    fn wrapping_leaves_clvm_and_parentheses_alone() {
+        // CLVM isn't wrapped, and a parenthesized value doesn't become a pair
+        assert_eq!(
+            wrap("f(clvm!((100 (q . 1) (q . 2))), alpha)", 20, MAX_WRAP_DEPTH),
+            ["f(", "    clvm!((100 (q . 1) (q . 2))),", "    alpha,", ")"]
+        );
+        assert_eq!(
+            wrap("(alpha + beta + gamma).first", 16, MAX_WRAP_DEPTH),
+            [
+                "(",
+                "    alpha",
+                "        + beta",
+                "        + gamma",
+                ").first"
+            ]
+        );
+        assert_eq!(
+            wrap("(alpha, beta_gamma)", 16, MAX_WRAP_DEPTH),
+            ["(", "    alpha,", "    beta_gamma,", ")"]
+        );
+    }
+
+    #[test]
     fn wrapping_breaks_chains_of_operators() {
         // Before the loosest operators outside of brackets and strings
         assert_eq!(
@@ -1256,10 +1309,14 @@ mod tests {
             ["assert alpha > beta else raise(", "    gamma,", ")"]
         );
 
-        // And each part is wrapped in turn
+        // And each part is wrapped in turn, to what's left of the width
         assert_eq!(
             wrap("x + f(alpha, beta)", 12, MAX_WRAP_DEPTH),
             ["x", "    + f(", "        alpha,", "        beta,", "    )"]
+        );
+        assert_eq!(
+            wrap("x + f(alpha)", 11, MAX_WRAP_DEPTH),
+            ["x", "    + f(", "        alpha,", "    )"]
         );
     }
 }

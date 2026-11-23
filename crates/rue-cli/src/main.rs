@@ -49,12 +49,14 @@ pub enum Command {
     /// --debug-metadata`), and works without one, though nothing is named then.
     ///
     /// Function calls, `if`s and operators are shown as Rue code, and values from the environment by
-    /// the names of the parameters they're in (or as `env@PATH` if they have no name). A hidden part
-    /// of an environment that every call passes the same constant for, such as a captured function,
-    /// is shown by its value. `select(c, a, b)` is CLVM's `i`, which evaluates both values; `if`
-    /// only evaluates the branch it takes, and tests whether the condition isn't nil. A closure is
-    /// shown as `function{capture: value}`, and calling a value runs it with the arguments as its
-    /// environment. Code that isn't recognized is shown as CLVM, in `clvm!(...)`.
+    /// the names of the parameters they're in (or as `env@PATH` if they have no name). A call that
+    /// passes constants for hidden parts of an environment, such as captured functions, is to a
+    /// version of the function that shows them (`f`, `f#2` and so on, if they differ). A large
+    /// constant that's used more than once is shown once, as `C1` and so on. `select(c, a, b)` is
+    /// CLVM's `i`, which evaluates both values; `if` only evaluates the branch it takes, and tests
+    /// whether the condition isn't nil. A closure is shown as `function{capture: value}`, and
+    /// calling a value runs it with the arguments as its environment. Code that isn't recognized
+    /// is shown as CLVM, in `clvm!(...)`.
     Explain(ExplainArgs),
     /// Format source files, or check that they're formatted
     Fmt(FmtArgs),
