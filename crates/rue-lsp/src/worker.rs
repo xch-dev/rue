@@ -411,7 +411,7 @@ pub struct State {
     /// canonical manifest (or entrypoint, if it doesn't have one).
     pub published: HashMap<PathBuf, Tracked>,
     /// The last compile of each project, which answers queries about its files.
-    pub projects: HashMap<PathBuf, Cache<Compiler>>,
+    pub projects: HashMap<PathBuf, Cache>,
     /// The project whose compile answers queries about each file, the file's source, and the
     /// revision of the editor's text that was compiled, if it's open.
     pub files: HashMap<SourceKind, (PathBuf, Source, Option<u64>)>,
@@ -528,7 +528,7 @@ impl State {
     /// about the revision of the editor's text it was sent for, and if an edit made after it was
     /// compiled first, there's no answer, since the query's position may not match the text
     /// anymore. An older compile still answers (for example, if compiling the edit panicked).
-    pub fn cache(&mut self, uri: &Uri, revision: Option<u64>) -> Option<&mut Cache<Compiler>> {
+    pub fn cache(&mut self, uri: &Uri, revision: Option<u64>) -> Option<&mut Cache> {
         let (_, kind) = document(uri)?;
         let (key, source, compiled) = self.files.get(&kind)?;
 
@@ -578,7 +578,7 @@ impl State {
     pub fn insert_project(
         &mut self,
         key: PathBuf,
-        cache: Cache<Compiler>,
+        cache: Cache,
         files: Vec<Source>,
         snapshot: &Snapshot,
     ) {

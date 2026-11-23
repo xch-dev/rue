@@ -5,7 +5,7 @@ use std::ops::Range;
 
 use rowan::{TextRange, TextSize, TokenAtOffset};
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode, AstStructInitializerExpr};
-use rue_compiler::{Compiler, CompletionContext, SyntaxCall, SyntaxItemKind};
+use rue_compiler::{CompletionContext, SyntaxCall, SyntaxItemKind};
 use rue_hir::Symbol;
 use rue_parser::{SyntaxKind, SyntaxNode, T};
 use rue_types::Type;
@@ -74,7 +74,7 @@ impl Signature {
     }
 }
 
-impl Cache<Compiler> {
+impl Cache {
     pub fn signature_help(&mut self, scopes: &Scopes, index: usize) -> Option<Signatures> {
         let offset = TextSize::from(u32::try_from(index).ok()?);
 

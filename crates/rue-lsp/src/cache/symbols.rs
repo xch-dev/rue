@@ -7,7 +7,7 @@ use rue_ast::{
     AstConstantItem, AstEnumItem, AstEnumVariant, AstFunctionItem, AstItem, AstModuleItem, AstNode,
     AstStructField, AstStructItem, AstSymbolItem, AstType, AstTypeAliasItem, AstTypeItem,
 };
-use rue_compiler::{Compiler, File};
+use rue_compiler::File;
 use rue_diagnostic::SourceKind;
 use rue_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
 use rue_types::ELIDED;
@@ -32,7 +32,7 @@ pub struct FoundSymbol {
     pub score: u32,
 }
 
-impl Cache<Compiler> {
+impl Cache {
     /// The outline of the file that queries are about.
     pub fn document_symbols(&self) -> Vec<DocumentSymbol> {
         self.tree

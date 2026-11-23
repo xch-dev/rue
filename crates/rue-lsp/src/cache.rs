@@ -144,8 +144,8 @@ enum Role {
 /// A project's compile, which answers queries about one of its files at a time. Queries can
 /// allocate types, so they need the compiler mutably, and they run on the thread that owns it.
 #[derive(Debug)]
-pub struct Cache<T> {
-    ctx: T,
+pub struct Cache {
+    ctx: Compiler,
     tree: FileTree,
     source: Source,
     syntax_map: SyntaxMap,
@@ -157,7 +157,7 @@ pub struct Cache<T> {
     root: Option<PathBuf>,
 }
 
-impl Cache<Compiler> {
+impl Cache {
     pub fn new(mut ctx: Compiler, tree: FileTree, source: Source, entrypoint: &Path) -> Self {
         let syntax_map = ctx.syntax_map().clone();
 
@@ -1518,7 +1518,7 @@ mod tests {
                 let cache = state.cache(&uri, None).unwrap();
                 let index = cache.position(position);
 
-                let query = |cache: &mut Cache<Compiler>| {
+                let query = |cache: &mut Cache| {
                     let scopes = cache.scopes(index);
                     (
                         cache.hover(&scopes, index),

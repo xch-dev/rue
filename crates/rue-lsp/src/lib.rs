@@ -9,7 +9,7 @@ mod worker;
 pub use paths::encode_uris;
 
 use cache::Cache;
-use rue_compiler::{Compiler, normalize_path};
+use rue_compiler::normalize_path;
 use rue_diagnostic::{Applicability, LineIndex, Lint, SourceKind, SrcLoc};
 use rue_formatter::{FormatError, FormatOptions, format_source};
 use serde::{Deserialize, Serialize};
@@ -346,14 +346,9 @@ impl LanguageServer for Backend {
             ..
         } = params;
 
-        let revision = self.revision(&params.text_document.uri);
-
         Ok(self
-            .query(Task::Hover, move |state| {
-                hover(
-                    state.cache(&params.text_document.uri, revision)?,
-                    params.position,
-                )
+            .query_document(Task::Hover, params.text_document.uri, move |cache, _| {
+                hover(cache, params.position)
             })
             .await)
     }
@@ -367,14 +362,12 @@ impl LanguageServer for Backend {
             ..
         } = params;
 
-        let revision = self.revision(&params.text_document.uri);
-
         Ok(self
-            .query(Task::Definition, move |state| {
-                let shared = state.shared.clone();
-                let cache = state.cache(&params.text_document.uri, revision)?;
-                definitions(cache, &shared.paths, params.position)
-            })
+            .query_document(
+                Task::Definition,
+                params.text_document.uri,
+                move |cache, shared| definitions(cache, &shared.paths, params.position),
+            )
             .await)
     }
 
@@ -385,19 +378,19 @@ impl LanguageServer for Backend {
             ..
         } = params;
 
-        let revision = self.revision(&params.text_document.uri);
-
         Ok(self
-            .query(Task::References, move |state| {
-                let shared = state.shared.clone();
-                let cache = state.cache(&params.text_document.uri, revision)?;
-                references(
-                    cache,
-                    &shared.paths,
-                    params.position,
-                    context.include_declaration,
-                )
-            })
+            .query_document(
+                Task::References,
+                params.text_document.uri,
+                move |cache, shared| {
+                    references(
+                        cache,
+                        &shared.paths,
+                        params.position,
+                        context.include_declaration,
+                    )
+                },
+            )
             .await)
     }
 
@@ -407,15 +400,12 @@ impl LanguageServer for Backend {
             ..
         } = params;
 
-        let revision = self.revision(&params.text_document.uri);
-
         Ok(self
-            .query(Task::Completion, move |state| {
-                completions(
-                    state.cache(&params.text_document.uri, revision)?,
-                    params.position,
-                )
-            })
+            .query_document(
+                Task::Completion,
+                params.text_document.uri,
+                move |cache, _| completions(cache, params.position),
+            )
             .await)
     }
 
@@ -423,10 +413,7 @@ impl LanguageServer for Backend {
         &self,
         params: TextDocumentPositionParams,
     ) -> Result<Option<PrepareRenameResponse>> {
-        let revision = self.revision(&params.text_document.uri);
-
-        self.query(Task::Rename, move |state| {
-            let cache = state.cache(&params.text_document.uri, revision)?;
+        self.query_document(Task::Rename, params.text_document.uri, move |cache, _| {
             Some(prepare_rename(cache, params.position))
         })
         .await
@@ -440,13 +427,11 @@ impl LanguageServer for Backend {
             ..
         } = params;
 
-        let revision = self.revision(&params.text_document.uri);
-
-        self.query(Task::Rename, move |state| {
-            let shared = state.shared.clone();
-            let cache = state.cache(&params.text_document.uri, revision)?;
-            Some(rename(cache, &shared, params.position, &new_name))
-        })
+        self.query_document(
+            Task::Rename,
+            params.text_document.uri,
+            move |cache, shared| Some(rename(cache, shared, params.position, &new_name)),
+        )
         .await
         .map_or(Ok(None), |result| result.map_err(request_failed))
     }
@@ -457,30 +442,24 @@ impl LanguageServer for Backend {
             ..
         } = params;
 
-        let revision = self.revision(&params.text_document.uri);
-
         Ok(self
-            .query(Task::SignatureHelp, move |state| {
-                signature_help(
-                    state.cache(&params.text_document.uri, revision)?,
-                    params.position,
-                )
-            })
+            .query_document(
+                Task::SignatureHelp,
+                params.text_document.uri,
+                move |cache, _| signature_help(cache, params.position),
+            )
             .await)
     }
 
     async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
-        let revision = self.revision(&params.text_document.uri);
         let options = *lock(&self.shared.hints);
 
         Ok(self
-            .query(Task::InlayHints, move |state| {
-                Some(inlay_hints(
-                    state.cache(&params.text_document.uri, revision)?,
-                    params.range,
-                    options,
-                ))
-            })
+            .query_document(
+                Task::InlayHints,
+                params.text_document.uri,
+                move |cache, _| Some(inlay_hints(cache, params.range, options)),
+            )
             .await)
     }
 
@@ -498,12 +477,11 @@ impl LanguageServer for Backend {
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
         let uri = params.text_document.uri;
-        let revision = self.revision(&uri);
         let nested = self.nested_symbols.load(Ordering::Relaxed);
 
         Ok(self
-            .query(Task::DocumentSymbols, move |state| {
-                let symbols = state.cache(&uri, revision)?.document_symbols();
+            .query_document(Task::DocumentSymbols, uri.clone(), move |cache, _| {
+                let symbols = cache.document_symbols();
 
                 Some(if nested {
                     DocumentSymbolResponse::Nested(symbols)
@@ -600,6 +578,24 @@ impl Backend {
         }
     }
 
+    /// Answers a query about a document with its project's cache, as it is for the editor's
+    /// current text of it (see `query`).
+    async fn query_document<T: Send + 'static>(
+        &self,
+        task: Task,
+        uri: Uri,
+        f: impl FnOnce(&mut Cache, &Shared) -> Option<T> + Send + 'static,
+    ) -> Option<T> {
+        let revision = self.revision(&uri);
+
+        self.query(task, move |state| {
+            let shared = state.shared.clone();
+            let cache = state.cache(&uri, revision)?;
+            f(cache, &shared)
+        })
+        .await
+    }
+
     /// The revision of the editor's text for a document, which a query is about.
     fn revision(&self, uri: &Uri) -> Option<u64> {
         let (_, kind) = document(uri)?;
@@ -649,7 +645,7 @@ impl Backend {
     }
 }
 
-fn hover(cache: &mut Cache<Compiler>, position: Position) -> Option<Hover> {
+fn hover(cache: &mut Cache, position: Position) -> Option<Hover> {
     let position = cache.position(position);
 
     let scopes = cache.scopes(position);
@@ -734,11 +730,7 @@ fn hover(cache: &mut Cache<Compiler>, position: Position) -> Option<Hover> {
     })
 }
 
-fn definitions(
-    cache: &Cache<Compiler>,
-    paths: &Paths,
-    position: Position,
-) -> Option<GotoDefinitionResponse> {
+fn definitions(cache: &Cache, paths: &Paths, position: Position) -> Option<GotoDefinitionResponse> {
     let position = cache.position(position);
 
     let mut locations = cache
@@ -755,7 +747,7 @@ fn definitions(
 }
 
 fn references(
-    cache: &Cache<Compiler>,
+    cache: &Cache,
     paths: &Paths,
     position: Position,
     include_declaration: bool,
@@ -772,7 +764,7 @@ fn references(
 }
 
 fn prepare_rename(
-    cache: &Cache<Compiler>,
+    cache: &Cache,
     position: Position,
 ) -> std::result::Result<Option<PrepareRenameResponse>, String> {
     let position = cache.position(position);
@@ -786,7 +778,7 @@ fn prepare_rename(
 }
 
 fn rename(
-    cache: &Cache<Compiler>,
+    cache: &Cache,
     shared: &Shared,
     position: Position,
     new_name: &str,
@@ -856,7 +848,7 @@ fn request_failed(message: String) -> Error {
     }
 }
 
-fn signature_help(cache: &mut Cache<Compiler>, position: Position) -> Option<SignatureHelp> {
+fn signature_help(cache: &mut Cache, position: Position) -> Option<SignatureHelp> {
     let position = cache.position(position);
 
     let scopes = cache.scopes(position);
@@ -901,7 +893,7 @@ fn signature_help(cache: &mut Cache<Compiler>, position: Position) -> Option<Sig
     })
 }
 
-fn inlay_hints(cache: &mut Cache<Compiler>, range: Range, options: HintOptions) -> Vec<InlayHint> {
+fn inlay_hints(cache: &mut Cache, range: Range, options: HintOptions) -> Vec<InlayHint> {
     let range = cache.position(range.start)..cache.position(range.end);
 
     cache
@@ -1026,7 +1018,7 @@ fn workspace_symbols(state: &State, query: &str) -> Vec<WorkspaceSymbol> {
         .collect()
 }
 
-fn completions(cache: &mut Cache<Compiler>, position: Position) -> Option<CompletionResponse> {
+fn completions(cache: &mut Cache, position: Position) -> Option<CompletionResponse> {
     let position = cache.position(position);
 
     let scopes = cache.scopes(position);

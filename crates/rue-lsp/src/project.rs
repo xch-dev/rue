@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 
 use indexmap::IndexMap;
-use rue_compiler::{Compiler, FileTree, normalize_path};
+use rue_compiler::{FileTree, normalize_path};
 use rue_diagnostic::{Source, SourceKind};
 use rue_options::{Project, find_project};
 
@@ -82,7 +82,7 @@ struct Compiled {
     path: PathBuf,
     diagnostics: Diagnostics,
     /// The compile, which answers queries about the project's files.
-    cache: Option<(Cache<Compiler>, Vec<Source>)>,
+    cache: Option<(Cache, Vec<Source>)>,
     /// Whether the project doesn't exist anymore, so it's no longer tracked.
     removed: bool,
     /// Whether the compile stopped partway, because the editor changed its files, so it has no
