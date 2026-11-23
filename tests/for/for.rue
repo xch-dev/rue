@@ -453,6 +453,36 @@ test fn captured_value_that_cannot_fail_for_a_loop_called_some_of_the_time() -> 
     }
 }
 
+// A fold whose body doesn't read its accumulator never calls itself again, so it's inlined where
+// it's called. What only it uses is bound before it then, since there's no call to evaluate it at:
+// a value, an outer fold's accumulator, a lambda, and the argument of a call that's inlined
+test fn captured_value_for_a_fold_that_ignores_its_accumulator() -> (Int, Int) {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(xs.first) + 1;
+    (for _x in xs fold _total = 3 { k }, for _x in runtime(nil) fold _total = 3 { k })
+}
+
+test fn accumulator_of_a_fold_used_by_a_fold_that_ignores_its_own() -> Int {
+    let xs = runtime([1, 2, 3]);
+    for _x in xs fold total = 0 { for _y in xs fold _inner = total { 5 } }
+}
+
+test fn lambda_for_a_fold_that_ignores_its_accumulator() -> Int {
+    let xs = runtime([1, 2, 3]);
+    let k = positive(xs.first);
+    let add = fn(value: Int) => value + k;
+    for _x in xs fold _total = 3 { add(1) }
+}
+
+fn squared_for_any(xs: List<Int>, k: Int) -> Int {
+    for _x in xs fold _total = 3 { k * k }
+}
+
+test fn argument_for_a_fold_that_ignores_its_accumulator() -> Int {
+    let xs = runtime([1, 2, 3]);
+    squared_for_any(xs, positive(xs.first) + 1)
+}
+
 // A loop that's called somewhere that can be evaluated more than once, or not at all, for each
 // time the value is bound, has the value bound before it: in a lambda, in the argument of an
 // `inline fn` that refers to its parameter more than once, and in a type guard that uses its value

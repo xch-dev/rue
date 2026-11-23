@@ -306,6 +306,13 @@ impl Lowerer<'_, '_, '_> {
         }
 
         let function = self.graph.sole_loop(symbol)?;
+
+        // A loop whose body never calls it again is inlined where it's called, so there's no
+        // environment built for it to evaluate the value in
+        if self.should_inline(function) {
+            return None;
+        }
+
         let (block, index) = self.graph.let_statement(symbol)?;
 
         let Hir::Block(block) = self.db.hir(block) else {
@@ -567,6 +574,12 @@ impl Lowerer<'_, '_, '_> {
     /// [`Self::direct_loop_calls`]).
     fn loop_call_argument(&self, body: HirId, parameter: SymbolId) -> Option<SymbolId> {
         let function = self.graph.sole_loop(parameter)?;
+
+        // A loop that's inlined has no call to evaluate the argument at
+        if self.should_inline(function) {
+            return None;
+        }
+
         let mut calls = Vec::new();
         self.direct_loop_calls(function, body, &mut calls);
         (calls.len() == 1).then_some(function)
