@@ -306,6 +306,13 @@ impl Lowerer<'_, '_, '_> {
         }
 
         let function = self.graph.sole_loop(symbol)?;
+
+        // A loop whose body never calls it again is inlined where it's called, so there's no
+        // environment built for it to evaluate the value in
+        if self.should_inline(function) {
+            return None;
+        }
+
         let (block, index) = self.graph.let_statement(symbol)?;
 
         let Hir::Block(block) = self.db.hir(block) else {
@@ -541,12 +548,21 @@ impl Lowerer<'_, '_, '_> {
             return false;
         }
 
-        if let Some(loop_function) = self.loop_call_argument(function.body, parameter) {
+        // A loop that's inlined is evaluated once where it's called, so it only repeats the
+        // argument if it refers to the parameter more than once
+        let inlined_loop = self
+            .graph
+            .sole_loop(parameter)
+            .is_some_and(|loop_function| self.should_inline(loop_function));
+
+        if !inlined_loop
+            && let Some(loop_function) = self.loop_call_argument(function.body, parameter)
+        {
             return may_fail() && !Evaluation::new(self, loop_function).hir(function.body);
         }
 
         let repeated = (self.graph.references(parameter) > 1
-            || self.graph.is_loop_capture(parameter))
+            || (self.graph.is_loop_capture(parameter) && !inlined_loop))
             && !is_trivial();
 
         repeated || (may_fail() && !self.parameter_always_evaluated(function.body, parameter))
