@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 // A recursive call's renamed generics take the bounds passed on to them like any other generic
 // being inferred (#361), and the generic each was renamed from is a candidate from above as well as
 // below (#378), so the call infers what the same call does from another function

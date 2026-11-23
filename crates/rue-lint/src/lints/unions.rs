@@ -24,10 +24,12 @@ enum OverlapKind {
     /// The member is the same type as the other one, which is earlier in the union.
     Same,
     /// The member and the other one are different types, but they're the same at runtime, so a
-    /// type guard or `match` can't tell them apart. A member that's only partly the same at
-    /// runtime as another one, such as `nil` in `Int | nil`, is narrowed by a runtime check
-    /// instead, so it isn't reported.
+    /// type guard or `match` can't tell them apart.
     Indistinguishable,
+    /// Every value of the member is also a valid value of the other one at runtime, though not
+    /// the other way around, such as `nil` in `Int | nil`. A runtime check for the member also
+    /// takes the other member's values that are the same as one of its own, such as `0`.
+    Subset,
 }
 
 impl OverlapKind {
@@ -103,6 +105,12 @@ fn check_union(cx: &mut LintContext<'_>, members: &[UnionMember]) {
                     "Union member `{name}` can't be told apart from `{other_name}`, since they're the same at runtime, so a type guard or `match` can't narrow the union to either of them"
                 ),
             ),
+            OverlapKind::Subset => (
+                Lint::IndistinguishableUnionMember,
+                format!(
+                    "Union member `{name}` overlaps with `{other_name}` at runtime, since every `{name}` is also a valid `{other_name}`, so a type guard or `match` for `{name}` also takes the `{other_name}` values that are the same as one"
+                ),
+            ),
         };
 
         let suggestion = kind.is_redundant().then(|| {
@@ -174,10 +182,10 @@ fn redundancy(
     None
 }
 
-/// The earlier member that the member at the index is the same as at runtime, if there is one.
-/// Members that are redundant aren't compared, since they're removed from the union, so a member
-/// that's only partly the same at runtime as what's left isn't reported (such as `nil` in
-/// `false | Bool | nil`).
+/// The member that the member at the index overlaps with at runtime, if there is one: one whose
+/// values include all of its values at runtime (such as `Int` for `nil`), or an earlier one that's
+/// the same at runtime. Members that are redundant aren't compared, since they're removed from the
+/// union.
 fn indistinguishability(
     cx: &mut LintContext<'_>,
     members: &[UnionMember],
@@ -191,17 +199,27 @@ fn indistinguishability(
 
     let ty = members[index].ty;
 
-    (0..index)
-        .find(|&other| {
-            resolved[other]
-                && !overlaps[other].is_some_and(|overlap| overlap.kind.is_redundant())
-                && cx.compare(ty, members[other].ty) == Comparison::Cast
-                && cx.compare(members[other].ty, ty) == Comparison::Cast
-        })
-        .map(|other| Overlap {
-            other,
-            kind: OverlapKind::Indistinguishable,
-        })
+    for (other, member) in members.iter().enumerate() {
+        if other == index
+            || !resolved[other]
+            || overlaps[other].is_some_and(|overlap| overlap.kind.is_redundant())
+            || cx.compare(ty, member.ty) != Comparison::Cast
+        {
+            continue;
+        }
+
+        let kind = match cx.compare(member.ty, ty) {
+            Comparison::Invalid => OverlapKind::Subset,
+            // Of two members that are the same at runtime, the later one is reported
+            Comparison::Cast if other < index => OverlapKind::Indistinguishable,
+            // The other member is assignable to this one, so it's redundant instead
+            Comparison::Cast | Comparison::Assign => continue,
+        };
+
+        return Some(Overlap { other, kind });
+    }
+
+    None
 }
 
 /// The code to remove to take the member at the index out of the union, along with one of the

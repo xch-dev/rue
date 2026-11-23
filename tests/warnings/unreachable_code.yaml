@@ -1,5 +1,5 @@
 program: (q . 7)
-debug_program: (a (q 2 (q . 2) (c (+ (+ (a 14 (q . 1)) (a 10 (q . 2))) (a 4 (q . 3))) 1)) (c (c (q 2 (q 2 2 (c 3 (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ()))) 1)) (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at unreachable_code.rue:15:9") (q . "too large")) (q . 1)) 1) (q . 1))) ()))
+debug_program: (a (q 2 (q . 2) (c (+ (+ (a 14 (q . 1)) (a 10 (q . 2))) (a 4 (q . 3))) 1)) (c (c (q 2 (q 2 2 (c 3 (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ()))) 1)) (c (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at unreachable_code.rue:19:9") (q . "too large")) (q . 1)) 1) (q . 1))) ()))
 output: "7"
 runtime_cost: 20
 byte_cost: 36000
@@ -7,20 +7,20 @@ total_cost: 36020
 tests:
 - name: reachable
   program: ()
-  debug_program: (a (q 2 (i (= (a 30 ()) (q . 1)) (q 2 (i (= (a 28 (c (c 18 (c 26 22)) ())) (q . 7)) (q 2 (i (= (a 20 (q . 1)) (q . 1)) (q 2 (i (= (a 8 (q . 1)) (q . 1)) () (q 8 (q . "assertion failed at unreachable_code.rue:79:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:78:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:77:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:76:5"))) 1) (c (c (c (q 2 (i (> 1 (q . 100)) () (q . 1)) 1) (c (q 2 (i (> 1 (q . 100)) (q 2 (q . 2) (c (x (q . "raise called at unreachable_code.rue:36:13") (q . "failed")) 1)) (q . 1)) 1) (q 2 (q . 2) (c (+ (+ (a 14 (q . 1)) (a 10 (q . 2))) (a 4 (q . 3))) 1)))) (c (c (q 2 (q 2 2 (c 3 (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ()))) 1)) (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at unreachable_code.rue:15:9") (q . "too large")) (q . 1)) 1)) (c (q . 1) (q 1 . 1)))) ()))
+  debug_program: (a (q 2 (i (= (a 30 ()) (q . 1)) (q 2 (i (= (a 28 (c (c 18 (c 26 22)) ())) (q . 7)) (q 2 (i (= (a 20 (q . 1)) (q . 1)) (q 2 (i (= (a 8 (q . 1)) (q . 1)) () (q 8 (q . "assertion failed at unreachable_code.rue:83:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:82:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:81:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:80:5"))) 1) (c (c (c (q 2 (i (> 1 (q . 100)) () (q . 1)) 1) (c (q 2 (i (> 1 (q . 100)) (q 2 (q . 2) (c (x (q . "raise called at unreachable_code.rue:40:13") (q . "failed")) 1)) (q . 1)) 1) (q 2 (q . 2) (c (+ (+ (a 14 (q . 1)) (a 10 (q . 2))) (a 4 (q . 3))) 1)))) (c (c (q 2 (q 2 2 (c 3 (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q 16 2 5)) (c (q . 1) ()))) 1)) (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at unreachable_code.rue:19:9") (q . "too large")) (q . 1)) 1)) (c (q . 1) (q 1 . 1)))) ()))
   output: ()
   runtime_cost: 44
   byte_cost: 12000
   total_cost: 12044
 - name: dead_reference_fails
   program: (x)
-  debug_program: (a (q 2 4 (c 6 ())) (c (c (q 3 () (a 2 ()) (q . 1)) (q 8 (q . "raise called at unreachable_code.rue:72:5") (q . "failed"))) ()))
+  debug_program: (a (q 2 4 (c 6 ())) (c (c (q 3 () (a 2 ()) (q . 1)) (q 8 (q . "raise called at unreachable_code.rue:76:5") (q . "failed"))) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at unreachable_code.rue:72:5" "failed")
+  debug_clvm_error: clvm raise ("raise called at unreachable_code.rue:76:5" "failed")
 - name: exiting_statements
   program: ()
-  debug_program: (a (q 2 (i (= (a 14 ()) ()) (q 2 (i (= (a 10 (q . 1)) ()) (q 2 (i (= (a 4 ()) (q . 1)) () (q 8 (q . "assertion failed at unreachable_code.rue:124:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:123:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:122:5"))) 1) (c (c (q 2 (i 1 () (q 2 (i ("debug_print" (q . "unreachable_code.rue:115:9") 1) () (q 1 . 1)) 1)) 1) (c (q 2 (i 1 () (q 8 (q . "raise called at unreachable_code.rue:104:9") (q . "flag"))) 1) (q 2 (i (= 1 ()) () (q 8 (q . "raise called at unreachable_code.rue:93:13") (q . "value"))) 1))) ()))
+  debug_program: (a (q 2 (i (= (a 14 ()) ()) (q 2 (i (= (a 10 (q . 1)) ()) (q 2 (i (= (a 4 ()) (q . 1)) () (q 8 (q . "assertion failed at unreachable_code.rue:128:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:127:5"))) 1) (q 8 (q . "assertion failed at unreachable_code.rue:126:5"))) 1) (c (c (q 2 (i 1 () (q 2 (i ("debug_print" (q . "unreachable_code.rue:119:9") 1) () (q 1 . 1)) 1)) 1) (c (q 2 (i 1 () (q 8 (q . "raise called at unreachable_code.rue:108:9") (q . "flag"))) 1) (q 2 (i (= 1 ()) () (q 8 (q . "raise called at unreachable_code.rue:97:13") (q . "value"))) 1))) ()))
   output: ()
   runtime_cost: 44
   byte_cost: 12000
@@ -28,50 +28,50 @@ tests:
   print_messages:
   - ()
 diagnostics:
-- Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:3:5
+- Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:7:5
 - |-
-  Unreachable code at unreachable_code.rue:4:5
-    note: Any code after this is never evaluated at unreachable_code.rue:3:5
+  Unreachable code at unreachable_code.rue:8:5
+    note: Any code after this is never evaluated at unreachable_code.rue:7:5
     help: Remove the unreachable code
 - |-
-  Binding `unused` is returned directly after it's declared at unreachable_code.rue:4:5
+  Binding `unused` is returned directly after it's declared at unreachable_code.rue:8:5
     help: Return the value directly
-- Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:9:5
+- Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:13:5
 - |-
-  Unreachable code at unreachable_code.rue:10:5
-    note: Any code after this is never evaluated at unreachable_code.rue:9:5
+  Unreachable code at unreachable_code.rue:14:5
+    note: Any code after this is never evaluated at unreachable_code.rue:13:5
     help: Remove the unreachable code
 - |-
-  Unreachable code at unreachable_code.rue:16:9
-    note: Any code after this is never evaluated at unreachable_code.rue:15:9
+  Unreachable code at unreachable_code.rue:20:9
+    note: Any code after this is never evaluated at unreachable_code.rue:19:9
     help: Remove the unreachable code
-- Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:24:9
+- Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:28:9
 - |-
-  Unreachable code at unreachable_code.rue:25:9
-    note: Any code after this is never evaluated at unreachable_code.rue:24:9
+  Unreachable code at unreachable_code.rue:29:9
+    note: Any code after this is never evaluated at unreachable_code.rue:28:9
     help: Remove the unreachable code
 - |-
-  Unreachable code at unreachable_code.rue:38:9
-    note: Any code after this is never evaluated at unreachable_code.rue:35:9
+  Unreachable code at unreachable_code.rue:42:9
+    note: Any code after this is never evaluated at unreachable_code.rue:39:9
 - |-
-  This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at unreachable_code.rue:47:9
+  This `inline let` can fail, but it's only evaluated where it's referenced, which doesn't always happen, so its check can be skipped at unreachable_code.rue:51:9
     note: Remove `inline` to always evaluate it here
-- Unused binding `never` at unreachable_code.rue:47:20
-- Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:60:5
+- Unused binding `never` at unreachable_code.rue:51:20
+- Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:64:5
 - |-
-  Unreachable code at unreachable_code.rue:61:5
-    note: Any code after this is never evaluated at unreachable_code.rue:60:5
+  Unreachable code at unreachable_code.rue:65:5
+    note: Any code after this is never evaluated at unreachable_code.rue:64:5
     help: Remove the unreachable code
-- Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:67:5
+- Unnecessary `return` statement, since the function body can end in an expression instead at unreachable_code.rue:71:5
 - |-
-  Unreachable code at unreachable_code.rue:68:5
-    note: Any code after this is never evaluated at unreachable_code.rue:67:5
-    help: Remove the unreachable code
-- |-
-  Unreachable code at unreachable_code.rue:97:5
-    note: Any code after this is never evaluated at unreachable_code.rue:88:5
+  Unreachable code at unreachable_code.rue:72:5
+    note: Any code after this is never evaluated at unreachable_code.rue:71:5
     help: Remove the unreachable code
 - |-
-  Unreachable code at unreachable_code.rue:107:5
-    note: Any code after this is never evaluated at unreachable_code.rue:101:5
+  Unreachable code at unreachable_code.rue:101:5
+    note: Any code after this is never evaluated at unreachable_code.rue:92:5
+    help: Remove the unreachable code
+- |-
+  Unreachable code at unreachable_code.rue:111:5
+    note: Any code after this is never evaluated at unreachable_code.rue:105:5
     help: Remove the unreachable code

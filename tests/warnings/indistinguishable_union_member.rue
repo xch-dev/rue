@@ -28,14 +28,20 @@ fn parameter(value: Int | Bytes) -> Int {
     value as Int
 }
 
-// Members that are narrowed by a runtime check aren't reported, even though some of the values of
-// one of them are values of the other, since the check decides which one they are
+// A member whose values are all valid values of another member at runtime, though not the other
+// way around, is reported wherever it is in the union. A check for `nil` also takes the `Int` zero.
 type IntOrNil = Int | nil;
+type NilOrInt = nil | Int;
 type Bytes32OrInt = Bytes32 | Int;
 type BoolOrInt = Bool | Int;
+type Pairs = (Int, nil) | (Int, Int);
+
+// Members that don't overlap at runtime aren't reported
+type Distinct = Bytes32 | PublicKey;
+type AtomOrPair = Int | (Int, Int);
 
 // A redundant member is reported as redundant instead, and isn't compared with the others, so
-// `nil` isn't reported against `false`, since `Bool | nil` is only partly the same at runtime
+// `nil` is reported against `Bool` rather than `false`
 type Redundant = Bytes | Bytes32;
 type RedundantFalse = false | Bool | nil;
 
@@ -55,6 +61,7 @@ type Tags = Tagged | OtherTagged;
 #[allow(indistinguishable_union_member)]
 type Allowed = Int | Bytes;
 
+#[allow(indistinguishable_union_member)]
 test fn narrows_nil() -> Int {
     let value: Int | nil = 5;
     if value is nil {

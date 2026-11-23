@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 // Where a lambda that feeds itself has no fixpoint the next step reaches, or doesn't compile as
 // it is, the call is rejected as it was (#362, R4; see
 // `generic_inference_self_feeding_lambdas.rue`)

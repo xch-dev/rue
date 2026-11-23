@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 // An arm's type can be followed by a binding, which destructures the value once it's been narrowed
 // to the type. It's the same as a `let` with the binding at the start of the arm, so the arm still
 // matches by its type alone.

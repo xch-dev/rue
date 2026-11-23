@@ -1,21 +1,21 @@
 diagnostics:
-- Match on `Shape` is not exhaustive, since it doesn't handle `Shape::Rect` at enum_match_errors.rue:14:11
-- Match on `Mode` is not exhaustive, since it doesn't handle `Mode::Off` and `Mode::On` at enum_match_errors.rue:21:11
+- Match on `Shape` is not exhaustive, since it doesn't handle `Shape::Rect` at enum_match_errors.rue:18:11
+- Match on `Mode` is not exhaustive, since it doesn't handle `Mode::Off` and `Mode::On` at enum_match_errors.rue:25:11
 - |-
-  Unreachable match arm, since an earlier arm handles every value that's left at enum_match_errors.rue:29:9
-    note: This arm handles every value that's left at enum_match_errors.rue:28:9
+  Unreachable match arm, since an earlier arm handles every value that's left at enum_match_errors.rue:33:9
+    note: This arm handles every value that's left at enum_match_errors.rue:32:9
 - |-
-  Unreachable match arm, since an earlier arm also handles `Mode::Off`, which it can't tell apart from its own type at runtime at enum_match_errors.rue:39:9
-    note: This arm also handles `Mode::Off` at enum_match_errors.rue:37:9
-- Cannot type guard from `Mode` to `Shape::Empty`, since they do not overlap at enum_match_errors.rue:46:9
-- "Match on `Both<Dir, Dir>` is not exhaustive, since it doesn't handle `Both::Two { x: Dir::Down, y: Dir::Down }` and `Both::Two { x: Dir::Up, y: Dir::Down }` at enum_match_errors.rue:63:11"
-- Unknown field `radius` on type `Shape::Empty` at enum_match_errors.rue:74:24
-- Unknown field `width` on type `Shape::Circle` at enum_match_errors.rue:75:25
-- Unknown field `value` on type `Mode::Off` at enum_match_errors.rue:81:25
+  Unreachable match arm, since an earlier arm also handles `Mode::Off`, which it can't tell apart from its own type at runtime at enum_match_errors.rue:43:9
+    note: This arm also handles `Mode::Off` at enum_match_errors.rue:41:9
+- Cannot type guard from `Mode` to `Shape::Empty`, since they do not overlap at enum_match_errors.rue:50:9
+- "Match on `Both<Dir, Dir>` is not exhaustive, since it doesn't handle `Both::Two { x: Dir::Down, y: Dir::Down }` and `Both::Two { x: Dir::Up, y: Dir::Down }` at enum_match_errors.rue:67:11"
+- Unknown field `radius` on type `Shape::Empty` at enum_match_errors.rue:78:24
+- Unknown field `width` on type `Shape::Circle` at enum_match_errors.rue:79:25
+- Unknown field `value` on type `Mode::Off` at enum_match_errors.rue:85:25
 - |-
-  Match on `Shape` is not exhaustive, since it doesn't handle `Shape::Circle` at enum_match_errors.rue:88:22
-    note: This arm has a condition, so it doesn't handle every value it matches at enum_match_errors.rue:90:9
+  Match on `Shape` is not exhaustive, since it doesn't handle `Shape::Circle` at enum_match_errors.rue:92:22
+    note: This arm has a condition, so it doesn't handle every value it matches at enum_match_errors.rue:94:9
 - |-
-  Match on `Mode` is not exhaustive, since it doesn't handle `Mode::On` at enum_match_errors.rue:95:17
-    note: This arm has a condition, so it doesn't handle every value it matches at enum_match_errors.rue:97:13
-    note: This arm has a condition, so it doesn't handle every value it matches at enum_match_errors.rue:98:13
+  Match on `Mode` is not exhaustive, since it doesn't handle `Mode::On` at enum_match_errors.rue:99:17
+    note: This arm has a condition, so it doesn't handle every value it matches at enum_match_errors.rue:101:13
+    note: This arm has a condition, so it doesn't handle every value it matches at enum_match_errors.rue:102:13

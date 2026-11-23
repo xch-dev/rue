@@ -1,5 +1,5 @@
 // The unions in these tests overlap on purpose, to test how the compiler handles them
-#![allow(redundant_union_member)]
+#![allow(redundant_union_member, indistinguishable_union_member)]
 
 // Where nothing gives a generic a type but a candidate that's a union with the generic as a member,
 // which says nothing, so the generic isn't inferred (#362, 13k5; see

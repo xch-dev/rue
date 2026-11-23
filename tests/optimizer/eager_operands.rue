@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 // The right operand of `&&` and `||` is evaluated whether or not the left one decides the result
 // when nothing can tell the difference: it doesn't rely on a type the left operand narrows, it
 // can't fail, and it's cheap. Then both operands are the arguments of an `all` or `any`, which is

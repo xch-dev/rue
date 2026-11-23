@@ -92,13 +92,13 @@ fn generic_member<T>(value: T | Any) -> List<T> {
     nil
 }
 
-// Members that only partly overlap at runtime, or are generic, aren't redundant
+// Members that only overlap at runtime, are generic or don't overlap at all aren't redundant (the
+// ones that overlap at runtime are reported by `indistinguishable_union_member`)
+#[allow(indistinguishable_union_member)]
 type IntOrNil = Int | nil;
-type Bytes32OrInt = Bytes32 | Int;
-type BoolOrInt = Bool | Int;
+
 type Optional<T> = T | nil;
 type Distinct = Bytes32 | PublicKey;
-type Pairs = (Int, nil) | (Int, Int);
 
 // An allowed union isn't reported
 #[allow(redundant_union_member)]

@@ -1,7 +1,7 @@
 diagnostics:
-- Unused function `first_of` at generic_inference_lower_transitive_errors.rue:1:4
-- Unused function `map_limited` at generic_inference_lower_transitive_errors.rue:5:4
-- Unused parameter `limit` at generic_inference_lower_transitive_errors.rue:5:57
-- Unused function `already_inferred_generic_keeps_its_type` at generic_inference_lower_transitive_errors.rue:10:4
-- Binding `shown` is returned directly after it's declared at generic_inference_lower_transitive_errors.rue:12:5
-- Cannot assign `Int | nil` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_lower_transitive_errors.rue:12:22
+- Unused function `first_of` at generic_inference_lower_transitive_errors.rue:5:4
+- Unused function `map_limited` at generic_inference_lower_transitive_errors.rue:9:4
+- Unused parameter `limit` at generic_inference_lower_transitive_errors.rue:9:57
+- Unused function `already_inferred_generic_keeps_its_type` at generic_inference_lower_transitive_errors.rue:14:4
+- Binding `shown` is returned directly after it's declared at generic_inference_lower_transitive_errors.rue:16:5
+- Cannot assign `Int | nil` to `nil` without a type guard, since the value isn't always a valid `nil` at generic_inference_lower_transitive_errors.rue:16:22

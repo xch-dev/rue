@@ -1,5 +1,5 @@
 // The unions in these tests overlap on purpose, to test how the compiler handles them
-#![allow(redundant_union_member)]
+#![allow(redundant_union_member, indistinguishable_union_member)]
 
 // A lambda whose untyped parameter has the type of the generic it returns, as `acc` has in
 // `fold`'s `fn(acc: A, x: T) -> A`, feeds itself: what it returns is passed back in as the

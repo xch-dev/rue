@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 // A `for` can go through several lists together, and name what's left of a list after the item.
 // Each list goes through `runtime`, which the compiler can't fold, so the loops are run.
 

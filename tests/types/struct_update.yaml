@@ -97,7 +97,7 @@ tests:
   total_cost: 228198
 - name: update_evaluated_once
   program: (a (q 4 4 (c (q . 1) 14)) (c (c 2 (c 2 (c 2 ()))) 1))
-  debug_program: (a (q 4 (f 2) (c (q . 1) (r (r 2)))) (c (a (i ("debug_print" (q . "struct_update.rue:117:13") (q . "evaluated")) () (q 4 2 (c 2 (c 2 ())))) 1) 1))
+  debug_program: (a (q 4 (f 2) (c (q . 1) (r (r 2)))) (c (a (i ("debug_print" (q . "struct_update.rue:121:13") (q . "evaluated")) () (q 4 2 (c 2 (c 2 ())))) 1) 1))
   solution: (4)
   output: (4 1 4)
   runtime_cost: 777

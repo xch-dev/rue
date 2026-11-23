@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 fn main(a: Int, b: Int | nil) -> Int {
     // The message is checked like any other expression
     assert a > 3, missing;

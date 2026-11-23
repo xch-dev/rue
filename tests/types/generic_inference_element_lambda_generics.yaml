@@ -617,32 +617,32 @@ tests:
   total_cost: 1164932
 diagnostics:
 - |-
-  Binding `results` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:31:5
+  Binding `results` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:35:5
     help: Return the value directly
 - |-
-  Binding `y` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:61:17
+  Binding `y` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:65:17
     help: Return the value directly
-- Binding `r` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:139:5
-- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:260:5
-- Unused function `element_waits_for_a_value_that_never_returns` at generic_inference_element_lambda_generics.rue:285:4
-- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:312:5
-- Binding `y` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:315:17
-- Binding `z` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:371:17
+- Binding `r` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:143:5
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:264:5
+- Unused function `element_waits_for_a_value_that_never_returns` at generic_inference_element_lambda_generics.rue:289:4
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:316:5
+- Binding `y` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:319:17
+- Binding `z` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:375:17
 - |-
-  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:421:5
-    help: Return the value directly
-- |-
-  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:430:5
-    help: Return the value directly
-- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:473:5
-- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:525:5
-- |-
-  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:553:5
+  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:425:5
     help: Return the value directly
 - |-
-  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:567:5
+  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:434:5
+    help: Return the value directly
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:477:5
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:529:5
+- |-
+  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:557:5
     help: Return the value directly
 - |-
-  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:601:5
+  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:571:5
     help: Return the value directly
-- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:680:5
+- |-
+  Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:605:5
+    help: Return the value directly
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics.rue:684:5

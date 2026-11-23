@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 // A generic function passed to another generic function is instantiated, and the candidates that
 // reference its generics use what they're instantiated as (#283)
 

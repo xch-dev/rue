@@ -1,13 +1,13 @@
 diagnostics:
-- Cannot assign `T` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_union_assign_invalid.rue:4:31
-- Cannot assign `T` to `Int | nil` without a type guard, since the value isn't always a valid `Int | nil` at generic_union_assign_invalid.rue:8:46
-- Cannot assign `T` to `U`, since they are incompatible at generic_union_assign_invalid.rue:12:34
-- Cannot assign `T` to `U | nil`, since they are incompatible at generic_union_assign_invalid.rue:16:49
-- Cannot assign `T` to `Opt<U>`, since they are incompatible at generic_union_assign_invalid.rue:20:45
-- Cannot assign `T | nil` to `T`, since they are incompatible at generic_union_assign_invalid.rue:24:42
-- Cannot assign `Opt<T>` to `T`, since they are incompatible at generic_union_assign_invalid.rue:28:38
-- Cannot assign `Id<T>` to `U`, since they are incompatible at generic_union_assign_invalid.rue:32:49
-- Cannot infer generic `U` for `to_other`; specify it explicitly, e.g. `to_other::<...>()` at generic_union_assign_invalid.rue:40:9
-- Cannot infer generic `U` for `to_other_optional`; specify it explicitly, e.g. `to_other_optional::<...>()` at generic_union_assign_invalid.rue:41:9
-- Cannot infer generic `U` for `to_other_alias`; specify it explicitly, e.g. `to_other_alias::<...>()` at generic_union_assign_invalid.rue:42:9
-- Cannot infer generic `U` for `from_identity_alias`; specify it explicitly, e.g. `from_identity_alias::<...>()` at generic_union_assign_invalid.rue:45:9
+- Cannot assign `T` to `Int` without a type guard, since the value isn't always a valid `Int` at generic_union_assign_invalid.rue:8:31
+- Cannot assign `T` to `Int | nil` without a type guard, since the value isn't always a valid `Int | nil` at generic_union_assign_invalid.rue:12:46
+- Cannot assign `T` to `U`, since they are incompatible at generic_union_assign_invalid.rue:16:34
+- Cannot assign `T` to `U | nil`, since they are incompatible at generic_union_assign_invalid.rue:20:49
+- Cannot assign `T` to `Opt<U>`, since they are incompatible at generic_union_assign_invalid.rue:24:45
+- Cannot assign `T | nil` to `T`, since they are incompatible at generic_union_assign_invalid.rue:28:42
+- Cannot assign `Opt<T>` to `T`, since they are incompatible at generic_union_assign_invalid.rue:32:38
+- Cannot assign `Id<T>` to `U`, since they are incompatible at generic_union_assign_invalid.rue:36:49
+- Cannot infer generic `U` for `to_other`; specify it explicitly, e.g. `to_other::<...>()` at generic_union_assign_invalid.rue:44:9
+- Cannot infer generic `U` for `to_other_optional`; specify it explicitly, e.g. `to_other_optional::<...>()` at generic_union_assign_invalid.rue:45:9
+- Cannot infer generic `U` for `to_other_alias`; specify it explicitly, e.g. `to_other_alias::<...>()` at generic_union_assign_invalid.rue:46:9
+- Cannot infer generic `U` for `from_identity_alias`; specify it explicitly, e.g. `from_identity_alias::<...>()` at generic_union_assign_invalid.rue:49:9

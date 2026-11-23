@@ -1,5 +1,5 @@
 // The unions in these tests overlap on purpose, to test how the compiler handles them
-#![allow(redundant_union_member)]
+#![allow(redundant_union_member, indistinguishable_union_member)]
 
 fn wrap<A, B>(value: A) -> (A, B | nil) {
     (value, nil)

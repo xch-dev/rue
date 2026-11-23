@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 // The else branch of a non-short-circuit `|` must use both operands' else maps
 fn any_else(x: Bytes32 | Int, y: Bytes32 | Int) -> Bytes32 {
     if (x is Bytes32) | (y is Bytes32) {

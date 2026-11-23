@@ -70,4 +70,4 @@ tests:
   byte_cost: 612000
   total_cost: 612770
 diagnostics:
-- Binding `check` is returned directly after it's declared at generic_inference_bounds_naming_the_generic.rue:175:5
+- Binding `check` is returned directly after it's declared at generic_inference_bounds_naming_the_generic.rue:179:5

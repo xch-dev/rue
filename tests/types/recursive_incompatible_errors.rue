@@ -1,5 +1,5 @@
 // The unions in these tests overlap on purpose, to test how the compiler handles them
-#![allow(redundant_union_member)]
+#![allow(redundant_union_member, indistinguishable_union_member)]
 
 type A0 = nil | ((A1, (1, A2)) | (A2 | A0 | 2, Int) | Int);
 type A1 = nil | (((1, A0), nil), 2);
