@@ -162,7 +162,7 @@ fn opt_negated_truthy(arena: &mut Arena<Lir>, value: LirId, negated: Option<LirI
 /// Paths aren't pure, since traversing into an atom fails.
 pub fn is_pure(arena: &Arena<Lir>, value: LirId) -> bool {
     match &arena[value] {
-        Lir::Atom(_) | Lir::Quote(_) => true,
+        Lir::Atom(_) | Lir::Value(_) | Lir::Quote(_) => true,
         Lir::Cons(first, rest) => grow_stack(|| is_pure(arena, *first) && is_pure(arena, *rest)),
         _ => false,
     }

@@ -43,7 +43,7 @@ tests:
   total_cost: 1864518
 - name: generic_function_returning_an_alias_beside_an_untyped_lambda
   program: (a (q 2 (q . 2) (c (c (a 2 (c (q . 2) (c (q . 2) (q . 5)))) (a 2 (c (q . 2) (c (q . 2) (q . 5))))) 1)) (c (q 2 2 (c (a 5 (c (a 2 (c 7 ())) ())) ())) ()))
-  debug_program: (a (q 2 (q 2 (q 4 (f 2) (r 2)) (c (c 4 6) 1)) (c (c (a 10 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 30) (c (q . 1) ()))) (a 4 (q . 5))))) (a 10 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 22) (c (q . 1) ()))) (a 4 (q . 5)))))) 1)) (c (c (q . 1) (c (q 2 2 (c (a 5 (c (a 2 (c 7 ())) ())) ())) (c (q . 2) (q . 2)))) ()))
+  debug_program: (a (q 2 (q 2 (q 4 (f 2) (r 2)) (c (c 4 6) 1)) (c (c (a 10 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c 30 (a 4 (q . 5))))) (a 10 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c 22 (a 4 (q . 5)))))) 1)) (c (c (q . 1) (c (q 2 2 (c (a 5 (c (a 2 (c 7 ())) ())) ())) (c (q . 2) (q . 2)))) ()))
   output: (5 . 5)
   runtime_cost: 2937
   byte_cost: 1452000

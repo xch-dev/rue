@@ -168,6 +168,9 @@ fn outer(x: Int) -> Int { inner(x) * 2 }
 fn main(x: Int) -> Int { outer(x) + outer(x + 1) }";
     let value = "fn add(x: Int) -> Int { x + K }\nfn main(x: Int) -> Int { apply(add, x) }";
     let passed_on =
+        "fn main(xs: List<Int>) -> List<Int> { let add = fn(x: Int) => x + K; map(xs, add) }";
+    // A named function that's used as a value is its own program, which binds `K` itself
+    let own_program =
         "fn add(x: Int) -> Int { x + K }\nfn main(xs: List<Int>) -> List<Int> { map(xs, add) }";
 
     assert!(!is_repeated(once));
@@ -176,6 +179,7 @@ fn main(x: Int) -> Int { outer(x) + outer(x + 1) }";
     assert!(is_repeated(nested));
     assert!(!is_repeated(value));
     assert!(is_repeated(passed_on));
+    assert!(!is_repeated(own_program));
 }
 
 #[test]

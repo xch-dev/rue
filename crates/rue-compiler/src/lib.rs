@@ -56,6 +56,8 @@ mod nesting_tests;
 #[cfg(test)]
 mod placeholder_tests;
 #[cfg(test)]
+mod program_value_tests;
+#[cfg(test)]
 mod resolve_tests;
 #[cfg(test)]
 mod solver_stress_tests;

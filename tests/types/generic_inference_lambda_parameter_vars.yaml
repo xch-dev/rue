@@ -29,7 +29,7 @@ tests:
   total_cost: 36020
 - name: bounded_by_another_argument
   program: (a (q . 2) (q 5))
-  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 5)))) (c (c (q . 2) (q 2 5 (c (a 2 (c 7 ())) ()))) ()))
+  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c 4 (q . 5)))) (c (c (q . 2) (q 2 5 (c (a 2 (c 7 ())) ()))) ()))
   output: "5"
   runtime_cost: 179
   byte_cost: 156000
@@ -148,7 +148,7 @@ tests:
   total_cost: 36020
 - name: argument_whose_generic_takes_values
   program: (a (q 1 . 1) (c (a (q 1 . 5) (q ())) ()))
-  debug_program: (a (q 2 30 (c (a 4 (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))) (c (a 4 (a 22 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ())))))) ()))) (c (c (q . 1) (c (q . 2) (c (q 4 (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))) (q 2 5 (c (a 2 (c 7 ())) ()))))) ()))
+  debug_program: (a (q 2 30 (c (a 4 (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ())))) (c (a 4 (a 22 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) 10))) ()))) (c (c (q . 1) (c (q . 2) (c (q 4 (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))) (q 2 5 (c (a 2 (c 7 ())) ()))))) ()))
   output: "1"
   runtime_cost: 377
   byte_cost: 372000
@@ -183,7 +183,7 @@ tests:
   total_cost: 901222
 - name: callback_of_an_enclosing_call_left_alone
   program: (a (q 2 4 (c 10 (c 14 ()))) (c (c (q 2 (q 2 4 (c 10 (c 14 ()))) (c (c (q . 2) (c (q . 7) ())) 1)) (c (q . 5) (q . 2))) 1))
-  debug_program: (a (q 2 4 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 7) (c (q . 2) (c () (c (q . 1) ()))))))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) (c (q . 5) (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ())))))) (c (c (q 2 (f 1) (c (f (r 1)) (c (r (r 1)) ()))) (q . 2)) ()))
+  debug_program: (a (q 2 4 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 7) (c (q . 2) (c () (c (q . 1) ()))))))) (c (c (q . 4) (c (c (q . 1) 4) (c (q . 1) ()))) ()))) (c (q . 5) 6))) (c (c (q 2 (f 1) (c (f (r 1)) (c (r (r 1)) ()))) (q . 2)) ()))
   output: "7"
   runtime_cost: 1610
   byte_cost: 1188000

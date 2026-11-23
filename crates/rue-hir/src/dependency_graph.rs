@@ -78,6 +78,9 @@ pub struct DependencyGraph {
 
     // Keeps track of whether a symbol is ever used as a closure
     closures: HashSet<SymbolId>,
+    /// The functions that are used as values and lowered to the program they're compiled to on
+    /// their own (see [`crate::program_value`]). They're constants, so they aren't dependencies.
+    program_values: IndexSet<SymbolId>,
     /// The functions that `for` expressions are compiled to (see `FunctionKind::Loop`).
     loops: HashSet<SymbolId>,
     /// The symbols that are referenced inside of a loop they're defined outside of, which
@@ -228,6 +231,7 @@ impl DependencyGraph {
             repeated: HashSet::new(),
             inline_values: HashSet::new(),
             closures: HashSet::new(),
+            program_values: IndexSet::new(),
             loops: HashSet::new(),
             loop_captures: HashSet::new(),
             loop_dependencies: HashMap::new(),
@@ -694,6 +698,18 @@ impl DependencyGraph {
 
     pub fn is_closure(&self, symbol: SymbolId) -> bool {
         self.closures.contains(&symbol)
+    }
+
+    /// Whether the function is lowered to the program it's compiled to on its own where it's
+    /// used as a value, rather than to a closure (see [`crate::program_value`]).
+    pub fn is_program_value(&self, symbol: SymbolId) -> bool {
+        self.program_values.contains(&symbol)
+    }
+
+    /// The functions that are lowered to their own programs where they're used as values, in the
+    /// order they were found in.
+    pub fn program_values(&self) -> impl Iterator<Item = SymbolId> + '_ {
+        self.program_values.iter().copied()
     }
 
     /// Whether the symbol is the function a `for` expression is compiled to.
@@ -1784,6 +1800,17 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             }
         }
         Hir::Reference(symbol) => {
+            // A function whose value is its own program is the constant with that program as its
+            // value, so the function itself isn't a dependency
+            // The entrypoint refers to itself through the environment instead
+            if !is_call
+                && *symbol != graph.main
+                && let Some(constant) = db.program_constant(*symbol)
+            {
+                visit_symbol_reference(graph, constant, usage(graph, hir, is_call));
+                return;
+            }
+
             if !is_call {
                 graph.closures.insert(*symbol);
             }
@@ -1838,6 +1865,9 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             if let Some(body) = block.reachable_body() {
                 visit_hir(db, graph, body, false);
             }
+        }
+        Hir::Program(function) => {
+            graph.program_values.insert(*function);
         }
         Hir::Lambda(lambda) => {
             if let Some(current) = graph.current {

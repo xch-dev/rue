@@ -896,7 +896,7 @@ fn is_cheap_check(
     };
 
     match &arena[condition] {
-        Lir::Atom(_) | Lir::Path(_) | Lir::Quote(_) => true,
+        Lir::Atom(_) | Lir::Value(_) | Lir::Path(_) | Lir::Quote(_) => true,
         Lir::First(value)
         | Lir::Rest(value)
         | Lir::Listp(value)

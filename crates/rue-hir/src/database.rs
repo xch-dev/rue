@@ -1,13 +1,17 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use id_arena::{Arena, ArenaBehavior, DefaultArenaBehavior};
 use indexmap::{IndexMap, IndexSet};
 use rue_diagnostic::{Name, SourceKind, SrcLoc};
+use rue_lir::ClvmTarget;
 use rue_types::{Type, TypeId};
 
 use crate::{
-    FieldAccess, FieldKind, FunctionKind, Hir, HirId, Import, ImportId, ImportUser, ModuleSymbol,
-    Scope, ScopeId, Symbol, SymbolId, UnaryOp, Value,
+    ConstantSymbol, FieldAccess, FieldKind, FunctionKind, Hir, HirId, Import, ImportId, ImportUser,
+    ModuleSymbol, Scope, ScopeId, Symbol, SymbolId, UnaryOp, Value,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -86,6 +90,13 @@ pub struct Database {
     /// The declarations that references to others are shown as (see
     /// [`Database::reference_target`]).
     reference_targets: HashMap<Declaration, Declaration>,
+    /// The constant whose value is the program that each function is compiled to on its own,
+    /// which a reference to the function as a value is lowered as, or `None` for a function that
+    /// would be in its own program (see [`Database::add_program_constants`]).
+    program_constants: HashMap<SymbolId, Option<SymbolId>>,
+    /// The programs that functions have been compiled to on their own, as serialized CLVM, for
+    /// each target, so that each is only compiled once.
+    programs: HashMap<(SymbolId, ClvmTarget), Arc<[u8]>>,
 }
 
 impl Database {
@@ -142,6 +153,10 @@ impl Database {
             import_references: _,
             ambiguous_modules: _,
             imports_through_ambiguous_names: _,
+            // Keyed by the symbols made since, which `restore` clears, and the programs compiled
+            // from them, which `restore` clears altogether
+            program_constants: _,
+            programs: _,
         } = self;
 
         DatabaseCheckpoint {
@@ -187,6 +202,13 @@ impl Database {
             self.declared_by.remove(&Declaration::Symbol(symbol));
             self.referenced_by.remove(&Declaration::Symbol(symbol));
         }
+
+        let symbols: HashSet<SymbolId> = symbols.into_iter().collect();
+        self.program_constants.retain(|function, constant| {
+            !symbols.contains(function)
+                && constant.is_none_or(|constant| !symbols.contains(&constant))
+        });
+        self.programs.clear();
 
         self.const_exprs.truncate(checkpoint.const_exprs);
         self.tests.truncate(checkpoint.tests);
@@ -529,6 +551,60 @@ impl Database {
 
     pub fn symbol_mut(&mut self, id: SymbolId) -> &mut Symbol {
         &mut self.symbols[id]
+    }
+
+    /// Gives each function that can be the value of its own program a constant whose value is
+    /// that program, if it hasn't been decided yet (see [`crate::program_value`]). A reference to
+    /// the function as a value is lowered as a reference to the constant, so that a program that
+    /// uses it more than once binds it once, like any other constant. A function that's declared
+    /// later can't be referenced by one that's already been decided, so the decisions stay.
+    pub fn add_program_constants(&mut self) {
+        let types: IndexMap<SymbolId, TypeId> = self
+            .symbols
+            .iter()
+            .filter_map(|(id, symbol)| match symbol {
+                Symbol::Function(function)
+                    if !self.program_constants.contains_key(&id)
+                        && crate::program_value::is_candidate(self, id) =>
+                {
+                    Some((id, function.ty))
+                }
+                _ => None,
+            })
+            .collect();
+        let candidates: Vec<SymbolId> = types.keys().copied().collect();
+
+        for (function, is_program_value) in
+            crate::program_value::decide_program_values(self, &candidates)
+        {
+            let constant = is_program_value.then(|| {
+                let ty = types[&function];
+                let hir = self.alloc_hir(Hir::Program(function));
+                self.alloc_symbol(Symbol::Constant(ConstantSymbol {
+                    name: None,
+                    value: Value::new(hir, ty),
+                    inline: false,
+                }))
+            });
+
+            self.program_constants.insert(function, constant);
+        }
+    }
+
+    /// The constant whose value is the program that the function is compiled to on its own, if
+    /// it has one (see [`Self::add_program_constants`]).
+    pub fn program_constant(&self, function: SymbolId) -> Option<SymbolId> {
+        self.program_constants.get(&function).copied().flatten()
+    }
+
+    /// The program that the function was compiled to on its own for the target, as serialized
+    /// CLVM, if it has been.
+    pub fn program(&self, function: SymbolId, target: ClvmTarget) -> Option<Arc<[u8]>> {
+        self.programs.get(&(function, target)).cloned()
+    }
+
+    pub fn set_program(&mut self, function: SymbolId, target: ClvmTarget, program: Arc<[u8]>) {
+        self.programs.insert((function, target), program);
     }
 
     pub fn module(&self, id: SymbolId) -> &ModuleSymbol {
@@ -900,6 +976,7 @@ impl Database {
                 .body
                 .map_or("{empty}".to_string(), |body| self.debug_hir(body)),
             Hir::Lambda(lambda) => self.debug_symbol(*lambda),
+            Hir::Program(function) => format!("program {}", self.debug_symbol(*function)),
             Hir::If(condition, then, else_, inline) => format!(
                 "{}if {} {{ {} }} else {{ {} }}",
                 if *inline { "inline " } else { "" },

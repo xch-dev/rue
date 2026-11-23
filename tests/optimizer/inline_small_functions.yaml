@@ -122,13 +122,13 @@ tests:
   byte_cost: 2436000
   total_cost: 2467132
 - name: used_as_a_value
-  program: (a (q 16 (a (a (i 11 (q . 4) (q . 6)) 1) (c (a 4 (c 5 ())) ())) (a 4 (c 5 ()))) (c (c (q 16 2 (q . 1)) (q 16 2 2)) 1))
-  debug_program: (a (q 2 (q 16 (a 2 (c (a 9 (c 11 ())) ())) (a 9 (c 11 ()))) (c (a (i 11 (q 4 (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q 4 (q . 2) (c (c (q . 1) 6) (c (q . 1) ())))) 1) 1)) (c (c (q 16 2 (q . 1)) (q 16 2 2)) 1))
+  program: (+ (a (a (i 5 (q 1 16 2 (q . 1)) (q 1 16 2 2)) 1) (c (+ 2 (q . 1)) ())) 2 (q . 1))
+  debug_program: (a (q 2 (q 16 (a 2 (c (a 9 11) ())) (a 9 11)) (c (a (i 11 (q . 14) (q . 10)) 1) 1)) (c (c (q 16 1 (q . 1)) (c (q 16 2 2) (q 16 2 (q . 1)))) 1))
   solution: (3 1)
   output: "9"
-  runtime_cost: 4608
-  byte_cost: 1188000
-  total_cost: 1192608
+  runtime_cost: 3262
+  byte_cost: 804000
+  total_cost: 807262
 - name: recursive_function
   program: (a (q 16 (a 2 (c 2 5)) (a 2 (c 2 11))) (c (q 2 (i (> 3 ()) (q 2 2 (c 2 (- 3 (q . 1)))) (q . 3)) 1) 1))
   debug_program: (a (q 16 (a 2 (c 2 5)) (a 2 (c 2 11))) (c (q 2 (i (> 3 ()) (q 2 2 (c 2 (- 3 (q . 1)))) (q . 3)) 1) 1))

@@ -1,0 +1,22 @@
+tests:
+- name: hashes_match_the_build
+  program: (a (q 2 (q 2 (i (= (q . 0x5d9bc497ae71c92d33474693b246891c242726f3778743da497df316f48bda56) 2) (q 2 (i (= (a 5 (c 5 (q 16 (* 2 (q . 2)) (* (+ 2 (q . 1)) (q . 2)) (q . 2)))) 2) () (q 8)) 1) (q 8)) 1) (c (q . 0x5d9bc497ae71c92d33474693b246891c242726f3778743da497df316f48bda56) 1)) (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) ()))
+  debug_program: (a (q 2 (q 2 (i (= (q . 0x5d9bc497ae71c92d33474693b246891c242726f3778743da497df316f48bda56) 2) (q 2 (i (= (a 9 (c 9 13)) 2) () (q 8 (q . "assertion failed at program_values.rue:26:5"))) 1) (q 8 (q . "assertion failed at program_values.rue:25:5"))) 1) (c (q . 0x5d9bc497ae71c92d33474693b246891c242726f3778743da497df316f48bda56) 1)) (c (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) (q 16 (* 2 (q . 2)) (* (+ 2 (q . 1)) (q . 2)) (q . 2))) ()))
+  output: ()
+  runtime_cost: 51015
+  byte_cost: 3132000
+  total_cost: 3183015
+- name: generic_function_is_one_program
+  program: (a (q 2 (i (= (q . 0xa12871fee210fb8619291eaea194581cbd2531e4b23759d225f6806923f63222) (a 2 (c 2 (q . 2)))) () (q 8)) 1) (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) ()))
+  debug_program: (a (q 2 (i (= (q . 0xa12871fee210fb8619291eaea194581cbd2531e4b23759d225f6806923f63222) (a 4 (c 4 6))) () (q 8 (q . "assertion failed at program_values.rue:30:5"))) 1) (c (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) (q . 2)) ()))
+  output: ()
+  runtime_cost: 1988
+  byte_cost: 1836000
+  total_cost: 1837988
+- name: function_value_is_called_like_the_function
+  program: (a (q 2 (i (= (a 2 (q 3)) (q . 16)) (q 2 (i (= (a 2 (q 3)) (q . 16)) () (q 8)) 1) (q 8)) 1) (c (q 16 (* 2 (q . 2)) (* (+ 2 (q . 1)) (q . 2)) (q . 2)) ()))
+  debug_program: (a (q 2 (i (= (a 10 (c 12 (q . 3))) (a 14 (c 8 (q . 3)))) (q 2 (i (= (a 10 (c 12 (q . 3))) (q . 16)) () (q 8 (q . "assertion failed at program_values.rue:35:5"))) 1) (q 8 (q . "assertion failed at program_values.rue:34:5"))) 1) (c (c (c (q 16 (* 1 (q . 2)) (q . 1)) (q 16 (* 2 (q . 2)) (* (+ 2 (q . 1)) (q . 2)) (q . 2))) (c (q 2 2 (c 3 ())) (q 16 (a 2 3) (a 2 (+ 3 (q . 1)))))) ()))
+  output: ()
+  runtime_cost: 9332
+  byte_cost: 1500000
+  total_cost: 1509332

@@ -2541,11 +2541,4 @@ impl GetTextRange for SyntaxToken {
     }
 }
 
-/// What programs compiled with the options are compiled for, which decides the flags they're run
-/// with (see [`ClvmTarget::flags`]).
-pub fn clvm_target(options: &CompilerOptions) -> ClvmTarget {
-    ClvmTarget {
-        operand_limits: options.operand_limits,
-        hard_fork_2: options.hard_fork_2,
-    }
-}
+pub use rue_hir::clvm_target;

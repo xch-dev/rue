@@ -1,0 +1,36 @@
+// A function that's used as a value is the program `rue build` compiles it to on its own, so its
+// tree hash is the same in a const expression, at runtime, and from `rue build --hash`, in debug
+// builds and tests too.
+
+fn helper(x: Int) -> Int {
+    x * 2 + 1
+}
+
+export fn puzzle(x: Int) -> Int {
+    helper(x) + helper(x + 1)
+}
+
+fn id<T>(value: T) -> T {
+    value
+}
+
+fn apply(f: fn(x: Int) -> Int, x: Int) -> Int {
+    f(x)
+}
+
+test fn hashes_match_the_build() {
+    // `rue build --hash --export puzzle tests/program_values.rue`
+    let built = 0x5d9bc497ae71c92d33474693b246891c242726f3778743da497df316f48bda56;
+
+    assert const { tree_hash(puzzle) } == built;
+    assert tree_hash(puzzle) == built;
+}
+
+test fn generic_function_is_one_program() {
+    assert const { tree_hash(id::<Int>) } == tree_hash(id::<Bytes>);
+}
+
+test fn function_value_is_called_like_the_function() {
+    assert apply(puzzle, 3) == puzzle(3);
+    assert apply(puzzle, 3) == 16;
+}

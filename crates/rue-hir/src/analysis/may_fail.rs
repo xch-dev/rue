@@ -215,6 +215,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
             | Hir::Bool(_)
             | Hir::InfinityG1
             | Hir::InfinityG2
+            | Hir::Program(_)
             // Constant expressions are evaluated at compile time
             | Hir::Const(_) => false,
             Hir::Lambda(lambda) => !in_body && self.cx.captures_may_fail(*lambda),

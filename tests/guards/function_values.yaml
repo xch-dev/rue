@@ -15,7 +15,7 @@ tests:
   total_cost: 564809
 - name: list_of_functions
   program: (q . 1)
-  debug_program: (a (q 2 (q 32 (not 2)) (c (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) ()) 1)) (c (q 16 2 (q . 1)) ()))
+  debug_program: (a (q 2 (q 32 (not 2)) (c (c 2 ()) 1)) (c (q 16 2 (q . 1)) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000

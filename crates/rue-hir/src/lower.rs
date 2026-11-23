@@ -6,6 +6,7 @@ mod inline;
 mod layout;
 mod measure;
 mod path_binding;
+mod program;
 mod substitution;
 
 pub use debug::*;
@@ -21,7 +22,7 @@ use std::{
 use id_arena::Arena;
 use indexmap::{IndexSet, set::Slice};
 use rue_diagnostic::SrcLoc;
-use rue_lir::{Lir, LirId, bigint_atom};
+use rue_lir::{ClvmTarget, Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
 
 use crate::{
@@ -151,6 +152,10 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// than the program reaches them in, so that [`Layout::Written`] or
     /// [`Layout::EverythingReached`] could lower the program differently.
     reordered: Cell<Reordered>,
+    /// The options that a function is compiled with on its own, where it's used as a value and
+    /// lowered to that program (see [`crate::program_value`]), which are the release options for
+    /// the target.
+    program_options: CompilerOptions,
 }
 
 /// What a block's statements are followed by.
@@ -174,6 +179,15 @@ enum Continuation {
     /// The rest of the block, which is lowered once and quoted, and passed to the branches along
     /// with the environment it runs in, so that each branch that falls through can run it.
     Shared { program: SymbolId, env: SymbolId },
+}
+
+/// What programs compiled with the options are compiled for, which decides the flags they're run
+/// with (see [`ClvmTarget::flags`]).
+pub fn clvm_target(options: &CompilerOptions) -> ClvmTarget {
+    ClvmTarget {
+        operand_limits: options.operand_limits,
+        hard_fork_2: options.hard_fork_2,
+    }
 }
 
 /// Lowering went deeper than [`MAX_LOWERING_DEPTH`], so the LIR it produced is incomplete.
@@ -245,7 +259,18 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             layout: Layout::CANDIDATES[0],
             nesting: None,
             reordered: Cell::default(),
+            program_options: options.release(),
         }
+    }
+
+    /// Sets the options that a function is compiled with where it's used as a value (see
+    /// [`crate::program_value`]). They're the release options of the ones it's lowered with
+    /// unless this is called, which is only needed when those aren't the target's options, such
+    /// as for a const expression.
+    #[must_use]
+    pub fn with_program_options(mut self, options: CompilerOptions) -> Self {
+        self.program_options = options.release();
+        self
     }
 
     /// Records where each LIR node comes from in the source, and which nodes are the bodies of
@@ -792,6 +817,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Hir::Reference(symbol) => self.lower_symbol(env, symbol, false),
             Hir::Block(block) => self.lower_block(env, block.statements, Tail::Body(block.body)),
             Hir::Lambda(lambda) => self.lower_symbol(env, lambda, true),
+            Hir::Program(function) => self.lower_program_value(function),
             Hir::If(condition, then, else_, inline) => {
                 let condition = self.lower_hir(env, condition);
                 let then = self.lower_hir(env, then);
@@ -1393,6 +1419,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_symbol(&mut self, env: &Environment, symbol: SymbolId, is_lambda: bool) -> LirId {
+        // A function whose value is its own program is the constant with that program as its
+        // value (see `DependencyGraph::is_program_value`)
+        if self.graph.is_program_value(symbol)
+            && let Some(constant) = self.db.program_constant(symbol)
+        {
+            return self.lower_symbol(env, constant, false);
+        }
+
         let mut reference = if self.should_inline(symbol) || is_lambda {
             self.lower_symbol_value(env, symbol)
         } else {

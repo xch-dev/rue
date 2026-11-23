@@ -1,5 +1,8 @@
 use clvm_traits::{ToClvm, clvm_list, clvm_quote};
-use clvmr::{Allocator, NodePtr, SExp, serde::node_to_bytes};
+use clvmr::{
+    Allocator, NodePtr, SExp,
+    serde::{node_from_bytes, node_to_bytes},
+};
 use id_arena::Arena;
 use num_bigint::BigUint;
 
@@ -144,6 +147,10 @@ fn codegen_step(
         Lir::Quote(arg) => {
             let arg = codegen(arena, allocator, *arg)?;
             quote_code(allocator, arg)
+        }
+        Lir::Value(value) => {
+            let value = node_from_bytes(allocator, value)?;
+            quote_code(allocator, value)
         }
         Lir::Path(path) => {
             let atom = path_to_atom(path);

@@ -8,63 +8,63 @@ tests:
   total_cost: 252955
 - name: generic_function_first
   program: (a (q 16 2 (q . 1)) (q 4))
-  debug_program: (a (q 2 (q 2 2 (c (q . 4) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))))) 1)) (c (c (q 16 2 (q . 1)) (c (q . 2) (q . 2))) ()))
+  debug_program: (a (q 2 (q 2 2 (c (q . 4) ())) (c (a 14 (c 4 10)) 1)) (c (c (q 16 2 (q . 1)) (c (q . 2) (q . 2))) ()))
   output: "5"
   runtime_cost: 955
   byte_cost: 252000
   total_cost: 252955
 - name: generic_function_second
   program: (a (q . 2) (q 4))
-  debug_program: (a (q 2 (q 2 2 (c (q . 4) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))))) 1)) (c (c (q . 2) (c (q 16 2 (q . 1)) (q . 2))) ()))
+  debug_program: (a (q 2 (q 2 2 (c (q . 4) ())) (c (a 14 (c 4 10)) 1)) (c (c (q . 2) (c (q 16 2 (q . 1)) (q . 2))) ()))
   output: "4"
   runtime_cost: 179
   byte_cost: 156000
   total_cost: 156179
 - name: equal_function_types
   program: (a (q 17 2 (q . 1)) (q 4))
-  debug_program: (a (q 2 (q 2 2 (c (q . 4) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))))) 1)) (c (c (q 17 2 (q . 1)) (c (q 16 2 (q . 1)) (q . 2))) ()))
+  debug_program: (a (q 2 (q 2 2 (c (q . 4) ())) (c (a 14 (c 4 10)) 1)) (c (c (q 17 2 (q . 1)) (c (q 16 2 (q . 1)) (q . 2))) ()))
   output: "3"
   runtime_cost: 955
   byte_cost: 252000
   total_cost: 252955
 - name: literal_return_types
-  program: (q . 5)
-  debug_program: (a (q 2 (q 2 2 ()) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c () ()))) (c (q . 2) (c (c (q . 1) 10) (c () ()))))) 1)) (c (c (q 1 . 5) (c (q 1 . 5) (q . 2))) ()))
+  program: (a (q 1 . 5) ())
+  debug_program: (a (q 2 (q 2 2 ()) (c (a 14 (c 4 10)) 1)) (c (c (q 1 . 5) (c (q 1 . 5) (q . 2))) ()))
   output: "5"
-  runtime_cost: 20
-  byte_cost: 36000
-  total_cost: 36020
+  runtime_cost: 175
+  byte_cost: 132000
+  total_cost: 132175
 - name: inside_a_pair
   program: (a (q . 2) (q 10))
-  debug_program: (a (q 2 (q 2 2 (c (q . 10) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q 16 2 (q . 1)) (c (q . 2) (q 5 1))) ()))
+  debug_program: (a (q 2 (q 2 2 (c (q . 10) ())) (c (a 14 (c 10 4)) 1)) (c (c (q 16 2 (q . 1)) (c (q . 2) (q 5 1))) ()))
   output: "10"
   runtime_cost: 179
   byte_cost: 156000
   total_cost: 156179
 - name: nested_calls
   program: (a (q 16 2 (q . 1)) (q 2))
-  debug_program: (a (q 2 (q 2 2 (c (q . 2) ())) (c (a 14 (c (c (q . 2) (c (c (q . 1) 8) (c (q . 1) ()))) (a 10 (c (q . 2) (c (c (q . 1) 12) (c (q . 1) ())))))) 1)) (c (c (c (q 16 2 (q . 1)) (q . 2)) (c (q 4 1 ()) (q . 2))) ()))
+  debug_program: (a (q 2 (q 2 2 (c (q . 2) ())) (c (a 14 (c 8 (a 10 12))) 1)) (c (c (c (q 16 2 (q . 1)) (q . 2)) (c (q 4 1 ()) (q . 2))) ()))
   output: "3"
   runtime_cost: 955
   byte_cost: 252000
   total_cost: 252955
 - name: outer_generic
   program: (a (q . 2) (q 1))
-  debug_program: (a (q 2 12 (c (c 10 14) (c (c (q . 2) (c (c (q . 1) 8) (c (q . 1) ()))) (q . 1)))) (c (c (c (q 16 2 (q . 1)) (q 2 (q 2 2 (c 15 ())) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) 5)) 1))) (c (q . 2) (q . 2))) ()))
+  debug_program: (a (q 2 12 (c (c 10 14) (c 8 (q . 1)))) (c (c (c (q 16 2 (q . 1)) (q 2 (q 2 2 (c 15 ())) (c (a 6 (c 4 5)) 1))) (c (q . 2) (q . 2))) ()))
   output: "1"
   runtime_cost: 179
   byte_cost: 156000
   total_cost: 156179
 - name: equivalent_generic_functions
   program: (a (q 2 (q 34 (a 5 (q 1)) (= 2 (q . 1))) (c (a 2 (q 1)) 1)) (c (q . 2) 1))
-  debug_program: (a (q 2 (q 2 (q 2 (i 6 (q 9 4 (q . 1)) ()) 1) (c (c (a 2 (c (q . 1) ())) (a 2 (c (q . 1) ()))) 1)) (c (a 14 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))))) 1)) (c (c (q . 2) (c (q . 2) (q . 2))) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (i 6 (q 9 4 (q . 1)) ()) 1) (c (c (a 2 (c (q . 1) ())) (a 2 (c (q . 1) ()))) 1)) (c (a 14 (c 4 10)) 1)) (c (c (q . 2) (c (q . 2) (q . 2))) ()))
   output: "1"
   runtime_cost: 1839
   byte_cost: 780000
   total_cost: 781839
 - name: guard_other_candidates
   program: (q . 1)
-  debug_program: (a (q 2 (q 2 29 2) (c (a 10 (c () (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) 1)) (c (c (q . 2) (c (q . 2) (q 1 . 1))) ()))
+  debug_program: (a (q 2 (q 2 29 2) (c (a 10 (c () 4)) 1)) (c (c (q . 2) (c (q . 2) (q 1 . 1))) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000

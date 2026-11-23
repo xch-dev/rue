@@ -15,7 +15,7 @@ tests:
   total_cost: 1001280
 - name: expected_type
   program: (a (q 2 2 (c 2 (c (q 16 2 (q . 1)) (q 1 . 2)))) (c (q 2 (i (> 15 ()) (q 2 2 (c 2 (c 5 (c 11 (- 15 (q . 1)))))) (q 2 5 (c 11 ()))) 1) ()))
-  debug_program: (a (q 2 4 (c 4 (c (q . 1) (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (q . 2))))) (c (c (q 2 (i (> 15 ()) (q 2 2 (c 2 (c 5 (c 11 (- 15 (q . 1)))))) (q 2 11 (c 5 ()))) 1) (q 16 2 (q . 1))) ()))
+  debug_program: (a (q 2 4 (c 4 (c (q . 1) (c 6 (q . 2))))) (c (c (q 2 (i (> 15 ()) (q 2 2 (c 2 (c 5 (c 11 (- 15 (q . 1)))))) (q 2 11 (c 5 ()))) 1) (q 16 2 (q . 1))) ()))
   output: "2"
   runtime_cost: 6651
   byte_cost: 1404000

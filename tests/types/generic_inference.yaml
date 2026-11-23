@@ -8,21 +8,21 @@ tests:
   total_cost: 1267169
 - name: map_function
   program: (a (q 2 2 (c 2 (c (c (sha256 (q . 97)) (c (sha256 (q . 98)) ())) (q 11 2)))) (c (q 2 (i 5 (q 4 (a 7 (c 9 ())) (a 2 (c 2 (c 13 7)))) ()) 1) ()))
-  debug_program: (a (q 2 4 (c 4 (c (c (sha256 (q . 97)) (c (sha256 (q . 98)) ())) (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ())))))) (c (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (q 11 2)) ()))
+  debug_program: (a (q 2 4 (c 4 (c (c (sha256 (q . 97)) (c (sha256 (q . 98)) ())) 6))) (c (c (q 2 (i (not 5) () (q 4 (a 7 (c (f 5) ())) (a 2 (c 2 (c (r 5) 7))))) 1) (q 11 2)) ()))
   output: (0xbf5d3affb73efd2ec6c36ad3112dd933efed63c4e1cbffcfa88e2759c144f2d8 0x39361160903c6695c6804b7157c7bd10013e9ba89b1f954243bc8e3990b08db9)
   runtime_cost: 5500
   byte_cost: 1404000
   total_cost: 1409500
 - name: apply_consistent
   program: (a (q 2 6 (c 4 ())) (c (c (sha256 (q . 97)) (q 11 2)) 1))
-  debug_program: (a (q 2 6 (c (sha256 (q . 97)) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (c (c (q 11 2) (q 2 (r 1) (c (f 1) ()))) ()))
+  debug_program: (a (q 2 6 (c (sha256 (q . 97)) 4)) (c (c (q 11 2) (q 2 (r 1) (c (f 1) ()))) ()))
   output: "0xbf5d3affb73efd2ec6c36ad3112dd933efed63c4e1cbffcfa88e2759c144f2d8"
   runtime_cost: 1785
   byte_cost: 540000
   total_cost: 541785
 - name: apply_wider_function
   program: (a (q 2 6 (c 4 ())) (c (c (q . 1) (q 11 2)) 1))
-  debug_program: (a (q 2 6 (c (q . 1) (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))))) (c (c (q 11 2) (q 2 (r 1) (c (f 1) ()))) ()))
+  debug_program: (a (q 2 6 (c (q . 1) 4)) (c (c (q 11 2) (q 2 (r 1) (c (f 1) ()))) ()))
   output: "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"
   runtime_cost: 1179
   byte_cost: 492000

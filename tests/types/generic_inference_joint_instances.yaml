@@ -1,67 +1,67 @@
 tests:
 - name: lower_bounds_reach_the_instance
-  program: (a (q 6 (a 2 (q (q)))) (c (q 4 6 4) ()))
-  debug_program: (a (q 2 (q 6 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 1) ()))) 1)) (c (c (q 4 (r 2) (f 2)) (q 2 2 (c 3 ()))) ()))
+  program: (r (a (q 4 6 4) (q (q))))
+  debug_program: (a (q 2 (q 6 2) (c (a 6 (c 4 (c (q . 1) ()))) 1)) (c (c (q 4 6 4) (q 2 2 (c 3 ()))) ()))
   output: "1"
-  runtime_cost: 571
-  byte_cost: 468000
-  total_cost: 468571
+  runtime_cost: 317
+  byte_cost: 300000
+  total_cost: 300317
 - name: lower_bounds_reach_the_instance_annotated
-  program: (a (q 6 (a 2 (q (q)))) (c (q 4 6 4) ()))
-  debug_program: (a (q 2 (q 6 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 1) ()))) 1)) (c (c (q 4 (r 2) (f 2)) (q 2 2 (c 3 ()))) ()))
+  program: (r (a (q 4 6 4) (q (q))))
+  debug_program: (a (q 2 (q 6 2) (c (a 6 (c 4 (c (q . 1) ()))) 1)) (c (c (q 4 6 4) (q 2 2 (c 3 ()))) ()))
   output: "1"
-  runtime_cost: 571
-  byte_cost: 468000
-  total_cost: 468571
+  runtime_cost: 317
+  byte_cost: 300000
+  total_cost: 300317
 - name: argument_upper_bound_reaches_the_instance
-  program: (a (q 5 (a 2 (q (f . 7)))) (c (q 4 6 4) ()))
-  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 5) (q . 7)) (c (q . 2) (c () (c (q . 1) ())))))) 1)) (c (c (q 4 (r 2) (f 2)) (q 3 (q . 1) (a 2 (c 5 ())) (a 7 (c (a 2 (c 5 ())) ())))) ()))
+  program: (f (a (q 2 2 (q (f . 7))) (c (q 4 6 4) 1)))
+  debug_program: (a (q 2 (q 5 2) (c (a 6 (c 4 (c (c (q . 5) (q . 7)) (c (q . 2) (c () (c (q . 1) ())))))) 1)) (c (c (q 4 6 4) (q 3 (q . 1) (a 2 (c 5 ())) (a 7 (c (a 2 (c 5 ())) ())))) ()))
   output: "7"
   runtime_cost: 571
   byte_cost: 468000
   total_cost: 468571
 - name: expected_type_reaches_the_instance_before_a_lambda
-  program: (a (q 5 (a 2 (q (f . 7)))) (c (q 4 6 4) ()))
-  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 5) (q . 7)) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) 1)) (c (c (q 4 (r 2) (f 2)) (q 2 2 (c 5 ()))) ()))
+  program: (f (a (q 4 6 4) (q (f . 7))))
+  debug_program: (a (q 2 (q 5 2) (c (a 6 (c 4 (c (c (q . 5) (q . 7)) (c (q . 2) (c (c (q . 1) (q 2 (i (q . 1) (q 1 . 1) (q 1 . 2)) 1)) (c (q . 1) ())))))) 1)) (c (c (q 4 6 4) (q 2 2 (c 5 ()))) ()))
   output: "7"
-  runtime_cost: 571
-  byte_cost: 468000
-  total_cost: 468571
+  runtime_cost: 317
+  byte_cost: 300000
+  total_cost: 300317
 - name: expected_type_reaches_the_instance
-  program: (a (q 5 (a 2 (q (f . 7)))) (c (q 4 6 4) ()))
-  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 5) (q . 7)))) 1)) (c (c (q 4 (r 2) (f 2)) (q 2 2 (c 3 ()))) ()))
+  program: (f (a (q 4 6 4) (q (f . 7))))
+  debug_program: (a (q 2 (q 5 2) (c (a 6 (c 4 (c (q . 5) (q . 7)))) 1)) (c (c (q 4 6 4) (q 2 2 (c 3 ()))) ()))
   output: "7"
-  runtime_cost: 571
-  byte_cost: 468000
-  total_cost: 468571
+  runtime_cost: 317
+  byte_cost: 300000
+  total_cost: 300317
 - name: element_of_an_argument
-  program: (a (q 6 (a (q 2 6 (c (a 4 (q (q))) ())) (c (c 2 (q . 2)) 1))) (c (q 4 6 4) ()))
-  debug_program: (a (q 2 (q 6 2) (c (a 6 (c (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (q . 1) ()))) 1)) (c (c (q 4 (r 2) (f 2)) (q 2 (r 2) (c (a (f 2) (c 3 ())) ()))) ()))
+  program: (r (a (q 2 6 (c (a 4 (q (q))) ())) (c (c (q 4 6 4) (q . 2)) 1)))
+  debug_program: (a (q 2 (q 6 2) (c (a 6 (c (c 4 (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))) (c (q . 1) ()))) 1)) (c (c (q 4 6 4) (q 2 (r 2) (c (a (f 2) (c 3 ())) ()))) ()))
   output: "1"
-  runtime_cost: 1186
-  byte_cost: 876000
-  total_cost: 877186
+  runtime_cost: 932
+  byte_cost: 708000
+  total_cost: 708932
 - name: recursive_call
-  program: (a (q 6 (a 2 (q (q)))) (c (q 4 6 4) ()))
-  debug_program: (a (q 2 (q 6 2) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (c (q . 1) ()) (q . 1)))) 1)) (c (c (q 4 (r 2) (f 2)) (q 2 (i (> 7 ()) (q 2 2 (c 5 ())) (q 2 2 (c 5 ()))) 1)) ()))
+  program: (r (a (q 2 2 (q (q))) (c (q 4 6 4) 1)))
+  debug_program: (a (q 2 (q 6 2) (c (a 6 (c 4 (c (c (q . 1) ()) (q . 1)))) 1)) (c (c (q 4 6 4) (q 2 (i (> 7 ()) (q 2 2 (c 5 ())) (q 2 2 (c 5 ()))) 1)) ()))
   output: "1"
   runtime_cost: 571
   byte_cost: 468000
   total_cost: 468571
 - name: bounded_by_an_instantiated_generic
   program: (f (a (q 1 1 . 2) (c (q . 2) ())))
-  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q 4 (q . 1) (q . 2)) (q 2 1 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))) ()))
+  debug_program: (a (q 2 (q 5 2) (c (a 6 4) 1)) (c (c (q 1 1 . 2) (q 2 1 (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) ()))) ()))
   output: "1"
   runtime_cost: 277
   byte_cost: 300000
   total_cost: 300277
 - name: bounded_by_a_rigid_generic
-  program: (a (q 5 (a 2 (q 1))) (c (q 4 2 2) ()))
-  debug_program: (a (q 2 (q 5 2) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c (q 4 2 2) (q 2 1 (c (q . 1) ()))) ()))
+  program: (f (a (q 4 2 2) (q 1)))
+  debug_program: (a (q 2 (q 5 2) (c (a 6 4) 1)) (c (c (q 4 2 2) (q 2 1 (c (q . 1) ()))) ()))
   output: "1"
-  runtime_cost: 563
-  byte_cost: 444000
-  total_cost: 444563
+  runtime_cost: 309
+  byte_cost: 276000
+  total_cost: 276309
 - name: bounded_from_above_by_a_rigid_generic
   program: ()
   debug_program: ()
@@ -70,19 +70,19 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 - name: contravariant_instance
-  program: (i () (a () (q 1)) ())
-  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 (c (q . 1) ()))) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c () ())))) 1)) (c (c (q 4 (q . 2) (c () (c (q . 1) ()))) (q 2 1 ())) ()))
+  program: (i () (a (a () ()) (q 1)) ())
+  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 (c (q . 1) ()))) (c (a 6 4) 1)) (c (c () (q 2 1 ())) ()))
   output: ()
-  runtime_cost: 321
-  byte_cost: 228000
-  total_cost: 228321
+  runtime_cost: 500
+  byte_cost: 300000
+  total_cost: 300500
 - name: contravariant_instance_unannotated
-  program: (i () (a () (q 1)) ())
-  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 (c (q . 1) ()))) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c () ())))) 1)) (c (c (q 4 (q . 2) (c () (c (q . 1) ()))) (q 2 1 ())) ()))
+  program: (i () (a (a () ()) (q 1)) ())
+  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 (c (q . 1) ()))) (c (a 6 4) 1)) (c (c () (q 2 1 ())) ()))
   output: ()
-  runtime_cost: 321
-  byte_cost: 228000
-  total_cost: 228321
+  runtime_cost: 500
+  byte_cost: 300000
+  total_cost: 300500
 - name: contravariant_instance_next_to_a_value
   program: ()
   debug_program: ()
@@ -92,7 +92,7 @@ tests:
   total_cost: 12044
 - name: contravariant_instance_in_an_upper_candidate
   program: (i () (a () (q 1)) ())
-  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 (c (q . 1) ()))) (c (a 6 (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ())))) 1)) (c (c () (q 4 (q . 2) (c () (c (q . 1) ())))) ()))
+  debug_program: (a (q 2 (q 3 (q . 1) () (a 2 (c (q . 1) ()))) (c (a 6 4) 1)) (c (c () (q 4 (q . 2) (c () (c (q . 1) ())))) ()))
   output: ()
   runtime_cost: 321
   byte_cost: 228000
@@ -105,15 +105,15 @@ tests:
   byte_cost: 12000
   total_cost: 12044
 - name: instances_bounded_by_each_other
-  program: (a (q 2 (q 2 (i 2 (q . 4) ()) 1) (c (a 2 (q (f . 5))) 1)) (c (q 4 6 4) ()))
-  debug_program: (a (q 2 (q 2 (i (not 2) () (q 5 2)) 1) (c (a 14 (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 4) (c () ()))))) 1)) (c (c (q 4 (q . 5) (q . 5)) (c (q 4 (r 2) (f 2)) (q 2 2 (c (a 3 ()) ())))) ()))
+  program: (a (q 2 (i 2 (q . 4) ()) 1) (c (a (q 4 6 4) (c (a (q 1 5 . 5) ()) ())) 1))
+  debug_program: (a (q 2 (q 2 (i (not 2) () (q 5 2)) 1) (c (a 14 (c 10 4)) 1)) (c (c (q 1 5 . 5) (c (q 4 6 4) (q 2 2 (c (a 3 ()) ())))) ()))
   output: "5"
-  runtime_cost: 1079
-  byte_cost: 780000
-  total_cost: 781079
+  runtime_cost: 1075
+  byte_cost: 756000
+  total_cost: 757075
 - name: kind_instantiation_next_to_a_function
   program: (i () (a (q 2 (q 2 2 (c 5 ())) (c (q 4 (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) 1)) (q 98)) ())
-  debug_program: (a (q 2 (q 3 () (a 2 (c (q . 98) ())) ()) (c (a 14 (a 10 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 1 . 97)) (c (q . 1) ())))) (c (q . 1) ())))))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))))) ()))
+  debug_program: (a (q 2 (q 3 () (a 2 (c (q . 98) ())) ()) (c (a 14 (a 10 (c 4 (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 1 . 97)) (c (q . 1) ())))) (c (q . 1) ())))))) 1)) (c (c (q 4 (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (c (q . 2) (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 1) (c (q . 1) ()))) ()))))) ()))
   output: ()
   runtime_cost: 1263
   byte_cost: 1188000
@@ -134,7 +134,7 @@ tests:
   total_cost: 12044
 - name: polarity_instantiation_next_to_a_function
   program: (f (a (a (q 4 (q . 2) (c (q 1 2 2 (c 5 ())) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (c (q 4 2 (q . 5)) ())) (q 1)))
-  debug_program: (a (q 2 (q 5 (a 2 (c (q . 1) ()))) (c (a 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 4 2 (q . 5))) (c (q . 1) ())))) (c () ()))))) 1)) (c (c (q 4 (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 2) (c (q . 1) ()))) ()))) (q 2 2 (c (a 3 ()) ()))) ()))
+  debug_program: (a (q 2 (q 5 (a 2 (c (q . 1) ()))) (c (a 6 (c 4 (c (q . 2) (c (c (q . 1) (q 4 (q . 2) (c (c (q . 1) (q 4 2 (q . 5))) (c (q . 1) ())))) (c () ()))))) 1)) (c (c (q 4 (q . 2) (c (q 1 2 2 (c 5 ())) (c (c (q . 4) (c (c (q . 1) 2) (q 1))) ()))) (q 2 2 (c (a 3 ()) ()))) ()))
   output: "1"
   runtime_cost: 1497
   byte_cost: 1212000

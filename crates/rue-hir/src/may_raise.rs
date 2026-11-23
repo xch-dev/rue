@@ -116,8 +116,9 @@ impl<'a> Visitor<'a> {
             | Hir::InfinityG2
             // Constant expressions are evaluated at compile time
             | Hir::Const(_)
-            // Lambda bodies are only evaluated when called
-            | Hir::Lambda(_) => false,
+            // Lambda bodies are only evaluated when called, and a program is a constant
+            | Hir::Lambda(_)
+            | Hir::Program(_) => false,
             // Referenced values are evaluated where they are defined, unless they are inline
             Hir::Reference(symbol) => {
                 self.queue_inline_value(symbol);

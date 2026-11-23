@@ -1786,6 +1786,7 @@ dependencies = [
 name = "rue-compiler"
 version = "0.13.0"
 dependencies = [
+ "clvm-utils",
  "clvmr",
  "expect-test",
  "hex",
@@ -1838,6 +1839,7 @@ dependencies = [
 name = "rue-hir"
 version = "0.13.0"
 dependencies = [
+ "clvmr",
  "derive_more",
  "expect-test",
  "hex",
