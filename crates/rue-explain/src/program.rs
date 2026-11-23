@@ -10,6 +10,16 @@ use sha2::{Digest, Sha256};
 
 use crate::ExplainError;
 
+/// The atoms of the operators that are decompiled specially.
+pub(crate) const QUOTE: &[u8] = &[1];
+pub(crate) const APPLY: &[u8] = &[2];
+pub(crate) const IF: &[u8] = &[3];
+pub(crate) const CONS: &[u8] = &[4];
+pub(crate) const RAISE: &[u8] = &[8];
+
+/// The atom of code that reads the whole environment.
+pub(crate) const WHOLE_ENV: &[u8] = &[1];
+
 /// The index of a node in [`Program::nodes`]. Each position in the program is a node of its own,
 /// even if it has the same value as another.
 pub(crate) type NodeId = usize;

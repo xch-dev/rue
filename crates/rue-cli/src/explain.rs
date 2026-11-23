@@ -1,7 +1,10 @@
 //! `rue explain`, which shows a compiled program as source-annotated pseudocode (see
 //! `rue_explain`).
 
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -32,7 +35,7 @@ pub struct ExplainArgs {
     /// next to it (`foo.rue.hex` has `foo.rue.debug.clvm.bin`), if there is one. Without one,
     /// nothing is named
     #[clap(long, value_name = "PATH")]
-    debug_metadata: Option<String>,
+    debug_metadata: Option<PathBuf>,
 }
 
 pub fn explain(args: &ExplainArgs) -> Result<String> {
@@ -41,9 +44,8 @@ pub fn explain(args: &ExplainArgs) -> Result<String> {
             .with_context(|| format!("Couldn't read {}", args.program))?;
         let default_sidecar = debug_metadata_path(&args.program);
         let sidecar = args.debug_metadata.clone().or_else(|| {
-            Path::new(&default_sidecar)
-                .is_file()
-                .then_some(default_sidecar)
+            let default_sidecar = PathBuf::from(default_sidecar);
+            default_sidecar.is_file().then_some(default_sidecar)
         });
         (
             text.trim().to_string(),
@@ -63,7 +65,7 @@ pub fn explain(args: &ExplainArgs) -> Result<String> {
     };
 
     let sidecar = sidecar_path
-        .map(|path| fs::read(&path).with_context(|| format!("Couldn't read {path}")))
+        .map(|path| fs::read(&path).with_context(|| format!("Couldn't read {}", path.display())))
         .transpose()?;
 
     let explanation = Explanation::new(&program, sidecar.as_deref())?;

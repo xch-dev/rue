@@ -12,14 +12,14 @@
 use std::collections::HashMap;
 
 use clvmr::{
-    Allocator, NodePtr, SExp, cost::Cost, dialect::Dialect, error::EvalErr,
+    Allocator, NodePtr, SExp, cost::Cost, dialect::Dialect, error::EvalErr, reduction::Response,
     run_program::run_program,
 };
 use rue_clvm::operator_name;
 
 use crate::Explanation;
 use crate::ir::{Block, Expr, ExprKind, FunctionId, Root, Statement, Value};
-use crate::program::{NodeId, NodeKind, atom_path};
+use crate::program::{APPLY, NodeId, NodeKind, QUOTE, RAISE, atom_path};
 use crate::stack::grow_stack;
 
 /// What a step of evaluation costs, on top of the operators, so that a program that doesn't
@@ -77,7 +77,7 @@ impl Explanation {
     }
 
     /// Checks that running the decompiled program with the solution gives the same result as
-    /// running the program did (`expected`, with the cost limit): the same output, the same raised
+    /// running the program did (`expected`, with the same cost limit): the same output, the same raised
     /// value, or the same error. The decompiled program's cost isn't the program's, so it can use
     /// many times as much, and nothing is compared if the program itself ran out. The error
     /// describes both results.
@@ -85,7 +85,7 @@ impl Explanation {
         &self,
         allocator: &mut Allocator,
         dialect: &D,
-        expected: std::result::Result<NodePtr, &EvalErr>,
+        expected: &Response,
         solution: NodePtr,
         max_cost: Cost,
     ) -> std::result::Result<(), String> {
@@ -100,7 +100,7 @@ impl Explanation {
             max_cost.saturating_mul(COST_FACTOR),
         );
 
-        let expected = outcome(allocator, expected);
+        let expected = outcome(allocator, expected.as_ref().map(|output| output.1));
         let actual = outcome(
             allocator,
             match &actual {
@@ -213,7 +213,7 @@ impl<D: Dialect> Evaluator<'_, D> {
                     let condition = self.expr(frame, condition)?;
                     if self.is_nil(condition) {
                         let args = self.exprs(frame, raise)?;
-                        let op = self.allocator.new_atom(&[8])?;
+                        let op = self.allocator.new_atom(RAISE)?;
                         self.op(op, &args)?;
                         unreachable!("raise fails");
                     }
@@ -323,7 +323,7 @@ impl<D: Dialect> Evaluator<'_, D> {
 
     /// Applies the operator to the values, by running it in CLVM with each of them quoted.
     fn op(&mut self, op: NodePtr, args: &[NodePtr]) -> Result<NodePtr> {
-        let quote = self.allocator.new_atom(&[1])?;
+        let quote = self.allocator.new_atom(QUOTE)?;
         let mut list = NodePtr::NIL;
         for &arg in args.iter().rev() {
             let quoted = self.allocator.new_pair(quote, arg)?;
@@ -374,8 +374,8 @@ impl<D: Dialect> Evaluator<'_, D> {
 
         let (known, quote, apply) = (
             operator_name(op_atom.as_ref()).is_some(),
-            op_atom.as_ref() == [1],
-            op_atom.as_ref() == [2],
+            op_atom.as_ref() == QUOTE,
+            op_atom.as_ref() == APPLY,
         );
 
         if !known {

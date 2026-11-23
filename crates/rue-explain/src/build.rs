@@ -20,7 +20,9 @@ use crate::ir::{
     Block, Expr, ExprKind, Function, FunctionId, FunctionKind, KnownSlot, Root, Statement, Value,
     VarId,
 };
-use crate::program::{Layout, NodeId, NodeKind, Path, Program, atom_path};
+use crate::program::{
+    APPLY, CONS, IF, Layout, NodeId, NodeKind, Path, Program, QUOTE, RAISE, WHOLE_ENV, atom_path,
+};
 use crate::stack::{Deep, grow_stack};
 
 /// How many times the analysis is repeated before it gives up on finding hidden values.
@@ -30,12 +32,6 @@ const MAX_PASSES: usize = 32;
 /// which keeps a structure that's built from copies of itself from being shown (and walked) in
 /// full, which would take exponential time.
 const MAX_STRUCTURE: usize = 64;
-
-const QUOTE: &[u8] = &[1];
-const APPLY: &[u8] = &[2];
-const IF: &[u8] = &[3];
-const CONS: &[u8] = &[4];
-const RAISE: &[u8] = &[8];
 
 /// What's known about a hidden part of a function's environment, from every call to it.
 #[derive(Debug, Clone, Copy)]
@@ -79,17 +75,8 @@ pub(crate) struct Built {
 pub(crate) fn build(program: &Program) -> Built {
     let (infos, function_of, entry) = described_functions(program);
 
-    let empty = |fill: Fact| {
-        infos
-            .iter()
-            .map(|info| vec![fill; info.hidden().len()])
-            .collect::<Vec<_>>()
-    };
-    let mut facts = empty(Fact::Unset);
-    let mut reads: Vec<Vec<bool>> = infos
-        .iter()
-        .map(|info| vec![false; info.hidden().len()])
-        .collect();
+    let mut facts = per_hidden(&infos, Fact::Unset);
+    let mut reads = per_hidden(&infos, false);
 
     for _ in 0..MAX_PASSES {
         let mut pass = Pass::run(program, &infos, &function_of, &facts, &reads, entry);
@@ -117,12 +104,17 @@ pub(crate) fn build(program: &Program) -> Built {
     }
 
     // Without hidden values, nothing depends on how functions are called
-    let facts = empty(Fact::Unknown);
-    let reads = infos
-        .iter()
-        .map(|info| vec![true; info.hidden().len()])
-        .collect::<Vec<_>>();
+    let facts = per_hidden(&infos, Fact::Unknown);
+    let reads = per_hidden(&infos, true);
     Pass::run(program, &infos, &function_of, &facts, &reads, entry).finish(entry, true)
+}
+
+/// A value for each hidden part of each function's environment.
+fn per_hidden<T: Clone>(infos: &[FunctionInfo], value: T) -> Vec<Vec<T>> {
+    infos
+        .iter()
+        .map(|info| vec![value.clone(); info.hidden().len()])
+        .collect()
 }
 
 fn same_facts(program: &Program, a: &[Vec<Fact>], b: &[Vec<Fact>]) -> bool {
@@ -258,8 +250,8 @@ struct Pass<'a> {
     reads: Vec<Vec<bool>>,
     covered: Vec<bool>,
     exposed: HashSet<NodeId>,
-    /// The variables bound to structures that have been used as data as a whole.
-    touched: HashSet<(FunctionId, VarId)>,
+    /// The parts of variables bound to structures that have been used as data.
+    touched: HashSet<(FunctionId, VarId, Path)>,
     bodies: Vec<Function>,
 }
 
@@ -450,9 +442,12 @@ impl<'a> Pass<'a> {
                     }
                 }
             }
-            // A structure's parts are used where the variable is, and all of it at most once
+            // A structure's parts are used where the variable is, each at most once, since using
+            // one again changes nothing
             Value::Ref(Root::Var(var), path) => {
-                if path.is_empty() && !self.touched.insert((frame.id, *var)) {
+                if !frame.structures.contains_key(var)
+                    || !self.touched.insert((frame.id, *var, path.clone()))
+                {
                     return;
                 }
                 if let Some(part) = frame
@@ -664,7 +659,7 @@ impl<'a> Pass<'a> {
             self.cover_list(args);
 
             // The environment is evaluated before the condition
-            let env = if program.atom(env) == Some(&[1]) {
+            let env = if program.atom(env) == Some(WHOLE_ENV) {
                 self.cover(env);
                 scope.env.clone()
             } else {

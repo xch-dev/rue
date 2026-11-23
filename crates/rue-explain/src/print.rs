@@ -10,7 +10,7 @@ use crate::Explanation;
 use crate::ir::{
     Block, Expr, ExprKind, Function, FunctionId, FunctionKind, Root, Statement, Value,
 };
-use crate::program::{NodeId, Path, path_number};
+use crate::program::{APPLY, CONS, NodeId, Path, QUOTE, WHOLE_ENV, path_number};
 use crate::stack::grow_stack;
 
 /// How many nodes a constant can have to be shown as a Rue value rather than as CLVM.
@@ -456,26 +456,28 @@ impl Printer<'_> {
         }
     }
 
+    /// A call, with an argument for each named part of the callee's environment and each hidden
+    /// part whose value isn't known or unused, or with the whole environment if it isn't laid out
+    /// that way.
     fn call(&self, id: FunctionId, env: &Value) -> String {
         let callee = &self.explanation.functions[id];
+        match self.call_args(callee, env) {
+            Some(args) => format!("{}({})", callee.name, args.join(", ")),
+            None => format!("{}(env: {})", callee.name, self.value(env)),
+        }
+    }
 
-        let Some(layout) = &callee.layout else {
-            return format!("{}(env: {})", callee.name, self.value(env));
-        };
-
+    fn call_args(&self, callee: &Function, env: &Value) -> Option<Vec<String>> {
+        let layout = callee.layout.as_ref()?;
         let mut args = Vec::new();
 
         for slot in &layout.named {
-            let Some(value) = self.resolve(env, &slot.path) else {
-                return format!("{}(env: {})", callee.name, self.value(env));
-            };
+            let value = self.resolve(env, &slot.path)?;
             args.push(format!("{}: {}", slot.name, self.value(&value)));
         }
 
         for (index, path) in layout.hidden.iter().enumerate() {
-            let Some(value) = self.resolve(env, path) else {
-                return format!("{}(env: {})", callee.name, self.value(env));
-            };
+            let value = self.resolve(env, path)?;
 
             let known = callee.known.iter().any(|known| {
                 &known.path == path
@@ -491,7 +493,7 @@ impl Printer<'_> {
             args.push(format!("env@{}: {}", path_number(path), self.value(&value)));
         }
 
-        format!("{}({})", callee.name, args.join(", "))
+        Some(args)
     }
 
     /// The part of a value at a path, with the constant for a part of the environment that's
@@ -522,6 +524,11 @@ impl Printer<'_> {
         while let Value::Cons(first, rest, _) = value {
             items.push(self.value(first));
             value = rest;
+
+            // A closure at the end of a list is shown as one
+            if let Some(closure) = self.closure(value) {
+                return (items, Some(closure));
+            }
         }
 
         let tail = match value {
@@ -608,13 +615,13 @@ impl Printer<'_> {
     /// arguments).
     fn closure(&self, value: &Value) -> Option<String> {
         let (apply, rest) = self.parts(Cow::Borrowed(value))?;
-        if !self.is_atom(&apply, &[2]) {
+        if !self.is_atom(&apply, APPLY) {
             return None;
         }
 
         let (quoted, rest) = self.parts(rest)?;
         let (quote, function) = self.parts(quoted)?;
-        if !self.is_atom(&quote, &[1]) {
+        if !self.is_atom(&quote, QUOTE) {
             return None;
         }
         let Value::Const(function) = *function else {
@@ -631,7 +638,7 @@ impl Printer<'_> {
         let mut path = Vec::new();
 
         let takes_arguments = loop {
-            if self.is_atom(&env, &[1]) {
+            if self.is_atom(&env, WHOLE_ENV) {
                 break true;
             }
             if self.is_nil(&env) {
@@ -639,7 +646,7 @@ impl Printer<'_> {
             }
 
             let (cons, rest) = self.parts(env)?;
-            if !self.is_atom(&cons, &[4]) {
+            if !self.is_atom(&cons, CONS) {
                 return None;
             }
             let (capture, rest) = self.parts(rest)?;
@@ -654,7 +661,7 @@ impl Printer<'_> {
                 capture
             } else {
                 let (quote, value) = self.parts(capture)?;
-                if !self.is_atom(&quote, &[1]) || self.is_nil(&value) {
+                if !self.is_atom(&quote, QUOTE) || self.is_nil(&value) {
                     return None;
                 }
                 value

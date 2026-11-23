@@ -29,11 +29,10 @@ fn root() -> PathBuf {
 
 /// The programs that are snapshotted, relative to the root of the repository.
 fn cases() -> Vec<PathBuf> {
-    let mut cases = fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/explain"))
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.extension().is_some_and(|extension| extension == "rue"))
-        .collect::<Vec<_>>();
+    let mut cases = rue_files(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/explain"));
+    cases.extend(rue_files(
+        &root().join("crates/rue-compiler/tests/debug_metadata"),
+    ));
 
     for case in [
         "tests/chia_puzzles/p2_delegated_puzzle_or_hidden_puzzle.rue",
@@ -44,17 +43,16 @@ fn cases() -> Vec<PathBuf> {
         cases.push(root().join(case));
     }
 
-    for dir in ["crates/rue-compiler/tests/debug_metadata"] {
-        for entry in fs::read_dir(root().join(dir)).unwrap() {
-            let path = entry.unwrap().path();
-            if path.extension().is_some_and(|extension| extension == "rue") {
-                cases.push(path);
-            }
-        }
-    }
-
     cases.sort();
     cases
+}
+
+fn rue_files(dir: &Path) -> Vec<PathBuf> {
+    fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "rue"))
+        .collect()
 }
 
 /// Compiles `main` with its sidecar, and explains it.
@@ -125,13 +123,7 @@ fn check_solutions(
     {
         let env = assemble(allocator, solution).unwrap();
         let expected = run_program(allocator, &dialect, program, env, MAX_COST);
-        if let Err(error) = explanation.check(
-            allocator,
-            &dialect,
-            expected.as_ref().map(|output| output.1),
-            env,
-            MAX_COST,
-        ) {
+        if let Err(error) = explanation.check(allocator, &dialect, &expected, env, MAX_COST) {
             panic!("{} with {solution}: {error}", path.display());
         }
         succeeded += usize::from(expected.is_ok());

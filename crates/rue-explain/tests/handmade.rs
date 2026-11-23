@@ -4,7 +4,10 @@
 
 use std::collections::HashMap;
 
-use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program, serde::node_to_bytes};
+use clvmr::{
+    Allocator, ChiaDialect, NodePtr, SExp, error::EvalErr, reduction::Reduction, run_program,
+    serde::node_to_bytes,
+};
 use expect_test::{Expect, expect};
 use rue_clvm::{assemble, disassemble_value};
 use rue_compiler::debug_metadata::{
@@ -81,22 +84,36 @@ fn check(
     let explanation = Explanation::new(&bytes, Some(&metadata)).unwrap();
     assert_eq!(explanation.uncovered(), 0);
 
-    let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
     for solution in solutions {
         let env = assemble(&mut allocator, solution).unwrap();
-        let expected = run_program(&mut allocator, &dialect, ptr, env, MAX_COST);
-        if let Err(error) = explanation.check(
-            &mut allocator,
-            &dialect,
-            expected.as_ref().map(|output| output.1),
-            env,
-            MAX_COST,
-        ) {
+        if let Err(error) = verify(&mut allocator, &explanation, ptr, env) {
             panic!("{solution}: {error}\n{}", explanation.render());
         }
     }
 
     expected.assert_eq(&explanation.render());
+}
+
+/// Checks that the explanation gives the same result as the program with the solution, with the
+/// usual cost limit, and with only as much as the program needs (which the explanation has a
+/// multiple of).
+fn verify(
+    allocator: &mut Allocator,
+    explanation: &Explanation,
+    program: NodePtr,
+    env: NodePtr,
+) -> Result<(), String> {
+    let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
+    let expected = run_program(allocator, &dialect, program, env, MAX_COST);
+    explanation.check(allocator, &dialect, &expected, env, MAX_COST)?;
+
+    if let Ok(output) = &expected {
+        let cost = output.0.max(1);
+        let expected = run_program(allocator, &dialect, program, env, cost);
+        explanation.check(allocator, &dialect, &expected, env, cost)?;
+    }
+
+    Ok(())
 }
 
 /// A function that adds its hidden first value to its parameter.
@@ -286,23 +303,16 @@ fn deeply_nested_programs() {
         assert_eq!(explanation.uncovered(), 0);
         assert!(!explanation.render().is_empty());
 
-        let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
         let env =
             clvmr::serde::node_from_bytes(&mut allocator, &hex::decode(solution).unwrap()).unwrap();
-        let expected = run_program(&mut allocator, &dialect, ptr, env, MAX_COST);
         if let Some(output) = output {
-            let value = expected.as_ref().unwrap().1;
+            let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
+            let value = run_program(&mut allocator, &dialect, ptr, env, MAX_COST)
+                .unwrap()
+                .1;
             assert_eq!(disassemble_value(&allocator, value), output);
         }
-        explanation
-            .check(
-                &mut allocator,
-                &dialect,
-                expected.as_ref().map(|output| output.1),
-                env,
-                MAX_COST,
-            )
-            .unwrap();
+        verify(&mut allocator, &explanation, ptr, env).unwrap();
 
         if nested_too_deeply {
             let rendered = explanation.render();
@@ -494,35 +504,339 @@ fn environment_of_an_if_is_evaluated_before_its_condition() {
     );
 }
 
-#[test]
-fn structures_built_from_copies_of_themselves() {
-    // `(a (q . (a (q . ... 2) (c (c 2 2) 1))) (c (c 2 2) 1))`, which doubles the first value of
-    // the environment 40 times, is shown with a variable for each large part, rather than in full
-    let mut code = "(l 2)".to_string();
-    for _ in 0..40 {
-        code = format!("(a (q . {code}) (c (c 2 2) 1))");
-    }
-
+/// Explains the program without a sidecar, checks it with the solution, and returns how long its
+/// pseudocode is.
+fn rendered_length(code: &str, solution: &str) -> usize {
     let mut allocator = Allocator::new();
-    let ptr = assemble(&mut allocator, &code).unwrap();
+    let ptr = assemble(&mut allocator, code).unwrap();
     let bytes = node_to_bytes(&allocator, ptr).unwrap();
     let explanation = Explanation::new(&bytes, None).unwrap();
     assert_eq!(explanation.uncovered(), 0);
-    let rendered = explanation.render();
-    assert!(rendered.len() < 50_000, "{}", rendered.len());
+    let env = assemble(&mut allocator, solution).unwrap();
+    verify(&mut allocator, &explanation, ptr, env).unwrap();
+    explanation.render().len()
+}
 
-    let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
-    let env = assemble(&mut allocator, "(1)").unwrap();
-    let expected = run_program(&mut allocator, &dialect, ptr, env, MAX_COST);
-    explanation
-        .check(
-            &mut allocator,
-            &dialect,
-            expected.as_ref().map(|output| output.1),
-            env,
-            MAX_COST,
-        )
-        .unwrap();
+#[test]
+fn structures_built_from_copies_of_themselves() {
+    // `(a (q . (a (q . ... (l 2)) (c (c 2 2) 1))) (c (c 2 2) 1))`, which doubles the first value of
+    // the environment, is shown with a variable for each large part, rather than in full. A few
+    // doublings would be large already, and many would take exponential time
+    let doublings = |count: usize| {
+        let mut code = "(l 2)".to_string();
+        for _ in 0..count {
+            code = format!("(a (q . {code}) (c (c 2 2) 1))");
+        }
+        code
+    };
+    assert!(rendered_length(&doublings(16), "(1)") < 10_000);
+    assert!(rendered_length(&doublings(40), "(1)") < 50_000);
+
+    // A structure of parts of the variable before it, each of which is a large structure, many
+    // times over
+    let tree = |leaf: &str| {
+        let mut tree = leaf.to_string();
+        for _ in 0..6 {
+            tree = format!("(c {tree} {tree})");
+        }
+        format!("(c {tree} {leaf})")
+    };
+    let mut code = "(l 2)".to_string();
+    for _ in 0..20 {
+        code = format!("(a (q . {code}) (c 2 1))");
+        code = format!("(a (q . {code}) (c {} 1))", tree("4"));
+    }
+    code = format!("(a (q . {code}) (c 2 1))");
+    code = format!("(a (q . {code}) (c {} 1))", tree("2"));
+    assert!(rendered_length(&code, "(1)") < 200_000);
+}
+
+#[test]
+fn functions_in_bound_structures() {
+    // A structure that's too large to show where it's used, with `add` at its start
+    let mut large = "()".to_string();
+    for _ in 0..70 {
+        large = format!("(c (q . 1) {large})");
+    }
+    let large = format!("(c (q . (+ 2 5)) {large})");
+
+    // `add` is called through the variable that the structure is bound to, which sees through to
+    // it, and the structure is returned, which lets `add` escape
+    check(
+        &format!("(a (q . (c (a 4 (c (q . 10) (c 3 ()))) 2)) (c {large} 1))"),
+        add_hidden,
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                let v1 = [
+                    add,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                ]
+                (add(x: solution, env@2: 10), v1)
+            }
+
+            fn add(x) {
+                env@2 + x
+            }
+        "#]],
+    );
+
+    // The same, with the structure read through another variable first
+    check(
+        &format!("(a (q . (a (q . (c (a 4 (c (q . 10) (c 3 ()))) 2)) (c 2 1))) (c {large} 1))"),
+        add_hidden,
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                let v1 = (
+                    [
+                        add,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                    ],
+                    solution,
+                )
+                let v2 = [
+                    add,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                ]
+                (add(x: v1, env@2: 10), v2)
+            }
+
+            fn add(x) {
+                env@2 + x
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn closures_with_a_quoted_nil_capture_are_lists() {
+    // `(q)` and `()` capture nil in the same way, but aren't the same value, so only the second is
+    // shown as a closure
+    let closure = |capture: &str| {
+        format!("(c (q . 2) (c (q 1 + 2 5) (c (c (q . 4) (c {capture} (c (q . 1) ()))) ())))")
+    };
+    check(
+        &format!("(c {} {})", closure("(q 1)"), closure("()")),
+        add_hidden,
+        &["()"],
+        &expect![[r#"
+            program(solution) {
+                ([2, clvm!(q . (q 16 2 5)), [4, [1], 1]], add{env@2: nil})
+            }
+
+            fn add(x) {
+                env@2 + x
+            }
+        "#]],
+    );
 }
 
 #[test]
@@ -546,13 +860,7 @@ fn check_reports_differences() {
     for (program, _) in &results {
         let explanation = explain(&mut allocator, program);
         for (other, result) in &results {
-            let checked = explanation.check(
-                &mut allocator,
-                &dialect,
-                result.as_ref().map(|output| output.1),
-                env,
-                MAX_COST,
-            );
+            let checked = explanation.check(&mut allocator, &dialect, result, env, MAX_COST);
             assert_eq!(
                 checked.is_ok(),
                 program == other,
@@ -561,16 +869,27 @@ fn check_reports_differences() {
         }
     }
 
-    // Running out of cost isn't the same as giving the result
+    // Running out of cost isn't the same as giving the result, but nothing is compared if the
+    // program itself ran out
     let explanation = explain(
         &mut allocator,
         "(a (q 2 2 (c 2 ())) (c (q 2 2 (c 2 ())) ()))",
     );
     let one = allocator.one();
+    let error = explanation
+        .check(&mut allocator, &dialect, &Ok(Reduction(0, one)), env, 1_000)
+        .unwrap_err();
+    assert!(error.contains("ran out of cost"), "{error}");
     assert!(
         explanation
-            .check(&mut allocator, &dialect, Ok(one), env, 1_000)
-            .is_err()
+            .check(
+                &mut allocator,
+                &dialect,
+                &Err(EvalErr::CostExceeded),
+                env,
+                1_000
+            )
+            .is_ok()
     );
 }
 
