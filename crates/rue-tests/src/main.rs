@@ -20,7 +20,7 @@ use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::normalize_path;
 use rue_compiler::{CompiledTest, Compiler, Error, FileTree};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, SourceKind};
-use rue_explain::{EvalFailure, Explanation};
+use rue_explain::Explanation;
 use rue_formatter::{FormatError, FormatOptions, format_source};
 use rue_lir::{COST_PER_BYTE, ClvmTarget, DebugDialect};
 use rue_options::CompilerOptions;
@@ -689,7 +689,7 @@ fn handle_test_file(
         &mut file.main,
         main,
         debug_main,
-        &main_sidecars,
+        [main_sidecars[0].as_deref(), main_sidecars[1].as_deref()],
     )?;
 
     file.puzzle_hashes = BTreeMap::new();
@@ -837,9 +837,9 @@ fn handle_tests(
             test_case,
             Some(test.ptr),
             Some(debug_test.ptr),
-            &[
-                Some(sidecars[0][index].clone()),
-                Some(sidecars[1][index].clone()),
+            [
+                Some(sidecars[0][index].as_slice()),
+                Some(sidecars[1][index].as_slice()),
             ],
         )?;
     }
@@ -867,16 +867,14 @@ fn test_sidecars(
         .collect()
 }
 
-/// Checks that the program's explanation (see `rue_explain`) means what the program does: running
-/// it with the solution gives the same output, or fails if the program does. Running out of cost
-/// isn't compared, since the explanation's cost isn't the program's.
+/// Checks that the program's explanation (see `rue_explain`) shows every node of the program and
+/// means what the program does: running it with the solution gives the same result.
 fn check_explanation<D: clvmr::dialect::Dialect>(
     allocator: &mut Allocator,
     dialect: &D,
     program: NodePtr,
     sidecar: &[u8],
     env: NodePtr,
-    expected: &Result<clvmr::reduction::Reduction, EvalErr>,
 ) -> Result<()> {
     let explanation = Explanation::new(&node_to_bytes(allocator, program)?, Some(sidecar))?;
 
@@ -887,57 +885,15 @@ fn check_explanation<D: clvmr::dialect::Dialect>(
         disassemble_program(allocator, program),
     );
 
-    let actual = explanation.evaluate(allocator, dialect, env, 100_000_000);
-
-    // Running out of cost isn't compared, since the explanation's cost isn't the program's
-    let matches = match (expected, &actual) {
-        (Err(EvalErr::CostExceeded), _) | (_, Err(EvalFailure::OutOfCost)) => true,
-        (Ok(expected), Ok(actual)) => {
-            node_to_bytes(allocator, expected.1)? == node_to_bytes(allocator, *actual)?
-        }
-        (Err(EvalErr::Raise(expected)), Err(EvalFailure::Clvm(EvalErr::Raise(actual)))) => {
-            node_to_bytes(allocator, *expected)? == node_to_bytes(allocator, *actual)?
-        }
-        (Err(expected), Err(EvalFailure::Clvm(actual))) => {
-            !matches!(expected, EvalErr::Raise(_))
-                && !matches!(actual, EvalErr::Raise(_))
-                && expected.to_string() == actual.to_string()
-        }
-        _ => false,
-    };
-
-    let describe = |allocator: &Allocator, result: Result<NodePtr, String>| match result {
-        Ok(value) => disassemble_value(allocator, value),
-        Err(error) => error,
-    };
-
-    anyhow::ensure!(
-        matches,
-        "the explanation of {} gives {} rather than {}:\n{}",
-        disassemble_program(allocator, program),
-        describe(
-            allocator,
-            actual.map_err(|error| match error {
-                EvalFailure::Clvm(EvalErr::Raise(value)) =>
-                    format!("clvm raise {}", disassemble_value(allocator, value)),
-                error => error.to_string(),
-            })
-        ),
-        describe(
-            allocator,
-            match expected {
-                Ok(output) => Ok(output.1),
-                Err(EvalErr::Raise(value)) => Err(format!(
-                    "clvm raise {}",
-                    disassemble_value(allocator, *value)
-                )),
-                Err(error) => Err(error.to_string()),
-            }
-        ),
-        explanation.render()
-    );
-
-    Ok(())
+    explanation
+        .check(allocator, dialect, program, env, 100_000_000)
+        .map_err(|error| {
+            anyhow::anyhow!(
+                "{error}, for {}:\n{}",
+                disassemble_program(allocator, program),
+                explanation.render()
+            )
+        })
 }
 
 /// Lines up the test cases of the old snapshot with the compiled tests, by name, so that a
@@ -1114,7 +1070,7 @@ fn handle_test_case(
     test_case: &mut TestCase,
     program: Option<NodePtr>,
     debug_program: Option<NodePtr>,
-    sidecars: &[Option<Vec<u8>>; 2],
+    sidecars: [Option<&[u8]>; 2],
 ) -> Result<()> {
     let Some(ptr) = program else {
         test_case.program = None;
@@ -1137,32 +1093,18 @@ fn handle_test_case(
     test_case.program = Some(disassemble_program(allocator, ptr));
     test_case.debug_program = Some(disassemble_program(allocator, debug_ptr));
 
-    let response = run_program(
-        allocator,
-        &ChiaDialect::new(target.flags()),
-        ptr,
-        env,
-        100_000_000,
-    );
+    let release_dialect = ChiaDialect::new(target.flags());
+    let response = run_program(allocator, &release_dialect, ptr, env, 100_000_000);
 
     let debug_dialect = DebugDialect::new(target.flags(), false);
     let debug_response = run_program(allocator, &debug_dialect, debug_ptr, env, 100_000_000);
     let print_messages = debug_dialect.log();
 
-    let release_dialect = ChiaDialect::new(target.flags());
-    if let Some(sidecar) = &sidecars[0] {
-        check_explanation(allocator, &release_dialect, ptr, sidecar, env, &response)?;
+    if let Some(sidecar) = sidecars[0] {
+        check_explanation(allocator, &release_dialect, ptr, sidecar, env)?;
     }
-    if let Some(sidecar) = &sidecars[1] {
-        let dialect = DebugDialect::new(target.flags(), false);
-        check_explanation(
-            allocator,
-            &dialect,
-            debug_ptr,
-            sidecar,
-            env,
-            &debug_response,
-        )?;
+    if let Some(sidecar) = sidecars[1] {
+        check_explanation(allocator, &debug_dialect, debug_ptr, sidecar, env)?;
     }
 
     let bytes = node_to_bytes(allocator, ptr)?.len();

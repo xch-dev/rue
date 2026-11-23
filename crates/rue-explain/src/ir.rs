@@ -4,8 +4,10 @@
 //! Operands are kept in the order `clvmr` evaluates them in, which is from the last to the first,
 //! and so are the `let`s that bind them.
 
+use std::borrow::Cow;
+
 use crate::program::{Layout, NodeId, Path, Program};
-use crate::stack::{Deep, grow_stack};
+use crate::stack::Deep;
 
 /// The index of a variable bound by a `let`, which is unique within its function.
 pub(crate) type VarId = usize;
@@ -27,48 +29,71 @@ pub(crate) enum Root {
 pub(crate) enum Value {
     /// A value in the program, which is the node itself (whose value is quoted, or nil).
     Const(NodeId),
+    /// Nil, as an atom of code that's all zero bytes (other than nil itself) evaluates to.
+    Nil,
     /// The part of the environment or a variable at the path.
     Ref(Root, Path),
-    /// A pair that's built from its parts, which are evaluated rest first.
-    Cons(Deep<Value>, Deep<Value>),
+    /// A pair that's built from its parts, which are evaluated rest first, and whether any part
+    /// of it is computed.
+    Cons(Deep<Value>, Deep<Value>, bool),
     /// A value that's computed.
     Expr(Deep<Expr>),
 }
 
 impl Value {
     pub(crate) fn cons(first: Value, rest: Value) -> Self {
-        Self::Cons(Deep::new(first), Deep::new(rest))
+        let computed = first.has_computed() || rest.has_computed();
+        Self::Cons(Deep::new(first), Deep::new(rest), computed)
     }
 
     /// The part of the value at the path, if it's known: `None` if the path goes into a computed
     /// part, or through an atom (which fails at runtime).
-    pub(crate) fn at(&self, program: &Program, path: &[bool]) -> Option<Value> {
+    pub(crate) fn at(&self, program: &Program, path: &[bool]) -> Option<Cow<'_, Value>> {
         let mut value = self;
 
         for (index, &step) in path.iter().enumerate() {
             match value {
-                Value::Cons(first, rest) => value = if step { rest } else { first },
+                Value::Cons(first, rest, _) => value = if step { rest } else { first },
                 Value::Const(node) => {
-                    return program.descend(*node, &path[index..]).map(Value::Const);
+                    return program
+                        .descend(*node, &path[index..])
+                        .map(|node| Cow::Owned(Value::Const(node)));
                 }
                 Value::Ref(root, prefix) => {
                     let mut full = prefix.clone();
                     full.extend_from_slice(&path[index..]);
-                    return Some(Value::Ref(*root, full));
+                    return Some(Cow::Owned(Value::Ref(*root, full)));
                 }
-                Value::Expr(_) => return None,
+                Value::Nil | Value::Expr(_) => return None,
             }
         }
 
-        Some(value.clone())
+        Some(Cow::Borrowed(value))
+    }
+
+    /// Like [`at`](Self::at), with the constant for a hidden part of the environment that's
+    /// known.
+    pub(crate) fn resolve(
+        &self,
+        program: &Program,
+        known: &[KnownSlot],
+        path: &[bool],
+    ) -> Option<Cow<'_, Value>> {
+        Some(match self.at(program, path)? {
+            Cow::Owned(Value::Ref(Root::Env, path)) => Cow::Owned(known_env(program, known, path)),
+            Cow::Borrowed(Value::Ref(Root::Env, path)) => {
+                Cow::Owned(known_env(program, known, path.clone()))
+            }
+            value => value,
+        })
     }
 
     /// Whether any part of the value is computed.
     pub(crate) fn has_computed(&self) -> bool {
         match self {
             Value::Expr(_) => true,
-            Value::Cons(first, rest) => grow_stack(|| first.has_computed() || rest.has_computed()),
-            Value::Const(_) | Value::Ref(..) => false,
+            Value::Cons(_, _, computed) => *computed,
+            Value::Const(_) | Value::Nil | Value::Ref(..) => false,
         }
     }
 }
@@ -123,11 +148,11 @@ pub(crate) struct Block {
 pub(crate) enum Statement {
     Let {
         var: VarId,
-        value: Expr,
+        value: Deep<Expr>,
     },
     /// Fails (with `raise` of the arguments) unless the condition isn't nil.
     Assert {
-        condition: Expr,
+        condition: Deep<Expr>,
         raise: Deep<Vec<Expr>>,
         node: NodeId,
     },
@@ -142,7 +167,7 @@ pub(crate) struct KnownSlot {
 
 /// The value at a path of a function's environment, which is the constant every call passes if
 /// it's in a hidden part that's known.
-pub(crate) fn known_env(program: &Program, known: &[KnownSlot], path: Path) -> Value {
+fn known_env(program: &Program, known: &[KnownSlot], path: Path) -> Value {
     for slot in known {
         if path.starts_with(&slot.path)
             && let Some(part) = program.descend(slot.value, &path[slot.path.len()..])

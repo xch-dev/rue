@@ -11,13 +11,17 @@ use std::{
 
 use clvmr::{Allocator, run_program, serde::node_to_bytes};
 use expect_test::expect_file;
-use rue_clvm::{assemble, disassemble_value};
+use rue_clvm::assemble;
 use rue_compiler::{Compiler, FileTree, clvm_target, normalize_path};
-use rue_explain::{EvalFailure, Explanation};
+use rue_explain::Explanation;
 use rue_lir::DebugDialect;
 use rue_options::CompilerOptions;
 
 const MAX_COST: u64 = 11_000_000_000;
+
+/// The programs that fail with every solution: by design, or (for `cat_v2`, whose paths
+/// rue-tests checks through its tests) because a solution that succeeds is hard to write.
+const ALWAYS_FAIL: &[&str] = &["recursion", "recursion_tabs", "const_main_value", "cat_v2"];
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -69,11 +73,25 @@ fn explain(path: &Path, options: CompilerOptions) -> (Allocator, clvmr::NodePtr,
     (allocator, program, explanation)
 }
 
-/// Solutions for the ports of Chia's puzzles, which can't have `// solution:` lines of their own.
-fn port_solutions(path: &Path) -> &'static [&'static str] {
-    let key = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    let _ = key;
+/// More solutions, for programs whose `// solution:` lines (which `rue-cli`'s trace tests share)
+/// all fail, and for the ports of Chia's puzzles, which can't have lines of their own.
+fn extra_solutions(path: &Path) -> &'static [&'static str] {
     match path.file_stem().and_then(|stem| stem.to_str()) {
+        Some("assert_message") => &["(20 10)"],
+        Some("closure_capture") => &["(100 (1 2 30 4))", "(100 ())"],
+        Some("closure_no_params") => &["(9)"],
+        Some("const_main_wrapper") => &["(5 2)"],
+        Some("duplicate_bodies" | "duplicate_subexpr") => &["(2 5)"],
+        Some("inline_fail") => &["(15)"],
+        Some("nested_assert") => &["(100)"],
+        Some("typed_param") => &[
+            "(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 100 \"hi\" 1)",
+        ],
+        Some("for_lists") => &["((1 2 3) (10 20 30))", "(() ())"],
+        Some("struct_param") => &[
+            "((0x1111111111111111111111111111111111111111111111111111111111111111 100) (3 . 5))",
+            "((0x1111111111111111111111111111111111111111111111111111111111111111 100) (5 . 3))",
+        ],
         // The delegated puzzle is run with its solution, and its output is signed by the key
         Some("p2_delegated_puzzle_or_hidden_puzzle") => &[
             "(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa () (q (51 0xcafe 1)) ())",
@@ -87,45 +105,34 @@ fn port_solutions(path: &Path) -> &'static [&'static str] {
     }
 }
 
-/// Checks that running the explanation gives the same result as running the program.
+/// Checks that running the explanation gives the same result as running the program, with each
+/// solution. Returns how many of them succeed.
 fn check_solutions(
     path: &Path,
     options: CompilerOptions,
     allocator: &mut Allocator,
     program: clvmr::NodePtr,
     explanation: &Explanation,
-) {
+) -> usize {
     let source = fs::read_to_string(path).unwrap();
     let dialect = DebugDialect::new(clvm_target(&options).flags(), false);
+    let mut succeeded = 0;
 
     for solution in source
         .lines()
         .filter_map(|line| line.trim().strip_prefix("// solution: "))
-        .chain(port_solutions(path).iter().copied())
+        .chain(extra_solutions(path).iter().copied())
     {
         let env = assemble(allocator, solution).unwrap();
-        let expected = run_program(allocator, &dialect, program, env, MAX_COST);
-        let actual = explanation.evaluate(allocator, &dialect, env, MAX_COST);
-
-        match (expected, actual) {
-            (Ok(expected), Ok(actual)) => assert_eq!(
-                disassemble_value(allocator, actual),
-                disassemble_value(allocator, expected.1),
-                "{} with {solution}",
-                path.display()
-            ),
-            (Err(expected), Err(EvalFailure::Clvm(actual))) => assert_eq!(
-                actual.to_string(),
-                expected.to_string(),
-                "{} with {solution}",
-                path.display()
-            ),
-            (expected, actual) => panic!(
-                "{} with {solution}: expected {expected:?}, got {actual:?}",
-                path.display()
-            ),
+        if let Err(error) = explanation.check(allocator, &dialect, program, env, MAX_COST) {
+            panic!("{} with {solution}: {error}", path.display());
+        }
+        if run_program(allocator, &dialect, program, env, MAX_COST).is_ok() {
+            succeeded += 1;
         }
     }
+
+    succeeded
 }
 
 #[test]
@@ -146,7 +153,20 @@ fn explanations() {
                 path.display()
             );
 
-            check_solutions(&path, options, &mut allocator, program, &explanation);
+            let succeeded = check_solutions(&path, options, &mut allocator, program, &explanation);
+
+            // Each program is checked on a path that doesn't fail, other than the ones that
+            // always do
+            if path
+                .file_stem()
+                .is_some_and(|stem| !ALWAYS_FAIL.iter().any(|name| stem == *name))
+            {
+                assert!(
+                    succeeded > 0,
+                    "{} ({build}) has no solution that succeeds",
+                    path.display()
+                );
+            }
 
             writeln!(snapshot, "===== {build} =====").unwrap();
             snapshot.push_str(&explanation.render());

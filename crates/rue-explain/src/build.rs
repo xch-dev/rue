@@ -11,6 +11,7 @@
 //! value to code that isn't decompiled, stored in data, or run with an environment that's only
 //! known at runtime) keeps its hidden values unknown.
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
@@ -18,7 +19,7 @@ use rue_clvm::operator_name;
 
 use crate::ir::{
     Block, Expr, ExprKind, Function, FunctionId, FunctionKind, KnownSlot, Root, Statement, Value,
-    VarId, known_env,
+    VarId,
 };
 use crate::program::{Layout, NodeId, NodeKind, Path, Program, atom_path};
 use crate::stack::{Deep, grow_stack};
@@ -87,9 +88,9 @@ pub(crate) fn build(program: &Program) -> Built {
         .collect();
 
     for _ in 0..MAX_PASSES {
-        let pass = Pass::run(program, &infos, &function_of, &facts, &reads, entry);
+        let mut pass = Pass::run(program, &infos, &function_of, &facts, &reads, entry);
 
-        let mut new_facts = pass.observed.clone();
+        let mut new_facts = mem::take(&mut pass.observed);
         for (id, escaped) in pass.escaped.iter().enumerate() {
             if *escaped {
                 new_facts[id].fill(Fact::Unknown);
@@ -314,9 +315,16 @@ impl<'a> Pass<'a> {
             .unwrap_or_else(|| &self.anonymous[id - self.described.len()])
     }
 
+    /// The hidden parts of the function's environment (anonymous functions have none).
+    fn hidden(&self, id: FunctionId) -> &'a [Path] {
+        let described: &'a [FunctionInfo] = self.described;
+        described.get(id).map_or(&[], FunctionInfo::hidden)
+    }
+
     /// What's known about each hidden part of the function's environment.
-    fn facts(&self, id: FunctionId) -> &[Fact] {
-        self.facts.get(id).map_or(&[], Vec::as_slice)
+    fn facts(&self, id: FunctionId) -> &'a [Fact] {
+        let facts: &'a [Vec<Fact>] = self.facts;
+        facts.get(id).map_or(&[], Vec::as_slice)
     }
 
     fn function(&mut self, id: FunctionId) -> Function {
@@ -390,10 +398,9 @@ impl<'a> Pass<'a> {
     /// environment that's known, or `None` if the path goes into a computed part or through an
     /// atom constant (which fails at runtime).
     fn resolve(&self, frame: &Frame, value: &Value, path: &[bool]) -> Option<Value> {
-        Some(match value.at(self.program, path)? {
-            Value::Ref(Root::Env, path) => known_env(self.program, &frame.known, path),
-            value => value,
-        })
+        value
+            .resolve(self.program, &frame.known, path)
+            .map(Cow::into_owned)
     }
 
     /// Marks the value as used as data, which reads whatever parts of the environment it
@@ -402,18 +409,14 @@ impl<'a> Pass<'a> {
         match value {
             Value::Const(node) => self.expose(*node),
             Value::Ref(Root::Env, path) => {
-                let mut read = Vec::new();
-                let mut exposed = Vec::new();
-
                 for (index, (hidden, fact)) in self
-                    .info(frame.id)
-                    .hidden()
+                    .hidden(frame.id)
                     .iter()
                     .zip(self.facts(frame.id))
                     .enumerate()
                 {
                     if hidden.starts_with(path) || path.starts_with(hidden) {
-                        read.push(index);
+                        self.reads[frame.id][index] = true;
                     }
 
                     // Reading more than the hidden part includes its value
@@ -421,19 +424,12 @@ impl<'a> Pass<'a> {
                         && hidden.starts_with(path)
                         && path.len() < hidden.len()
                     {
-                        exposed.push(*known);
+                        self.expose(*known);
                     }
                 }
-
-                for index in read {
-                    self.reads[frame.id][index] = true;
-                }
-                for node in exposed {
-                    self.expose(node);
-                }
             }
-            Value::Ref(Root::Var(_), _) | Value::Expr(_) => {}
-            Value::Cons(first, rest) => grow_stack(|| {
+            Value::Ref(Root::Var(_), _) | Value::Nil | Value::Expr(_) => {}
+            Value::Cons(first, rest, _) => grow_stack(|| {
                 self.touch(frame, first);
                 self.touch(frame, rest);
             }),
@@ -483,7 +479,7 @@ impl<'a> Pass<'a> {
             NodeKind::Atom(atom) => {
                 self.cover(code);
                 let Some(path) = atom_path(atom) else {
-                    return self.value_expr(frame, Value::Const(code), code);
+                    return self.value_expr(frame, nil_code(atom, code), code);
                 };
                 return match self.resolve(frame, &scope.env, &path) {
                     Some(value) => self.value_expr(frame, value, code),
@@ -557,7 +553,7 @@ impl<'a> Pass<'a> {
             NodeKind::Atom(atom) => {
                 self.cover(code);
                 let Some(path) = atom_path(atom) else {
-                    return Value::Const(code);
+                    return nil_code(atom, code);
                 };
                 match self.resolve(frame, &scope.env, &path) {
                     Some(value) => value,
@@ -713,7 +709,7 @@ impl<'a> Pass<'a> {
             self.cover(body);
             let env = bind(frame, scope, env);
             let Some(path) = atom_path(atom) else {
-                return self.value_expr(frame, Value::Const(body), body);
+                return self.value_expr(frame, nil_code(atom, body), body);
             };
             if let Some(value) = self.resolve(frame, &env, &path) {
                 return self.value_expr(frame, value, body);
@@ -780,7 +776,8 @@ impl<'a> Pass<'a> {
     }
 
     fn call(&mut self, frame: &Frame, id: FunctionId, env: Value, node: NodeId) -> Expr {
-        let Some(layout) = &self.info(id).layout else {
+        let described: &'a [FunctionInfo] = self.described;
+        let Some(layout) = described.get(id).and_then(|info| info.layout.as_ref()) else {
             self.touch(frame, &env);
             return Expr {
                 kind: ExprKind::Call { function: id, env },
@@ -788,29 +785,21 @@ impl<'a> Pass<'a> {
             };
         };
 
-        let named = layout
-            .named
-            .iter()
-            .map(|slot| slot.path.clone())
-            .collect::<Vec<_>>();
-        let hidden = layout.hidden.clone();
-
-        for path in named {
-            match self.resolve(frame, &env, &path) {
+        for slot in &layout.named {
+            match env.resolve(self.program, &frame.known, &slot.path) {
                 Some(value) => self.touch(frame, &value),
                 None => self.touch(frame, &env),
             }
         }
 
-        for (index, path) in hidden.iter().enumerate() {
-            let value = self.resolve(frame, &env, path);
+        for (index, path) in layout.hidden.iter().enumerate() {
+            let value = env.resolve(self.program, &frame.known, path);
 
             // A hidden part of this function's environment that no call has been seen for yet
             // says nothing yet, and if none ever is, neither function is run
-            if let Some(Value::Ref(Root::Env, passed)) = &value
+            if let Some(Value::Ref(Root::Env, passed)) = value.as_deref()
                 && self
-                    .info(frame.id)
-                    .hidden()
+                    .hidden(frame.id)
                     .iter()
                     .zip(self.facts(frame.id))
                     .any(|(hidden, fact)| matches!(fact, Fact::Unset) && passed.starts_with(hidden))
@@ -818,7 +807,7 @@ impl<'a> Pass<'a> {
                 continue;
             }
 
-            let constant = match &value {
+            let constant = match value.as_deref() {
                 Some(Value::Const(node)) => Some(*node),
                 _ => None,
             };
@@ -831,10 +820,7 @@ impl<'a> Pass<'a> {
                 _ => false,
             };
             if !matches && self.reads_before[id][index] {
-                match &value {
-                    Some(value) => self.touch(frame, value),
-                    None => self.touch(frame, &env),
-                }
+                self.touch(frame, value.as_deref().unwrap_or(&env));
             }
         }
 
@@ -853,13 +839,11 @@ fn bind(frame: &mut Frame, scope: &mut Scope, value: Value) -> Value {
     match value {
         Value::Expr(expr) => {
             let var = frame.new_var();
-            scope.statements.push(Statement::Let {
-                var,
-                value: expr.into_inner(),
-            });
+            scope.statements.push(Statement::Let { var, value: expr });
             Value::Ref(Root::Var(var), Vec::new())
         }
-        Value::Cons(first, rest) => grow_stack(|| {
+        // Only the parts with computed values in them are rebuilt
+        Value::Cons(first, rest, true) => grow_stack(|| {
             let rest = bind(frame, scope, rest.into_inner());
             let first = bind(frame, scope, first.into_inner());
             Value::cons(first, rest)
@@ -868,10 +852,20 @@ fn bind(frame: &mut Frame, scope: &mut Scope, value: Value) -> Value {
     }
 }
 
+/// The value of an atom of code that doesn't read from the environment, which is nil. Nil itself
+/// is shown as its own node, and an atom of zero bytes evaluates to nil too.
+fn nil_code(atom: &[u8], code: NodeId) -> Value {
+    if atom.is_empty() {
+        Value::Const(code)
+    } else {
+        Value::Nil
+    }
+}
+
 fn computed_paths(value: &Value, path: &mut Path, paths: &mut Vec<Path>) {
     match value {
         Value::Expr(_) => paths.push(path.clone()),
-        Value::Cons(first, rest) => grow_stack(|| {
+        Value::Cons(first, rest, true) => grow_stack(|| {
             path.push(false);
             computed_paths(first, path, paths);
             path.pop();
@@ -879,7 +873,7 @@ fn computed_paths(value: &Value, path: &mut Path, paths: &mut Vec<Path>) {
             computed_paths(rest, path, paths);
             path.pop();
         }),
-        Value::Const(_) | Value::Ref(..) => {}
+        Value::Cons(_, _, false) | Value::Const(_) | Value::Nil | Value::Ref(..) => {}
     }
 }
 
@@ -897,7 +891,7 @@ fn finish_block(program: &Program, mut statements: Vec<Statement>, mut value: Ex
                     unreachable!("the branch is a raise");
                 };
                 statements.push(Statement::Assert {
-                    condition: condition.into_inner(),
+                    condition,
                     raise: args,
                     node: value.node,
                 });

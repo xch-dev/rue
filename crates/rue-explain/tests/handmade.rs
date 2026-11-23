@@ -4,13 +4,13 @@
 
 use std::collections::HashMap;
 
-use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program, serde::node_to_bytes};
+use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, serde::node_to_bytes};
 use expect_test::{Expect, expect};
 use rue_clvm::{assemble, disassemble_value};
 use rue_compiler::debug_metadata::{
     Annotation, Constraint, DebugMetadataBuilder, Function, Parameter,
 };
-use rue_explain::{EvalFailure, Explanation};
+use rue_explain::Explanation;
 
 const MAX_COST: u64 = 11_000_000_000;
 
@@ -84,16 +84,8 @@ fn check(
     let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
     for solution in solutions {
         let env = assemble(&mut allocator, solution).unwrap();
-        let expected = run_program(&mut allocator, &dialect, ptr, env, MAX_COST);
-        let actual = explanation.evaluate(&mut allocator, &dialect, env, MAX_COST);
-        match (expected, actual) {
-            (Ok(expected), Ok(actual)) => assert_eq!(
-                disassemble_value(&allocator, actual),
-                disassemble_value(&allocator, expected.1),
-                "{solution}"
-            ),
-            (Err(_), Err(EvalFailure::Clvm(_))) => {}
-            (expected, actual) => panic!("{solution}: {expected:?} vs {actual:?}"),
+        if let Err(error) = explanation.check(&mut allocator, &dialect, ptr, env, MAX_COST) {
+            panic!("{solution}: {error}\n{}", explanation.render());
         }
     }
 
@@ -261,13 +253,25 @@ fn large_constants_are_clvm() {
 
 #[test]
 fn deeply_nested_programs() {
-    // `(f (f ... 1))`, and a list built from `(c (q . 1) ...)`, both too deep to recurse on
+    // `(f (f ... 1))` run with a solution that's as deeply nested, a list built from
+    // `(c (q . 1) ...)`, and lets of `if`s inside of `let`s, which are all too deep to recurse on
     // without growing the stack
     let depth = 20_000;
     let firsts = format!("{}01{}", "ff05ff".repeat(depth), "80".repeat(depth));
+    let nested = format!("{}01{}", "ff".repeat(depth), "80".repeat(depth));
     let list = format!("{}80{}", "ff04ffff0101ff".repeat(depth), "80".repeat(depth));
 
-    for (hex, solution) in [(firsts, "1"), (list, "()")] {
+    // `(a (q . 2) (c (a (i 2 (q . INNER) (q . 5)) 1) 1))`
+    let mut lets = "01".to_string();
+    for _ in 0..depth {
+        lets = format!("ff02ffff0102ffff04ffff02ffff03ff02ffff01{lets}ffff010580ff0180ff018080");
+    }
+
+    for (hex, solution, output) in [
+        (firsts, nested, Some("1")),
+        (list, "80".to_string(), None),
+        (lets, "ff0180".to_string(), None),
+    ] {
         let mut allocator = Allocator::new();
         let bytes = hex::decode(hex).unwrap();
         let ptr = clvmr::serde::node_from_bytes(&mut allocator, &bytes).unwrap();
@@ -276,14 +280,129 @@ fn deeply_nested_programs() {
         assert!(!explanation.render().is_empty());
 
         let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
-        let env = assemble(&mut allocator, solution).unwrap();
-        let expected = run_program(&mut allocator, &dialect, ptr, env, MAX_COST)
-            .map(|reduction| disassemble_value(&allocator, reduction.1));
-        let actual = explanation
-            .evaluate(&mut allocator, &dialect, env, MAX_COST)
-            .map(|value| disassemble_value(&allocator, value));
-        assert_eq!(actual.ok(), expected.ok());
+        let env =
+            clvmr::serde::node_from_bytes(&mut allocator, &hex::decode(solution).unwrap()).unwrap();
+        explanation
+            .check(&mut allocator, &dialect, ptr, env, MAX_COST)
+            .unwrap();
+
+        if let Some(output) = output {
+            let actual = explanation
+                .evaluate(&mut allocator, &dialect, env, MAX_COST)
+                .unwrap();
+            assert_eq!(disassemble_value(&allocator, actual), output);
+        }
     }
+}
+
+#[test]
+fn function_passed_as_different_hidden_values() {
+    // `apply` is passed `add` once and `mul` once, so the `add` it runs isn't the `add` that's
+    // called directly with 10
+    check(
+        "(c (a (q . (a 2 (c (q . 99) (c 5 ())))) (c (q . (+ 2 5)) (c 2 ()))) (c (a (q . (a 2 (c (q . 99) (c 5 ())))) (c (q . (* 2 5)) (c 2 ()))) (a (q . (+ 2 5)) (c (q . 10) (c 2 ())))))",
+        |builder| {
+            let mut functions = add_hidden(builder);
+            functions.push((
+                "(* 2 5)".to_string(),
+                Described {
+                    name: "mul",
+                    parameters: pair(Parameter::Nil, pair(name(builder, "x", 5), Parameter::Nil)),
+                },
+            ));
+            functions.push((
+                "(a 2 (c (q . 99) (c 5 ())))".to_string(),
+                Described {
+                    name: "apply",
+                    parameters: pair(Parameter::Nil, pair(name(builder, "y", 5), Parameter::Nil)),
+                },
+            ));
+            functions
+        },
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                [
+                    apply(y: solution@2, env@2: add),
+                    apply(y: solution@2, env@2: mul),
+                    ...add(x: solution@2, env@2: 10),
+                ]
+            }
+
+            fn apply(y) {
+                env@2(99, y)
+            }
+
+            fn add(x) {
+                env@2 + x
+            }
+
+            fn mul(x) {
+                env@2 * x
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn function_in_the_environment_of_an_unknown_program() {
+    // The solution's program is run with `add` in its environment, and runs it with 3
+    check(
+        "(c (a 2 (c (q . (+ 2 5)) ())) (a (q . (+ 2 5)) (c (q . 10) (c 5 ()))))",
+        add_hidden,
+        &["((a 2 (q 7 3)) 1)"],
+        &expect![[r#"
+            program(solution) {
+                (solution@2(add), add(x: solution@5, env@2: 10))
+            }
+
+            fn add(x) {
+                env@2 + x
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn statements_in_branches_are_kept() {
+    // An `else` that asserts before its `if`, and a branch that binds a value before it raises
+    check(
+        "(c (a (i 2 (q . 1) (q 2 (i 5 (q 2 (i 11 (q . 1) (q . 2)) 1) (q 8)) 1)) 1) (a (i 2 (q . 1) (q 2 (q 8 2) (c (+ 5 5) 1))) 1))",
+        |_| Vec::new(),
+        &["(1 2 3)", "(() 2 3)", "(() 2 ())", "(() () 3)"],
+        &expect![[r#"
+            program(solution) {
+                (if solution@2 { solution } else {
+                    assert solution@5
+                    if solution@11 {
+                        solution
+                    } else {
+                        solution@2
+                    }
+                }, if solution@2 { solution } else {
+                    let v1 = solution@5 + solution@5
+                    raise(v1)
+                })
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn rest_of_a_pair_is_evaluated_first() {
+    // Both values raise, and the rest's does first
+    check(
+        "(c (a (q . 2) (c (x (q . 1)) 1)) (a (q . 2) (c (x (q . 2)) 1)))",
+        |_| Vec::new(),
+        &["()"],
+        &expect![[r#"
+            program(solution) {
+                let v1 = raise(2)
+                let v2 = raise(1)
+                (v2, v1)
+            }
+        "#]],
+    );
 }
 
 #[test]
@@ -331,6 +450,21 @@ fn unrecognized_code_is_raw() {
         &expect![[r#"
             program(solution) {
                 (clvm!((100 2 5)), clvm!(((q . 1) 2)))
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn atoms_of_zero_bytes_are_nil() {
+    // As code, an atom of zero bytes doesn't read anything, and evaluates to nil like nil does
+    check(
+        "(c 0x00 (c 0x0000 (a (q . 0x00) 1)))",
+        |_| Vec::new(),
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                [nil, nil, ...nil]
             }
         "#]],
     );

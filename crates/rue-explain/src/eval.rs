@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use clvmr::{
     Allocator, NodePtr, SExp, cost::Cost, dialect::Dialect, error::EvalErr,
-    run_program::run_program,
+    run_program::run_program, serde::node_to_bytes_limit,
 };
 use rue_clvm::operator_name;
 
@@ -72,6 +72,56 @@ impl Explanation {
         }
 
         evaluator.function(self.entry, solution)
+    }
+
+    /// Checks that running the decompiled program with the solution gives the same result as
+    /// running the program itself: the same output, the same raised value, or the same error.
+    /// Running out of cost isn't compared, since the decompiled program's cost isn't the
+    /// program's. The error describes both results.
+    pub fn check<D: Dialect>(
+        &self,
+        allocator: &mut Allocator,
+        dialect: &D,
+        program: NodePtr,
+        solution: NodePtr,
+        max_cost: Cost,
+    ) -> std::result::Result<(), String> {
+        let expected = run_program(allocator, dialect, program, solution, max_cost)
+            .map(|reduction| reduction.1)
+            .map_err(EvalFailure::from);
+        let actual = self.evaluate(allocator, dialect, solution, max_cost);
+
+        let outcome = |allocator: &Allocator, result: &Result<NodePtr>| match result {
+            Err(EvalFailure::OutOfCost) => None,
+            Ok(value) => Some(Ok(node_to_bytes_limit(allocator, *value, usize::MAX).ok())),
+            Err(EvalFailure::Clvm(EvalErr::Raise(value))) => Some(Err(format!(
+                "clvm raise {}",
+                rue_clvm::disassemble_value(allocator, *value)
+            ))),
+            Err(EvalFailure::Clvm(error)) => Some(Err(error.to_string())),
+        };
+
+        match (outcome(allocator, &expected), outcome(allocator, &actual)) {
+            (None, _) | (_, None) => Ok(()),
+            (expected_outcome, actual_outcome) if expected_outcome == actual_outcome => Ok(()),
+            _ => {
+                let describe = |result: &Result<NodePtr>| match result {
+                    Ok(value) => rue_clvm::disassemble_value(allocator, *value),
+                    Err(EvalFailure::Clvm(EvalErr::Raise(value))) => {
+                        format!(
+                            "clvm raise {}",
+                            rue_clvm::disassemble_value(allocator, *value)
+                        )
+                    }
+                    Err(error) => error.to_string(),
+                };
+                Err(format!(
+                    "the explanation gives {} rather than {}",
+                    describe(&actual),
+                    describe(&expected)
+                ))
+            }
+        }
     }
 }
 
@@ -218,6 +268,7 @@ impl<D: Dialect> Evaluator<'_, D> {
     fn value(&mut self, frame: &mut Frame, value: &Value) -> Result<NodePtr> {
         grow_stack(|| match value {
             Value::Const(node) => self.materialize(*node),
+            Value::Nil => Ok(NodePtr::NIL),
             Value::Ref(root, path) => {
                 let value = match root {
                     Root::Env => frame.env,
@@ -227,7 +278,7 @@ impl<D: Dialect> Evaluator<'_, D> {
                 };
                 self.descend(value, path.iter().copied())
             }
-            Value::Cons(first, rest) => {
+            Value::Cons(first, rest, _) => {
                 let rest = self.value(frame, rest)?;
                 let first = self.value(frame, first)?;
                 Ok(self.allocator.new_pair(first, rest)?)

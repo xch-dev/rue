@@ -1,5 +1,6 @@
 //! Renders the [IR](crate::ir) as Rue-like pseudocode, with the source location of each line.
 
+use std::borrow::Cow;
 use std::fmt::Write;
 
 use chialisp::compiler::debug_metadata::ParameterConstraint;
@@ -7,7 +8,7 @@ use rue_clvm::operator_name;
 
 use crate::Explanation;
 use crate::ir::{
-    Block, Expr, ExprKind, Function, FunctionId, FunctionKind, Root, Statement, Value, known_env,
+    Block, Expr, ExprKind, Function, FunctionId, FunctionKind, Root, Statement, Value,
 };
 use crate::program::{NodeId, Path, path_number};
 use crate::stack::grow_stack;
@@ -22,6 +23,10 @@ const INDENT: &str = "    ";
 
 /// How long a line can be before it's wrapped.
 const MAX_WIDTH: usize = 100;
+
+/// How deeply blocks are nested at most before the rest isn't shown, which keeps a pathological
+/// program from producing output that's quadratic (or worse) in its size.
+const MAX_NESTING: usize = 64;
 
 /// How many times a line is wrapped inside of itself at most, which keeps wrapping a deeply nested
 /// line from taking quadratic time.
@@ -95,6 +100,7 @@ pub(crate) fn render(explanation: &Explanation) -> String {
         Printer {
             explanation,
             function: &explanation.functions[id],
+            depth: 0,
             lines: &mut lines,
         }
         .function();
@@ -157,6 +163,8 @@ fn location(explanation: &Explanation, node: NodeId) -> Option<String> {
 struct Printer<'a> {
     explanation: &'a Explanation,
     function: &'a Function,
+    /// How deeply the lines are nested in blocks inside of expressions.
+    depth: usize,
     lines: &'a mut Vec<Line>,
 }
 
@@ -223,6 +231,11 @@ impl Printer<'_> {
 
     /// The statements of the block, then its value, each on lines of its own.
     fn block(&mut self, indent: usize, block: &Block) {
+        if self.depth + indent > MAX_NESTING {
+            self.line(indent, "... // nested too deeply to show", None);
+            return;
+        }
+
         for statement in &block.statements {
             match statement {
                 Statement::Let { var, value } => {
@@ -355,6 +368,7 @@ impl Printer<'_> {
         let mut printer = Printer {
             explanation: self.explanation,
             function: self.function,
+            depth: self.depth + 1,
             lines: &mut lines,
         };
         printer.block(1, block);
@@ -480,12 +494,9 @@ impl Printer<'_> {
     /// The part of a value at a path, with the constant for a part of the environment that's
     /// known.
     fn resolve(&self, value: &Value, path: &[bool]) -> Option<Value> {
-        Some(match value.at(&self.explanation.program, path)? {
-            Value::Ref(Root::Env, path) => {
-                known_env(&self.explanation.program, &self.function.known, path)
-            }
-            value => value,
-        })
+        value
+            .resolve(&self.explanation.program, &self.function.known, path)
+            .map(Cow::into_owned)
     }
 
     /// The items of the list that a program is run with, as the arguments of a call, with
@@ -505,7 +516,7 @@ impl Printer<'_> {
         let mut items = Vec::new();
         let mut value = value;
 
-        while let Value::Cons(first, rest) = value {
+        while let Value::Cons(first, rest, _) = value {
             items.push(self.value(first));
             value = rest;
         }
@@ -520,27 +531,44 @@ impl Printer<'_> {
                 }
                 (!program.is_nil(node)).then(|| self.constant(node))
             }
+            Value::Nil => None,
             value => Some(self.value(value)),
         };
 
         (items, tail)
     }
 
-    /// The first and rest of a value that's known to be a pair.
-    fn parts(&self, value: &Value) -> Option<(Value, Value)> {
+    /// The first and rest of a value that's known to be a pair, borrowed from it where they can
+    /// be.
+    fn parts<'v>(&self, value: Cow<'v, Value>) -> Option<(Cow<'v, Value>, Cow<'v, Value>)> {
+        let constant = |node: NodeId| {
+            self.explanation.program.pair(node).map(|(first, rest)| {
+                (
+                    Cow::Owned(Value::Const(first)),
+                    Cow::Owned(Value::Const(rest)),
+                )
+            })
+        };
+
         match value {
-            Value::Cons(first, rest) => Some(((**first).clone(), (**rest).clone())),
-            Value::Const(node) => self
-                .explanation
-                .program
-                .pair(*node)
-                .map(|(first, rest)| (Value::Const(first), Value::Const(rest))),
+            Cow::Borrowed(Value::Cons(first, rest, _)) => {
+                Some((Cow::Borrowed(&**first), Cow::Borrowed(&**rest)))
+            }
+            Cow::Owned(Value::Cons(first, rest, _)) => Some((
+                Cow::Owned(first.into_inner()),
+                Cow::Owned(rest.into_inner()),
+            )),
+            Cow::Borrowed(&Value::Const(node)) | Cow::Owned(Value::Const(node)) => constant(node),
             _ => None,
         }
     }
 
     fn is_nil(&self, value: &Value) -> bool {
-        matches!(value, Value::Const(node) if self.explanation.program.is_nil(*node))
+        match value {
+            Value::Nil => true,
+            Value::Const(node) => self.explanation.program.is_nil(*node),
+            _ => false,
+        }
     }
 
     fn is_atom(&self, value: &Value, atom: &[u8]) -> bool {
@@ -554,6 +582,7 @@ impl Printer<'_> {
     fn value_inner(&self, value: &Value) -> String {
         match value {
             Value::Const(node) => self.constant(*node),
+            Value::Nil => "nil".to_string(),
             Value::Ref(Root::Env, path) => self.env_name(path),
             Value::Ref(Root::Var(var), path) => project(&self.function.vars[*var], path),
             Value::Cons(..) => self.closure(value).unwrap_or_else(|| self.list(value)),
@@ -575,22 +604,22 @@ impl Printer<'_> {
     /// `(a (q . FUNCTION) (c (q . CAPTURE) ... 1))` (or `()` at the end, if it doesn't take
     /// arguments).
     fn closure(&self, value: &Value) -> Option<String> {
-        let (apply, rest) = self.parts(value)?;
+        let (apply, rest) = self.parts(Cow::Borrowed(value))?;
         if !self.is_atom(&apply, &[2]) {
             return None;
         }
 
-        let (quoted, rest) = self.parts(&rest)?;
-        let (quote, function) = self.parts(&quoted)?;
+        let (quoted, rest) = self.parts(rest)?;
+        let (quote, function) = self.parts(quoted)?;
         if !self.is_atom(&quote, &[1]) {
             return None;
         }
-        let Value::Const(function) = function else {
+        let Value::Const(function) = *function else {
             return None;
         };
         let &id = self.explanation.function_of.get(&function)?;
 
-        let (mut env, rest) = self.parts(&rest)?;
+        let (mut env, rest) = self.parts(rest)?;
         if !self.is_nil(&rest) {
             return None;
         }
@@ -606,12 +635,12 @@ impl Printer<'_> {
                 break false;
             }
 
-            let (cons, rest) = self.parts(&env)?;
+            let (cons, rest) = self.parts(env)?;
             if !self.is_atom(&cons, &[4]) {
                 return None;
             }
-            let (capture, rest) = self.parts(&rest)?;
-            let (next, end) = self.parts(&rest)?;
+            let (capture, rest) = self.parts(rest)?;
+            let (next, end) = self.parts(rest)?;
             if !self.is_nil(&end) {
                 return None;
             }
@@ -619,7 +648,7 @@ impl Printer<'_> {
             let capture = if self.is_nil(&capture) {
                 capture
             } else {
-                let (quote, value) = self.parts(&capture)?;
+                let (quote, value) = self.parts(capture)?;
                 if !self.is_atom(&quote, &[1]) {
                     return None;
                 }
