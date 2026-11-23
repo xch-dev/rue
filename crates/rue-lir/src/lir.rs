@@ -418,9 +418,11 @@ impl ToClvm<Allocator> for ClvmOp {
 
 #[cfg(test)]
 mod tests {
+    use clvmr::Allocator;
     use id_arena::Arena;
 
     use super::*;
+    use crate::{CodegenOptions, codegen, optimize};
 
     /// One node of each kind, with distinct children, so that the order of each can be checked.
     fn every_node(arena: &mut Arena<Lir>) -> Vec<Lir> {
@@ -515,6 +517,29 @@ mod tests {
                 std::mem::discriminant(&node)
             );
             assert_eq!(mapped.operator(), node.operator());
+        }
+    }
+
+    // Each kind of node is generated, either by its own case or as a call to its operator, with
+    // and without folding static pairs, before and after it's optimized, for each target
+    #[test]
+    fn every_node_is_generated() {
+        let mut arena = Arena::new();
+
+        for node in every_node(&mut arena) {
+            let lir = arena.alloc(node);
+
+            for target in ClvmTarget::ALL {
+                let optimized = optimize(&mut arena, lir, target);
+
+                for (lir, optimize_static_pairs) in [(lir, false), (optimized, true)] {
+                    let options = CodegenOptions {
+                        optimize_static_pairs,
+                        target,
+                    };
+                    codegen(&arena, &mut Allocator::new(), lir, options).unwrap();
+                }
+            }
         }
     }
 }

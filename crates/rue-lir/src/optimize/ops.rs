@@ -1601,6 +1601,35 @@ mod tests {
         }
     }
 
+    // Operands that leave nothing to compute are the operator's identity: -1 for `logand`, and
+    // nil for `logior` and `logxor`
+    #[test]
+    fn test_bitwise_without_operands_is_identity() {
+        let mut arena = Arena::new();
+
+        for (op, operands, expected) in [
+            (Bitwise::And, vec![], -1),
+            (Bitwise::And, vec![-1], -1),
+            (Bitwise::And, vec![-1, -1], -1),
+            (Bitwise::Or, vec![], 0),
+            (Bitwise::Or, vec![0], 0),
+            (Bitwise::Xor, vec![], 0),
+            (Bitwise::Xor, vec![0], 0),
+            (Bitwise::Xor, vec![5, 5], 0),
+        ] {
+            let args = operands
+                .iter()
+                .map(|&value| int(&mut arena, value))
+                .collect();
+            let result = opt_bitwise(&mut arena, op, args);
+            assert!(
+                matches!(&arena[result], Lir::Atom(atom) if *atom == bigint_atom(BigInt::from(expected))),
+                "{op:?} of {operands:?}: {:?}",
+                arena[result]
+            );
+        }
+    }
+
     // A check of constants passes or fails at compile time, so it's only folded if it passes
     #[test]
     fn test_keccak256_verify_folds_matching_constants() {
