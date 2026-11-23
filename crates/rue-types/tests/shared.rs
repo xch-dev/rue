@@ -7,9 +7,10 @@ use std::collections::HashMap;
 
 use id_arena::Arena;
 use rue_types::{
-    Alias, Apply, BuiltinTypes, Check, Comparison, FunctionParameter, FunctionType, Generic,
-    Inference, Pair, Type, TypeId, Union, check, compare, compare_with_inference, count_steps,
-    intersect, substitute, subtract,
+    Alias, Apply, Atoms, BuiltinTypes, Check, Comparison, FunctionParameter, FunctionType, Generic,
+    Inference, Pair, Struct, Type, TypeId, Union, check, compare, compare_with_inference,
+    count_steps, extract_atoms, extract_functions, extract_pairs, extract_structs, intersect,
+    substitute, subtract, with_step_limit,
 };
 
 const DEPTH: usize = 32;
@@ -423,4 +424,63 @@ fn test_growth_intersect() {
         let ints_or_nil = t.union(vec![ints, nil]);
         intersect(&mut t.arena, &t.builtins, ints_or_nil, bytes32);
     });
+}
+
+/// `type U0 = members; type U1 = U0 | U0; ...`, with each level an alias of the union.
+fn doubling_union(t: &mut Types, members: Vec<TypeId>, depth: usize) -> TypeId {
+    let union = t.union(members);
+    let mut ty = t.alias(union);
+
+    for _ in 0..depth {
+        let union = t.union(vec![ty, ty]);
+        ty = t.alias(union);
+    }
+
+    ty
+}
+
+/// The walks over the members of a union visit each member once, rather than once for each way
+/// it's reached, which would double the work at each level of `U1 = U0 | U0` (part of #496). The
+/// shallow union comes first, so that walking a member each time it's reached fails on the number
+/// of results quickly, rather than taking `2^30` steps on the deep one.
+#[test]
+fn test_doubling_union_extractors() {
+    for levels in [8, 30] {
+        let mut t = Types::new();
+        let (int, nil) = (t.builtins.int, t.builtins.nil);
+        let pair = t.pair(int, int);
+        let function = t.alloc(Type::Function(FunctionType {
+            generics: vec![],
+            params: vec![],
+            nil_terminated: true,
+            ret: nil,
+        }));
+        let ty = doubling_union(&mut t, vec![int, pair, function], levels);
+
+        let struct_id = t.alloc(Type::Unresolved);
+        t.arena[struct_id] = Type::Struct(Struct {
+            name: None,
+            semantic: struct_id,
+            inner: pair,
+            generics: vec![],
+            fields: ["a".to_string()].into_iter().collect(),
+            nil_terminated: false,
+            narrowed: false,
+        });
+        let structs = doubling_union(&mut t, vec![struct_id], levels);
+
+        with_step_limit(10_000, || {
+            assert!(matches!(
+                extract_atoms(&mut t.arena, ty, false),
+                Some(Atoms::Unrestricted)
+            ));
+            assert!(extract_atoms(&mut t.arena, ty, true).is_none());
+            assert_eq!(extract_pairs(&mut t.arena, ty, false).len(), 1);
+            assert!(extract_pairs(&mut t.arena, ty, true).is_empty());
+            assert_eq!(extract_functions(&mut t.arena, ty, false).len(), 1);
+            assert!(extract_functions(&mut t.arena, ty, true).is_empty());
+            assert!(extract_structs(&mut t.arena, ty).is_none());
+            assert_eq!(extract_structs(&mut t.arena, structs).unwrap().len(), 1);
+        });
+    }
 }

@@ -3,9 +3,9 @@ use log::{Level, log_enabled, trace};
 
 use crate::{
     Alias, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxHashSet, IntersectContext,
-    Pair, Type, TypeId, Union, compare_impl, extract_pairs_substituted, grow_stack,
-    intersect_substituted, reachable, reaches_non_contractive_cycle, step, stringify_substituted,
-    substitute,
+    Pair, Type, TypeId, Union, Walk, compare_impl, extract_pairs_substituted, for_each_leaf,
+    grow_stack, intersect_substituted, reachable, reaches_non_contractive_cycle, step,
+    stringify_substituted, substitute,
 };
 
 pub fn subtract(
@@ -607,57 +607,40 @@ struct Variant {
     type_id: TypeId,
 }
 
+/// The variants of a type, each with the aliases and structs it's in, innermost first. A variant
+/// is only listed once for each path of aliases and structs it's reached through (see
+/// `walk_leaves`), so a union that repeats a type at each level doesn't double the variants at
+/// each level (#496). The values of a repeated variant are already in the first one.
 fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<Variant> {
-    grow_stack(|| variants_of_inner(arena, builtins, id))
-}
+    let mut variants = Vec::new();
 
-fn variants_of_inner(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<Variant> {
-    match &arena[id] {
-        Type::Apply(_) => unreachable!(),
-        &Type::Ref(id) => variants_of(arena, builtins, id),
-        // Nothing is known about the values of a generic type, so it can't be split into narrower
-        // variants. It's kept as is, and only removed if the target covers every possible value.
-        Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) => vec![Variant {
-            semantic_type_ids: vec![],
-            type_id: id,
-        }],
-        Type::Never => vec![],
-        Type::Alias(alias) => {
-            let mut variants = variants_of(arena, builtins, alias.inner);
+    for_each_leaf(arena, id, Walk::WithPaths, |id, ty, path| {
+        let semantic_type_ids = || path.iter().rev().copied().collect::<Vec<_>>();
 
-            for variant in &mut variants {
-                variant.semantic_type_ids.push(id);
+        match ty {
+            // Nothing is known about the values of a generic type, so it can't be split into
+            // narrower variants. It's kept as is, and only removed if the target covers every
+            // possible value.
+            Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) => {
+                variants.push(Variant {
+                    semantic_type_ids: semantic_type_ids(),
+                    type_id: id,
+                });
             }
-
-            variants
-        }
-        Type::Struct(ty) => {
-            let mut variants = variants_of(arena, builtins, ty.inner);
-
-            for variant in &mut variants {
-                variant.semantic_type_ids.push(id);
+            Type::Never => {}
+            Type::Function(_) | Type::Any => {
+                variants.extend([builtins.atom, builtins.recursive_any_pair].map(|type_id| {
+                    Variant {
+                        semantic_type_ids: semantic_type_ids(),
+                        type_id,
+                    }
+                }));
             }
-
-            variants
-        }
-        Type::Function(_) | Type::Any => vec![
-            Variant {
-                semantic_type_ids: vec![],
-                type_id: builtins.atom,
-            },
-            Variant {
-                semantic_type_ids: vec![],
-                type_id: builtins.recursive_any_pair,
-            },
-        ],
-        Type::Union(ty) => {
-            let mut variants = Vec::new();
-
-            for &variant in &ty.types {
-                variants.extend(variants_of(arena, builtins, variant));
+            Type::Ref(_) | Type::Alias(_) | Type::Struct(_) | Type::Union(_) | Type::Apply(_) => {
+                unreachable!()
             }
-
-            variants
         }
-    }
+    });
+
+    variants
 }

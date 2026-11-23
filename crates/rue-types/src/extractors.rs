@@ -1,9 +1,11 @@
-use std::collections::HashSet;
+use std::ops::ControlFlow;
 
 use id_arena::Arena;
 use indexmap::{IndexSet, indexset};
 
-use crate::{AtomRestriction, FunctionType, Pair, Struct, Type, TypeId, grow_stack, substitute};
+use crate::{
+    AtomRestriction, FunctionType, Pair, Struct, Type, TypeId, Walk, substitute, walk_leaves,
+};
 
 #[derive(Debug, Clone)]
 pub enum Atoms {
@@ -11,192 +13,115 @@ pub enum Atoms {
     Restricted(IndexSet<AtomRestriction>),
 }
 
+// Each of these visits every type in a union once (see `walk_leaves`), so a type that's reached
+// again, or a non-contractive cycle, doesn't contribute anything more. If `strict` is true, a
+// member that doesn't contribute anything makes the result empty, rather than being left out.
+
 pub fn extract_atoms(arena: &mut Arena<Type>, id: TypeId, strict: bool) -> Option<Atoms> {
     let id = substitute(arena, id);
-    extract_atoms_impl(arena, id, strict, &mut HashSet::new())
-}
 
-fn extract_atoms_impl(
-    arena: &Arena<Type>,
-    id: TypeId,
-    strict: bool,
-    stack: &mut HashSet<TypeId>,
-) -> Option<Atoms> {
-    grow_stack(|| extract_atoms_impl_inner(arena, id, strict, stack))
-}
+    let mut result = None;
 
-fn extract_atoms_impl_inner(
-    arena: &Arena<Type>,
-    id: TypeId,
-    strict: bool,
-    stack: &mut HashSet<TypeId>,
-) -> Option<Atoms> {
-    // A non-contractive cycle doesn't contribute anything
-    if !stack.insert(id) {
-        return None;
-    }
-
-    let result = match &arena[id] {
-        Type::Apply(_) => unreachable!(),
-        &Type::Ref(id) => extract_atoms_impl(arena, id, strict, stack),
-        Type::Unresolved => Some(Atoms::Unrestricted),
-        Type::Generic(_) | Type::Never | Type::Function(_) | Type::Pair(_) | Type::Any => None,
-        Type::Atom(atom) => atom
-            .restriction
-            .clone()
-            .map_or(Some(Atoms::Unrestricted), |restriction| {
-                Some(Atoms::Restricted(indexset![restriction]))
-            }),
-        Type::Struct(ty) => extract_atoms_impl(arena, ty.inner, strict, stack),
-        Type::Alias(alias) => extract_atoms_impl(arena, alias.inner, strict, stack),
-        Type::Union(ty) => {
-            let mut result = None;
-
-            for &ty in &ty.types {
-                let inner = extract_atoms_impl(arena, ty, strict, stack);
-
-                let inner = if strict {
-                    inner?
-                } else if let Some(inner) = inner {
-                    inner
+    let flow = walk_leaves(arena, id, Walk::Leaves, |_, ty, _| {
+        let inner = match ty {
+            Type::Unresolved => Atoms::Unrestricted,
+            Type::Generic(_) | Type::Never | Type::Function(_) | Type::Pair(_) | Type::Any => {
+                return if strict {
+                    ControlFlow::Break(())
                 } else {
-                    continue;
+                    ControlFlow::Continue(())
                 };
-
-                match (&result, &inner) {
-                    (None, _) | (Some(_), Atoms::Unrestricted) => result = Some(inner),
-                    (Some(Atoms::Unrestricted), _) => {}
-                    (Some(Atoms::Restricted(restrictions)), Atoms::Restricted(inner)) => {
-                        let mut restrictions = restrictions.clone();
-                        restrictions.extend(inner.clone());
-                        result = Some(Atoms::Restricted(restrictions));
-                    }
-                }
             }
+            Type::Atom(atom) => atom
+                .restriction
+                .clone()
+                .map_or(Atoms::Unrestricted, |restriction| {
+                    Atoms::Restricted(indexset![restriction])
+                }),
+            Type::Ref(_) | Type::Alias(_) | Type::Struct(_) | Type::Union(_) | Type::Apply(_) => {
+                unreachable!()
+            }
+        };
 
-            result
+        match (&mut result, inner) {
+            (None, inner) | (Some(_), inner @ Atoms::Unrestricted) => result = Some(inner),
+            (Some(Atoms::Unrestricted), _) => {}
+            (Some(Atoms::Restricted(restrictions)), Atoms::Restricted(inner)) => {
+                restrictions.extend(inner);
+            }
         }
-    };
 
-    stack.remove(&id);
+        ControlFlow::Continue(())
+    });
 
-    result
+    match flow {
+        ControlFlow::Break(()) => None,
+        ControlFlow::Continue(()) => result,
+    }
 }
 
 pub fn extract_pairs(arena: &mut Arena<Type>, id: TypeId, strict: bool) -> Vec<Pair> {
     let id = substitute(arena, id);
-    extract_pairs_impl(arena, id, strict, &mut HashSet::new()).unwrap_or_default()
+    extract_pairs_impl(arena, id, strict)
 }
 
 /// The pairs that make up an already substituted type, like `extract_pairs` without `strict`.
 pub(crate) fn extract_pairs_substituted(arena: &Arena<Type>, id: TypeId) -> Vec<Pair> {
-    extract_pairs_impl(arena, id, false, &mut HashSet::new()).unwrap_or_default()
+    extract_pairs_impl(arena, id, false)
 }
 
-fn extract_pairs_impl(
-    arena: &Arena<Type>,
-    id: TypeId,
-    strict: bool,
-    stack: &mut HashSet<TypeId>,
-) -> Option<Vec<Pair>> {
-    grow_stack(|| extract_pairs_impl_inner(arena, id, strict, stack))
-}
+fn extract_pairs_impl(arena: &Arena<Type>, id: TypeId, strict: bool) -> Vec<Pair> {
+    let mut pairs = Vec::new();
 
-fn extract_pairs_impl_inner(
-    arena: &Arena<Type>,
-    id: TypeId,
-    strict: bool,
-    stack: &mut HashSet<TypeId>,
-) -> Option<Vec<Pair>> {
-    // A non-contractive cycle doesn't contribute anything
-    if !stack.insert(id) {
-        return Some(vec![]);
-    }
-
-    let result = match &arena[id] {
-        Type::Apply(_) => unreachable!(),
-        &Type::Ref(id) => extract_pairs_impl(arena, id, strict, stack),
-        Type::Unresolved => Some(vec![]),
-        Type::Generic(_) | Type::Atom(_) | Type::Function(_) | Type::Any => None,
-        Type::Never => Some(vec![]),
-        &Type::Pair(pair) => Some(vec![pair]),
-        Type::Struct(ty) => extract_pairs_impl(arena, ty.inner, strict, stack),
-        Type::Alias(alias) => extract_pairs_impl(arena, alias.inner, strict, stack),
-        Type::Union(ty) => {
-            let mut pairs = Vec::new();
-
-            for &ty in &ty.types {
-                let inner = extract_pairs_impl(arena, ty, strict, stack);
-
+    let flow = walk_leaves(arena, id, Walk::Leaves, |_, ty, _| {
+        match ty {
+            Type::Unresolved | Type::Never => {}
+            Type::Generic(_) | Type::Atom(_) | Type::Function(_) | Type::Any => {
                 if strict {
-                    pairs.extend(inner?);
-                } else {
-                    pairs.extend(inner.unwrap_or_default());
+                    return ControlFlow::Break(());
                 }
             }
-
-            Some(pairs)
+            &Type::Pair(pair) => pairs.push(pair),
+            Type::Ref(_) | Type::Alias(_) | Type::Struct(_) | Type::Union(_) | Type::Apply(_) => {
+                unreachable!()
+            }
         }
-    };
 
-    stack.remove(&id);
+        ControlFlow::Continue(())
+    });
 
-    result
+    match flow {
+        ControlFlow::Break(()) => Vec::new(),
+        ControlFlow::Continue(()) => pairs,
+    }
 }
 
 pub fn extract_functions(arena: &mut Arena<Type>, id: TypeId, strict: bool) -> Vec<FunctionType> {
     let id = substitute(arena, id);
-    extract_functions_impl(arena, id, strict, &mut HashSet::new()).unwrap_or_default()
-}
 
-fn extract_functions_impl(
-    arena: &Arena<Type>,
-    id: TypeId,
-    strict: bool,
-    stack: &mut HashSet<TypeId>,
-) -> Option<Vec<FunctionType>> {
-    grow_stack(|| extract_functions_impl_inner(arena, id, strict, stack))
-}
+    let mut functions = Vec::new();
 
-fn extract_functions_impl_inner(
-    arena: &Arena<Type>,
-    id: TypeId,
-    strict: bool,
-    stack: &mut HashSet<TypeId>,
-) -> Option<Vec<FunctionType>> {
-    // A non-contractive cycle doesn't contribute anything
-    if !stack.insert(id) {
-        return Some(vec![]);
-    }
-
-    let result = match &arena[id] {
-        Type::Apply(_) => unreachable!(),
-        &Type::Ref(id) => extract_functions_impl(arena, id, strict, stack),
-        Type::Unresolved | Type::Never => Some(vec![]),
-        Type::Generic(_) | Type::Atom(_) | Type::Pair(_) | Type::Any => None,
-        Type::Function(function) => Some(vec![function.clone()]),
-        Type::Struct(ty) => extract_functions_impl(arena, ty.inner, strict, stack),
-        Type::Alias(alias) => extract_functions_impl(arena, alias.inner, strict, stack),
-        Type::Union(ty) => {
-            let mut functions = Vec::new();
-
-            for &ty in &ty.types {
-                let inner = extract_functions_impl(arena, ty, strict, stack);
-
+    let flow = walk_leaves(arena, id, Walk::Leaves, |_, ty, _| {
+        match ty {
+            Type::Unresolved | Type::Never => {}
+            Type::Generic(_) | Type::Atom(_) | Type::Pair(_) | Type::Any => {
                 if strict {
-                    functions.extend(inner?);
-                } else {
-                    functions.extend(inner.unwrap_or_default());
+                    return ControlFlow::Break(());
                 }
             }
-
-            Some(functions)
+            Type::Function(function) => functions.push(function.clone()),
+            Type::Ref(_) | Type::Alias(_) | Type::Struct(_) | Type::Union(_) | Type::Apply(_) => {
+                unreachable!()
+            }
         }
-    };
 
-    stack.remove(&id);
+        ControlFlow::Continue(())
+    });
 
-    result
+    match flow {
+        ControlFlow::Break(()) => Vec::new(),
+        ControlFlow::Continue(()) => functions,
+    }
 }
 
 /// If every variant of the type is an instance of the same struct (such as a struct and a
@@ -206,7 +131,22 @@ pub fn extract_structs(arena: &mut Arena<Type>, id: TypeId) -> Option<Vec<Struct
 
     let mut structs = Vec::new();
 
-    if !extract_structs_impl(arena, id, &mut structs, &mut HashSet::new()) {
+    let flow = walk_leaves(arena, id, Walk::ToStructs, |_, ty, _| match ty {
+        Type::Never => ControlFlow::Continue(()),
+        Type::Unresolved
+        | Type::Generic(_)
+        | Type::Atom(_)
+        | Type::Pair(_)
+        | Type::Function(_)
+        | Type::Any => ControlFlow::Break(()),
+        Type::Struct(ty) => {
+            structs.push(ty.clone());
+            ControlFlow::Continue(())
+        }
+        Type::Ref(_) | Type::Alias(_) | Type::Union(_) | Type::Apply(_) => unreachable!(),
+    });
+
+    if flow.is_break() {
         return None;
     }
 
@@ -220,50 +160,4 @@ pub fn extract_structs(arena: &mut Arena<Type>, id: TypeId) -> Option<Vec<Struct
     }
 
     Some(structs)
-}
-
-fn extract_structs_impl(
-    arena: &Arena<Type>,
-    id: TypeId,
-    structs: &mut Vec<Struct>,
-    stack: &mut HashSet<TypeId>,
-) -> bool {
-    grow_stack(|| extract_structs_impl_inner(arena, id, structs, stack))
-}
-
-fn extract_structs_impl_inner(
-    arena: &Arena<Type>,
-    id: TypeId,
-    structs: &mut Vec<Struct>,
-    stack: &mut HashSet<TypeId>,
-) -> bool {
-    // A non-contractive cycle doesn't contribute anything
-    if !stack.insert(id) {
-        return true;
-    }
-
-    let result = match &arena[id] {
-        Type::Apply(_) => unreachable!(),
-        &Type::Ref(id) => extract_structs_impl(arena, id, structs, stack),
-        Type::Never => true,
-        Type::Unresolved
-        | Type::Generic(_)
-        | Type::Atom(_)
-        | Type::Pair(_)
-        | Type::Function(_)
-        | Type::Any => false,
-        Type::Struct(ty) => {
-            structs.push(ty.clone());
-            true
-        }
-        Type::Alias(alias) => extract_structs_impl(arena, alias.inner, structs, stack),
-        Type::Union(ty) => ty
-            .types
-            .iter()
-            .all(|&ty| extract_structs_impl(arena, ty, structs, stack)),
-    };
-
-    stack.remove(&id);
-
-    result
 }
