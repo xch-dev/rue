@@ -1436,7 +1436,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
 
     /// Whether a cast from the value to the cast's type reads its fields through another struct or
     /// pair, whose fields can have the same names in other places. A cast to an alias, or to another
-    /// instance of the same generic struct, keeps the fields.
+    /// instance of the same generic struct, has the same layout, so it keeps the fields.
     fn changes_layout(&mut self, value: HirId, cast: HirId) -> bool {
         let (Some(from), Some(to)) = (self.cx.db().hir_type(value), self.cx.db().hir_type(cast))
         else {
@@ -1444,7 +1444,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         };
 
         (self.cx.has_pairs(from) || self.cx.has_pairs(to))
-            && self.cx.field_names(from) != self.cx.field_names(to)
+            && self.cx.field_layout(from) != self.cx.field_layout(to)
     }
 
     /// The type of the struct, if it's one of the standard library's conditions.

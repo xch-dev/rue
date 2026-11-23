@@ -28,6 +28,16 @@ struct Other {
 
 type ProofAlias = Proof;
 
+struct Spread {
+    _a: Bytes32,
+    ...b: Bytes32,
+}
+
+struct Plain {
+    _a: Bytes32,
+    b: Bytes32,
+}
+
 struct Two {
     a: Bytes32,
     b: Bytes32,
@@ -108,8 +118,12 @@ fn main(
     lit_b: Bytes32,
     coin: Proof,
     new_parent: Bytes32,
+    plain: Plain,
     flag: Bool,
 ) -> List<Any> {
+    // Fields with the same names, but which end differently, are read from other places
+    assert unchecked_cast::<Spread>(plain).b == sha256("x");
+
     // A cast to the same struct, or to an alias of it, keeps its fields
     assert (same_cast as Proof).parent == sha256("x");
     assert (alias_cast as ProofAlias).parent == sha256("x");
@@ -240,6 +254,7 @@ fn main(
         sha256(tail + h1 + h2),
         sha256(tail + cast_literal.parent),
         sha256(tail + current.parent),
+        sha256(tail + plain.b),
     ]
 }
 

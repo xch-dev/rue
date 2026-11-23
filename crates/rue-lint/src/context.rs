@@ -224,17 +224,22 @@ impl<'a> LintContext<'a> {
         !rue_types::extract_pairs(self.db.types_mut(), ty, false).is_empty()
     }
 
-    /// The names of the fields of a struct, in order, `first` and `rest` for a pair, or nothing if
-    /// the type has no fields.
-    pub fn field_names(&mut self, ty: TypeId) -> Option<Vec<String>> {
-        if let Some((fields, _)) =
-            rue_types::struct_field_types(self.db.types_mut(), self.types.never, ty)
-        {
-            return Some(fields.into_iter().map(|(name, _)| name).collect());
+    /// The layout of a value of the type, as the names of its fields in order (including an enum
+    /// variant's discriminant), and whether they end in nil, or `first` and `rest` for a pair, or
+    /// nothing if the type has no fields. Two types with the same layout read the same parts of a
+    /// value by the same names.
+    pub fn field_layout(&mut self, ty: TypeId) -> Option<(Vec<String>, bool)> {
+        let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
+
+        if let Type::Struct(structure) = self.db.ty(semantic) {
+            return Some((
+                structure.fields.iter().cloned().collect(),
+                structure.nil_terminated,
+            ));
         }
 
         self.has_pairs(ty)
-            .then(|| vec!["first".to_string(), "rest".to_string()])
+            .then(|| (vec!["first".to_string(), "rest".to_string()], false))
     }
 
     /// The declared type of a field of a struct, by name.
