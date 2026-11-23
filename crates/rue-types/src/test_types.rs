@@ -1,4 +1,9 @@
 //! The type builder that the unit tests share.
+//!
+//! Its helpers keep the names the unit tests have always used, which differ from those of the
+//! integration tests' builder in `tests/common`: `generic` takes a name here (`unnamed_generic`
+//! doesn't), `alias` is named and wraps its inner type in a `Ref` like the compiler does, and
+//! comparing is `cmp`.
 
 use std::collections::HashMap;
 
@@ -119,7 +124,7 @@ impl Db {
 
     pub(crate) fn define(&mut self, id: TypeId, resolved: TypeId) {
         let (Type::Alias(Alias { inner, .. }) | Type::Struct(Struct { inner, .. })) =
-            self.arena[id].clone()
+            self.arena[id]
         else {
             panic!("expected an alias or struct");
         };

@@ -452,3 +452,23 @@ fn test_doubling_union_extractors() {
         });
     }
 }
+
+/// `type U0 = Int | (Int | nil, Int); type U1 = U0 | U0; ...` without aliases, which `substitute`
+/// leaves shared, so subtracting from it takes as many steps as there are levels (part of #496)
+#[test]
+fn test_subtract_doubling_union() {
+    let mut t = Types::new();
+    let (int, nil) = (t.builtins.int, t.builtins.nil);
+    let optional = t.union(vec![int, nil]);
+    let pair = t.pair(optional, int);
+    let mut ty = t.union(vec![int, pair]);
+
+    for _ in 0..30 {
+        ty = t.union(vec![ty, ty]);
+    }
+
+    let nil_pair = t.pair(nil, int);
+    with_step_limit(10_000, || {
+        subtract(&mut t.arena, &t.builtins, ty, nil_pair);
+    });
+}

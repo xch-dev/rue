@@ -356,10 +356,10 @@ mod tests {
         }
 
         fn atom_parts(&self, id: TypeId) -> (AtomSemantic, Option<AtomRestriction>) {
-            let Type::Atom(atom) = self.arena[id].clone() else {
+            let Type::Atom(atom) = &self.arena[id] else {
                 panic!("expected an atom");
             };
-            (atom.semantic, atom.restriction)
+            (atom.semantic, atom.restriction.clone())
         }
 
         /// A struct without fields, whose inner type isn't nil-terminated.

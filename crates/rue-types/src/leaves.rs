@@ -133,3 +133,90 @@ where
         result
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{extract_atoms, test_types::Db};
+
+    use super::*;
+
+    /// The leaves of a type, each with the path it was reached through.
+    fn leaves(db: &Db, id: TypeId, walk: Walk) -> Vec<(TypeId, Vec<TypeId>)> {
+        let mut leaves = Vec::new();
+        for_each_leaf(&db.arena, id, walk, |id, _, path| {
+            leaves.push((id, path.to_vec()));
+        });
+        leaves
+    }
+
+    #[test]
+    fn test_walk_leaves_paths() {
+        let mut db = Db::new();
+        let (int, nil) = (db.builtins.int, db.builtins.nil);
+        let a = db.alias("A", &[], int);
+        let b = db.alias("B", &[], int);
+        let s = db.strukt("S", a);
+        let union = db.union(&[s, a, b, a, nil, s]);
+
+        // The `Int` reached through `A` is the same leaf as the one reached through `S` and `A`,
+        // which is reached first
+        assert_eq!(
+            leaves(&db, union, Walk::Leaves),
+            [(int, vec![s, a]), (nil, vec![])]
+        );
+
+        // Unless the path is part of what's visited, in which case each path is visited once, with
+        // the outermost alias or struct first
+        assert_eq!(
+            leaves(&db, union, Walk::WithPaths),
+            [
+                (int, vec![s, a]),
+                (int, vec![a]),
+                (int, vec![b]),
+                (nil, vec![]),
+            ]
+        );
+
+        // A struct is a leaf of its own if it's wanted as it is
+        assert_eq!(
+            leaves(&db, union, Walk::ToStructs),
+            [(s, vec![]), (int, vec![a]), (nil, vec![])]
+        );
+    }
+
+    #[test]
+    fn test_walk_leaves_stops() {
+        let mut db = Db::new();
+        let (int, nil, bytes) = (db.builtins.int, db.builtins.nil, db.builtins.bytes);
+        let union = db.union(&[int, nil, bytes]);
+
+        let mut visited = Vec::new();
+        let result = walk_leaves(&db.arena, union, Walk::Leaves, |id, _, _| {
+            visited.push(id);
+            if id == nil {
+                ControlFlow::Break(id)
+            } else {
+                ControlFlow::Continue(())
+            }
+        });
+
+        assert_eq!(result, ControlFlow::Break(nil));
+        assert_eq!(visited, [int, nil]);
+    }
+
+    #[test]
+    fn test_walk_leaves_empty_union() {
+        let mut db = Db::new();
+        let int = db.builtins.int;
+        let empty = db.union(&[]);
+        let union = db.union(&[int, empty]);
+
+        // An empty union is visited as `Never`, which contributes nothing, and so makes a strict
+        // extraction empty
+        assert!(matches!(
+            extract_atoms(&mut db.arena, union, false),
+            Some(crate::Atoms::Unrestricted)
+        ));
+        assert!(extract_atoms(&mut db.arena, union, true).is_none());
+    }
+}

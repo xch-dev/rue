@@ -2763,6 +2763,12 @@ enum Semantic {
     Id(TypeId),
 }
 
+/// The semantics of the structs that a type's values can be, with `None` for the values that
+/// aren't in a struct.
+///
+/// This walks the same types as `walk_leaves` with `Walk::ToStructs`, but doesn't use it, since
+/// that counts a step for each type: these would count against the step limits that the tests of
+/// comparisons give them, and make some of them give up.
 fn semantics_of(arena: &Arena<Type>, id: TypeId) -> HashSet<Option<Semantic>> {
     semantics_of_impl(arena, id, &mut HashSet::new())
 }
