@@ -1,0 +1,18 @@
+===== release =====
+// The program is the body of `main`
+fn main(x: Int, y: Int) {  // runtime_error.rue:6:5-32
+    x / y + y / x          // runtime_error.rue:6:5-32
+}
+===== debug =====
+program(solution) {                          // runtime_error.rue:5:32-7:2
+    main(x: solution@2, y: solution@5)       // runtime_error.rue:5:32-7:2
+}
+
+fn main(x: Int, y: Int) {                    // runtime_error.rue:6:5-32
+    // env@2 is always divide
+    divide(a: x, b: y) + divide(a: y, b: x)  // runtime_error.rue:6:5-32
+}
+
+fn divide(a: Int, b: Int) {                  // runtime_error.rue:10:5-10
+    a / b                                    // runtime_error.rue:10:5-10
+}

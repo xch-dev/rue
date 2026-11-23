@@ -1,0 +1,27 @@
+===== release =====
+// The program is the body of `main`
+fn main(amount: Int) {                                       // nested_assert.rue:4:5-22
+    let v1 = amount * 2                                      // nested_assert.rue:8:19-28
+    (if v1 > 100 { v1 - amount } else { raise() }) + v1 + 1  // nested_assert.rue:4:5-22
+}
+===== debug =====
+program(solution) {                     // nested_assert.rue:3:29-5:2
+    main(amount: solution@2)            // nested_assert.rue:3:29-5:2
+}
+
+fn main(amount: Int) {                  // nested_assert.rue:4:5-22
+    // env@4 is always outer
+    // env@6 is always inner
+    outer(value: amount) + 1            // nested_assert.rue:4:5-22
+}
+
+fn outer(value: Int) {                  // nested_assert.rue:7:29-10:2
+    // env@2 is always inner
+    let v1 = value * 2                  // nested_assert.rue:8:19-28
+    inner(total: v1, base: value) + v1  // nested_assert.rue:9:5-36
+}
+
+fn inner(total: Int, base: Int) {       // nested_assert.rue:13:5-24
+    assert total > 100 else raise("assertion failed at nested_assert.rue:13:5")  // nested_assert.rue:13:5-24
+    total - base                        // nested_assert.rue:14:5-17
+}

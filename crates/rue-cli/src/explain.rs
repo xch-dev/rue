@@ -1,0 +1,72 @@
+//! `rue explain`, which shows a compiled program as source-annotated pseudocode (see
+//! `rue_explain`).
+
+use std::{fs, path::Path};
+
+use anyhow::{Context, Result};
+use clap::Parser;
+use clvmr::{Allocator, serde::node_to_bytes};
+use rue_clvm::assemble;
+use rue_explain::Explanation;
+
+use crate::debug_metadata_path;
+
+/// Show what a compiled program does, as Rue-like pseudocode with the source location of each
+/// line, from its debug metadata sidecar (`rue build --debug-metadata`).
+///
+/// Function calls, `if`s and operators are shown as Rue code, and values from the environment by
+/// the names of the parameters they're in (or as `env@PATH` if they have no name). A hidden part
+/// of an environment that every call passes the same constant for, such as a captured function,
+/// is shown by its value. `select(c, a, b)` is CLVM's `i`, which evaluates both values; `if`
+/// only evaluates the branch it takes, and tests whether the condition isn't nil. A closure is
+/// shown as `function{capture: value}`, and calling a value runs it with the arguments as its
+/// environment. Code that isn't recognized is shown as CLVM, in `clvm!(...)`.
+#[derive(Debug, Parser)]
+#[allow(clippy::struct_field_names)]
+pub struct ExplainArgs {
+    /// The program, as CLVM or hex (with `--hex`), or a file that contains it (such as one from
+    /// `rue build --all`, which is read as hex if its name ends in `.hex`)
+    program: String,
+    #[clap(short = 'x', long)]
+    hex: bool,
+    /// The debug metadata sidecar of the program. For a program file, it defaults to the sidecar
+    /// next to it (`foo.rue.hex` has `foo.rue.debug.clvm.bin`), if there is one. Without one,
+    /// nothing is named
+    #[clap(long, value_name = "PATH")]
+    debug_metadata: Option<String>,
+}
+
+pub fn explain(args: &ExplainArgs) -> Result<String> {
+    let (text, hex, sidecar_path) = if Path::new(&args.program).is_file() {
+        let text = fs::read_to_string(&args.program)
+            .with_context(|| format!("Couldn't read {}", args.program))?;
+        let default_sidecar = debug_metadata_path(&args.program);
+        let sidecar = args.debug_metadata.clone().or_else(|| {
+            Path::new(&default_sidecar)
+                .is_file()
+                .then_some(default_sidecar)
+        });
+        (
+            text.trim().to_string(),
+            args.hex || args.program.ends_with(".hex"),
+            sidecar,
+        )
+    } else {
+        (args.program.clone(), args.hex, args.debug_metadata.clone())
+    };
+
+    let program = if hex {
+        hex::decode(&text).context("The program isn't valid hex")?
+    } else {
+        let mut allocator = Allocator::new();
+        let ptr = assemble(&mut allocator, &text)?;
+        node_to_bytes(&allocator, ptr)?
+    };
+
+    let sidecar = sidecar_path
+        .map(|path| fs::read(&path).with_context(|| format!("Couldn't read {path}")))
+        .transpose()?;
+
+    let explanation = Explanation::new(&program, sidecar.as_deref())?;
+    Ok(explanation.render().trim_end().to_string())
+}

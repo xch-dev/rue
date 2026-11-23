@@ -1,0 +1,90 @@
+===== release =====
+program(solution) {                                          // nested_captures.rue:9:39-11:2
+    main(xs: solution@2, n: solution@5, env@2: scale(n: 5))  // nested_captures.rue:9:39-11:2
+}
+
+fn main(xs: List, n: Int) {                                  // nested_captures.rue:10:5-22
+    // env@9 is always add_scaled
+    // env@21 is always for
+    // env@29 is always scale
+    add_scaled(n: n, xs: xs, env@14: env@2)                  // nested_captures.rue:10:5-22
+}
+
+fn add_scaled(n: Int, xs: List) {                            // nested_captures.rue:24:5-28:6
+    // env@8 is always add_scaled
+    // env@12 is always for
+    // env@10 is always scale
+    if n > 3 {                                               // nested_captures.rue:24:5-28:6
+        n                                                    // nested_captures.rue:24:5-28:6
+    } else {
+        for(n: n, xs: xs, list: xs, env@28: env@14)          // nested_captures.rue:27:9-73
+    }
+}
+
+fn for(n: Int, xs: List, list: List) {                       // nested_captures.rue:9:39-11:2
+    // env@16 is always add_scaled
+    // env@24 is always for
+    // env@20 is always scale
+    if list {                                                // nested_captures.rue:9:39-11:2
+        for(                                                 // nested_captures.rue:27:36-71
+            n: n,
+            xs: xs,
+            list: list.rest,
+            env@28: env@28,
+        ) + list.first + add_scaled(n: n + env@28, xs: xs, env@14: env@28)
+    } else {
+        nil                                                  // nested_captures.rue:9:39-11:2
+    }
+}
+
+fn scale(n: Int) {                                           // nested_captures.rue:14:5-18:6
+    // env@2 is always scale
+    if n > 100 {                                             // nested_captures.rue:14:5-18:6
+        n                                                    // nested_captures.rue:14:5-18:6
+    } else {
+        scale(n: n * 3)                                      // nested_captures.rue:17:9-21
+    }
+}
+===== debug =====
+program(solution) {                                                  // nested_captures.rue:9:39-11:2
+    main(xs: solution@2, n: solution@5, env@2: scale(n: 5))          // nested_captures.rue:9:39-11:2
+}
+
+fn main(xs: List, n: Int) {                                          // nested_captures.rue:10:5-22
+    // env@9 is always add_scaled
+    // env@21 is always for
+    // env@29 is always scale
+    add_scaled(n: n, xs: xs, env@14: env@2)                          // nested_captures.rue:10:5-22
+}
+
+fn add_scaled(n: Int, xs: List) {                                    // nested_captures.rue:24:5-28:6
+    // env@8 is always add_scaled
+    // env@12 is always for
+    // env@10 is always scale
+    if n > 3 {                                                       // nested_captures.rue:24:5-28:6
+        n                                                            // nested_captures.rue:24:5-28:6
+    } else {
+        for(n: n, xs: xs, list: xs, env@30: env@14)                  // nested_captures.rue:27:9-73
+    }
+}
+
+fn for(n: Int, xs: List, list: List) {                               // nested_captures.rue:9:39-11:2
+    // env@12 is always add_scaled
+    // env@26 is always for
+    // env@22 is always scale
+    if list {                                                        // nested_captures.rue:9:39-11:2
+        let v1 = for(n: n, xs: xs, list: list.rest, env@30: env@30)  // nested_captures.rue:9:39-11:2
+        v1 + list.first + add_scaled(n: n + env@30, xs: xs, env@14: env@30)  // nested_captures.rue:27:36-71
+    } else {
+        nil                                                          // nested_captures.rue:9:39-11:2
+    }
+}
+
+fn scale(n: Int) {                                                   // nested_captures.rue:14:5-18:6
+    // env@2 is always scale
+    if n > 100 {                                                     // nested_captures.rue:14:5-18:6
+        n                                                            // nested_captures.rue:14:5-18:6
+    } else {
+        scale(n: n * 3)                                              // nested_captures.rue:17:9-21
+    }
+}

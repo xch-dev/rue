@@ -1,0 +1,10 @@
+===== release =====
+// The program is the body of `main`
+fn main(conditions) {  // p2_conditions.rue:9:5-20
+    (1, conditions)    // p2_conditions.rue:9:5-20
+}
+===== debug =====
+// The program is the body of `main`
+fn main(conditions) {  // p2_conditions.rue:9:5-20
+    (1, conditions)    // p2_conditions.rue:9:5-20
+}

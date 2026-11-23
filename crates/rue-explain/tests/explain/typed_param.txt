@@ -1,0 +1,28 @@
+===== release =====
+// The program is the body of `main`
+fn main(owner: Bytes(48), target: Bytes32, amount: Int, memo: Atom, enabled: Atom) {  // typed_param.rue:9:5-20 (validate (inlined))
+    assert all(enabled, !(target == sha256(owner)), 5 > strlen(memo))  // typed_param.rue:9:5-20 (validate (inlined))
+    amount                                                             // typed_param.rue:9:5-20
+}
+===== debug =====
+program(solution) {                                                       // typed_param.rue:4:93-6:2
+    main(                                                                 // typed_param.rue:4:93-6:2
+        owner: solution@2,
+        target: solution@5,
+        amount: solution@11,
+        memo: solution@23,
+        enabled: solution@47,
+    )
+}
+
+fn main(owner: Bytes(48), target: Bytes32, amount: Int, memo: Atom, enabled: Atom) {  // typed_param.rue:5:5-51
+    // env@2 is always validate
+    validate(owner: owner, target: target, amount: amount, memo: memo, enabled: enabled)  // typed_param.rue:5:5-51
+}
+
+fn validate(owner: Bytes(48), target: Bytes32, amount: Int, memo: Atom, enabled: Atom) {  // typed_param.rue:9:5-20
+    assert enabled else raise("assertion failed at typed_param.rue:9:5")  // typed_param.rue:9:5-20
+    assert !(target == sha256(owner)) else raise("assertion failed at typed_param.rue:10:5")  // typed_param.rue:10:5-45
+    assert 5 > strlen(memo) else raise("assertion failed at typed_param.rue:11:5")  // typed_param.rue:11:5-28
+    amount                                                                // typed_param.rue:11:5-28
+}

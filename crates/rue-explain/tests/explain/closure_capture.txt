@@ -1,0 +1,46 @@
+===== release =====
+program(solution) {                                      // closure_capture.rue:3:46-9:2
+    main(limit: solution@2, items: solution@5)           // closure_capture.rue:3:46-9:2
+}
+
+fn main(limit: Int, items: List) {                       // closure_capture.rue:8:5-24
+    // env@2 is always total
+    total(items: items, f: <lambda>{limit: limit})       // closure_capture.rue:8:5-24
+}
+
+fn <lambda>(limit: Int, item: Int) {                     // closure_capture.rue:5:9-29
+    assert limit > item                                  // closure_capture.rue:5:9-29
+    item                                                 // closure_capture.rue:5:9-29
+}
+
+fn total(items: List, f) {                               // closure_capture.rue:11:60-16:2
+    // env@2 is always total
+    if items {                                           // closure_capture.rue:11:60-16:2
+        f(items.first) + total(items: items.rest, f: f)  // closure_capture.rue:15:5-42
+    } else {
+        nil                                              // closure_capture.rue:11:60-16:2
+    }
+}
+===== debug =====
+program(solution) {                                      // closure_capture.rue:3:46-9:2
+    main(limit: solution@2, items: solution@5)           // closure_capture.rue:3:46-9:2
+}
+
+fn main(limit: Int, items: List) {                       // closure_capture.rue:3:46-9:2
+    // env@2 is always total
+    total(items: items, f: <lambda>{limit: limit})       // closure_capture.rue:8:5-24
+}
+
+fn <lambda>(limit: Int, item: Int) {                     // closure_capture.rue:5:9-29
+    assert limit > item else raise("assertion failed at closure_capture.rue:5:9")  // closure_capture.rue:5:9-29
+    item                                                 // closure_capture.rue:5:9-29
+}
+
+fn total(items: List, f) {                               // closure_capture.rue:11:60-16:2
+    // env@2 is always total
+    if !items {                                          // closure_capture.rue:11:60-16:2
+        nil                                              // closure_capture.rue:11:60-16:2
+    } else {
+        f(items.first) + total(items: items.rest, f: f)  // closure_capture.rue:15:5-42
+    }
+}

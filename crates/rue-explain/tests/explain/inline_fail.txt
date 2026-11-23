@@ -1,0 +1,13 @@
+===== release =====
+// The program is the body of `main`
+fn main(x: Int) {                                // inline_fail.rue:5:5-10
+    (if 10 > x { raise() } else { x - 10 }) * 2  // inline_fail.rue:5:5-10
+}
+===== debug =====
+// The program is the body of `main`
+fn main(x: Int) {         // inline_fail.rue:3:24-6:2
+    let v1 = if 10 > x {  // inline_fail.rue:8:46-14:2 (checked_sub (inlined))
+        raise("raise called at inline_fail.rue:11:9", "underflow")
+    } else { x - 10 }
+    v1 * 2                // inline_fail.rue:5:5-10
+}

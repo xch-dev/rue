@@ -1,0 +1,424 @@
+===== release =====
+program(solution) {                                               // cat_v2.rue:87:22-151:2
+    main(                                                         // cat_v2.rue:87:22-151:2
+        mod_hash: solution@2,
+        tail_program_hash: solution@5,
+        inner_puzzle: solution@11,
+        inner_puzzle_solution: solution@23,
+        lineage_proof: solution@47,
+        prev_coin_id: solution@95,
+        this_coin_info: solution@191,
+        next_coin_proof: solution@383,
+        prev_subtotal: solution@767,
+        extra_delta: solution@1535,
+    )
+}
+
+fn main(                                                          // cat_v2.rue:87:22-151:2
+    mod_hash: Bytes32,
+    tail_program_hash: Bytes32,
+    inner_puzzle,
+    inner_puzzle_solution,
+    lineage_proof,
+    prev_coin_id: Bytes32,
+    this_coin_info: List,
+    next_coin_proof: List,
+    prev_subtotal: Int,
+    extra_delta: Int,
+) {
+    // env@8 is always cat_puzzle_hash
+    // env@20 is always for
+    // env@28 is always for#2
+    // env@10 is always tree_hash
+    // env@14 is always spread
+    let v1 = sha256(1, mod_hash)                                  // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
+    let v2 = coinid(this_coin_info.first, this_coin_info.rest.first, this_coin_info.rest.rest.first)  // cat_v2.rue:89:17-93:6
+    let v3 = for(                                                 // cat_v2.rue:162:5-205:6 (morph_conditions (inlined))
+        cat_info: [mod_hash, v1, tail_program_hash],
+        list: inner_puzzle(...inner_puzzle_solution),
+    )
+    let v4 = if lineage_proof {                                   // cat_v2.rue:119:25-127:6
+        this_coin_info.first == coinid(
+            lineage_proof.first,
+            cat_puzzle_hash(
+                cat_info: [mod_hash, v1, tail_program_hash],
+                inner_puzzle_hash: lineage_proof.rest.first,
+            ),
+            lineage_proof.rest.rest.first,
+        )
+    } else { nil }
+    let v5 = concat(-53, tree_hash(value: [prev_coin_id, prev_subtotal]))  // cat_v2.rue:111:22-80
+    let v6 = sha256(                                              // cat_v2.rue:114:17-86
+        coinid(
+            next_coin_proof.first,
+            cat_puzzle_hash(
+                cat_info: [mod_hash, v1, tail_program_hash],
+                inner_puzzle_hash: next_coin_proof.rest.first,
+            ),
+            next_coin_proof.rest.rest.first,
+        ),
+        -53,
+        tree_hash(
+            value: [
+                v2,
+                prev_subtotal + this_coin_info.rest.rest.first + extra_delta - v3.rest.first,
+            ],
+        ),
+    )
+    ([70, v2], if v3.rest.rest {                                  // cat_v2.rue:129:5-150:6
+        assert tree_hash(value: v3.rest.rest.first) == tail_program_hash
+        spread(
+            items: v3.rest.rest.first(
+                [
+                    [tree_hash(value: inner_puzzle), mod_hash, v1, tail_program_hash],
+                    v2,
+                    ...this_coin_info,
+                ],
+                v4,
+                lineage_proof,
+                extra_delta,
+                [[60, v5], [61, v6], ...v3.first],
+                v3.rest.rest.rest,
+            ),
+            rest: [[60, v5], [61, v6], ...v3.first],
+        )
+    } else {
+        assert all(v4, !extra_delta)
+        [[60, v5], [61, v6], ...v3.first]
+    })
+}
+
+fn cat_puzzle_hash(cat_info: List, inner_puzzle_hash: Bytes32) {  // std/curry_tree_hash.rue:12:5-16:6 (apply_hash (inlined))
+    // env@2 is always for#2
+    sha256(                                                       // std/curry_tree_hash.rue:12:5-16:6 (apply_hash (inlined))
+        2,
+        sha256(258),
+        sha256(
+            2,
+            sha256(2, sha256(257), cat_info.first),
+            sha256(
+                2,
+                for#2(
+                    list: [
+                        cat_info.rest.first,
+                        sha256(1, cat_info.rest.rest.first),
+                        inner_puzzle_hash,
+                    ],
+                ),
+                sha256(1),
+            ),
+        ),
+    )
+}
+
+fn for(cat_info: List, list: List) {                              // cat_v2.rue:87:22-151:2
+    // env@8 is always cat_puzzle_hash
+    // env@20 is always for
+    // env@28 is always for#2
+    if list {                                                     // cat_v2.rue:87:22-151:2
+        let v1 = for(cat_info: cat_info, list: list.rest)         // cat_v2.rue:87:22-151:2
+        if list.first.first == 51 {                               // cat_v2.rue:165:9-204:10
+            if list.first.rest.rest.first == -113 {               // cat_v2.rue:166:13-194:14
+                [                                                 // cat_v2.rue:175:17-182:18
+                    v1.first,
+                    v1.rest.first,
+                    ...select(
+                        v1.rest.rest,
+                        v1.rest.rest,
+                        (list.first.rest.rest.rest.first, list.first.rest.rest.rest.rest.first),
+                    ),
+                ]
+            } else {
+                [                                                 // cat_v2.rue:189:17-193:18
+                    (
+                        [
+                            51,
+                            cat_puzzle_hash(
+                                cat_info: cat_info,
+                                inner_puzzle_hash: list.first.rest.first,
+                            ),
+                            ...list.first.rest.rest,
+                        ],
+                        v1.first,
+                    ),
+                    v1.rest.first + list.first.rest.rest.first,
+                    ...v1.rest.rest,
+                ]
+            }
+        } else if (if list.first.first == 60 {                    // cat_v2.rue:197:13-201:15
+            if strlen(list.first.rest.first) == 33 {
+                substr(list.first.rest.first, nil, 1) == -53
+            } else {
+                nil
+            }
+        } else { nil }) {
+            raise()                                               // cat_v2.rue:197:13-201:15
+        } else {
+            ((list.first, v1.first), v1.rest)                     // cat_v2.rue:203:13-77
+        }
+    } else {
+        [nil, nil]                                                // cat_v2.rue:163:21-81
+    }
+}
+
+fn for#2(list: List) {                                            // cat_v2.rue:87:22-151:2
+    // env@2 is always for#2
+    if list {                                                     // cat_v2.rue:87:22-151:2
+        sha256(                                                   // std/curry_tree_hash.rue:20:5-24:6 (update_hash_with_parameter (inlined))
+            2,
+            sha256(260),
+            sha256(
+                2,
+                sha256(2, sha256(257), list.first),
+                sha256(2, for#2(list: list.rest), sha256(1)),
+            ),
+        )
+    } else {
+        sha256(257)                                               // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
+    }
+}
+
+fn tree_hash(value) {                                             // std/tree_hash.rue:2:5-6:6
+    // env@2 is always tree_hash
+    if listp(value) {                                             // std/tree_hash.rue:2:5-6:6
+        sha256(2, tree_hash(value: value.first), tree_hash(value: value.rest))  // std/tree_hash.rue:14:5-38 (tree_hash_pair (inlined))
+    } else {
+        sha256(1, value)                                          // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
+    }
+}
+
+fn spread(items, rest) {                                          // cat_v2.rue:87:22-151:2
+    // env@2 is always spread
+    if items {                                                    // cat_v2.rue:87:22-151:2
+        (items.first, spread(items: items.rest, rest: rest))      // cat_v2.rue:87:22-151:2
+    } else {
+        rest                                                      // cat_v2.rue:87:22-151:2
+    }
+}
+===== debug =====
+program(solution) {                                                       // cat_v2.rue:87:22-151:2
+    main(                                                                 // cat_v2.rue:87:22-151:2
+        mod_hash: solution@2,
+        tail_program_hash: solution@5,
+        inner_puzzle: solution@11,
+        inner_puzzle_solution: solution@23,
+        lineage_proof: solution@47,
+        prev_coin_id: solution@95,
+        this_coin_info: solution@191,
+        next_coin_proof: solution@383,
+        prev_subtotal: solution@767,
+        extra_delta: solution@1535,
+    )
+}
+
+fn main(                                                                  // cat_v2.rue:87:22-151:2
+    mod_hash: Bytes32,
+    tail_program_hash: Bytes32,
+    inner_puzzle,
+    inner_puzzle_solution,
+    lineage_proof,
+    prev_coin_id: Bytes32,
+    this_coin_info: List,
+    next_coin_proof: List,
+    prev_subtotal: Int,
+    extra_delta: Int,
+) {
+    // env@8 is always tree_hash
+    // env@12 is always cat_puzzle_hash
+    // env@18 is always spread
+    // env@42 is always for
+    // env@58 is always for#2
+    // env@38 is always morph_conditions
+    // env@54 is always curry_tree_hash
+    // env@46 is always curried_params_hash
+    // env@94 is always update_hash_with_parameter
+    // env@126 is always apply_hash
+    let v1 = sha256(concat(1, mod_hash))                                  // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
+    let v2 = coinid(this_coin_info.first, this_coin_info.rest.first, this_coin_info.rest.rest.first)  // cat_v2.rue:89:17-93:6
+    let v3 = morph_conditions(                                            // cat_v2.rue:99:19-85
+        conditions: inner_puzzle(...inner_puzzle_solution),
+        cat_info: [mod_hash, v1, tail_program_hash],
+    )
+    let v4 = if !lineage_proof { nil } else {                             // cat_v2.rue:119:25-127:6
+        this_coin_info.first == coinid(
+            lineage_proof.first,
+            cat_puzzle_hash(
+                cat_info: [mod_hash, v1, tail_program_hash],
+                inner_puzzle_hash: lineage_proof.rest.first,
+            ),
+            lineage_proof.rest.rest.first,
+        )
+    }
+    let v5 = tree_hash(value: inner_puzzle)                               // cat_v2.rue:95:51-74
+    let v6 = coinid(                                                      // cat_v2.rue:101:24-105:6
+        next_coin_proof.first,
+        cat_puzzle_hash(
+            cat_info: [mod_hash, v1, tail_program_hash],
+            inner_puzzle_hash: next_coin_proof.rest.first,
+        ),
+        next_coin_proof.rest.rest.first,
+    )
+    let v7 = prev_subtotal + (this_coin_info.rest.rest.first - v3.rest.first) + extra_delta  // cat_v2.rue:106:20-94
+    let v8 = concat(-53, tree_hash(value: [prev_coin_id, prev_subtotal]))  // cat_v2.rue:111:22-80
+    let v9 = sha256(concat(concat(v6, -53), tree_hash(value: [v2, v7])))  // cat_v2.rue:114:17-86
+    let v10 = v3.first                                                    // cat_v2.rue:116:12-30
+    ([70, v2], if !v3.rest.rest {                                         // cat_v2.rue:129:5-150:6
+        assert all(v4, extra_delta == nil) else raise("assertion failed at cat_v2.rue:133:13")
+        [[60, v8], [61, v9], ...v10]
+    } else {
+        let v11 = v3.rest.rest
+        assert tree_hash(value: v11.first) == tail_program_hash else raise(
+            "assertion failed at cat_v2.rue:137:13",
+        )
+        spread(
+            items: v11.first(
+                [[v5, mod_hash, v1, tail_program_hash], v2, ...this_coin_info],
+                v4,
+                lineage_proof,
+                extra_delta,
+                [[60, v8], [61, v9], ...v10],
+                v11.rest,
+            ),
+            rest: [[60, v8], [61, v9], ...v10],
+        )
+    })
+}
+
+fn tree_hash(value) {                                                     // std/tree_hash.rue:2:5-6:6
+    // env@2 is always tree_hash
+    if !listp(value) {                                                    // std/tree_hash.rue:2:5-6:6
+        sha256(concat(1, value))                                          // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
+    } else {
+        sha256(concat(concat(2, tree_hash(value: value.first)), tree_hash(value: value.rest)))  // std/tree_hash.rue:14:5-38 (tree_hash_pair (inlined))
+    }
+}
+
+fn cat_puzzle_hash(cat_info: List, inner_puzzle_hash: Bytes32) {          // cat_v2.rue:154:5-157:6
+    // env@8 is always for#2
+    // env@12 is always curry_tree_hash
+    // env@10 is always curried_params_hash
+    // env@22 is always update_hash_with_parameter
+    // env@30 is always apply_hash
+    curry_tree_hash(                                                      // cat_v2.rue:154:5-157:6
+        mod_hash: cat_info.first,
+        parameters: [
+            cat_info.rest.first,
+            sha256(concat(1, cat_info.rest.rest.first)),
+            inner_puzzle_hash,
+        ],
+    )
+}
+
+fn spread(items, rest) {                                                  // cat_v2.rue:87:22-151:2
+    // env@2 is always spread
+    if items {                                                            // cat_v2.rue:87:22-151:2
+        (items.first, spread(items: items.rest, rest: rest))              // cat_v2.rue:87:22-151:2
+    } else {
+        rest                                                              // cat_v2.rue:87:22-151:2
+    }
+}
+
+fn for(cat_info: List, list: List) {                                      // cat_v2.rue:87:22-151:2
+    // env@8 is always cat_puzzle_hash
+    // env@12 is always for
+    // env@18 is always for#2
+    // env@38 is always curry_tree_hash
+    // env@54 is always curried_params_hash
+    // env@46 is always update_hash_with_parameter
+    // env@62 is always apply_hash
+    if list {                                                             // cat_v2.rue:87:22-151:2
+        let v1 = for(cat_info: cat_info, list: list.rest)                 // cat_v2.rue:87:22-151:2
+        if list.first.first == 51 {                                       // cat_v2.rue:165:9-204:10
+            if list.first.rest.rest.first == nil - 113 {                  // cat_v2.rue:166:13-194:14
+                let v2 = list.first                                       // cat_v2.rue:169:58-67 (for)
+                let v3 = v2.rest.rest.rest.first                          // cat_v2.rue:171:34-54
+                let v4 = v2.rest.rest.rest.rest.first                     // cat_v2.rue:172:36-58
+                [v1.first, v1.rest.first, ...select(!v1.rest.rest, (v3, v4), v1.rest.rest)]  // cat_v2.rue:175:17-182:18
+            } else {
+                let v5 = cat_puzzle_hash(                                 // cat_v2.rue:186:34-82
+                    cat_info: cat_info,
+                    inner_puzzle_hash: list.first.rest.first,
+                )
+                let v6 = list.first.rest.rest                             // cat_v2.rue:184:31-187:18
+                [                                                         // cat_v2.rue:189:17-193:18
+                    ([51, v5, ...v6], v1.first),
+                    v1.rest.first + list.first.rest.rest.first,
+                    ...v1.rest.rest,
+                ]
+            }
+        } else {
+            assert !(                                                     // cat_v2.rue:197:13-201:15
+                if (
+                    if list.first.first == 60 { strlen(list.first.rest.first) == 33 } else { nil },
+                ) { substr(list.first.rest.first, nil, 1) == -53 } else { nil },
+            ) else raise("assertion failed at cat_v2.rue:197:13")
+            ((list.first, v1.first), v1.rest)                             // cat_v2.rue:203:13-77
+        }
+    } else {
+        [nil, nil]                                                        // cat_v2.rue:163:21-81
+    }
+}
+
+fn for#2(list: List) {                                                    // cat_v2.rue:87:22-151:2
+    // env@4 is always for#2
+    // env@6 is always update_hash_with_parameter
+    if list {                                                             // cat_v2.rue:87:22-151:2
+        let v1 = for#2(list: list.rest)                                   // cat_v2.rue:87:22-151:2
+        update_hash_with_parameter(parameter_hash: list.first, environment_hash: v1)  // std/curry_tree_hash.rue:29:9-52
+    } else {
+        sha256(concat(1, 1))                                              // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
+    }
+}
+
+fn morph_conditions(conditions: List, cat_info: List) {                   // cat_v2.rue:162:5-205:6
+    // env@8 is always cat_puzzle_hash
+    // env@12 is always for
+    // env@18 is always for#2
+    // env@26 is always curry_tree_hash
+    // env@22 is always curried_params_hash
+    // env@46 is always update_hash_with_parameter
+    // env@62 is always apply_hash
+    for(cat_info: cat_info, list: conditions)                             // cat_v2.rue:162:5-205:6
+}
+
+fn curry_tree_hash(mod_hash: Bytes32, parameters: List) {                 // std/curry_tree_hash.rue:34:5-58
+    // env@4 is always for#2
+    // env@10 is always curried_params_hash
+    // env@22 is always update_hash_with_parameter
+    // env@30 is always apply_hash
+    apply_hash(mod_hash: mod_hash, environment_hash: curried_params_hash(parameters: parameters))  // std/curry_tree_hash.rue:34:5-58
+}
+
+fn curried_params_hash(parameters: List) {                                // std/curry_tree_hash.rue:28:5-30:6
+    // env@4 is always for#2
+    // env@6 is always update_hash_with_parameter
+    for#2(list: parameters)                                               // std/curry_tree_hash.rue:28:5-30:6
+}
+
+fn update_hash_with_parameter(parameter_hash: Bytes32, environment_hash: Bytes32) {  // std/curry_tree_hash.rue:20:5-24:6
+    sha256(                                                               // std/curry_tree_hash.rue:20:5-24:6
+        concat(
+            concat(2, sha256(concat(1, 4))),
+            sha256(
+                concat(
+                    concat(2, sha256(concat(concat(2, sha256(concat(1, 1))), parameter_hash))),
+                    sha256(concat(concat(2, environment_hash), sha256(concat(1, nil)))),
+                ),
+            ),
+        ),
+    )
+}
+
+fn apply_hash(mod_hash: Bytes32, environment_hash: Bytes32) {             // std/curry_tree_hash.rue:12:5-16:6
+    sha256(                                                               // std/curry_tree_hash.rue:12:5-16:6
+        concat(
+            concat(2, sha256(concat(1, 2))),
+            sha256(
+                concat(
+                    concat(2, sha256(concat(concat(2, sha256(concat(1, 1))), mod_hash))),
+                    sha256(concat(concat(2, environment_hash), sha256(concat(1, nil)))),
+                ),
+            ),
+        ),
+    )
+}

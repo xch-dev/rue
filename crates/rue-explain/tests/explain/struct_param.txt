@@ -1,0 +1,38 @@
+===== release =====
+// The program is the body of `main`
+fn main(payment: List, pair: Pair) {  // struct_param.rue:10:5-66
+    payment.rest.first + (            // struct_param.rue:10:5-66
+        if payment.first == sha256("burn") { raise() } else { payment.rest.first },
+    ) + (if pair.rest > pair.first { pair.rest - pair.first } else { raise() })
+}
+===== debug =====
+program(solution) {                                          // struct_param.rue:9:52-11:2
+    main(payment: solution@2, pair: solution@5)              // struct_param.rue:9:52-11:2
+}
+
+fn main(payment: List, pair: Pair) {                         // struct_param.rue:10:5-66
+    // env@4 is always by_tuple
+    // env@10 is always by_destructure
+    // env@14 is always by_struct
+    by_struct(payment: payment) + by_destructure(            // struct_param.rue:10:5-66
+        { puzzle_hash, amount }: payment,
+    ) + by_tuple((low, high): pair)
+}
+
+fn by_tuple((low, high): Pair) {                             // struct_param.rue:30:5-23
+    assert (low, high).rest > (low, high).first else raise(  // struct_param.rue:30:5-23
+        "assertion failed at struct_param.rue:30:5",
+    )
+    (low, high).rest - (low, high).first                     // struct_param.rue:31:5-15
+}
+
+fn by_destructure({ puzzle_hash, amount }: List) {           // struct_param.rue:25:5-42
+    assert !(                                                // struct_param.rue:25:5-42
+        { puzzle_hash, amount }.first == sha256("burn"),
+    ) else raise("assertion failed at struct_param.rue:25:5")
+    { puzzle_hash, amount }.rest.first                       // struct_param.rue:26:5-11
+}
+
+fn by_struct(payment: List) {                                // struct_param.rue:14:5-19
+    payment.rest.first                                       // struct_param.rue:14:5-19
+}

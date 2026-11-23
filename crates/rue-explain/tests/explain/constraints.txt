@@ -1,0 +1,45 @@
+===== release =====
+// The program is the body of `main`
+fn main(  // constraints.rue:20:10-35:2
+    number: Int,
+    maybe: Atom,
+    key: Atom,
+    flag: Atom,
+    empty: Atom,
+    hashes: List,
+    anything,
+    shapes: Pair,
+    either,
+) {
+    [number, [number, maybe, key, flag, empty, hashes, anything, shapes, either, number + number]]  // constraints.rue:34:5-41
+}
+===== debug =====
+program(solution) {                                                // constraints.rue:20:10-35:2
+    main(                                                          // constraints.rue:20:10-35:2
+        number: solution@2,
+        maybe: solution@5,
+        key: solution@11,
+        flag: solution@23,
+        empty: solution@47,
+        hashes: solution@95,
+        anything: solution@191,
+        shapes: solution@383,
+        either: solution@767,
+    )
+}
+
+fn main(                                                           // constraints.rue:20:10-35:2
+    number: Int,
+    maybe: Atom,
+    key: Atom,
+    flag: Atom,
+    empty: Atom,
+    hashes: List,
+    anything,
+    shapes: Pair,
+    either,
+) {
+    // env@2 is always 1
+    let v1 = [number, number].first + [number, number].rest.first  // constraints.rue:32:9-26
+    [number, [number, maybe, key, flag, empty, hashes, anything, shapes, either, v1]]  // constraints.rue:34:5-41
+}

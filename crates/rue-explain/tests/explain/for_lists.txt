@@ -1,0 +1,36 @@
+===== release =====
+program(solution) {                       // for_lists.rue:3:52-5:2
+    main(xs: solution@2, ys: solution@5)  // for_lists.rue:3:52-5:2
+}
+
+fn main(xs: List, ys: List) {             // for_lists.rue:4:5-35
+    // env@2 is always for
+    for(list: xs, list2: ys)              // for_lists.rue:4:5-35
+}
+
+fn for(list: List, list2: List) {         // for_lists.rue:3:52-5:2
+    // env@2 is always for
+    if list {                             // for_lists.rue:3:52-5:2
+        (list.first + list2.first, for(list: list.rest, list2: list2.rest))  // for_lists.rue:3:52-5:2
+    } else {
+        nil                               // for_lists.rue:3:52-5:2
+    }
+}
+===== debug =====
+program(solution) {                       // for_lists.rue:3:52-5:2
+    main(xs: solution@2, ys: solution@5)  // for_lists.rue:3:52-5:2
+}
+
+fn main(xs: List, ys: List) {             // for_lists.rue:4:5-35
+    // env@2 is always for
+    for(list: xs, list2: ys)              // for_lists.rue:4:5-35
+}
+
+fn for(list: List, list2: List) {         // for_lists.rue:3:52-5:2
+    // env@2 is always for
+    if list {                             // for_lists.rue:3:52-5:2
+        (list.first + list2.first, for(list: list.rest, list2: list2.rest))  // for_lists.rue:3:52-5:2
+    } else {
+        nil                               // for_lists.rue:3:52-5:2
+    }
+}

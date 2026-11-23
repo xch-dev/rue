@@ -25,9 +25,11 @@ use rue_lir::{ClvmTarget, DebugDialect};
 use rue_options::{CompilerOptions, Manifest, Project, find_project};
 
 mod compact;
+mod explain;
 mod fmt;
 mod trace;
 
+use explain::*;
 use fmt::*;
 use trace::{Sidecars, run_with_trace};
 
@@ -41,6 +43,8 @@ pub enum Command {
     Test(TestArgs),
     /// Run a compiled program with a solution, and print its output
     Debug(DebugArgs),
+    /// Show a compiled program as pseudocode, with where each line is in the source
+    Explain(ExplainArgs),
     /// Format source files, or check that they're formatted
     Fmt(FmtArgs),
     /// List every lint and lint group, along with each lint's default level
@@ -317,6 +321,10 @@ fn main() -> Result<()> {
         Command::Test(args) => test(args),
         Command::Debug(args) => {
             println!("{}", debug(args)?);
+            Ok(())
+        }
+        Command::Explain(args) => {
+            println!("{}", explain(&args)?);
             Ok(())
         }
         Command::Fmt(args) => format(&args),

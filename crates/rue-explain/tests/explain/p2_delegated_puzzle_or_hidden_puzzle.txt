@@ -1,0 +1,64 @@
+===== release =====
+program(solution) {                                // p2_delegated_puzzle_or_hidden_puzzle.rue:12:22-27:2
+    main(                                          // p2_delegated_puzzle_or_hidden_puzzle.rue:12:22-27:2
+        synthetic_public_key: solution@2,
+        original_public_key: solution@5,
+        delegated_puzzle: solution@11,
+        solution: solution@23,
+    )
+}
+
+fn main(synthetic_public_key: Bytes(48), original_public_key: Atom, delegated_puzzle, solution) {  // p2_delegated_puzzle_or_hidden_puzzle.rue:12:22-27:2
+    // env@2 is always tree_hash
+    let v1 = delegated_puzzle(...solution)         // p2_delegated_puzzle_or_hidden_puzzle.rue:13:22-51
+    if original_public_key {                       // p2_delegated_puzzle_or_hidden_puzzle.rue:12:22-27:2
+        assert synthetic_public_key == point_add(  // p2_delegated_puzzle_or_hidden_puzzle.rue:23:5-24:94
+            original_public_key,
+            pubkey_for_exp(sha256(original_public_key, tree_hash(value: delegated_puzzle))),
+        )
+        v1                                         // p2_delegated_puzzle_or_hidden_puzzle.rue:23:5-24:94
+    } else {
+        ([50, synthetic_public_key, tree_hash(value: delegated_puzzle)], v1)  // p2_delegated_puzzle_or_hidden_puzzle.rue:16:16-19:10
+    }
+}
+
+fn tree_hash(value) {                              // std/tree_hash.rue:2:5-6:6
+    // env@2 is always tree_hash
+    if listp(value) {                              // std/tree_hash.rue:2:5-6:6
+        sha256(2, tree_hash(value: value.first), tree_hash(value: value.rest))  // std/tree_hash.rue:14:5-38 (tree_hash_pair (inlined))
+    } else {
+        sha256(1, value)                           // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
+    }
+}
+===== debug =====
+program(solution) {                                // p2_delegated_puzzle_or_hidden_puzzle.rue:12:22-27:2
+    main(                                          // p2_delegated_puzzle_or_hidden_puzzle.rue:12:22-27:2
+        synthetic_public_key: solution@2,
+        original_public_key: solution@5,
+        delegated_puzzle: solution@11,
+        solution: solution@23,
+    )
+}
+
+fn main(synthetic_public_key: Bytes(48), original_public_key: Atom, delegated_puzzle, solution) {  // p2_delegated_puzzle_or_hidden_puzzle.rue:12:22-27:2
+    // env@2 is always tree_hash
+    let v1 = delegated_puzzle(...solution)         // p2_delegated_puzzle_or_hidden_puzzle.rue:13:22-51
+    if original_public_key == nil {                // p2_delegated_puzzle_or_hidden_puzzle.rue:12:22-27:2
+        ([50, synthetic_public_key, tree_hash(value: delegated_puzzle)], v1)  // p2_delegated_puzzle_or_hidden_puzzle.rue:16:16-19:10
+    } else {
+        assert synthetic_public_key == point_add(  // p2_delegated_puzzle_or_hidden_puzzle.rue:23:5-24:94
+            original_public_key,
+            pubkey_for_exp(sha256(concat(original_public_key, tree_hash(value: delegated_puzzle)))),
+        ) else raise("assertion failed at p2_delegated_puzzle_or_hidden_puzzle.rue:23:5")
+        v1                                         // p2_delegated_puzzle_or_hidden_puzzle.rue:23:5-24:94
+    }
+}
+
+fn tree_hash(value) {                              // std/tree_hash.rue:2:5-6:6
+    // env@2 is always tree_hash
+    if !listp(value) {                             // std/tree_hash.rue:2:5-6:6
+        sha256(concat(1, value))                   // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
+    } else {
+        sha256(concat(concat(2, tree_hash(value: value.first)), tree_hash(value: value.rest)))  // std/tree_hash.rue:14:5-38 (tree_hash_pair (inlined))
+    }
+}

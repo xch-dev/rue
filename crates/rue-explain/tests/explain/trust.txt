@@ -1,0 +1,19 @@
+===== release =====
+// The program is the body of `main`
+fn main(amount: Int, skip: Atom) {  // trust.rue:6:5-35
+    if skip {                       // trust.rue:6:5-35
+        nil                         // trust.rue:6:5-35
+    } else {
+        amount + amount             // trust.rue:5:19-34
+    }
+}
+===== debug =====
+// The program is the body of `main`
+fn main(amount: Int, skip: Atom) {  // trust.rue:4:41-7:2
+    let v1 = amount + amount        // trust.rue:5:19-34
+    if skip {                       // trust.rue:6:5-35
+        nil                         // trust.rue:6:5-35
+    } else {
+        v1                          // trust.rue:6:5-35
+    }
+}

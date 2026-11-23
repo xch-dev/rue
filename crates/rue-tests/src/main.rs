@@ -20,6 +20,7 @@ use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::normalize_path;
 use rue_compiler::{CompiledTest, Compiler, Error, FileTree};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, SourceKind};
+use rue_explain::{EvalFailure, Explanation};
 use rue_formatter::{FormatError, FormatOptions, format_source};
 use rue_lir::{COST_PER_BYTE, ClvmTarget, DebugDialect};
 use rue_options::CompilerOptions;
@@ -224,12 +225,16 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
         .transpose()?
         .unwrap_or_default();
 
+    let sidecars = test_sidecars(&mut ctx, &mut allocator, &tests, base_path)?;
+    let debug_sidecars = test_sidecars(&mut debug_ctx, &mut allocator, &debug_tests, base_path)?;
+
     handle_tests(
         &mut allocator,
         target,
         &mut file.tests,
         &tests,
         &debug_tests,
+        [&sidecars, &debug_sidecars],
     )?;
 
     let mut log = String::new();
@@ -637,13 +642,25 @@ fn handle_test_file(
         .map(|kind| debug_unit.main(&mut debug_ctx, &mut allocator, kind, base_path.clone()));
     let (main, debug_main) = main_programs(main, debug_main, &mut file.diagnostics)?;
 
+    let mut main_sidecars = [None, None];
+
     if let Some(kind) = &kind {
-        for (ctx, unit, program) in [
+        for ((ctx, unit, program), sidecar) in [
             (&mut ctx, &unit, main),
             (&mut debug_ctx, &debug_unit, debug_main),
-        ] {
+        ]
+        .into_iter()
+        .zip(&mut main_sidecars)
+        {
             if let Some(program) = program {
-                check_debug_metadata(ctx, unit, &mut allocator, kind, &base_path, program)?;
+                *sidecar = Some(check_debug_metadata(
+                    ctx,
+                    unit,
+                    &mut allocator,
+                    kind,
+                    &base_path,
+                    program,
+                )?);
             }
         }
     }
@@ -666,7 +683,14 @@ fn handle_test_file(
         .transpose()?
         .unwrap_or_default();
 
-    handle_test_case(&mut allocator, target, &mut file.main, main, debug_main)?;
+    handle_test_case(
+        &mut allocator,
+        target,
+        &mut file.main,
+        main,
+        debug_main,
+        &main_sidecars,
+    )?;
 
     file.puzzle_hashes = BTreeMap::new();
 
@@ -701,12 +725,16 @@ fn handle_test_file(
         }
     }
 
+    let sidecars = test_sidecars(&mut ctx, &mut allocator, &tests, &base_path)?;
+    let debug_sidecars = test_sidecars(&mut debug_ctx, &mut allocator, &debug_tests, &base_path)?;
+
     handle_tests(
         &mut allocator,
         target,
         &mut file.tests,
         &tests,
         &debug_tests,
+        [&sidecars, &debug_sidecars],
     )?;
 
     compare_snapshot(&yaml_file, &file, update, failed, log)?;
@@ -722,8 +750,8 @@ fn check_debug_metadata(
     kind: &SourceKind,
     base_path: &Path,
     program: NodePtr,
-) -> Result<()> {
-    let (with_metadata, _) = unit
+) -> Result<Vec<u8>> {
+    let (with_metadata, sidecar) = unit
         .main_with_debug_metadata(ctx, allocator, kind, base_path.to_path_buf())?
         .context("main has a program, so it has one with a sidecar")?;
 
@@ -732,7 +760,7 @@ fn check_debug_metadata(
         "compiling main with a debug metadata sidecar changed the program"
     );
 
-    Ok(())
+    Ok(sidecar)
 }
 
 /// The programs for `main` and its debug build. Generated code that's nested too deeply is an
@@ -788,6 +816,7 @@ fn handle_tests(
     test_cases: &mut Vec<TestCase>,
     tests: &[CompiledTest],
     debug_tests: &[CompiledTest],
+    sidecars: [&[Vec<u8>]; 2],
 ) -> Result<()> {
     assert_eq!(debug_tests.len(), tests.len());
 
@@ -796,14 +825,92 @@ fn handle_tests(
         tests.iter().map(|test| test.name.clone()),
     );
 
-    for ((test_case, test), debug_test) in test_cases.iter_mut().zip(tests).zip(debug_tests) {
+    for (index, ((test_case, test), debug_test)) in test_cases
+        .iter_mut()
+        .zip(tests)
+        .zip(debug_tests)
+        .enumerate()
+    {
         handle_test_case(
             allocator,
             target,
             test_case,
             Some(test.ptr),
             Some(debug_test.ptr),
+            &[
+                Some(sidecars[0][index].clone()),
+                Some(sidecars[1][index].clone()),
+            ],
         )?;
+    }
+
+    Ok(())
+}
+
+/// The debug metadata sidecar of each test, which is checked to be for the same program.
+fn test_sidecars(
+    ctx: &mut Compiler,
+    allocator: &mut Allocator,
+    tests: &[CompiledTest],
+    base_path: &Path,
+) -> Result<Vec<Vec<u8>>> {
+    tests
+        .iter()
+        .map(|test| {
+            let (ptr, sidecar) = test.with_debug_metadata(ctx, allocator, base_path)?;
+            anyhow::ensure!(
+                node_to_bytes(allocator, ptr)? == node_to_bytes(allocator, test.ptr)?,
+                "compiling a test with a debug metadata sidecar changed the program"
+            );
+            Ok(sidecar)
+        })
+        .collect()
+}
+
+/// Checks that the program's explanation (see `rue_explain`) means what the program does: running
+/// it with the solution gives the same output, or fails if the program does. Running out of cost
+/// isn't compared, since the explanation's cost isn't the program's.
+fn check_explanation<D: clvmr::dialect::Dialect>(
+    allocator: &mut Allocator,
+    dialect: &D,
+    program: NodePtr,
+    sidecar: &[u8],
+    env: NodePtr,
+    expected: &Result<clvmr::reduction::Reduction, EvalErr>,
+) -> Result<()> {
+    let explanation = Explanation::new(&node_to_bytes(allocator, program)?, Some(sidecar))?;
+
+    let uncovered = explanation.uncovered();
+    anyhow::ensure!(
+        uncovered.is_empty(),
+        "the explanation of {} leaves out {} of its nodes",
+        disassemble_program(allocator, program),
+        uncovered.len()
+    );
+
+    let actual = explanation.evaluate(allocator, dialect, env, 100_000_000);
+
+    match (expected, actual) {
+        (Ok(expected), Ok(actual)) => anyhow::ensure!(
+            node_to_bytes(allocator, expected.1)? == node_to_bytes(allocator, actual)?,
+            "the explanation of {} gives {} rather than {}:\n{}",
+            disassemble_program(allocator, program),
+            disassemble_value(allocator, actual),
+            disassemble_value(allocator, expected.1),
+            explanation.render()
+        ),
+        (Err(EvalErr::CostExceeded), _)
+        | (_, Err(EvalFailure::OutOfCost))
+        | (Err(_), Err(EvalFailure::Clvm(_))) => {}
+        (expected, actual) => anyhow::bail!(
+            "the explanation of {} gives {actual:?} rather than {}:\n{}",
+            disassemble_program(allocator, program),
+            match expected {
+                Ok(output) => disassemble_value(allocator, output.1),
+                Err(error) => error.to_string(),
+            },
+            explanation.render()
+        ),
     }
 
     Ok(())
@@ -983,6 +1090,7 @@ fn handle_test_case(
     test_case: &mut TestCase,
     program: Option<NodePtr>,
     debug_program: Option<NodePtr>,
+    sidecars: &[Option<Vec<u8>>; 2],
 ) -> Result<()> {
     let Some(ptr) = program else {
         test_case.program = None;
@@ -1016,6 +1124,22 @@ fn handle_test_case(
     let debug_dialect = DebugDialect::new(target.flags(), false);
     let debug_response = run_program(allocator, &debug_dialect, debug_ptr, env, 100_000_000);
     let print_messages = debug_dialect.log();
+
+    let release_dialect = ChiaDialect::new(target.flags());
+    if let Some(sidecar) = &sidecars[0] {
+        check_explanation(allocator, &release_dialect, ptr, sidecar, env, &response)?;
+    }
+    if let Some(sidecar) = &sidecars[1] {
+        let dialect = DebugDialect::new(target.flags(), false);
+        check_explanation(
+            allocator,
+            &dialect,
+            debug_ptr,
+            sidecar,
+            env,
+            &debug_response,
+        )?;
+    }
 
     let bytes = node_to_bytes(allocator, ptr)?.len();
     let byte_cost = bytes as u64 * COST_PER_BYTE;

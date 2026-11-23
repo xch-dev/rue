@@ -1,0 +1,25 @@
+===== release =====
+// The program is the body of `main`
+fn main(x: Int, y: Int) {  // duplicate_bodies.rue:4:5-25
+    (if x > nil { x * x } else { raise() }) + (if y > nil { y * y } else { raise() })  // duplicate_bodies.rue:4:5-25
+}
+===== debug =====
+program(solution) {                     // duplicate_bodies.rue:3:32-5:2
+    main(x: solution@2, y: solution@5)  // duplicate_bodies.rue:3:32-5:2
+}
+
+fn main(x: Int, y: Int) {               // duplicate_bodies.rue:4:5-25
+    // env@4 is always second
+    // env@6 is always first
+    first(a: x) + second(b: y)          // duplicate_bodies.rue:4:5-25
+}
+
+fn second(b: Int) {                     // duplicate_bodies.rue:13:5-18
+    assert b > nil else raise("assertion failed at duplicate_bodies.rue:13:5")  // duplicate_bodies.rue:13:5-18
+    b * b                               // duplicate_bodies.rue:14:5-10
+}
+
+fn first(a: Int) {                      // duplicate_bodies.rue:8:5-18
+    assert a > nil else raise("assertion failed at duplicate_bodies.rue:8:5")  // duplicate_bodies.rue:8:5-18
+    a * a                               // duplicate_bodies.rue:9:5-10
+}
