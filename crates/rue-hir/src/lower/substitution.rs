@@ -24,7 +24,7 @@
 //! dependency graph decides (see [`crate::DependencyGraph::is_effect`]). So is the value of a type
 //! guard whose check doesn't use it (see [`crate::DependencyGraph::is_guard_effect`]).
 //!
-//! This is sound as long as values have the shapes their types say, which the compiler trusts for
+//! This is sound as long as values have the shapes their types say, which the compiler assumes for
 //! some of them (see the [`crate::analysis`] module docs).
 
 use std::{

@@ -13,7 +13,7 @@
 //!   lowered to are never recorded, since each relies on the ones before it.
 //! - It can't fail (see [`may_fail`]), so evaluating it doesn't add a failure.
 //! - It only reads what the left operand already read (see [`Lowerer::reads_are_evaluated`]).
-//!   The failure analysis trusts that a value has the shape its type says, which is enough to
+//!   The failure analysis assumes that a value has the shape its type says, which is enough to
 //!   evaluate a read later than it's written, or not at all: the program can only fail less. But
 //!   evaluating it earlier makes the program fail where it didn't before if the value isn't
 //!   there, and solutions do leave out what a puzzle doesn't read. A `Solution` struct that's

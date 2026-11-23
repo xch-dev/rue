@@ -24,15 +24,15 @@ const MAX_SHIFT: u32 = 65535;
 const MAX_SHIFT_LEN: usize = 4;
 
 /// Whether evaluating the HIR may fail for values that have the shapes their types say, which the
-/// compiler trusts for the solution, the results of calls it can't see into, and `unchecked_cast`
-/// (see the [module docs](super) for exactly what's trusted).
+/// compiler assumes for the solution, the results of calls it can't see into, and `unchecked_cast`
+/// (see the [module docs](super) for exactly what's assumed).
 ///
 /// This is conservative, so it's `true` for anything that might fail: `raise` and `assert`,
 /// operations that fail for some well-typed operands (such as division by zero, an operand of `*`
 /// or `/` that's too long for `LIMITS` when compiling with `operand_limits`, `substr` out of
 /// range, or an invalid BLS point), and calls to functions whose bodies may fail, or that can't be
 /// resolved. Reading a value doesn't fail, including a field of a parameter or of a value
-/// returned by a call that can't be resolved, since its shape is trusted to match its type. The
+/// returned by a call that can't be resolved, since its shape is assumed to match its type. The
 /// exception is the rest of a list other than the first of a `for` over several lists, which the
 /// loop takes for its call to itself, and which fails if that list has run out (see
 /// `Database::is_unchecked_list_read`).

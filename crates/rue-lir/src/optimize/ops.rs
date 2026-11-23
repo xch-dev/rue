@@ -120,8 +120,9 @@ pub fn opt_rest(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId) -> Lir
 // If the first and rest are paths to the first and rest of the same parent, we can use the parent path
 // This assumes that the value at the parent path is a pair, as its type says it is. If it's actually
 // an atom (e.g. from a solution which doesn't match the declared types), the original would fail,
-// but the parent path wouldn't. Rue doesn't check values against their types at runtime anyway,
-// so this doesn't give the spender anything that a wrongly shaped pair couldn't.
+// but the parent path wouldn't. That failure was never a check: types are assumptions about the
+// solution, as in Chialisp, and aren't checked at runtime unless the program checks them with a
+// type guard. So this doesn't give the spender anything that a wrongly shaped pair couldn't.
 pub fn opt_cons(arena: &mut Arena<Lir>, first: LirId, rest: LirId) -> LirId {
     if let Lir::Div(div_left, div_right) = arena[first].clone()
         && let Lir::Mod(mod_left, mod_right) = arena[rest].clone()
