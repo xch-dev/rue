@@ -59,7 +59,8 @@ pub(crate) struct Program {
     pub files: Vec<DebugSourceFile>,
     pub strings: Vec<String>,
     pub spans: Vec<DebugSourceSpan>,
-    pub functions: Vec<DebugFunction>,
+    /// The functions that the metadata describes.
+    pub functions: Vec<FunctionMetadata>,
     /// The tree hash of each node, which tells values apart regardless of their position.
     pub hashes: Vec<[u8; 32]>,
     /// Whether each node is or contains the body of a function.
@@ -76,12 +77,14 @@ impl Program {
     /// must be for exactly this program.
     pub(crate) fn new(program: &[u8], sidecar: Option<&[u8]>) -> Result<Self, ExplainError> {
         // The sidecar is decoded (and dropped) recursively, as deeply as the program or its
-        // parameter trees are nested, which is at most a level for each byte
-        let levels = program.len() + sidecar.map_or(0, <[u8]>::len);
-        let needed = levels
+        // parameter trees are nested, which is at most a level for each of its bytes
+        let needed = sidecar
+            .map_or(0, <[u8]>::len)
             .saturating_mul(STACK_PER_LEVEL)
             .saturating_add(STACK_BASE);
-        if stacker::remaining_stack().is_some_and(|remaining| remaining > needed) {
+        if sidecar.is_none()
+            || stacker::remaining_stack().is_some_and(|remaining| remaining > needed)
+        {
             Self::read(program, sidecar)
         } else {
             stacker::grow(needed, || Self::read(program, sidecar))
@@ -111,13 +114,20 @@ impl Program {
         let root = builder.build(root, metadata.as_ref().map(|metadata| &metadata.tree));
         let Builder { nodes, ptrs, .. } = builder;
 
+        // Only what's needed is kept, so that the rest (which is nested as deeply as the program or
+        // a parameter tree is) is dropped on this stack
         let (files, strings, spans, functions) = match metadata {
-            Some(metadata) => (
-                metadata.files,
-                metadata.strings,
-                metadata.spans,
-                metadata.functions,
-            ),
+            Some(metadata) => {
+                let functions = metadata
+                    .functions
+                    .iter()
+                    .map(|function| FunctionMetadata {
+                        name: metadata.strings.get(function.name).cloned(),
+                        layout: Layout::new(&metadata.strings, function),
+                    })
+                    .collect();
+                (metadata.files, metadata.strings, metadata.spans, functions)
+            }
             None => Default::default(),
         };
 
@@ -355,6 +365,13 @@ pub(crate) fn path_number(path: &[bool]) -> BigUint {
 /// function has, before the parameters aren't used.
 const MAX_LAYOUT_STEPS: usize = 4096;
 
+/// What the debug metadata says about a function.
+#[derive(Debug, Clone)]
+pub(crate) struct FunctionMetadata {
+    pub name: Option<String>,
+    pub layout: Option<Layout>,
+}
+
 /// A value of a function's environment that the debug metadata names.
 #[derive(Debug, Clone)]
 pub(crate) struct NamedSlot {
@@ -375,7 +392,7 @@ impl Layout {
     /// The layout of the function's environment, unless its parameter tree is inconsistent (a
     /// name whose path isn't where it is in the tree), in which case none of it is trusted, or
     /// larger than any function's is (since each call looks at each of its parts).
-    pub(crate) fn new(program: &Program, function: &DebugFunction) -> Option<Self> {
+    pub(crate) fn new(strings: &[String], function: &DebugFunction) -> Option<Self> {
         let mut layout = Self::default();
         let mut stack = vec![(&function.parameters, Vec::new())];
         let mut steps = 0usize;
@@ -398,7 +415,7 @@ impl Layout {
                     }
 
                     layout.named.push(NamedSlot {
-                        name: program.string(*name)?.to_string(),
+                        name: strings.get(*name)?.clone(),
                         path: position,
                         constraint: constraint.clone(),
                     });

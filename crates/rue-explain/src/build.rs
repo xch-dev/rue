@@ -119,15 +119,14 @@ fn described_functions(
             .or_insert_with(|| {
                 let metadata = program.functions.get(index);
                 let name = metadata
-                    .and_then(|function| program.string(function.name))
-                    .unwrap_or("<unknown>")
-                    .to_string();
+                    .and_then(|function| function.name.clone())
+                    .unwrap_or_else(|| "<unknown>".to_string());
 
                 infos.push(FunctionInfo {
                     name,
                     node,
                     kind: FunctionKind::Described,
-                    layout: metadata.and_then(|function| Layout::new(program, function)),
+                    layout: metadata.and_then(|function| function.layout.clone()),
                     known: Vec::new(),
                     generic: infos.len(),
                     call: None,

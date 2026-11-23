@@ -441,6 +441,18 @@ impl Printer<'_> {
     /// The statements of the block, then its value, each on lines of its own.
     fn block(&mut self, indent: usize, block: &Block) {
         if self.depth + indent > MAX_NESTING {
+            // Code that isn't shown could use the code in the known values in any way, so their
+            // comments name it as it is
+            if let Some(record) = self.record {
+                let mut record = record.borrow_mut();
+                for known in &self.function.known {
+                    if let Some(&id) = self.explanation.function_of.get(&known.value) {
+                        record
+                            .functions
+                            .push(self.explanation.functions[id].generic);
+                    }
+                }
+            }
             self.line(indent, "... // nested too deeply to show", None);
             return;
         }

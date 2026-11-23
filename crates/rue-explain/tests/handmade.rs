@@ -9,7 +9,7 @@ use clvmr::{
     serde::node_to_bytes,
 };
 use expect_test::{Expect, expect};
-use rue_clvm::{assemble, disassemble_value};
+use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_compiler::debug_metadata::{
     Annotation, Constraint, DebugMetadataBuilder, Function, Parameter,
 };
@@ -1561,5 +1561,92 @@ fn functions_only_in_raw_code_are_shown() {
                 env@2 + x
             }
         "#]],
+    );
+}
+
+#[test]
+fn deeply_nested_parameter_trees() {
+    // A parameter tree that's too deep to recurse on (or drop) without growing the stack, which
+    // is built on a large stack, then explained (and dropped) on the test's own
+    let (bytes, metadata) = std::thread::Builder::new()
+        .stack_size(1 << 30)
+        .spawn(|| {
+            let mut allocator = Allocator::new();
+            let ptr = assemble(&mut allocator, "(a (q . (+ 2 5)) (q . (1 2)))").unwrap();
+            let bytes = node_to_bytes(&allocator, ptr).unwrap();
+            let metadata = sidecar(&allocator, ptr, |_| {
+                let mut parameters = Parameter::Nil;
+                for _ in 0..100_000 {
+                    parameters = pair(parameters, Parameter::Nil);
+                }
+                vec![(
+                    "(+ 2 5)".to_string(),
+                    Described {
+                        name: "add",
+                        parameters,
+                    },
+                )]
+            });
+            (bytes, metadata)
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+
+    // The parameters aren't used, since there are too many of them
+    let explanation = Explanation::new(&bytes, Some(&metadata)).unwrap();
+    assert!(
+        explanation.render().contains("fn add(env) {"),
+        "{}",
+        explanation.render()
+    );
+}
+
+#[test]
+fn code_in_bodies_nested_too_deeply_is_named_as_it_is() {
+    // `g` runs the `add` it's passed with 20, deep inside of `if`s that aren't shown, so the
+    // comment that names `add` is for the version that knows nothing, not for the one for 10
+    let mut g = "(a 2 (c (q . 20) (c 5 ())))".to_string();
+    for _ in 0..70 {
+        g = format!("(a (i 5 (q . {g}) (q . 5)) 1)");
+    }
+
+    let mut allocator = Allocator::new();
+    let program = format!(
+        "(+ (a (q . (+ 2 5)) (c (q . 10) (c 2 ()))) (a (q . {g}) (c (q . (+ 2 5)) (c 2 ()))))"
+    );
+    let ptr = assemble(&mut allocator, &program).unwrap();
+    let g_ptr = assemble(&mut allocator, &g).unwrap();
+    let g = disassemble_program(&allocator, g_ptr);
+    let bytes = node_to_bytes(&allocator, ptr).unwrap();
+    let metadata = sidecar(&allocator, ptr, |builder| {
+        let mut functions = add_hidden(builder);
+        functions.push((
+            g,
+            Described {
+                name: "g",
+                parameters: pair(Parameter::Nil, pair(name(builder, "x", 5), Parameter::Nil)),
+            },
+        ));
+        functions
+    });
+    let explanation = Explanation::new(&bytes, Some(&metadata)).unwrap();
+    let rendered = explanation.render();
+
+    assert!(
+        rendered.contains("... // nested too deeply to show"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("fn add(x) {\n    env@2 + x\n}"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("fn add#2(x) {\n    // env@2 is always 10\n"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("fn g(x) {\n    // env@2 is always add\n"),
+        "{rendered}"
     );
 }
