@@ -1,0 +1,57 @@
+// Local bindings named like the sibling `policy` module shadow it, since a value is looked up
+// before a module of the same name
+import policy::rules::allowed;
+
+struct Policy {
+    limit: Int,
+}
+
+struct Spend {
+    policy: Policy,
+    proof: Int,
+}
+
+struct Output {
+    policy: Policy,
+}
+
+test fn destructured() -> Int {
+    let spend = Spend { policy: Policy { limit: 10 }, proof: 5 };
+    let { policy, proof } = spend;
+    policy.limit + proof
+}
+
+test fn shorthand() -> Output {
+    let spend = Spend { policy: Policy { limit: 10 }, proof: 5 };
+    let { policy, proof: _ } = spend;
+    Output { policy }
+}
+
+test fn captured() -> Int {
+    let spend = Spend { policy: Policy { limit: 10 }, proof: 5 };
+    let { policy, proof } = spend;
+    let add_limit = fn(amount: Int) => amount + policy.limit;
+    add_limit(proof)
+}
+
+test fn parameter() -> Bool {
+    let policy = Policy { limit: 10 };
+    allowed(policy.limit)
+}
+
+test fn arm() -> Int {
+    let spend: Spend | nil = Spend { policy: Policy { limit: 10 }, proof: 5 };
+    match spend {
+        Spend { policy, proof } => policy.limit + proof,
+        nil => 0,
+    }
+}
+
+test fn folded() -> Int {
+    for amount in [1, 2, 3] fold policy = 0 { policy + amount }
+}
+
+// Without a local of the same name, the name is the module, which can't be used as a value
+test fn module_as_value() -> Int {
+    policy
+}
