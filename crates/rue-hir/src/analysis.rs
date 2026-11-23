@@ -50,9 +50,9 @@
 //! debug build fails, such as when reading a field of it was moved into a branch that isn't taken.
 //! Neither build validates such a value: the debug build only fails because an operation on it
 //! happens to, as a Chialisp puzzle reading the same value would. The compiler doesn't add runtime
-//! checks of its own; the planned `unchecked_input` lint
-//! ([#118](https://github.com/xch-dev/rue/issues/118)) reports where a program relies on these
-//! assumptions without checking them.
+//! checks of its own. The `unchecked_input` lint reports where a program relies on the length of a
+//! value from the solution without checking it, which is about narrower facts than these shapes;
+//! nothing reports where a program relies on the shapes.
 //!
 //! This is only about where the compiler decides to evaluate values. Checks can still be skipped,
 //! in debug and release alike, where the language says a value isn't evaluated: an argument of an

@@ -1,0 +1,60 @@
+#![warn(unchecked_input)]
+
+// Conditions that are hashed into a puzzle that a later spend runs, rather than output now, are
+// only checked by consensus when that spend outputs them
+
+struct State {
+    owner: Bytes32,
+    amount: Int,
+}
+
+fn main(
+    mod_hash: Bytes32,
+    state: State,
+    new_owner: Bytes32,
+    checked_owner: Bytes,
+    payee: Bytes32,
+    announced: Bytes32,
+    output_owner: Bytes32,
+) -> List<Condition> {
+    assert checked_owner is Bytes32;
+
+    let next = State { owner: new_owner, amount: state.amount + 1 };
+    let checked_next = State { owner: checked_owner, amount: state.amount + 1 };
+
+    [
+        // The owner ends up in a `CreateCoin` of a puzzle that's only hashed
+        create_next(mod_hash, next),
+        create_next(mod_hash, checked_next),
+        // The payee is put in a deferred `CreateCoin` by a recursive helper
+        CreateCoin { puzzle_hash: tree_hash((1, pay(payee, 3))), amount: 1 },
+        // The message of an announcement doesn't have a fixed length
+        CreateCoin {
+            puzzle_hash: tree_hash((1, [CreateCoinAnnouncement { message: announced }])),
+            amount: 1,
+        },
+        // A condition that's output now is checked by consensus now
+        CreateCoin { puzzle_hash: output_owner, amount: 1 },
+    ]
+}
+
+fn create_next(mod_hash: Bytes32, state: State) -> CreateCoin {
+    let push_through = tree_hash((
+        1,
+        [CreateCoin { puzzle_hash: state.owner, amount: state.amount }],
+    ));
+    CreateCoin {
+        puzzle_hash: curry_tree_hash(
+            mod_hash,
+            [tree_hash_atom(mod_hash), tree_hash(state), push_through],
+        ),
+        amount: state.amount,
+    }
+}
+
+fn pay(payee: Bytes32, count: Int) -> List<CreateCoin> {
+    if count == 0 {
+        return nil;
+    }
+    [CreateCoin { puzzle_hash: payee, amount: 1 }, ...pay(payee, count - 1)]
+}

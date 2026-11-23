@@ -6,7 +6,10 @@ use rue_diagnostic::{
     SrcLoc,
 };
 use rue_hir::{Database, Declaration, HirId, ScopeId, SymbolId};
-use rue_types::{BuiltinTypes, Comparison, Type, TypeId};
+use rue_types::{
+    AtomRestriction, Atoms, BuiltinTypes, Check, Comparison, Type, TypeId, extract_atoms,
+    extract_pairs,
+};
 
 use crate::{
     ScopedLintLevels, WalkState,
@@ -202,6 +205,61 @@ impl<'a> LintContext<'a> {
         !rue_types::referenced_generics(self.db.types_mut(), ty).is_empty()
     }
 
+    /// The length of every atom of the type, if they all have the same known length, such as 32
+    /// for `Bytes32` or 1 for the literal `0x01`.
+    pub fn known_atom_length(&mut self, ty: TypeId) -> Option<usize> {
+        let Atoms::Restricted(restrictions) = extract_atoms(self.db.types_mut(), ty, true)? else {
+            return None;
+        };
+
+        let mut lengths = restrictions.iter().map(restriction_length);
+        let first = lengths.next()?;
+        lengths.all(|length| length == first).then_some(first)
+    }
+
+    /// Whether narrowing a value of one type to the other checks its length at runtime, rather
+    /// than only telling the other members of a union apart (from `Bytes32 | nil`, a guard only
+    /// checks that the value isn't nil).
+    pub fn narrowing_checks_length(&mut self, from: TypeId, to: TypeId) -> bool {
+        rue_types::check(self.db.types_mut(), self.types, from, to)
+            .is_ok_and(|check| check_has_length(&check.simplify()))
+    }
+
+    /// The type that the type refers to, without aliases or references.
+    pub fn unwrap_semantic(&mut self, ty: TypeId) -> TypeId {
+        rue_types::unwrap_semantic(self.db.types_mut(), ty, true)
+    }
+
+    /// The declared type of a field of a struct, by name. A union of structs isn't looked into.
+    pub fn struct_field_type(&mut self, ty: TypeId, name: &str) -> Option<TypeId> {
+        let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
+
+        let Type::Struct(ty) = self.db.ty(semantic).clone() else {
+            return None;
+        };
+
+        let mut inner = ty.inner;
+
+        for (index, field) in ty.fields.iter().enumerate() {
+            let value = if index == ty.fields.len() - 1 && !ty.nil_terminated {
+                inner
+            } else {
+                let pairs = extract_pairs(self.db.types_mut(), inner, false);
+                let [pair] = pairs.as_slice() else {
+                    return None;
+                };
+                inner = pair.rest;
+                pair.first
+            };
+
+            if field == name {
+                return Some(value);
+            }
+        }
+
+        None
+    }
+
     /// The name of a type as it would be written in the given scope.
     pub fn type_name(&mut self, scope: ScopeId, ty: TypeId) -> String {
         self.db.type_name_in(scope, ty)
@@ -228,4 +286,21 @@ pub(crate) fn srcloc_key(srcloc: &SrcLoc) -> NameKey {
 /// The key of a name, from the token it's written as in the syntax tree.
 pub(crate) fn token_key(source: &Source, token: &rue_parser::SyntaxToken) -> NameKey {
     (source.kind.clone(), token.text_range().start().into())
+}
+
+fn restriction_length(restriction: &AtomRestriction) -> usize {
+    match restriction {
+        AtomRestriction::Length(length) => *length,
+        AtomRestriction::Value(value) => value.len(),
+    }
+}
+
+/// Whether the check rejects every atom of the wrong length, on every way it can pass.
+pub(crate) fn check_has_length(check: &Check) -> bool {
+    match check {
+        Check::Atom(_) | Check::Impossible => true,
+        Check::And(checks) => checks.iter().any(check_has_length),
+        Check::Or(checks) => checks.iter().all(check_has_length),
+        Check::None | Check::IsAtom { .. } | Check::IsPair { .. } | Check::Pair(..) => false,
+    }
 }

@@ -23,6 +23,7 @@ mod shadowing;
 mod statements;
 mod struct_spreads;
 mod syntax;
+mod unchecked_input;
 mod unions;
 mod unreachable;
 mod unused;
@@ -83,6 +84,10 @@ pub(crate) const INPUT_PASSES: &[InputPass] = &[
     InputPass {
         lints: unions::LINTS,
         run: unions::check,
+    },
+    InputPass {
+        lints: unchecked_input::LINTS,
+        run: unchecked_input::check,
     },
 ];
 
