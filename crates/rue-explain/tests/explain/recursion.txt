@@ -1,5 +1,5 @@
 ===== release =====
-// The types of parameters are as declared, and aren't checked
+// The types of parameters are what the debug metadata says about their declared types, which the program doesn't check
 program(solution) {                    // recursion.rue:3:24-5:2
     main(n: solution@2)                // recursion.rue:3:24-5:2
 }
@@ -15,7 +15,7 @@ fn countdown(n: Int, acc: Int) {       // recursion.rue:7:39-13:2
     countdown(n: n - 1, acc: acc + n)  // recursion.rue:12:5-30
 }
 ===== debug =====
-// The types of parameters are as declared, and aren't checked
+// The types of parameters are what the debug metadata says about their declared types, which the program doesn't check
 program(solution) {                                              // recursion.rue:3:24-5:2
     main(n: solution@2)                                          // recursion.rue:3:24-5:2
 }

@@ -1,5 +1,5 @@
 ===== release =====
-// The types of parameters are as declared, and aren't checked
+// The types of parameters are what the debug metadata says about their declared types, which the program doesn't check
 program(solution) {                                          // nested_captures.rue:9:39-11:2
     main(xs: solution@2, n: solution@5, env@2: scale(n: 5))  // nested_captures.rue:9:39-11:2
 }
@@ -47,7 +47,7 @@ fn scale(n: Int) {                                           // nested_captures.
     }
 }
 ===== debug =====
-// The types of parameters are as declared, and aren't checked
+// The types of parameters are what the debug metadata says about their declared types, which the program doesn't check
 program(solution) {                                                  // nested_captures.rue:9:39-11:2
     main(xs: solution@2, n: solution@5, env@2: scale(n: 5))          // nested_captures.rue:9:39-11:2
 }

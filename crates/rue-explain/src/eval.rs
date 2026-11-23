@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use clvmr::{
     Allocator, NodePtr, SExp, cost::Cost, dialect::Dialect, error::EvalErr,
-    run_program::run_program, serde::node_to_bytes_limit,
+    run_program::run_program,
 };
 use rue_clvm::operator_name;
 
@@ -26,13 +26,15 @@ use crate::stack::grow_stack;
 /// terminate runs out.
 const STEP_COST: Cost = 10;
 
-#[derive(Debug, thiserror::Error)]
-pub enum EvalFailure {
+/// How many times the cost limit of the program the decompiled program can use, since quoting
+/// the values of operators and the steps between them cost more than the CLVM does.
+const COST_FACTOR: Cost = 8;
+
+#[derive(Debug)]
+pub(crate) enum EvalFailure {
     /// The program fails, as it does in CLVM.
-    #[error("{0}")]
     Clvm(EvalErr),
     /// The program ran out of the cost it was given, which isn't the same as CLVM's cost.
-    #[error("ran out of cost")]
     OutOfCost,
 }
 
@@ -49,7 +51,7 @@ type Result<T> = std::result::Result<T, EvalFailure>;
 
 impl Explanation {
     /// Runs the decompiled program with the solution, with operators applied by the dialect.
-    pub fn evaluate<D: Dialect>(
+    pub(crate) fn evaluate<D: Dialect>(
         &self,
         allocator: &mut Allocator,
         dialect: &D,
@@ -75,53 +77,64 @@ impl Explanation {
     }
 
     /// Checks that running the decompiled program with the solution gives the same result as
-    /// running the program itself: the same output, the same raised value, or the same error.
-    /// Running out of cost isn't compared, since the decompiled program's cost isn't the
-    /// program's. The error describes both results.
+    /// running the program did (`expected`, with the cost limit): the same output, the same raised
+    /// value, or the same error. The decompiled program's cost isn't the program's, so it can use
+    /// many times as much, and nothing is compared if the program itself ran out. The error
+    /// describes both results.
     pub fn check<D: Dialect>(
         &self,
         allocator: &mut Allocator,
         dialect: &D,
-        program: NodePtr,
+        expected: std::result::Result<NodePtr, &EvalErr>,
         solution: NodePtr,
         max_cost: Cost,
     ) -> std::result::Result<(), String> {
-        let expected = run_program(allocator, dialect, program, solution, max_cost)
-            .map(|reduction| reduction.1)
-            .map_err(EvalFailure::from);
-        let actual = self.evaluate(allocator, dialect, solution, max_cost);
+        if matches!(expected, Err(EvalErr::CostExceeded)) {
+            return Ok(());
+        }
 
-        let outcome = |allocator: &Allocator, result: &Result<NodePtr>| match result {
-            Err(EvalFailure::OutOfCost) => None,
-            Ok(value) => Some(Ok(node_to_bytes_limit(allocator, *value, usize::MAX).ok())),
-            Err(EvalFailure::Clvm(EvalErr::Raise(value))) => Some(Err(format!(
+        let actual = self.evaluate(
+            allocator,
+            dialect,
+            solution,
+            max_cost.saturating_mul(COST_FACTOR),
+        );
+
+        let expected = outcome(allocator, expected);
+        let actual = outcome(
+            allocator,
+            match &actual {
+                Ok(value) => Ok(*value),
+                Err(EvalFailure::Clvm(error)) => Err(error),
+                Err(EvalFailure::OutOfCost) => {
+                    return Err(format!(
+                        "the explanation ran out of cost, rather than giving {expected}"
+                    ));
+                }
+            },
+        );
+
+        if actual == expected {
+            Ok(())
+        } else {
+            Err(format!(
+                "the explanation gives {actual} rather than {expected}"
+            ))
+        }
+    }
+}
+
+/// A result as text, which tells results apart: the output, the raised value, or the error.
+fn outcome(allocator: &Allocator, result: std::result::Result<NodePtr, &EvalErr>) -> String {
+    match result {
+        Ok(value) => rue_clvm::disassemble_value(allocator, value),
+        Err(EvalErr::Raise(value)) => {
+            format!(
                 "clvm raise {}",
                 rue_clvm::disassemble_value(allocator, *value)
-            ))),
-            Err(EvalFailure::Clvm(error)) => Some(Err(error.to_string())),
-        };
-
-        match (outcome(allocator, &expected), outcome(allocator, &actual)) {
-            (None, _) | (_, None) => Ok(()),
-            (expected_outcome, actual_outcome) if expected_outcome == actual_outcome => Ok(()),
-            _ => {
-                let describe = |result: &Result<NodePtr>| match result {
-                    Ok(value) => rue_clvm::disassemble_value(allocator, *value),
-                    Err(EvalFailure::Clvm(EvalErr::Raise(value))) => {
-                        format!(
-                            "clvm raise {}",
-                            rue_clvm::disassemble_value(allocator, *value)
-                        )
-                    }
-                    Err(error) => error.to_string(),
-                };
-                Err(format!(
-                    "the explanation gives {} rather than {}",
-                    describe(&actual),
-                    describe(&expected)
-                ))
-            }
+            )
         }
+        Err(error) => format!("error: {error}"),
     }
 }
 

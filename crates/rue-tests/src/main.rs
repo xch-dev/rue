@@ -875,6 +875,7 @@ fn check_explanation<D: clvmr::dialect::Dialect>(
     program: NodePtr,
     sidecar: &[u8],
     env: NodePtr,
+    expected: Result<NodePtr, &EvalErr>,
 ) -> Result<()> {
     let explanation = Explanation::new(&node_to_bytes(allocator, program)?, Some(sidecar))?;
 
@@ -886,7 +887,7 @@ fn check_explanation<D: clvmr::dialect::Dialect>(
     );
 
     explanation
-        .check(allocator, dialect, program, env, 100_000_000)
+        .check(allocator, dialect, expected, env, 100_000_000)
         .map_err(|error| {
             anyhow::anyhow!(
                 "{error}, for {}:\n{}",
@@ -1101,10 +1102,12 @@ fn handle_test_case(
     let print_messages = debug_dialect.log();
 
     if let Some(sidecar) = sidecars[0] {
-        check_explanation(allocator, &release_dialect, ptr, sidecar, env)?;
+        let expected = response.as_ref().map(|output| output.1);
+        check_explanation(allocator, &release_dialect, ptr, sidecar, env, expected)?;
     }
     if let Some(sidecar) = sidecars[1] {
-        check_explanation(allocator, &debug_dialect, debug_ptr, sidecar, env)?;
+        let expected = debug_response.as_ref().map(|output| output.1);
+        check_explanation(allocator, &debug_dialect, debug_ptr, sidecar, env, expected)?;
     }
 
     let bytes = node_to_bytes(allocator, ptr)?.len();

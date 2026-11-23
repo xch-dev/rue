@@ -61,7 +61,10 @@ pub(crate) fn render(explanation: &Explanation) -> String {
     if typed {
         lines.push(Line {
             indent: 0,
-            text: "// The types of parameters are as declared, and aren't checked".to_string(),
+            text:
+                "// The types of parameters are what the debug metadata says about their declared \
+                   types, which the program doesn't check"
+                    .to_string(),
             node: None,
         });
     }
@@ -645,11 +648,13 @@ impl Printer<'_> {
                 return None;
             }
 
+            // A capture is quoted, or nil code for nil (as Rue writes it), so that a closure that's
+            // shown is only one value: `(q)` would be shown the same way as `()`
             let capture = if self.is_nil(&capture) {
                 capture
             } else {
                 let (quote, value) = self.parts(capture)?;
-                if !self.is_atom(&quote, &[1]) {
+                if !self.is_atom(&quote, &[1]) || self.is_nil(&value) {
                     return None;
                 }
                 value

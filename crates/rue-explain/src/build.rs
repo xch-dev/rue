@@ -11,7 +11,6 @@
 //! value to code that isn't decompiled, stored in data, or run with an environment that's only
 //! known at runtime) keeps its hidden values unknown.
 
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
@@ -26,6 +25,11 @@ use crate::stack::{Deep, grow_stack};
 
 /// How many times the analysis is repeated before it gives up on finding hidden values.
 const MAX_PASSES: usize = 32;
+
+/// How large a structure that's read from an environment can be before it's bound to a variable,
+/// which keeps a structure that's built from copies of itself from being shown (and walked) in
+/// full, which would take exponential time.
+const MAX_STRUCTURE: usize = 64;
 
 const QUOTE: &[u8] = &[1];
 const APPLY: &[u8] = &[2];
@@ -210,6 +214,9 @@ struct Frame {
     /// The hidden parts of the environment that are known.
     known: Vec<KnownSlot>,
     vars: Vec<String>,
+    /// The structures that variables are bound to, which reads see through to the values in them
+    /// that aren't pairs.
+    structures: HashMap<VarId, Value>,
     reserved: HashSet<String>,
 }
 
@@ -251,6 +258,8 @@ struct Pass<'a> {
     reads: Vec<Vec<bool>>,
     covered: Vec<bool>,
     exposed: HashSet<NodeId>,
+    /// The variables bound to structures that have been used as data as a whole.
+    touched: HashSet<(FunctionId, VarId)>,
     bodies: Vec<Function>,
 }
 
@@ -279,6 +288,7 @@ impl<'a> Pass<'a> {
             reads: facts.iter().map(|facts| vec![false; facts.len()]).collect(),
             covered: vec![false; program.nodes.len()],
             exposed: HashSet::new(),
+            touched: HashSet::new(),
             bodies: Vec::new(),
         };
 
@@ -347,6 +357,7 @@ impl<'a> Pass<'a> {
             id,
             known,
             vars: Vec::new(),
+            structures: HashMap::new(),
             reserved: info
                 .layout
                 .iter()
@@ -398,9 +409,20 @@ impl<'a> Pass<'a> {
     /// environment that's known, or `None` if the path goes into a computed part or through an
     /// atom constant (which fails at runtime).
     fn resolve(&self, frame: &Frame, value: &Value, path: &[bool]) -> Option<Value> {
-        value
-            .resolve(self.program, &frame.known, path)
-            .map(Cow::into_owned)
+        let mut value = value
+            .resolve(self.program, &frame.known, path)?
+            .into_owned();
+
+        // A part of a structure that a variable is bound to is itself if it isn't a pair
+        while let Value::Ref(Root::Var(var), path) = &value
+            && let Some(structure) = frame.structures.get(var)
+            && let Some(part) = structure.resolve(self.program, &frame.known, path)
+            && !matches!(*part, Value::Cons(..))
+        {
+            value = part.into_owned();
+        }
+
+        Some(value)
     }
 
     /// Marks the value as used as data, which reads whatever parts of the environment it
@@ -428,7 +450,21 @@ impl<'a> Pass<'a> {
                     }
                 }
             }
-            Value::Ref(Root::Var(_), _) | Value::Nil | Value::Expr(_) => {}
+            // A structure's parts are used where the variable is, and all of it at most once
+            Value::Ref(Root::Var(var), path) => {
+                if path.is_empty() && !self.touched.insert((frame.id, *var)) {
+                    return;
+                }
+                if let Some(part) = frame
+                    .structures
+                    .get(var)
+                    .and_then(|structure| structure.at(self.program, path))
+                {
+                    let part = part.into_owned();
+                    self.touch(frame, &part);
+                }
+            }
+            Value::Nil | Value::Expr(_) => {}
             Value::Cons(first, rest, _) => grow_stack(|| {
                 self.touch(frame, first);
                 self.touch(frame, rest);
@@ -556,7 +592,7 @@ impl<'a> Pass<'a> {
                     return nil_code(atom, code);
                 };
                 match self.resolve(frame, &scope.env, &path) {
-                    Some(value) => value,
+                    Some(value) => read(frame, scope, value, code),
                     None => Value::Expr(Deep::new(self.raw(frame, scope, code))),
                 }
             }
@@ -786,18 +822,18 @@ impl<'a> Pass<'a> {
         };
 
         for slot in &layout.named {
-            match env.resolve(self.program, &frame.known, &slot.path) {
+            match self.resolve(frame, &env, &slot.path) {
                 Some(value) => self.touch(frame, &value),
                 None => self.touch(frame, &env),
             }
         }
 
         for (index, path) in layout.hidden.iter().enumerate() {
-            let value = env.resolve(self.program, &frame.known, path);
+            let value = self.resolve(frame, &env, path);
 
             // A hidden part of this function's environment that no call has been seen for yet
             // says nothing yet, and if none ever is, neither function is run
-            if let Some(Value::Ref(Root::Env, passed)) = value.as_deref()
+            if let Some(Value::Ref(Root::Env, passed)) = value.as_ref()
                 && self
                     .hidden(frame.id)
                     .iter()
@@ -807,7 +843,7 @@ impl<'a> Pass<'a> {
                 continue;
             }
 
-            let constant = match value.as_deref() {
+            let constant = match value.as_ref() {
                 Some(Value::Const(node)) => Some(*node),
                 _ => None,
             };
@@ -820,7 +856,7 @@ impl<'a> Pass<'a> {
                 _ => false,
             };
             if !matches && self.reads_before[id][index] {
-                self.touch(frame, value.as_deref().unwrap_or(&env));
+                self.touch(frame, value.as_ref().unwrap_or(&env));
             }
         }
 
@@ -829,6 +865,25 @@ impl<'a> Pass<'a> {
             node,
         }
     }
+}
+
+/// The value that's read from an environment, which is bound to a variable if it's a large
+/// structure.
+fn read(frame: &mut Frame, scope: &mut Scope, value: Value, node: NodeId) -> Value {
+    if !matches!(value, Value::Cons(_, _, shape) if !shape.computed && shape.size > MAX_STRUCTURE) {
+        return value;
+    }
+
+    let var = frame.new_var();
+    frame.structures.insert(var, value.clone());
+    scope.statements.push(Statement::Let {
+        var,
+        value: Deep::new(Expr {
+            kind: ExprKind::Value(value),
+            node,
+        }),
+    });
+    Value::Ref(Root::Var(var), Vec::new())
 }
 
 /// Binds the computed parts of the value to variables, in the order they're evaluated (the rest
@@ -843,7 +898,7 @@ fn bind(frame: &mut Frame, scope: &mut Scope, value: Value) -> Value {
             Value::Ref(Root::Var(var), Vec::new())
         }
         // Only the parts with computed values in them are rebuilt
-        Value::Cons(first, rest, true) => grow_stack(|| {
+        Value::Cons(first, rest, shape) if shape.computed => grow_stack(|| {
             let rest = bind(frame, scope, rest.into_inner());
             let first = bind(frame, scope, first.into_inner());
             Value::cons(first, rest)
@@ -865,7 +920,7 @@ fn nil_code(atom: &[u8], code: NodeId) -> Value {
 fn computed_paths(value: &Value, path: &mut Path, paths: &mut Vec<Path>) {
     match value {
         Value::Expr(_) => paths.push(path.clone()),
-        Value::Cons(first, rest, true) => grow_stack(|| {
+        Value::Cons(first, rest, shape) if shape.computed => grow_stack(|| {
             path.push(false);
             computed_paths(first, path, paths);
             path.pop();
@@ -873,7 +928,7 @@ fn computed_paths(value: &Value, path: &mut Path, paths: &mut Vec<Path>) {
             computed_paths(rest, path, paths);
             path.pop();
         }),
-        Value::Cons(_, _, false) | Value::Const(_) | Value::Nil | Value::Ref(..) => {}
+        Value::Cons(..) | Value::Const(_) | Value::Nil | Value::Ref(..) => {}
     }
 }
 

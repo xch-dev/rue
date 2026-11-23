@@ -3,14 +3,18 @@
 //! and to locate each line in the source. It works from the program and the sidecar alone, so it
 //! can explain a program that's only known by its serialization, such as one from the chain.
 //!
-//! What's shown is meant to mean exactly what the CLVM does, which [`Explanation::evaluate`]
+//! What's shown is meant to mean exactly what the CLVM does, which [`Explanation::check`]
 //! checks by running the decompiled form: code whose structure isn't recognized is shown as CLVM
-//! (`clvm!(...)`) and evaluated as it is. Operands are evaluated strictly, from the last to the
-//! first as `clvmr` does, and `let`s are in that order too. One thing is left out on purpose:
-//! reading from the environment is shown where the value is used, while in CLVM it's read where
-//! it's passed. A read through an atom fails, which only happens if the environment doesn't have
-//! the shape the code expects, so the decompiled form can fail later (or not at all) for an
-//! environment like that.
+//! (`clvm!(...)`) and evaluated as it is. Two things are left out on purpose:
+//!
+//! - Reading from the environment is shown where the value is used, while in CLVM it's read where
+//!   it's passed. A read through an atom fails, which only happens if the environment doesn't have
+//!   the shape the code expects, so the decompiled form can fail later (or not at all) for an
+//!   environment like that.
+//! - Computed values are bound by `let`s before the statement they're in. Everything but the
+//!   branches of an `if` is evaluated strictly, and the `let`s are in the order `clvmr` evaluates
+//!   operands in (from the last to the first), but a `let` can come before an operand that's
+//!   evaluated earlier, which only changes which of several failures is reported.
 
 mod build;
 mod eval;
@@ -20,8 +24,6 @@ mod program;
 mod stack;
 
 use std::collections::HashMap;
-
-pub use eval::EvalFailure;
 
 use crate::ir::{Function, FunctionId};
 use crate::program::{NodeId, Program};

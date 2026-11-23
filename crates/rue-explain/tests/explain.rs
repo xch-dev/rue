@@ -124,12 +124,17 @@ fn check_solutions(
         .chain(extra_solutions(path).iter().copied())
     {
         let env = assemble(allocator, solution).unwrap();
-        if let Err(error) = explanation.check(allocator, &dialect, program, env, MAX_COST) {
+        let expected = run_program(allocator, &dialect, program, env, MAX_COST);
+        if let Err(error) = explanation.check(
+            allocator,
+            &dialect,
+            expected.as_ref().map(|output| output.1),
+            env,
+            MAX_COST,
+        ) {
             panic!("{} with {solution}: {error}", path.display());
         }
-        if run_program(allocator, &dialect, program, env, MAX_COST).is_ok() {
-            succeeded += 1;
-        }
+        succeeded += usize::from(expected.is_ok());
     }
 
     succeeded

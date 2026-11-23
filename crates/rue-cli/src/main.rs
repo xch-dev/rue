@@ -1755,12 +1755,24 @@ mod tests {
                 "--debug-metadata",
                 sidecar.to_str().unwrap()
             ]),
-            Ok(named)
+            Ok(named.clone())
         );
 
         // Without a sidecar, nothing is named
         let unnamed = run_explain(&["-x", hex.trim()]).unwrap();
+        assert_eq!(hex.trim(), "ff02ffff03ff05ff80ffff01ff10ff02ff028080ff0180");
         assert!(unnamed.contains("solution@2 + solution@2"), "{unnamed}");
+
+        // A program file that isn't hex is CLVM, and without a sidecar next to it, nothing is
+        // named, unless one is given
+        let text = project.0.join("program.clvm");
+        fs::write(&text, "(a (i 5 () (q 16 2 2)) 1)\n").unwrap();
+        let text = text.to_str().unwrap();
+        assert_eq!(run_explain(&[text]), Ok(unnamed.clone()));
+        assert_eq!(
+            run_explain(&[text, "--debug-metadata", sidecar.to_str().unwrap()]),
+            Ok(named.clone())
+        );
 
         // A sidecar for another program is rejected
         let error =

@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, serde::node_to_bytes};
+use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program, serde::node_to_bytes};
 use expect_test::{Expect, expect};
 use rue_clvm::{assemble, disassemble_value};
 use rue_compiler::debug_metadata::{
@@ -84,7 +84,14 @@ fn check(
     let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
     for solution in solutions {
         let env = assemble(&mut allocator, solution).unwrap();
-        if let Err(error) = explanation.check(&mut allocator, &dialect, ptr, env, MAX_COST) {
+        let expected = run_program(&mut allocator, &dialect, ptr, env, MAX_COST);
+        if let Err(error) = explanation.check(
+            &mut allocator,
+            &dialect,
+            expected.as_ref().map(|output| output.1),
+            env,
+            MAX_COST,
+        ) {
             panic!("{solution}: {error}\n{}", explanation.render());
         }
     }
@@ -267,10 +274,10 @@ fn deeply_nested_programs() {
         lets = format!("ff02ffff0102ffff04ffff02ffff03ff02ffff01{lets}ffff010580ff0180ff018080");
     }
 
-    for (hex, solution, output) in [
-        (firsts, nested, Some("1")),
-        (list, "80".to_string(), None),
-        (lets, "ff0180".to_string(), None),
+    for (hex, solution, output, nested_too_deeply) in [
+        (firsts, nested, Some("1"), false),
+        (list, "80".to_string(), None, false),
+        (lets, "ff0180".to_string(), None, true),
     ] {
         let mut allocator = Allocator::new();
         let bytes = hex::decode(hex).unwrap();
@@ -282,15 +289,32 @@ fn deeply_nested_programs() {
         let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
         let env =
             clvmr::serde::node_from_bytes(&mut allocator, &hex::decode(solution).unwrap()).unwrap();
+        let expected = run_program(&mut allocator, &dialect, ptr, env, MAX_COST);
+        if let Some(output) = output {
+            let value = expected.as_ref().unwrap().1;
+            assert_eq!(disassemble_value(&allocator, value), output);
+        }
         explanation
-            .check(&mut allocator, &dialect, ptr, env, MAX_COST)
+            .check(
+                &mut allocator,
+                &dialect,
+                expected.as_ref().map(|output| output.1),
+                env,
+                MAX_COST,
+            )
             .unwrap();
 
-        if let Some(output) = output {
-            let actual = explanation
-                .evaluate(&mut allocator, &dialect, env, MAX_COST)
-                .unwrap();
-            assert_eq!(disassemble_value(&allocator, actual), output);
+        if nested_too_deeply {
+            let rendered = explanation.render();
+            assert!(
+                rendered.contains("... // nested too deeply to show"),
+                "{rendered}"
+            );
+            assert!(
+                rendered.lines().count() < 1_000,
+                "{}",
+                rendered.lines().count()
+            );
         }
     }
 }
@@ -365,26 +389,188 @@ fn function_in_the_environment_of_an_unknown_program() {
 
 #[test]
 fn statements_in_branches_are_kept() {
-    // An `else` that asserts before its `if`, and a branch that binds a value before it raises
+    // An `else` that asserts before its `if`
     check(
-        "(c (a (i 2 (q . 1) (q 2 (i 5 (q 2 (i 11 (q . 1) (q . 2)) 1) (q 8)) 1)) 1) (a (i 2 (q . 1) (q 2 (q 8 2) (c (+ 5 5) 1))) 1))",
+        "(a (i 2 (q . 1) (q 2 (i 5 (q 2 (i 11 (q . 1) (q . 2)) 1) (q 8)) 1)) 1)",
         |_| Vec::new(),
         &["(1 2 3)", "(() 2 3)", "(() 2 ())", "(() () 3)"],
         &expect![[r#"
             program(solution) {
-                (if solution@2 { solution } else {
+                if solution@2 {
+                    solution
+                } else {
                     assert solution@5
                     if solution@11 {
                         solution
                     } else {
                         solution@2
                     }
-                }, if solution@2 { solution } else {
-                    let v1 = solution@5 + solution@5
-                    raise(v1)
-                })
+                }
             }
         "#]],
+    );
+
+    // A branch that binds a value before it raises
+    check(
+        "(a (i 2 (q . 1) (q 2 (q 8 2) (c (+ 5 5) 1))) 1)",
+        |_| Vec::new(),
+        &["(1 2)", "(() 2)"],
+        &expect![[r#"
+            program(solution) {
+                if solution@2 {
+                    solution
+                } else {
+                    let v1 = solution@5 + solution@5
+                    raise(v1)
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn raw_code_lets_functions_escape() {
+    // The raw code calls `add` with 20, so 10 isn't always its hidden value
+    check(
+        "(c (100 (a (q . (+ 2 5)) (c (q . 20) (c 2 ())))) (a (q . (+ 2 5)) (c (q . 10) (c 2 ()))))",
+        add_hidden,
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                (clvm!((100 (a (q 16 2 5) (c (q . 20) (c 2 ()))))), add(x: solution@2, env@2: 10))
+            }
+
+            fn add(x) {
+                env@2 + x
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn reading_inside_a_hidden_value_reads_it() {
+    // The body reads the first of its hidden value, so calls show what they pass for it
+    check(
+        "(+ (a (q . (+ 4 5)) (c (q . (7)) (c 2 ()))) (a (q . (+ 4 5)) (c (q . (8)) (c 2 ()))))",
+        |builder| {
+            vec![(
+                "(+ 4 5)".to_string(),
+                Described {
+                    name: "first",
+                    parameters: pair(Parameter::Nil, pair(name(builder, "x", 5), Parameter::Nil)),
+                },
+            )]
+        },
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                first(x: solution@2, env@2: [7]) + first(x: solution@2, env@2: [8])
+            }
+
+            fn first(x) {
+                env@4 + x
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn environment_of_an_if_is_evaluated_before_its_condition() {
+    check(
+        "(a (i (a (q . 2) (c (x (q . 1)) 1)) (q . 1) ()) (c (x (q . 2)) 1))",
+        |_| Vec::new(),
+        &["()"],
+        &expect![[r#"
+            program(solution) {
+                let v1 = raise(2)
+                let v2 = raise(1)
+                if v2 {
+                    (v1, solution)
+                } else {
+                    nil
+                }
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn structures_built_from_copies_of_themselves() {
+    // `(a (q . (a (q . ... 2) (c (c 2 2) 1))) (c (c 2 2) 1))`, which doubles the first value of
+    // the environment 40 times, is shown with a variable for each large part, rather than in full
+    let mut code = "(l 2)".to_string();
+    for _ in 0..40 {
+        code = format!("(a (q . {code}) (c (c 2 2) 1))");
+    }
+
+    let mut allocator = Allocator::new();
+    let ptr = assemble(&mut allocator, &code).unwrap();
+    let bytes = node_to_bytes(&allocator, ptr).unwrap();
+    let explanation = Explanation::new(&bytes, None).unwrap();
+    assert_eq!(explanation.uncovered(), 0);
+    let rendered = explanation.render();
+    assert!(rendered.len() < 50_000, "{}", rendered.len());
+
+    let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
+    let env = assemble(&mut allocator, "(1)").unwrap();
+    let expected = run_program(&mut allocator, &dialect, ptr, env, MAX_COST);
+    explanation
+        .check(
+            &mut allocator,
+            &dialect,
+            expected.as_ref().map(|output| output.1),
+            env,
+            MAX_COST,
+        )
+        .unwrap();
+}
+
+#[test]
+fn check_reports_differences() {
+    let mut allocator = Allocator::new();
+    let dialect = ChiaDialect::new(clvmr::ClvmFlags::empty());
+    let explain = |allocator: &mut Allocator, program: &str| {
+        let ptr = assemble(allocator, program).unwrap();
+        Explanation::new(&node_to_bytes(allocator, ptr).unwrap(), None).unwrap()
+    };
+
+    let env = assemble(&mut allocator, "(1)").unwrap();
+    let mut results = Vec::new();
+    for program in ["(x (q . 1))", "(x (q . 2))", "(f 2)", "(q . 1)", "(q . 2)"] {
+        let ptr = assemble(&mut allocator, program).unwrap();
+        let result = run_program(&mut allocator, &dialect, ptr, env, MAX_COST);
+        results.push((program, result));
+    }
+
+    // Each program matches itself, and none matches another
+    for (program, _) in &results {
+        let explanation = explain(&mut allocator, program);
+        for (other, result) in &results {
+            let checked = explanation.check(
+                &mut allocator,
+                &dialect,
+                result.as_ref().map(|output| output.1),
+                env,
+                MAX_COST,
+            );
+            assert_eq!(
+                checked.is_ok(),
+                program == other,
+                "{program} against {other}"
+            );
+        }
+    }
+
+    // Running out of cost isn't the same as giving the result
+    let explanation = explain(
+        &mut allocator,
+        "(a (q 2 2 (c 2 ())) (c (q 2 2 (c 2 ())) ()))",
+    );
+    let one = allocator.one();
+    assert!(
+        explanation
+            .check(&mut allocator, &dialect, Ok(one), env, 1_000)
+            .is_err()
     );
 }
 

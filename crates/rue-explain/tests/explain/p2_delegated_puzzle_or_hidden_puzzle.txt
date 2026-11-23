@@ -1,5 +1,5 @@
 ===== release =====
-// The types of parameters are as declared, and aren't checked
+// The types of parameters are what the debug metadata says about their declared types, which the program doesn't check
 program(solution) {                                // p2_delegated_puzzle_or_hidden_puzzle.rue:12:22-27:2
     main(                                          // p2_delegated_puzzle_or_hidden_puzzle.rue:12:22-27:2
         synthetic_public_key: solution@2,
@@ -32,7 +32,7 @@ fn tree_hash(value) {                              // std/tree_hash.rue:2:5-6:6
     }
 }
 ===== debug =====
-// The types of parameters are as declared, and aren't checked
+// The types of parameters are what the debug metadata says about their declared types, which the program doesn't check
 program(solution) {                                // p2_delegated_puzzle_or_hidden_puzzle.rue:12:22-27:2
     main(                                          // p2_delegated_puzzle_or_hidden_puzzle.rue:12:22-27:2
         synthetic_public_key: solution@2,

@@ -1,8 +1,8 @@
 //! What a program is decompiled into: functions with bodies of statements and expressions, which
 //! mean exactly what the CLVM they come from does (see [`crate::eval`]).
 //!
-//! Operands are kept in the order `clvmr` evaluates them in, which is from the last to the first,
-//! and so are the `let`s that bind them.
+//! Operands are kept in the order they're written in, and evaluated (and their `let`s bound) in
+//! the order `clvmr` evaluates them in, which is from the last to the first.
 
 use std::borrow::Cow;
 
@@ -33,17 +33,36 @@ pub(crate) enum Value {
     Nil,
     /// The part of the environment or a variable at the path.
     Ref(Root, Path),
-    /// A pair that's built from its parts, which are evaluated rest first, and whether any part
-    /// of it is computed.
-    Cons(Deep<Value>, Deep<Value>, bool),
+    /// A pair that's built from its parts, which are evaluated rest first.
+    Cons(Deep<Value>, Deep<Value>, Shape),
     /// A value that's computed.
     Expr(Deep<Expr>),
 }
 
+/// What's known about a pair's parts without looking at them.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Shape {
+    /// Whether any part is computed.
+    pub computed: bool,
+    /// How many values the pair is made of, counting a part each time it's used (saturating).
+    pub size: usize,
+}
+
 impl Value {
     pub(crate) fn cons(first: Value, rest: Value) -> Self {
-        let computed = first.has_computed() || rest.has_computed();
-        Self::Cons(Deep::new(first), Deep::new(rest), computed)
+        let shape = Shape {
+            computed: first.has_computed() || rest.has_computed(),
+            size: first.size().saturating_add(rest.size()).saturating_add(1),
+        };
+        Self::Cons(Deep::new(first), Deep::new(rest), shape)
+    }
+
+    /// How many values the value is made of, as it's shown.
+    pub(crate) fn size(&self) -> usize {
+        match self {
+            Value::Cons(_, _, shape) => shape.size,
+            _ => 1,
+        }
     }
 
     /// The part of the value at the path, if it's known: `None` if the path goes into a computed
@@ -79,12 +98,10 @@ impl Value {
         known: &[KnownSlot],
         path: &[bool],
     ) -> Option<Cow<'_, Value>> {
-        Some(match self.at(program, path)? {
-            Cow::Owned(Value::Ref(Root::Env, path)) => Cow::Owned(known_env(program, known, path)),
-            Cow::Borrowed(Value::Ref(Root::Env, path)) => {
-                Cow::Owned(known_env(program, known, path.clone()))
-            }
-            value => value,
+        let value = self.at(program, path)?;
+        Some(match value.as_ref() {
+            Value::Ref(Root::Env, path) => Cow::Owned(known_env(program, known, path.clone())),
+            _ => value,
         })
     }
 
@@ -92,7 +109,7 @@ impl Value {
     pub(crate) fn has_computed(&self) -> bool {
         match self {
             Value::Expr(_) => true,
-            Value::Cons(_, _, computed) => *computed,
+            Value::Cons(_, _, shape) => shape.computed,
             Value::Const(_) | Value::Nil | Value::Ref(..) => false,
         }
     }
