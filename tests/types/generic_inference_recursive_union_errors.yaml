@@ -1,4 +1,4 @@
 diagnostics:
-- Cannot assign `Atom | 1 @ (Atom | <1>, Atom | <1>)` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at generic_inference_recursive_union_errors.rue:9:31
-- Cannot assign `A | Any` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at generic_inference_recursive_union_errors.rue:21:31
-- Cannot assign `A` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at generic_inference_recursive_union_errors.rue:40:39
+- Cannot assign `Atom | 1 @ (Atom | <1>, Atom | <1>)` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at generic_inference_recursive_union_errors.rue:12:31
+- Cannot assign `A | Any` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at generic_inference_recursive_union_errors.rue:24:31
+- Cannot assign `A` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at generic_inference_recursive_union_errors.rue:43:39

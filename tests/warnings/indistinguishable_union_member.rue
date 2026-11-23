@@ -1,0 +1,63 @@
+#![allow(unused)]
+
+// Members that are the same at runtime, so they can't be told apart
+type IntOrBytes = Int | Bytes;
+type StringOrInt = String | Int;
+
+struct First {
+    value: Int,
+}
+
+struct Second {
+    value: Int,
+}
+
+struct Third {
+    value: Bytes,
+}
+
+type SameShape = First | Second;
+type FlippedPairs = (Int, Bytes) | (Bytes, Int);
+type NilOrFalse = nil | false;
+
+// Each member is reported against the first one it's the same as
+type ThreeStructs = First | Second | Third;
+
+// They're reported wherever the union is written
+fn parameter(value: Int | Bytes) -> Int {
+    value as Int
+}
+
+// Members that are narrowed by a runtime check aren't reported, even though some of the values of
+// one of them are values of the other, since the check decides which one they are
+type IntOrNil = Int | nil;
+type Bytes32OrInt = Bytes32 | Int;
+type BoolOrInt = Bool | Int;
+
+// A redundant member is reported as redundant instead
+type Redundant = Bytes | Bytes32;
+
+// Structs with a constant field can be told apart
+struct Tagged {
+    tag: 1,
+    value: Int,
+}
+
+struct OtherTagged {
+    tag: 2,
+    value: Int,
+}
+
+type Tags = Tagged | OtherTagged;
+
+#[allow(indistinguishable_union_member)]
+type Allowed = Int | Bytes;
+
+test fn narrows_nil() -> Int {
+    let value: Int | nil = 5;
+    if value is nil {
+        0
+    } else {
+        value
+    }
+}

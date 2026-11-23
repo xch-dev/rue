@@ -64,6 +64,6 @@ tests:
   total_cost: 1622203
 diagnostics:
 - |-
-  Field `second` of struct `Two` is never read at generic_inference_instantiated_through_candidate.rue:25:5
+  Field `second` of struct `Two` is never read at generic_inference_instantiated_through_candidate.rue:28:5
     note: If it's only needed for the layout of the struct, prefix its name with `_`
-- Value returned by statement is unused at generic_inference_instantiated_through_candidate.rue:66:5
+- Value returned by statement is unused at generic_inference_instantiated_through_candidate.rue:69:5

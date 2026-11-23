@@ -1,3 +1,6 @@
+// The unions in these tests overlap on purpose, to test how the compiler handles them
+#![allow(redundant_union_member)]
+
 // The rest check must consider every pair whose first can pass the first check.
 test fn rest_with_narrower_first(value: (Bytes32, Bytes32) | (Bytes, nil)) -> Bool {
     value is (Bytes, nil)

@@ -1,30 +1,30 @@
 diagnostics:
-- Match on `U` is not exhaustive, since it doesn't handle `C` at match_errors.rue:17:11
-- Match on `U` is not exhaustive, since it doesn't handle `B` and `C` at match_errors.rue:24:11
-- Match on `U` is not exhaustive, since it doesn't handle `A`, `B` and `C` at match_errors.rue:30:11
-- Match on `Int` is not exhaustive, since it doesn't handle `Int` at match_errors.rue:35:11
-- Match on `Any` is not exhaustive, since it doesn't handle `(Any, Any)` at match_errors.rue:42:11
-- Match on `Any` is not exhaustive, since it doesn't handle `Atom` at match_errors.rue:48:11
-- Match on `List<Int>` is not exhaustive, since it doesn't handle `(Int, List<Int>)` at match_errors.rue:54:11
-- Match on `T | nil` is not exhaustive, since it doesn't handle `T` at match_errors.rue:60:11
-- Match on `U` is not exhaustive, since it doesn't handle `B` and `C` at match_errors.rue:67:11
-- Cannot type guard from `U` to `Int`, since they do not overlap at match_errors.rue:79:9
-- Cannot check if value is of generic type at runtime at match_errors.rue:87:9
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at match_errors.rue:95:9
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at match_errors.rue:96:9
-- Undeclared type `Missing` at match_errors.rue:103:9
-- Cannot assign `1 | "no"` to `Int` without a cast, since they are semantically different at match_errors.rue:108:36
+- Match on `U` is not exhaustive, since it doesn't handle `C` at match_errors.rue:20:11
+- Match on `U` is not exhaustive, since it doesn't handle `B` and `C` at match_errors.rue:27:11
+- Match on `U` is not exhaustive, since it doesn't handle `A`, `B` and `C` at match_errors.rue:33:11
+- Match on `Int` is not exhaustive, since it doesn't handle `Int` at match_errors.rue:38:11
+- Match on `Any` is not exhaustive, since it doesn't handle `(Any, Any)` at match_errors.rue:45:11
+- Match on `Any` is not exhaustive, since it doesn't handle `Atom` at match_errors.rue:51:11
+- Match on `List<Int>` is not exhaustive, since it doesn't handle `(Int, List<Int>)` at match_errors.rue:57:11
+- Match on `T | nil` is not exhaustive, since it doesn't handle `T` at match_errors.rue:63:11
+- Match on `U` is not exhaustive, since it doesn't handle `B` and `C` at match_errors.rue:70:11
+- Cannot type guard from `U` to `Int`, since they do not overlap at match_errors.rue:82:9
+- Cannot check if value is of generic type at runtime at match_errors.rue:90:9
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at match_errors.rue:98:9
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at match_errors.rue:99:9
+- Undeclared type `Missing` at match_errors.rue:106:9
+- Cannot assign `1 | "no"` to `Int` without a cast, since they are semantically different at match_errors.rue:111:36
 - |-
-  Unreachable match arm, since an earlier arm handles every value that's left at match_errors.rue:119:9
-    note: This arm handles every value that's left at match_errors.rue:118:9
-- Undeclared symbol `undefined` at match_errors.rue:119:14
-- Match on `Any` is not exhaustive, since it doesn't handle `((Any, Any), Any)` at match_errors.rue:126:11
-- Match on `Any` is not exhaustive, since it doesn't handle `((Any, Any), Any)` and `(Int, Atom | ((Any, Any), Any))` at match_errors.rue:134:11
-- Match on `Optional<Bytes32>` is not exhaustive, since it doesn't handle `Bytes32` and `nil` at match_errors.rue:144:11
-- Undeclared type `Missing` at match_errors.rue:150:10
-- Undeclared type `Missing` at match_errors.rue:160:9
-- Match on `FirstPair | SecondPair | nil` is not exhaustive, since it doesn't handle `(Int, Int)` at match_errors.rue:172:11
-- Unknown field `value` on type `WithValue | A` at match_errors.rue:186:28
-- Match on `U` is not exhaustive, since it doesn't handle `C` at match_errors.rue:192:18
-- Undeclared type `Missing` at match_errors.rue:210:9
-- Cannot type guard from `Int | nil` to `(Int, Int)`, since they do not overlap at match_errors.rue:218:9
+  Unreachable match arm, since an earlier arm handles every value that's left at match_errors.rue:122:9
+    note: This arm handles every value that's left at match_errors.rue:121:9
+- Undeclared symbol `undefined` at match_errors.rue:122:14
+- Match on `Any` is not exhaustive, since it doesn't handle `((Any, Any), Any)` at match_errors.rue:129:11
+- Match on `Any` is not exhaustive, since it doesn't handle `((Any, Any), Any)` and `(Int, Atom | ((Any, Any), Any))` at match_errors.rue:137:11
+- Match on `Optional<Bytes32>` is not exhaustive, since it doesn't handle `Bytes32` and `nil` at match_errors.rue:147:11
+- Undeclared type `Missing` at match_errors.rue:153:10
+- Undeclared type `Missing` at match_errors.rue:163:9
+- Match on `FirstPair | SecondPair | nil` is not exhaustive, since it doesn't handle `(Int, Int)` at match_errors.rue:175:11
+- Unknown field `value` on type `WithValue | A` at match_errors.rue:189:28
+- Match on `U` is not exhaustive, since it doesn't handle `C` at match_errors.rue:195:18
+- Undeclared type `Missing` at match_errors.rue:213:9
+- Cannot type guard from `Int | nil` to `(Int, Int)`, since they do not overlap at match_errors.rue:221:9

@@ -176,7 +176,8 @@ fn dense_pair_chain_unions_stay_flat() {
 /// (`Inference::implied_members`), which is then done each time the generics are resolved. It
 /// once scanned every member left out for every candidate, which took 47 seconds in release with
 /// 120 parameters (0.3 seconds on main). Steps only count its comparisons, which are memoized, so
-/// this pins those, and that it compiles.
+/// this pins those, and that it compiles. The lints for overlapping union members compare the
+/// members of each union that's written, which takes about 1,200 more (99,400 without them).
 fn chained_member_unions(count: usize) -> String {
     let generics: Vec<String> = (0..=count).map(|i| format!("T{i}")).collect();
     let params: Vec<String> = (0..count)
@@ -208,7 +209,7 @@ fn main() -> Int {{
 #[test]
 fn chained_member_unions_stay_linear() {
     let steps = steps(&chained_member_unions(60));
-    assert!(steps < 100_000, "took {steps} steps");
+    assert!(steps < 105_000, "took {steps} steps");
 }
 
 /// A call with `count` untyped lambdas as the elements of one list argument, each of which waits

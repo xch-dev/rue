@@ -112,28 +112,28 @@ tests:
   byte_cost: 180000
   total_cost: 180151
 diagnostics:
-- Unused parameter `backward` at generic_inference_argument_order.rue:9:40
-- Unused parameter `list` at generic_inference_argument_order.rue:21:15
+- Unused parameter `backward` at generic_inference_argument_order.rue:12:40
+- Unused parameter `list` at generic_inference_argument_order.rue:24:15
 - |-
-  Binding `value` is returned directly after it's declared at generic_inference_argument_order.rue:78:5
+  Binding `value` is returned directly after it's declared at generic_inference_argument_order.rue:81:5
     help: Return the value directly
-- Unused parameter `other` at generic_inference_argument_order.rue:82:31
+- Unused parameter `other` at generic_inference_argument_order.rue:85:31
 - |-
-  Binding `value` is returned directly after it's declared at generic_inference_argument_order.rue:88:5
+  Binding `value` is returned directly after it's declared at generic_inference_argument_order.rue:91:5
     help: Return the value directly
 - |-
-  Binding `value` is returned directly after it's declared at generic_inference_argument_order.rue:100:5
+  Binding `value` is returned directly after it's declared at generic_inference_argument_order.rue:103:5
     help: Return the value directly
-- Unused parameter `first` at generic_inference_argument_order.rue:107:15
-- Unused parameter `second` at generic_inference_argument_order.rue:107:25
-- Binding `value` is returned directly after it's declared at generic_inference_argument_order.rue:115:5
-- Unused parameter `backward` at generic_inference_argument_order.rue:149:5
-- Unused generic type `A` at generic_inference_argument_order.rue:170:9
-- Unused parameter `second` at generic_inference_argument_order.rue:170:28
-- Unused parameter `third` at generic_inference_argument_order.rue:170:51
-- Unused parameter `value` at generic_inference_argument_order.rue:196:20
-- Unused parameter `third` at generic_inference_argument_order.rue:203:5
-- Unused parameter `value` at generic_inference_argument_order.rue:227:15
+- Unused parameter `first` at generic_inference_argument_order.rue:110:15
+- Unused parameter `second` at generic_inference_argument_order.rue:110:25
+- Binding `value` is returned directly after it's declared at generic_inference_argument_order.rue:118:5
+- Unused parameter `backward` at generic_inference_argument_order.rue:152:5
+- Unused generic type `A` at generic_inference_argument_order.rue:173:9
+- Unused parameter `second` at generic_inference_argument_order.rue:173:28
+- Unused parameter `third` at generic_inference_argument_order.rue:173:51
+- Unused parameter `value` at generic_inference_argument_order.rue:199:20
+- Unused parameter `third` at generic_inference_argument_order.rue:206:5
+- Unused parameter `value` at generic_inference_argument_order.rue:230:15
 - |-
-  Binding `value` is returned directly after it's declared at generic_inference_argument_order.rue:248:5
+  Binding `value` is returned directly after it's declared at generic_inference_argument_order.rue:251:5
     help: Return the value directly

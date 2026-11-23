@@ -1,18 +1,18 @@
 diagnostics:
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:5:5
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:9:7
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:13:5
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:19:5
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:23:5
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:27:5
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:32:9
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:38:5
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:42:5
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:46:5
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:50:5
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:54:5
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:62:5
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:66:14
-- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:72:5
-- Cannot cast `fn() -> Int` to `Int`, since they have different runtime representations at function_values_errors.rue:77:5
-- Cannot assign `fn() -> Int | nil` to `nil`, since they are incompatible at function_values_errors.rue:80:54
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:8:5
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:12:7
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:16:5
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:22:5
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:26:5
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:30:5
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:35:9
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:41:5
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:45:5
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:49:5
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:53:5
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:57:5
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:65:5
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:69:14
+- Cannot check if value is a function at runtime, since how a function is represented differs between debug and release builds at function_values_errors.rue:75:5
+- Cannot cast `fn() -> Int` to `Int`, since they have different runtime representations at function_values_errors.rue:80:5
+- Cannot assign `fn() -> Int | nil` to `nil`, since they are incompatible at function_values_errors.rue:83:54

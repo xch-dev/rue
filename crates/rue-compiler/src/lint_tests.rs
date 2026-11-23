@@ -3730,3 +3730,58 @@ fn spread_list_builtins_have_no_fix_for_a_missing_argument() {
     // Putting the arguments in a list would keep the missing one, so nothing is suggested
     assert!(spread.suggestions.is_empty());
 }
+
+#[test]
+fn suggestions_fix_redundant_union_members() {
+    // Removing every redundant member at once leaves a valid union, whether they're before,
+    // between or after the members that are kept. A member with a comment in what's removed is
+    // left for the user.
+    let source = "\
+type Before = 5 | 6 | Int;
+type After = Int | 5 | 6;
+type Around = 5 | Int | 6 | Bytes32;
+type Twice = Int | Int;
+type Spaced = Bytes   |   Bytes32;
+type Commented = Int | /* five */ 5;
+
+fn main(
+    a: Before,
+    b: After,
+    c: Around,
+    d: Twice,
+    e: Spaced,
+    f: Commented,
+    g: List<Int | 7>,
+) -> Int {
+    let _value: Int | 8 = a;
+    0
+}
+";
+
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+type Before = Int;
+type After = Int;
+type Around = Int | Bytes32;
+type Twice = Int;
+type Spaced = Bytes;
+type Commented = Int | /* five */ 5;
+
+fn main(
+    a: Before,
+    b: After,
+    c: Around,
+    d: Twice,
+    e: Spaced,
+    f: Commented,
+    g: List<Int>,
+) -> Int {
+    let _value: Int = a;
+    0
+}
+"
+    );
+}

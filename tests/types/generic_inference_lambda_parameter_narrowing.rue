@@ -1,3 +1,6 @@
+// The unions in these tests overlap on purpose, to test how the compiler handles them
+#![allow(redundant_union_member)]
+
 // Narrowing a value whose type keeps a reference that an untyped lambda parameter's type is made of
 // names and infers its type as it would otherwise (#362, step 13e)
 

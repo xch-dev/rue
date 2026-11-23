@@ -56,20 +56,20 @@ tests:
   byte_cost: 372000
   total_cost: 372575
 diagnostics:
-- Unnecessary type guard from `List<Int>` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:37:24
-- Unnecessary type guard from `List<Int>` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:38:16
-- Unnecessary type guard from `(Int, List<Int>)` to `(Any, Any)`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:55:19
-- Type guard from `MyInt | Bytes` to `Int` is always true, since every `MyInt | Bytes` value is also a valid `Int` at runtime; use a cast, or guard against a narrower type at generic_inference_lambda_parameter_narrowing.rue:68:21
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:75:8
-- Unnecessary type guard from `5 | (Int, List<Int>)` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:93:8
-- Unnecessary type guard from `(Int, List<Int>)` to `(Any, Any)`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:108:32
-- Unnecessary type guard from `((Int, List<Int>), nil)` to `(Any, Any)`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:114:30
-- Unnecessary type guard from `((Int, List<Int>), 1)` to `(Any, Any)`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:121:23
-- Unnecessary type guard from `(Int, List<Int>)` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:126:16
-- Unnecessary type guard from `PairOrBytes<Int>` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:141:19
+- Unnecessary type guard from `List<Int>` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:40:24
+- Unnecessary type guard from `List<Int>` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:41:16
+- Unnecessary type guard from `(Int, List<Int>)` to `(Any, Any)`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:58:19
+- Type guard from `MyInt | Bytes` to `Int` is always true, since every `MyInt | Bytes` value is also a valid `Int` at runtime; use a cast, or guard against a narrower type at generic_inference_lambda_parameter_narrowing.rue:71:21
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:78:8
+- Unnecessary type guard from `5 | (Int, List<Int>)` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:96:8
+- Unnecessary type guard from `(Int, List<Int>)` to `(Any, Any)`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:111:32
+- Unnecessary type guard from `((Int, List<Int>), nil)` to `(Any, Any)`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:117:30
+- Unnecessary type guard from `((Int, List<Int>), 1)` to `(Any, Any)`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:124:23
+- Unnecessary type guard from `(Int, List<Int>)` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:129:16
+- Unnecessary type guard from `PairOrBytes<Int>` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:144:19
 - |-
-  Binding `checked` is returned directly after it's declared at generic_inference_lambda_parameter_narrowing.rue:161:5
+  Binding `checked` is returned directly after it's declared at generic_inference_lambda_parameter_narrowing.rue:164:5
     help: Return the value directly
-- Unnecessary type guard from `Bytes | "z"` to `Bytes`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:161:22
-- Unnecessary type guard from `Bytes | "z"` to `Bytes`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:162:12
-- Unnecessary type guard from `(Int, Int)` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:181:8
+- Unnecessary type guard from `Bytes | "z"` to `Bytes`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:164:22
+- Unnecessary type guard from `Bytes | "z"` to `Bytes`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:165:12
+- Unnecessary type guard from `(Int, Int)` to `Any`, since they are already compatible types at generic_inference_lambda_parameter_narrowing.rue:184:8

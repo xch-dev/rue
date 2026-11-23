@@ -1,22 +1,22 @@
 diagnostics:
-- Cannot infer generic `A` for `make_list`; specify it explicitly, e.g. `make_list::<...>()` at generic_inference_expected_generic_function_errors.rue:95:46
-- Cannot infer generic `A` for `make_list`; specify it explicitly, e.g. `make_list::<...>()` at generic_inference_expected_generic_function_errors.rue:101:56
-- Cannot infer generic `A` for `make_from_lambda`; specify it explicitly, e.g. `make_from_lambda::<...>()` at generic_inference_expected_generic_function_errors.rue:105:57
-- Cannot infer generic `A` for `make_pair`; specify it explicitly, e.g. `make_pair::<...>()` at generic_inference_expected_generic_function_errors.rue:112:51
-- Cannot infer generic `A` for `make_functions`; specify it explicitly, e.g. `make_functions::<...>()` at generic_inference_expected_generic_function_errors.rue:113:50
-- Cannot infer generic `A` for `make_optional`; specify it explicitly, e.g. `make_optional::<...>()` at generic_inference_expected_generic_function_errors.rue:114:47
-- Cannot infer generic `A` for `make_pair`; specify it explicitly, e.g. `make_pair::<...>()` at generic_inference_expected_generic_function_errors.rue:115:33
-- Cannot infer generic `B` for `make_returning_pair`; specify it explicitly, e.g. `make_returning_pair::<...>()` at generic_inference_expected_generic_function_errors.rue:121:77
-- Cannot infer generic `A` for `make_returning_optional`; specify it explicitly, e.g. `make_returning_optional::<...>()` at generic_inference_expected_generic_function_errors.rue:122:72
-- Cannot infer generic `A` for `make_chain_pair`; specify it explicitly, e.g. `make_chain_pair::<...>()` at generic_inference_expected_generic_function_errors.rue:130:51
-- Cannot infer generic `A` for `make_chain`; specify it explicitly, e.g. `make_chain::<...>()` at generic_inference_expected_generic_function_errors.rue:131:53
-- Cannot infer generic `A` for `make_chain`; specify it explicitly, e.g. `make_chain::<...>()` at generic_inference_expected_generic_function_errors.rue:132:52
-- "Cannot assign `fn(a: Int) -> fn<A>(b: Int) -> fn(c: A) -> Any` to `Curried<Int>`, since they are incompatible at generic_inference_expected_generic_function_errors.rue:137:44"
-- Cannot infer generic `G` for `make_list_from_int`; specify it explicitly, e.g. `make_list_from_int::<...>()` at generic_inference_expected_generic_function_errors.rue:142:71
-- "Cannot assign `fn<A>(a: A) -> fn(c: Int) -> A` to `fn<T>(a: T) -> fn<U>(c: Int) -> U | Bytes32`, since they are incompatible at generic_inference_expected_generic_function_errors.rue:147:65"
-- "Cannot assign `fn<A>(a: A) -> ((A, A), nil)` to `fn<T>(a: T) -> ((T, T), Int)` without a cast, since they are semantically different at generic_inference_expected_generic_function_errors.rue:151:54"
-- "Cannot assign `fn<A, B>(a: A, b: B) -> ((A, A), nil)` to `fn<T>(a: T, b: T) -> ((T, T), Int)` without a cast, since they are semantically different at generic_inference_expected_generic_function_errors.rue:154:60"
-- "Cannot assign `fn<A, U>(a: A) -> ((A, U), nil)` to `fn<T, U>(a: T) -> ((T, U), Int)` without a cast, since they are semantically different at generic_inference_expected_generic_function_errors.rue:157:58"
-- Cannot infer generic `T` for `unchecked_cast`; specify it explicitly, e.g. `unchecked_cast::<...>()` at generic_inference_expected_generic_function_errors.rue:162:74
-- "Cannot assign `fn<T>(a: Int) -> (T, T)` to `fn<T>(a: T) -> (T, T)`, since they are incompatible at generic_inference_expected_generic_function_errors.rue:165:43"
-- Cannot infer generic `T` for `unchecked_cast`; specify it explicitly, e.g. `unchecked_cast::<...>()` at generic_inference_expected_generic_function_errors.rue:169:58
+- Cannot infer generic `A` for `make_list`; specify it explicitly, e.g. `make_list::<...>()` at generic_inference_expected_generic_function_errors.rue:98:46
+- Cannot infer generic `A` for `make_list`; specify it explicitly, e.g. `make_list::<...>()` at generic_inference_expected_generic_function_errors.rue:104:56
+- Cannot infer generic `A` for `make_from_lambda`; specify it explicitly, e.g. `make_from_lambda::<...>()` at generic_inference_expected_generic_function_errors.rue:108:57
+- Cannot infer generic `A` for `make_pair`; specify it explicitly, e.g. `make_pair::<...>()` at generic_inference_expected_generic_function_errors.rue:115:51
+- Cannot infer generic `A` for `make_functions`; specify it explicitly, e.g. `make_functions::<...>()` at generic_inference_expected_generic_function_errors.rue:116:50
+- Cannot infer generic `A` for `make_optional`; specify it explicitly, e.g. `make_optional::<...>()` at generic_inference_expected_generic_function_errors.rue:117:47
+- Cannot infer generic `A` for `make_pair`; specify it explicitly, e.g. `make_pair::<...>()` at generic_inference_expected_generic_function_errors.rue:118:33
+- Cannot infer generic `B` for `make_returning_pair`; specify it explicitly, e.g. `make_returning_pair::<...>()` at generic_inference_expected_generic_function_errors.rue:124:77
+- Cannot infer generic `A` for `make_returning_optional`; specify it explicitly, e.g. `make_returning_optional::<...>()` at generic_inference_expected_generic_function_errors.rue:125:72
+- Cannot infer generic `A` for `make_chain_pair`; specify it explicitly, e.g. `make_chain_pair::<...>()` at generic_inference_expected_generic_function_errors.rue:133:51
+- Cannot infer generic `A` for `make_chain`; specify it explicitly, e.g. `make_chain::<...>()` at generic_inference_expected_generic_function_errors.rue:134:53
+- Cannot infer generic `A` for `make_chain`; specify it explicitly, e.g. `make_chain::<...>()` at generic_inference_expected_generic_function_errors.rue:135:52
+- "Cannot assign `fn(a: Int) -> fn<A>(b: Int) -> fn(c: A) -> Any` to `Curried<Int>`, since they are incompatible at generic_inference_expected_generic_function_errors.rue:140:44"
+- Cannot infer generic `G` for `make_list_from_int`; specify it explicitly, e.g. `make_list_from_int::<...>()` at generic_inference_expected_generic_function_errors.rue:145:71
+- "Cannot assign `fn<A>(a: A) -> fn(c: Int) -> A` to `fn<T>(a: T) -> fn<U>(c: Int) -> U | Bytes32`, since they are incompatible at generic_inference_expected_generic_function_errors.rue:150:65"
+- "Cannot assign `fn<A>(a: A) -> ((A, A), nil)` to `fn<T>(a: T) -> ((T, T), Int)` without a cast, since they are semantically different at generic_inference_expected_generic_function_errors.rue:154:54"
+- "Cannot assign `fn<A, B>(a: A, b: B) -> ((A, A), nil)` to `fn<T>(a: T, b: T) -> ((T, T), Int)` without a cast, since they are semantically different at generic_inference_expected_generic_function_errors.rue:157:60"
+- "Cannot assign `fn<A, U>(a: A) -> ((A, U), nil)` to `fn<T, U>(a: T) -> ((T, U), Int)` without a cast, since they are semantically different at generic_inference_expected_generic_function_errors.rue:160:58"
+- Cannot infer generic `T` for `unchecked_cast`; specify it explicitly, e.g. `unchecked_cast::<...>()` at generic_inference_expected_generic_function_errors.rue:165:74
+- "Cannot assign `fn<T>(a: Int) -> (T, T)` to `fn<T>(a: T) -> (T, T)`, since they are incompatible at generic_inference_expected_generic_function_errors.rue:168:43"
+- Cannot infer generic `T` for `unchecked_cast`; specify it explicitly, e.g. `unchecked_cast::<...>()` at generic_inference_expected_generic_function_errors.rue:172:58

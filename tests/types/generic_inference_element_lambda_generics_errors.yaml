@@ -1,39 +1,39 @@
 diagnostics:
-- Unused function `identity` at generic_inference_element_lambda_generics_errors.rue:6:4
-- Unused function `pair2` at generic_inference_element_lambda_generics_errors.rue:10:4
-- Unused function `sibling_lambda_captures_the_shared_generic` at generic_inference_element_lambda_generics_errors.rue:14:4
+- Unused function `identity` at generic_inference_element_lambda_generics_errors.rue:9:4
+- Unused function `pair2` at generic_inference_element_lambda_generics_errors.rue:13:4
+- Unused function `sibling_lambda_captures_the_shared_generic` at generic_inference_element_lambda_generics_errors.rue:17:4
 - |-
-  Cannot assign `(fn(x: Int) -> Int, fn(_y: T) -> T)` to `(fn(x: Int) -> Int, fn(x: Int) -> Int)`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:19:36
+  Cannot assign `(fn(x: Int) -> Int, fn(_y: T) -> T)` to `(fn(x: Int) -> Int, fn(x: Int) -> Int)`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:22:36
     note: `T` is a generic of the function that's called, since the type of the parameter `a` wasn't inferred here; specify the parameter's type explicitly
-- Unused function `map_list` at generic_inference_element_lambda_generics_errors.rue:27:4
-- Unused function `map_and_call` at generic_inference_element_lambda_generics_errors.rue:35:4
-- Unused function `rejected_for_another_reason` at generic_inference_element_lambda_generics_errors.rue:44:4
-- Cannot assign `(List<Int>, String)` to `(List<Int>, 1)` without a type guard, since the value isn't always a valid `(List<Int>, 1)` at generic_inference_element_lambda_generics_errors.rue:44:52
-- Unused function `recursive` at generic_inference_element_lambda_generics_errors.rue:48:4
-- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:52:43
-- "Cannot assign `(fn(x: T) -> T, nil)` to `List<fn(x: Int) -> T>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:52:53"
-- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:53:46
-- "Cannot assign `(fn(x: T) -> T, nil)` to `List<fn(x: Int) -> T>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:54:13"
-- Unused function `generic_inferred_as_an_uninferred_one` at generic_inference_element_lambda_generics_errors.rue:71:4
-- Cannot infer generic `T` for `map_list`; specify it explicitly, e.g. `map_list::<...>()` at generic_inference_element_lambda_generics_errors.rue:72:5
-- Unused function `map_list_of` at generic_inference_element_lambda_generics_errors.rue:80:4
-- Unused function `element_with_a_call_and_an_expected_type` at generic_inference_element_lambda_generics_errors.rue:92:4
-- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics_errors.rue:93:5
+- Unused function `map_list` at generic_inference_element_lambda_generics_errors.rue:30:4
+- Unused function `map_and_call` at generic_inference_element_lambda_generics_errors.rue:38:4
+- Unused function `rejected_for_another_reason` at generic_inference_element_lambda_generics_errors.rue:47:4
+- Cannot assign `(List<Int>, String)` to `(List<Int>, 1)` without a type guard, since the value isn't always a valid `(List<Int>, 1)` at generic_inference_element_lambda_generics_errors.rue:47:52
+- Unused function `recursive` at generic_inference_element_lambda_generics_errors.rue:51:4
+- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:55:43
+- "Cannot assign `(fn(x: T) -> T, nil)` to `List<fn(x: Int) -> T>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:55:53"
+- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:56:46
+- "Cannot assign `(fn(x: T) -> T, nil)` to `List<fn(x: Int) -> T>`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:57:13"
+- Unused function `generic_inferred_as_an_uninferred_one` at generic_inference_element_lambda_generics_errors.rue:74:4
+- Cannot infer generic `T` for `map_list`; specify it explicitly, e.g. `map_list::<...>()` at generic_inference_element_lambda_generics_errors.rue:75:5
+- Unused function `map_list_of` at generic_inference_element_lambda_generics_errors.rue:83:4
+- Unused function `element_with_a_call_and_an_expected_type` at generic_inference_element_lambda_generics_errors.rue:95:4
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics_errors.rue:96:5
 - |-
-  Cannot assign `T` to `A`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:93:63
+  Cannot assign `T` to `A`, since they are incompatible at generic_inference_element_lambda_generics_errors.rue:96:63
     note: `T` is a generic of the function that's called, since the type of the parameter `x` wasn't inferred here; specify the parameter's type explicitly
-- Unused function `apply_first_of` at generic_inference_element_lambda_generics_errors.rue:97:4
-- Unused function `duplicate` at generic_inference_element_lambda_generics_errors.rue:101:4
-- Unused function `element_passes_its_parameter_to_a_call_under_an_expected_type` at generic_inference_element_lambda_generics_errors.rue:112:4
-- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics_errors.rue:113:5
+- Unused function `apply_first_of` at generic_inference_element_lambda_generics_errors.rue:100:4
+- Unused function `duplicate` at generic_inference_element_lambda_generics_errors.rue:104:4
+- Unused function `element_passes_its_parameter_to_a_call_under_an_expected_type` at generic_inference_element_lambda_generics_errors.rue:115:4
+- Binding `result` is returned directly after it's declared at generic_inference_element_lambda_generics_errors.rue:116:5
 - |-
-  Cannot assign `T` to `Int | Bytes` without a type guard, since the value isn't always a valid `Int | Bytes` at generic_inference_element_lambda_generics_errors.rue:114:44
+  Cannot assign `T` to `Int | Bytes` without a type guard, since the value isn't always a valid `Int | Bytes` at generic_inference_element_lambda_generics_errors.rue:117:44
     note: `T` is a generic of the function that's called, since the type of the parameter `x` wasn't inferred here; specify the parameter's type explicitly
-- Unused function `nothing_given` at generic_inference_element_lambda_generics_errors.rue:120:4
-- Unused function `first_of_a_pair` at generic_inference_element_lambda_generics_errors.rue:124:4
-- Unused function `first_beside_an_int` at generic_inference_element_lambda_generics_errors.rue:128:4
-- Unused function `first_element_with_nothing_to_infer_from` at generic_inference_element_lambda_generics_errors.rue:136:4
-- Type of parameter cannot be inferred, it must be specified explicitly at generic_inference_element_lambda_generics_errors.rue:137:25
-- Cannot infer generic `A` for `nothing_given`; specify it explicitly, e.g. `nothing_given::<...>()` at generic_inference_element_lambda_generics_errors.rue:137:38
-- Unused function `first_element_of_a_generic_nothing_gives` at generic_inference_element_lambda_generics_errors.rue:140:4
-- Type of parameter cannot be inferred, it must be specified explicitly at generic_inference_element_lambda_generics_errors.rue:141:29
+- Unused function `nothing_given` at generic_inference_element_lambda_generics_errors.rue:123:4
+- Unused function `first_of_a_pair` at generic_inference_element_lambda_generics_errors.rue:127:4
+- Unused function `first_beside_an_int` at generic_inference_element_lambda_generics_errors.rue:131:4
+- Unused function `first_element_with_nothing_to_infer_from` at generic_inference_element_lambda_generics_errors.rue:139:4
+- Type of parameter cannot be inferred, it must be specified explicitly at generic_inference_element_lambda_generics_errors.rue:140:25
+- Cannot infer generic `A` for `nothing_given`; specify it explicitly, e.g. `nothing_given::<...>()` at generic_inference_element_lambda_generics_errors.rue:140:38
+- Unused function `first_element_of_a_generic_nothing_gives` at generic_inference_element_lambda_generics_errors.rue:143:4
+- Type of parameter cannot be inferred, it must be specified explicitly at generic_inference_element_lambda_generics_errors.rue:144:29

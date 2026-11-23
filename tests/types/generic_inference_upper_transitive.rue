@@ -1,3 +1,6 @@
+// The unions in these tests overlap on purpose, to test how the compiler handles them
+#![allow(redundant_union_member)]
+
 // A generic inferred through another must satisfy what that one is bounded by from above, so a
 // generic that's only bounded from above through another generic can be inferred (#285)
 

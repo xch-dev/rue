@@ -7,97 +7,97 @@ tests:
   clvm_error: Division by zero
 - name: indistinguishable_structs
   program: (i (any (q . 1) (a (i (> 2 ()) (q 4 2 ()) (q 8)) 1)) (q . 1) (q . 2))
-  debug_program: (a (q 2 (i (i () (a 2 5) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (c (q 2 (i (> 1 ()) (q 4 1 ()) (q 8 (q . "assertion failed at keep_checks_guards.rue:21:5"))) 1) 1))
+  debug_program: (a (q 2 (i (i () (a 2 5) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (c (q 2 (i (> 1 ()) (q 4 1 ()) (q 8 (q . "assertion failed at keep_checks_guards.rue:24:5"))) 1) 1))
   solution: (0)
   byte_cost: 636000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at keep_checks_guards.rue:21:5"
+  debug_clvm_error: clvm raise "assertion failed at keep_checks_guards.rue:24:5"
 - name: raise_in_operand
   program: (i (x) (q . 1) (q . 2))
-  debug_program: (a (q 2 (i (i () (a 2 ()) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (c (q 8 (q . "raise called at keep_checks_guards.rue:26:5") (q . 28271)) ()))
+  debug_program: (a (q 2 (i (i () (a 2 ()) (q . 1)) (q 1 . 1) (q 1 . 2)) 1) (c (q 8 (q . "raise called at keep_checks_guards.rue:29:5") (q . 28271)) ()))
   byte_cost: 180000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:26:5" 28271)
+  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:29:5" 28271)
 - name: binding_only_used_by_guard
   program: (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1))
-  debug_program: (a (q 3 () (a 2 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 3 () (a 2 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:18:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
   byte_cost: 468000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
+  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:18:9" "too big")
 - name: inlined_function_argument
   program: (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1))
-  debug_program: (a (q 2 6 (a 4 5)) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) (q 1 . 1)) 1))
+  debug_program: (a (q 2 6 (a 4 5)) (c (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:18:9") (q . "too big")) (q . 1)) 1) (q 1 . 1)) 1))
   solution: (50)
   byte_cost: 468000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
+  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:18:9" "too big")
 - name: guard_in_closure
   program: (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1))
-  debug_program: (a (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 3 () (a 5 2) (q . 1))) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q 3 () (a 5 2) (q . 1))) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:18:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
   byte_cost: 468000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
+  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:18:9" "too big")
 - name: guard_in_unused_binding
   program: (i () (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1)) (q . 1))
-  debug_program: (a (q 3 () (i () (a 2 5) (q . 1)) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 3 () (i () (a 2 5) (q . 1)) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:18:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
   byte_cost: 588000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
+  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:18:9" "too big")
 - name: failing_function_value
   program: (a (q 3 () (a 2 (c 5 ())) (q . 1)) (c (q 2 (i (> 2 (q . 10)) (q 8) (q . 2)) 1) 1))
-  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) 5)) (c (c (q 2 (i (> 2 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 2)) 1) (q 3 () (a 2 (c 3 ())) (q . 1))) 1))
+  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) 5)) (c (c (q 2 (i (> 2 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:18:9") (q . "too big")) (q . 2)) 1) (q 3 () (a 2 (c 3 ())) (q . 1))) 1))
   solution: (50)
   byte_cost: 804000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
+  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:18:9" "too big")
 - name: failing_function_value_found_later
   program: (a (q 3 () (i () (a 2 (c 5 ())) (q . 1)) (q . 1)) (c (q 2 (i (> 2 (q . 10)) (q 8) (q . 2)) 1) 1))
-  debug_program: (a (q 2 (q 3 () (a 9 (c (c (q . 2) (c (c (q . 1) 13) (c (q . 1) ()))) 11)) 2) (c (a 4 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) 5)) 1)) (c (c (q 3 () (a 2 (c 3 ())) (q . 1)) (q 2 (i (> 2 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 2)) 1)) 1))
+  debug_program: (a (q 2 (q 3 () (a 9 (c (c (q . 2) (c (c (q . 1) 13) (c (q . 1) ()))) 11)) 2) (c (a 4 (c (c (q . 2) (c (c (q . 1) (q 16 2 (q . 1))) (c (q . 1) ()))) 5)) 1)) (c (c (q 3 () (a 2 (c 3 ())) (q . 1)) (q 2 (i (> 2 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:18:9") (q . "too big")) (q . 2)) 1)) 1))
   solution: (50)
   byte_cost: 924000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
+  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:18:9" "too big")
 - name: inline_function_value
   program: (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1))
-  debug_program: (a (q 2 (i (q . 1) (q 3 () (a (c (q . 2) (c (c (q . 1) (q 2 5 2)) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) ()) (q . 1)) ()) 1) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (i (q . 1) (q 3 () (a (c (q . 2) (c (c (q . 1) (q 2 5 2)) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 2) (c () ()))) ()))) ()))) ()) (q . 1)) ()) 1) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:18:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
   byte_cost: 468000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
+  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:18:9" "too big")
 - name: guard_as_captured_argument
   program: (a (c (q . 2) (c (q 1 . 2) (c (c (q . 4) (c (c (q . 1) (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1))) (q ()))) ()))) ())
-  debug_program: (a (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (i () (a 2 5) (q . 1))) (c () ()))) ()))) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 2 (q 2 2 ()) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (c (q . 4) (c (c (q . 1) (i () (a 2 5) (q . 1))) (c () ()))) ()))) 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:18:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
   byte_cost: 1140000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
+  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:18:9" "too big")
 - name: nested_guards
   program: (i () (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) (q . 1)) (q . 1))
-  debug_program: (a (q 3 () (i () (a 2 5) (q . 1)) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 3 () (i () (a 2 5) (q . 1)) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:18:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
   byte_cost: 588000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
+  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:18:9" "too big")
 - name: binding_in_operand
   program: (i () (i () (a (i (> 2 (q . 10)) (q 8) (q . 2)) 1) 2) (q . 1))
-  debug_program: (a (q 3 () (i () (a 2 5) 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 3 () (i () (a 2 5) 5) (q . 1)) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:18:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
   byte_cost: 564000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:15:9" "too big")
+  debug_clvm_error: clvm raise ("raise called at keep_checks_guards.rue:18:9" "too big")
 - name: guard_in_called_function
   program: (a (q 2 (i (any (q . 1) (a 2 5)) (q 3 () (a 2 (+ 5 (q . 1))) (q . 1)) ()) 1) (c (q 2 (i (> 1 ()) (q 4 1 ()) (q 8)) 1) 1))
-  debug_program: (a (q 2 (i (a 4 (c 6 5)) (q 2 4 (c 6 (+ 5 (q . 1)))) ()) 1) (c (c (q 3 () (a 2 3) (q . 1)) (q 2 (i (> 1 ()) (q 4 1 ()) (q 8 (q . "assertion failed at keep_checks_guards.rue:21:5"))) 1)) 1))
+  debug_program: (a (q 2 (i (a 4 (c 6 5)) (q 2 4 (c 6 (+ 5 (q . 1)))) ()) 1) (c (c (q 3 () (a 2 3) (q . 1)) (q 2 (i (> 1 ()) (q 4 1 ()) (q 8 (q . "assertion failed at keep_checks_guards.rue:24:5"))) 1)) 1))
   solution: (0)
   byte_cost: 1236000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise "assertion failed at keep_checks_guards.rue:21:5"
+  debug_clvm_error: clvm raise "assertion failed at keep_checks_guards.rue:24:5"
 - name: inline_function_argument_is_skipped
   program: (q . 1)
-  debug_program: (a (q 1 . 1) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:15:9") (q . "too big")) (q . 1)) 1) 1))
+  debug_program: (a (q 1 . 1) (c (q 2 (i (> 1 (q . 10)) (q 8 (q . "raise called at keep_checks_guards.rue:18:9") (q . "too big")) (q . 1)) 1) 1))
   solution: (50)
   output: "1"
   runtime_cost: 20
@@ -137,26 +137,26 @@ tests:
   total_cost: 36020
 diagnostics:
 - |-
-  This `if` statement only raises, so it can be written as an `assert` at keep_checks_guards.rue:14:5
+  This `if` statement only raises, so it can be written as an `assert` at keep_checks_guards.rue:17:5
     help: Replace it with an `assert`
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:30:5
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:34:5
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:38:14
-- Type guard from `A | B` to `A` is always true, since every `A | B` value is also a valid `A` at runtime; use a cast, or guard against a narrower type at keep_checks_guards.rue:47:8
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:55:8
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:64:5
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:72:21
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:77:15
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:83:5
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:100:5
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:114:18
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:119:5
-- Unnecessary type guard from `Bool` to `Bool`, since they are already compatible types at keep_checks_guards.rue:119:5
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:123:5
-- Type guard from `A | B` to `A` is always true, since every `A | B` value is also a valid `A` at runtime; use a cast, or guard against a narrower type at keep_checks_guards.rue:131:5
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:33:5
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:37:5
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:41:14
+- Type guard from `A | B` to `A` is always true, since every `A | B` value is also a valid `A` at runtime; use a cast, or guard against a narrower type at keep_checks_guards.rue:50:8
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:58:8
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:67:5
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:75:21
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:80:15
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:86:5
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:103:5
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:117:18
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:122:5
+- Unnecessary type guard from `Bool` to `Bool`, since they are already compatible types at keep_checks_guards.rue:122:5
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:126:5
+- Type guard from `A | B` to `A` is always true, since every `A | B` value is also a valid `A` at runtime; use a cast, or guard against a narrower type at keep_checks_guards.rue:134:5
 - |-
-  This argument can fail, but `is_int` is an `inline fn` that doesn't always evaluate its parameter `value`, so its check can be skipped at keep_checks_guards.rue:142:12
+  This argument can fail, but `is_int` is an `inline fn` that doesn't always evaluate its parameter `value`, so its check can be skipped at keep_checks_guards.rue:145:12
     note: Bind the argument with `let` before the call to always evaluate it, or remove `inline` from the function
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:147:5
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:152:5
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:158:8
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:150:5
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:155:5
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at keep_checks_guards.rue:161:8
