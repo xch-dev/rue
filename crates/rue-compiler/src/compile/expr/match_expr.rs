@@ -12,9 +12,9 @@ use rue_lint::{IndistinguishableMatchArm, UnreachableMatchArm, UnreachableReason
 use rue_types::{BuiltinTypes, Check, Type, TypeId, Union};
 
 use crate::{
-    BoundValue, Branches, Compiler, CompletionContext, SyntaxItemKind, bind_unless_path,
-    compile_branching_expr, compile_expr, compile_type, create_binding, narrows_only_atoms,
-    type_at_path,
+    BoundValue, Branches, Compiler, CompletionContext, InlineBranch, SyntaxItemKind,
+    bind_unless_path, compile_branching_expr, compile_expr, compile_type, create_binding,
+    narrows_only_atoms, type_at_path,
 };
 
 /// Compiles a `match` expression into the `if` and `else if` chain of type guards that it's
@@ -508,6 +508,8 @@ fn compile_arm(
         }
     }
 
+    let mut guarded = HashSet::new();
+
     let condition = guard.map(|guard| {
         // The condition is only evaluated once the arm's type has been checked, even in an
         // `inline match`, whose arms don't see the value narrowed since they're always evaluated
@@ -531,7 +533,9 @@ fn compile_arm(
         if let Some(index) = narrowing {
             ctx.revert_mappings(index, guard.syntax().text_range().end());
         }
-        if !matched.inline {
+        if matched.inline {
+            guarded.extend(value.then_map.keys().copied());
+        } else {
             ctx.push_mappings(value.then_map, range.start());
         }
 
@@ -539,6 +543,8 @@ fn compile_arm(
     });
 
     let expected_type = matched.expected_type;
+    let start = ctx.branch_start();
+    let body_node = body.as_ref().map(|body| body.syntax().clone());
 
     let body = match (body, matched.branches) {
         (None, _) => {
@@ -554,6 +560,26 @@ fn compile_arm(
         }
         (Some(body), None) => compile_expr(ctx, &body, expected_type),
     };
+
+    // The body of an arm of an `inline match` sees neither the value narrowed to the arm's type
+    // nor what its condition narrows
+    if matched.inline
+        && let Some(body_node) = body_node
+    {
+        // An arm without a type narrows the value to what the arms before it didn't handle
+        if pattern.is_some() || remaining != matched.scrutinee.ty {
+            guarded.insert(matched.reference.symbol);
+        }
+
+        ctx.note_unnarrowed_branch(
+            start,
+            InlineBranch::Match,
+            &guarded,
+            &body_node,
+            body.ty,
+            expected_type,
+        );
+    }
 
     ctx.revert_mappings(index, range.end());
 

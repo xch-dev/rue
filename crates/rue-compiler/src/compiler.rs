@@ -10,7 +10,7 @@ use std::{
 };
 
 use rowan::{TextRange, TextSize};
-use rue_ast::{AstDocument, AstNode};
+use rue_ast::{AstDocument, AstExpr, AstNode};
 use rue_diagnostic::{
     Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Note, Source, SourceKind, SrcLoc,
 };
@@ -56,6 +56,7 @@ pub(crate) struct Checkpoint {
     lint_sites: LintSitesCheckpoint,
     named_types: usize,
     unchecked_type_items: usize,
+    unnarrowed_branches: Vec<UnnarrowedBranch>,
     pending_defaults: usize,
     scope_stack: Vec<(TextSize, ScopeId)>,
     declaration_stack: Vec<Declaration>,
@@ -147,6 +148,10 @@ pub struct Compiler {
     /// The type items compiled since their contractiveness was last rechecked, which happens once
     /// every type item in a tree has been compiled (see `recheck_contractive_types`).
     unchecked_type_items: Vec<TypeId>,
+    /// The branches of `inline if` and `inline match` expressions whose value isn't assignable to
+    /// the type expected of them, because they use a value that the branch's condition would have
+    /// narrowed if it weren't inline (see [`Compiler::note_unnarrowed_branch`]).
+    unnarrowed_branches: Vec<UnnarrowedBranch>,
     cancel: Option<Cancel>,
     cancelled: bool,
     /// Where the first placeholder for code that couldn't be compiled was made (see
@@ -158,6 +163,62 @@ pub struct Compiler {
     /// How many lambdas that feed themselves are being compiled in steps (see
     /// `compile_lambda_feeding_itself`).
     feeding_depth: usize,
+}
+
+/// A branch of an inline expression whose value isn't assignable to the type expected of it, which
+/// is reported where that type is checked, such as at the block that the expression ends.
+#[derive(Debug, Clone)]
+struct UnnarrowedBranch {
+    source: SourceKind,
+    range: TextRange,
+    expected: TypeId,
+    note: Note,
+}
+
+/// What [`Compiler::note_unnarrowed_branch`] compares a branch with: where the compile was before
+/// the branch was compiled.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BranchStart {
+    diagnostics: usize,
+    syntax_items: usize,
+}
+
+/// Which kind of inline expression a branch is of, which says what its note says.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum InlineBranch {
+    If,
+    Match,
+}
+
+impl InlineBranch {
+    fn note(self, name: &str) -> String {
+        match self {
+            Self::If => format!(
+                "Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `{name}`; use `if` instead"
+            ),
+            Self::Match => format!(
+                "Every arm of an `inline match` is evaluated, so the arm doesn't narrow the type of `{name}`; use `match` instead"
+            ),
+        }
+    }
+}
+
+/// Whether an error is one that a value having the type it would have been narrowed to would avoid
+/// (see [`Compiler::note_unnarrowed_branch`]).
+fn is_unnarrowed_error(kind: &DiagnosticKind) -> bool {
+    matches!(
+        kind,
+        DiagnosticKind::UnknownField(..)
+            | DiagnosticKind::MissingField(..)
+            | DiagnosticKind::IncompatibleType(..)
+            | DiagnosticKind::UnassignableType(..)
+            | DiagnosticKind::UnguardedAssignment(..)
+            | DiagnosticKind::IncompatibleBinaryOp(..)
+            | DiagnosticKind::IncompatibleUnaryOp(..)
+            | DiagnosticKind::InvalidFunctionCall(..)
+            | DiagnosticKind::CannotDestructurePair(..)
+            | DiagnosticKind::CannotIndexPair(..)
+    )
 }
 
 /// Something added to one of the compiler's sets or maps (see `Compiler::undo`).
@@ -345,6 +406,7 @@ impl Compiler {
             overridden_symbols: HashSet::new(),
             narrowed_references: HashMap::new(),
             unchecked_type_items: Vec::new(),
+            unnarrowed_branches: Vec::new(),
             cancel: None,
             cancelled: false,
             first_placeholder: None,
@@ -521,8 +583,10 @@ impl Compiler {
             // Keyed by the scopes and nodes made since, which `restore` clears
             registered_scopes: _,
             list_loops: _,
-            // Copied, since compiling an expression changes them and puts them back
+            // Copied, since compiling an expression changes them and puts them back, or (for
+            // the inline branches whose type is checked later) takes out what it adds
             scope_stack,
+            unnarrowed_branches,
             declaration_stack,
             return_stack,
             return_count,
@@ -560,6 +624,7 @@ impl Compiler {
             lint_sites: lint_sites.checkpoint(),
             named_types: named_types.len(),
             unchecked_type_items: unchecked_type_items.len(),
+            unnarrowed_branches: unnarrowed_branches.clone(),
             pending_defaults: pending_defaults.len(),
             scope_stack: scope_stack.clone(),
             declaration_stack: declaration_stack.clone(),
@@ -608,6 +673,8 @@ impl Compiler {
         self.named_types.truncate(checkpoint.named_types);
         self.unchecked_type_items
             .truncate(checkpoint.unchecked_type_items);
+        self.unnarrowed_branches
+            .clone_from(&checkpoint.unnarrowed_branches);
         self.pending_defaults.truncate(checkpoint.pending_defaults);
         self.scope_stack.clone_from(&checkpoint.scope_stack);
         self.declaration_stack
@@ -660,6 +727,140 @@ impl Compiler {
     /// The diagnostics that have been reported since there were `count` of them.
     pub(crate) fn diagnostics_since(&self, count: usize) -> &[Diagnostic] {
         &self.diagnostics[count..]
+    }
+
+    /// Where the compile is before a branch of an inline expression, which
+    /// [`Self::note_unnarrowed_branch`] takes once it's compiled.
+    pub(crate) fn branch_start(&self) -> BranchStart {
+        BranchStart {
+            diagnostics: self.diagnostics.len(),
+            syntax_items: self.syntax_map.len(),
+        }
+    }
+
+    /// Explains the errors in a branch of an `inline if` or arm of an `inline match` that are
+    /// likely because the branch doesn't see the values that its condition or pattern checks
+    /// narrowed, since every branch of an inline expression is evaluated. These are the type errors
+    /// on code that uses one of `symbols`, the values that would have been narrowed. If the branch's
+    /// value isn't assignable to `expected_type` and it uses one of them, the error that's reported
+    /// where that type is checked, which can be at the block that the expression ends, is explained
+    /// too (see [`Self::note_unnarrowed_value`]).
+    pub(crate) fn note_unnarrowed_branch(
+        &mut self,
+        start: BranchStart,
+        kind: InlineBranch,
+        symbols: &HashSet<SymbolId>,
+        branch: &SyntaxNode,
+        value: TypeId,
+        expected_type: Option<TypeId>,
+    ) {
+        if symbols.is_empty() {
+            return;
+        }
+
+        let references = self
+            .syntax_map
+            .items()
+            .skip(start.syntax_items)
+            .filter(|item| {
+                item.source_kind == self.source.kind
+                    && matches!(item.kind, SyntaxItemKind::SymbolReference(symbol) if symbols.contains(&symbol))
+            })
+            .map(|item| item.span)
+            .collect::<Vec<_>>();
+
+        let Some(&first) = references.first() else {
+            return;
+        };
+
+        let source = self.source.clone();
+        let note = |reference: TextRange| {
+            Note::new(kind.note(&source.text[Range::<usize>::from(reference)]))
+        };
+        let branch_range = branch.text_range();
+
+        for diagnostic in &mut self.diagnostics[start.diagnostics..] {
+            if diagnostic.srcloc.source.kind != source.kind
+                || !is_unnarrowed_error(&diagnostic.kind)
+            {
+                continue;
+            }
+
+            let (Ok(start), Ok(end)) = (
+                TextSize::try_from(diagnostic.srcloc.span.start),
+                TextSize::try_from(diagnostic.srcloc.span.end),
+            ) else {
+                continue;
+            };
+            let span = TextRange::new(start, end);
+
+            if !branch_range.contains_range(span) {
+                continue;
+            }
+
+            // The expression that the error is about, such as `list.first` for an error at the
+            // name of the field
+            let covering = branch
+                .covering_element(span)
+                .ancestors()
+                .find(|node| AstExpr::cast(node.clone()).is_some())
+                .map_or(span, |node| node.text_range());
+
+            if let Some(&reference) = references
+                .iter()
+                .find(|reference| covering.contains_range(**reference))
+            {
+                diagnostic.notes.push(note(reference));
+            }
+        }
+
+        if let Some(expected_type) = expected_type
+            && !self.is_assignable(value, expected_type)
+        {
+            self.unnarrowed_branches.push(UnnarrowedBranch {
+                source: source.kind.clone(),
+                range: branch_range,
+                expected: expected_type,
+                note: note(first),
+            });
+        }
+    }
+
+    /// Adds the note of each inline branch at `range` whose value isn't assignable to `to` (see
+    /// [`Self::note_unnarrowed_branch`]) to the errors reported since there were `count`
+    /// diagnostics, which say that the value at `range` isn't. The branches at `range` have
+    /// had their type checked then, so they're taken out, and a later error about the code around
+    /// them isn't explained by them.
+    fn note_unnarrowed_value(&mut self, count: usize, range: TextRange, to: TypeId) {
+        if self.unnarrowed_branches.is_empty() {
+            return;
+        }
+
+        let mut notes = Vec::new();
+
+        self.unnarrowed_branches.retain(|branch| {
+            if branch.source != self.source.kind || !range.contains_range(branch.range) {
+                return true;
+            }
+
+            if branch.expected == to {
+                notes.push(branch.note.clone());
+            }
+
+            false
+        });
+
+        for diagnostic in &mut self.diagnostics[count..] {
+            for note in &notes {
+                if !diagnostic
+                    .notes
+                    .iter()
+                    .any(|other| other.message == note.message)
+                {
+                    diagnostic.notes.push(note.clone());
+                }
+            }
+        }
     }
 
     /// Where the errors are that have been reported since there were `count` diagnostics and
@@ -1873,6 +2074,8 @@ impl Compiler {
             return;
         };
 
+        let count = self.diagnostics.len();
+
         match comparison {
             Comparison::Assign => {}
             Comparison::Cast => {
@@ -1912,6 +2115,10 @@ impl Compiler {
                     self.diagnostic(node, DiagnosticKind::IncompatibleType(from, to));
                 }
             }
+        }
+
+        if !cast {
+            self.note_unnarrowed_value(count, node.text_range(), to);
         }
     }
 
