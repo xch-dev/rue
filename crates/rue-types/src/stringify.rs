@@ -7,8 +7,8 @@ use indexmap::{IndexMap, IndexSet};
 use rue_diagnostic::Name;
 
 use crate::{
-    Alias, Atom, AtomRestriction, AtomSemantic, DISCRIMINANT_FIELD, Struct, Type, TypeId,
-    grow_stack,
+    Alias, Atom, AtomRestriction, AtomSemantic, DISCRIMINANT_FIELD, FieldShape, Struct, Type,
+    TypeId, grow_stack,
     hash::{FxHashMap, FxIndexSet},
     step, substitute,
 };
@@ -303,7 +303,7 @@ impl<'a> Stringifier<'a> {
     /// Renders a struct whose fields have been narrowed, e.g. `Box { value: Int }`, since its
     /// generic arguments no longer describe them.
     fn narrowed_struct(&mut self, name: &str, ty: &Struct) -> String {
-        let Some(variants) = self.narrowed_fields(ty, 0, ty.inner) else {
+        let Some(variants) = self.narrowed_fields(ty, &ty.shape(), ty.inner) else {
             return self.with_generics(name, &ty.generics);
         };
 
@@ -322,52 +322,62 @@ impl<'a> Stringifier<'a> {
             .join(" | ")
     }
 
-    /// Renders the fields of a struct starting at `index`, where `current` is the type of the rest
-    /// of the struct. If the fields are correlated, each variant is rendered separately. Returns
-    /// `None` if the type doesn't have the structure of the fields.
+    /// Renders the fields of a struct in the part of its shape, where `current` is the type of
+    /// that part of the struct. If the fields are correlated, each variant is rendered separately.
+    /// Returns `None` if the type doesn't have the structure of the fields.
     fn narrowed_fields(
         &mut self,
         ty: &Struct,
-        index: usize,
+        shape: &FieldShape,
         current: TypeId,
     ) -> Option<Vec<Vec<String>>> {
-        grow_stack(|| self.narrowed_fields_inner(ty, index, current))
+        grow_stack(|| self.narrowed_fields_inner(ty, shape, current))
     }
 
     fn narrowed_fields_inner(
         &mut self,
         ty: &Struct,
-        index: usize,
+        shape: &FieldShape,
         mut current: TypeId,
     ) -> Option<Vec<Vec<String>>> {
-        let Some(field) = ty.fields.get_index(index) else {
-            return Some(vec![vec![]]);
-        };
+        let (first_shape, rest_shape) = match shape {
+            FieldShape::Nil => return Some(vec![vec![]]),
+            FieldShape::Field(index) => {
+                let field = &ty.fields[*index];
 
-        // The discriminant of an enum variant is part of the variant's name, so it isn't shown
-        let hidden = field == DISCRIMINANT_FIELD;
+                // The discriminant of an enum variant is part of the variant's name, so it isn't
+                // shown
+                if field == DISCRIMINANT_FIELD {
+                    return Some(vec![vec![]]);
+                }
 
-        if !ty.nil_terminated && index == ty.fields.len() - 1 {
-            if hidden {
-                return Some(vec![vec![]]);
+                // The last field of a list that isn't nil terminated is the rest of it
+                let spread = if !ty.nil_terminated && *index == ty.fields.len() - 1 {
+                    "..."
+                } else {
+                    ""
+                };
+
+                let value = self.write(current);
+                return Some(vec![vec![format!("{spread}{field}: {value}")]]);
             }
-
-            let value = self.write(current);
-            return Some(vec![vec![format!("...{field}: {value}")]]);
-        }
+            FieldShape::Pair(first, rest) => (first, rest),
+        };
 
         let arena = self.arena;
         current = unwrap_refs(arena, current);
 
         match &arena[current] {
             Type::Pair(pair) => {
-                let mut variants = self.narrowed_fields(ty, index + 1, pair.rest)?;
+                let (pair_first, pair_rest) = (pair.first, pair.rest);
+                let firsts = self.narrowed_fields(ty, first_shape, pair_first)?;
+                let rests = self.narrowed_fields(ty, rest_shape, pair_rest)?;
 
-                if !hidden {
-                    let first = format!("{field}: {}", self.write(pair.first));
+                let mut variants = Vec::new();
 
-                    for fields in &mut variants {
-                        fields.insert(0, first.clone());
+                for first in &firsts {
+                    for rest in &rests {
+                        variants.push(first.iter().chain(rest).cloned().collect());
                     }
                 }
 
@@ -377,7 +387,7 @@ impl<'a> Stringifier<'a> {
                 let mut variants = Vec::new();
 
                 for &id in &union.types {
-                    variants.extend(self.narrowed_fields(ty, index, id)?);
+                    variants.extend(self.narrowed_fields(ty, shape, id)?);
                 }
 
                 Some(variants)
@@ -1030,6 +1040,7 @@ mod tests {
                 generics: Vec::new(),
                 fields: IndexSet::new(),
                 nil_terminated: true,
+                layout: crate::StructLayout::List,
                 narrowed: false,
             }))
         };
@@ -1127,6 +1138,7 @@ mod tests {
                 generics: vec![generic],
                 fields: IndexSet::from(["value".to_string()]),
                 nil_terminated: false,
+                layout: crate::StructLayout::List,
                 narrowed: false,
             }))
         };
@@ -1156,6 +1168,7 @@ mod tests {
                 generics: vec![int],
                 fields: IndexSet::from(["value".to_string()]),
                 nil_terminated: false,
+                layout: crate::StructLayout::List,
                 narrowed: true,
             }))
         };
@@ -1209,6 +1222,7 @@ mod tests {
                 generics: Vec::new(),
                 fields: IndexSet::new(),
                 nil_terminated: true,
+                layout: crate::StructLayout::List,
                 narrowed: false,
             }))
         };

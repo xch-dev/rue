@@ -5,7 +5,7 @@ use log::debug;
 use rue_ast::{AstNode, AstStructField, AstStructItem, AstTypeItem};
 use rue_diagnostic::{DiagnosticKind, Name, SpreadTarget};
 use rue_hir::{ConstantSymbol, Declaration, Hir, ScopeId, Symbol};
-use rue_types::{Generic, Pair, Struct, Type, TypeId};
+use rue_types::{FieldShape, Generic, Pair, Struct, StructLayout, Type, TypeId};
 
 use super::{check_regular, report_and_break_cycle};
 use crate::{
@@ -33,10 +33,17 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
 
     let inner = ctx.alloc_type(Type::Unresolved);
 
+    let layout = if struct_item.tree().is_some() {
+        StructLayout::Tree { prefix: 0 }
+    } else {
+        StructLayout::List
+    };
+
     let (fields, nil_terminated) = declare_fields(
         ctx,
         IndexSet::new(),
         &struct_item.fields().collect::<Vec<_>>(),
+        layout,
     );
 
     let name = struct_item.name().map(|name| ctx.local_name(&name));
@@ -48,6 +55,7 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
         generics,
         fields,
         nil_terminated,
+        layout,
         narrowed: false,
     });
 
@@ -75,17 +83,21 @@ pub fn declare_struct_item(ctx: &mut Compiler, struct_item: &AstStructItem) -> (
 
 /// Checks the fields of a struct (or enum variant) for duplicate names and spreads that aren't
 /// last, and returns their names after the given ones, and whether the struct is nil terminated
-/// (which it isn't if the last field is a spread).
+/// (which it isn't if the last field is a spread). The fields of a tree can't be spread, since
+/// there's no list for the last of them to be the rest of.
 pub(crate) fn declare_fields(
     ctx: &mut Compiler,
     mut names: IndexSet<String>,
     fields: &[AstStructField],
+    layout: StructLayout,
 ) -> (IndexSet<String>, bool) {
     let mut nil_terminated = true;
 
     for (i, field) in fields.iter().enumerate() {
         if let Some(spread) = field.spread() {
-            if i == fields.len() - 1 {
+            if matches!(layout, StructLayout::Tree { .. }) {
+                ctx.diagnostic(&spread, DiagnosticKind::TreeFieldSpread);
+            } else if i == fields.len() - 1 {
                 nil_terminated = false;
             } else {
                 ctx.diagnostic(&spread, DiagnosticKind::NonFinalSpread(SpreadTarget::Field));
@@ -185,29 +197,24 @@ pub(crate) fn compile_fields(
     types
 }
 
-/// Resolves the type that a struct (or enum variant) with fields of the given types is made of:
-/// a list of them, whose last field is the rest of the list if it isn't nil terminated.
+/// Resolves the type that a struct (or enum variant) with fields of the given types is made of,
+/// which has the fields where its layout puts them: a list of them by default, whose last field
+/// is the rest of the list if it isn't nil terminated.
 pub(crate) fn resolve_struct_inner(ctx: &mut Compiler, struct_type: TypeId, types: Vec<TypeId>) {
-    let Type::Struct(Struct {
-        inner,
-        nil_terminated,
-        ..
-    }) = *ctx.ty(struct_type)
-    else {
+    let Type::Struct(ty) = ctx.ty(struct_type).clone() else {
         unreachable!()
     };
 
-    let mut resolved_inner = ctx.builtins().nil.ty;
+    // A field with a duplicate name isn't one of the struct's fields, so it has no type here
+    let shape = FieldShape::new(types.len(), ty.nil_terminated, ty.layout);
+    let nil = ctx.builtins().nil.ty;
 
-    for (i, ty) in types.into_iter().rev().enumerate() {
-        if !nil_terminated && i == 0 {
-            resolved_inner = ty;
-        } else {
-            resolved_inner = ctx.alloc_type(Type::Pair(Pair::new(ty, resolved_inner)));
-        }
-    }
+    let resolved_inner = shape.fold(
+        |index| index.map_or(nil, |index| types[index]),
+        |first, rest| ctx.alloc_type(Type::Pair(Pair::new(first, rest))),
+    );
 
-    *ctx.ty_mut(inner) = Type::Ref(resolved_inner);
+    *ctx.ty_mut(ty.inner) = Type::Ref(resolved_inner);
 }
 
 /// Compiles the default values of a struct's fields. This happens after all types have been

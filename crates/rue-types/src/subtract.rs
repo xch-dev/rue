@@ -2,10 +2,10 @@ use id_arena::Arena;
 use log::{Level, log_enabled, trace};
 
 use crate::{
-    Alias, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxHashSet, IntersectContext,
-    Pair, Type, TypeId, Union, Walk, compare_impl, extract_pairs_substituted, for_each_leaf,
-    grow_stack, intersect_substituted, reachable, reaches_non_contractive_cycle, step,
-    stringify_substituted, substitute,
+    Alias, BuiltinTypes, Comparison, ComparisonContext, FieldShape, FxHashMap, FxHashSet,
+    IntersectContext, Pair, Type, TypeId, Union, Walk, compare_impl, extract_pairs_substituted,
+    for_each_leaf, grow_stack, intersect_substituted, reachable, reaches_non_contractive_cycle,
+    step, stringify_substituted, substitute,
 };
 
 pub fn subtract(
@@ -485,13 +485,9 @@ fn repackage_inner(
             // copy of the struct. Past the limit, the pairs at each level are merged into one pair
             // instead, which is only wider than it could be. The last level read through can be a
             // union, but it's split as well, so that every copy is displayed the same way.
-            let levels = if ty.nil_terminated {
-                ty.fields.len()
-            } else {
-                ty.fields.len().saturating_sub(1)
-            };
+            let shape = ty.shape();
 
-            match spine_variants(arena, inner, levels) {
+            match spine_variants(arena, inner, &shape) {
                 Some(inners) if inners.len() == 1 => {
                     let ty = ty.narrow(arena, builtins, inner);
                     arena.alloc(Type::Struct(ty))
@@ -508,7 +504,7 @@ fn repackage_inner(
                     arena.alloc(Type::Union(Union::new(copies)))
                 }
                 None => {
-                    let inner = merge_spine(arena, inner, levels);
+                    let inner = merge_spine(arena, inner, &shape);
                     let ty = ty.narrow(arena, builtins, inner);
                     let merged = arena.alloc(Type::Struct(ty));
 
@@ -536,22 +532,22 @@ fn repackage_inner(
 /// The most copies that a struct can be split into (see `spine_variants`).
 pub const MAX_STRUCT_COPIES: usize = 64;
 
-/// The alternatives of a struct's inner type with a single pair at each of the first `levels`
-/// levels of pairs (the levels that its fields are read through), or `None` if there are more than
+/// The alternatives of a struct's inner type with a single pair at each of the pairs in its shape
+/// (the pairs that its fields are read through), or `None` if there are more than
 /// `MAX_STRUCT_COPIES` of them.
-fn spine_variants(arena: &mut Arena<Type>, id: TypeId, levels: usize) -> Option<Vec<TypeId>> {
-    if levels == 0 {
+fn spine_variants(arena: &mut Arena<Type>, id: TypeId, shape: &FieldShape) -> Option<Vec<TypeId>> {
+    let FieldShape::Pair(first_shape, rest_shape) = shape else {
         return Some(vec![id]);
-    }
+    };
 
     let variants = match arena[id].clone() {
-        Type::Ref(inner) => return spine_variants(arena, inner, levels),
-        Type::Alias(alias) => return spine_variants(arena, alias.inner, levels),
+        Type::Ref(inner) => return spine_variants(arena, inner, shape),
+        Type::Alias(alias) => return spine_variants(arena, alias.inner, shape),
         Type::Union(union) => {
             let mut variants = Vec::new();
 
             for member in union.types {
-                variants.extend(spine_variants(arena, member, levels)?);
+                variants.extend(spine_variants(arena, member, shape)?);
 
                 if variants.len() > MAX_STRUCT_COPIES {
                     return None;
@@ -561,15 +557,23 @@ fn spine_variants(arena: &mut Arena<Type>, id: TypeId, levels: usize) -> Option<
             variants
         }
         Type::Pair(pair) => {
-            let rests = spine_variants(arena, pair.rest, levels - 1)?;
+            let firsts = spine_variants(arena, pair.first, first_shape)?;
+            let rests = spine_variants(arena, pair.rest, rest_shape)?;
 
-            if rests.len() == 1 {
+            if firsts.len() == 1 && rests.len() == 1 {
                 vec![id]
+            } else if firsts.len() * rests.len() > MAX_STRUCT_COPIES {
+                return None;
             } else {
-                rests
-                    .into_iter()
-                    .map(|rest| arena.alloc(Type::Pair(Pair::new(pair.first, rest))))
-                    .collect()
+                let mut variants = Vec::new();
+
+                for &first in &firsts {
+                    for &rest in &rests {
+                        variants.push(arena.alloc(Type::Pair(Pair::new(first, rest))));
+                    }
+                }
+
+                variants
             }
         }
         _ => vec![id],
@@ -578,19 +582,24 @@ fn spine_variants(arena: &mut Arena<Type>, id: TypeId, levels: usize) -> Option<
     Some(variants)
 }
 
-/// Merges the pairs at each of the first `levels` levels of a struct's inner type into one pair,
-/// whose parts are the unions of theirs. The result contains every value of the type, and can have
-/// its fields read like the inner type of a struct.
-fn merge_spine(arena: &mut Arena<Type>, id: TypeId, levels: usize) -> TypeId {
+/// Merges the pairs at each of the pairs in a struct's shape into one pair, whose parts are the
+/// unions of theirs. The result contains every value of the type, and can have its fields read
+/// like the inner type of a struct.
+fn merge_spine(arena: &mut Arena<Type>, id: TypeId, shape: &FieldShape) -> TypeId {
+    let FieldShape::Pair(first_shape, rest_shape) = shape else {
+        return id;
+    };
+
     let pairs = extract_pairs_substituted(arena, id);
 
-    if levels == 0 || pairs.is_empty() {
+    if pairs.is_empty() {
         return id;
     }
 
     let first = union_of(arena, pairs.iter().map(|pair| pair.first).collect());
+    let first = merge_spine(arena, first, first_shape);
     let rest = union_of(arena, pairs.iter().map(|pair| pair.rest).collect());
-    let rest = merge_spine(arena, rest, levels - 1);
+    let rest = merge_spine(arena, rest, rest_shape);
     arena.alloc(Type::Pair(Pair::new(first, rest)))
 }
 

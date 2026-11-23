@@ -2437,6 +2437,7 @@ fn leak_oracle_finds_unbound_generics() {
         generics: vec![own],
         fields: ["value".to_string()].into_iter().collect(),
         nil_terminated: true,
+        layout: rue_types::StructLayout::List,
         narrowed: false,
     }));
     let applied = ctx.alloc_type(Type::Apply(rue_types::Apply::new(

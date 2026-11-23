@@ -4,6 +4,7 @@ use rue_diagnostic::DiagnosticKind;
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{
+        at_tree_modifier,
         attribute::{attributes, inner_attributes},
         binding::binding,
         block::block,
@@ -34,6 +35,13 @@ fn item_with_inner(p: &mut Parser, top_level: bool) {
     attributes(p);
 
     let export = p.try_eat(T![export]);
+
+    // The `tree` before a `struct` or `enum` is part of the item, and nothing else can come
+    // between them
+    if at_tree_modifier(p, 0) {
+        p.expect_word("tree");
+    }
+
     let inline = p.try_eat(T![inline]);
     let extern_kw = if inline { false } else { p.try_eat(T![extern]) };
     let test = p.try_eat(T![test]);
@@ -997,6 +1005,45 @@ mod tests {
                         Ident@27..28 "T"
                         Whitespace@28..29 " "
                   CloseBrace@29..30 "}"
+            "#]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_tree_items() {
+        check(
+            item,
+            "export tree struct Point {}",
+            expect![[r#"
+                StructItem@0..27
+                  Export@0..6 "export"
+                  Whitespace@6..7 " "
+                  Ident@7..11 "tree"
+                  Whitespace@11..12 " "
+                  Struct@12..18 "struct"
+                  Whitespace@18..19 " "
+                  Ident@19..24 "Point"
+                  Whitespace@24..25 " "
+                  OpenBrace@25..26 "{"
+                  CloseBrace@26..27 "}"
+            "#]],
+            expect![""],
+        );
+
+        check(
+            item,
+            "tree enum Mode {}",
+            expect![[r#"
+                EnumItem@0..17
+                  Ident@0..4 "tree"
+                  Whitespace@4..5 " "
+                  Enum@5..9 "enum"
+                  Whitespace@9..10 " "
+                  Ident@10..14 "Mode"
+                  Whitespace@14..15 " "
+                  OpenBrace@15..16 "{"
+                  CloseBrace@16..17 "}"
             "#]],
             expect![""],
         );

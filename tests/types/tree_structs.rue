@@ -1,0 +1,155 @@
+// The fields of a `tree struct` are in a binary tree rather than a list, with the first half of
+// them (rounded down) on the left
+tree struct Empty {}
+
+tree struct One {
+    a: Int,
+}
+
+tree struct Two {
+    a: Int,
+    b: Int,
+}
+
+tree struct Three {
+    a: Int,
+    b: Int,
+    c: Int,
+}
+
+tree struct Four {
+    a: Int,
+    b: Int,
+    c: Int,
+    d: Int,
+}
+
+tree struct Five {
+    a: Int,
+    b: Int,
+    c: Int,
+    d: Int,
+    e: Int = 5,
+}
+
+tree struct Wrapper<T> {
+    id: Int,
+    value: T,
+    flag: Bool,
+}
+
+tree struct Maybe {
+    a: (Int, Int) | nil,
+    b: Int,
+    c: (Int, Int) | nil,
+    d: Int,
+}
+
+// Each variant of a `tree enum` is its discriminant followed by a tree of its fields
+tree enum Shape {
+    Empty,
+    Circle { radius: Int },
+    Rect = 10 { width: Int, height: Int },
+    Box { width: Int, height: Int, depth: Int },
+}
+
+// An enum without any fields is only its discriminants either way
+tree enum Mode {
+    Off,
+    On,
+}
+
+// `tree` is only a keyword before `struct` or `enum`
+struct tree {
+    tree: Int,
+}
+
+test fn layout() {
+    assert tree_hash(Empty {}) == tree_hash(nil);
+    assert tree_hash(One { a: 1 }) == tree_hash(1);
+    assert tree_hash(Two { a: 1, b: 2 }) == tree_hash((1, 2));
+    assert tree_hash(Three { a: 1, b: 2, c: 3 }) == tree_hash((1, (2, 3)));
+    assert tree_hash(Four { a: 1, b: 2, c: 3, d: 4 }) == tree_hash(((1, 2), (3, 4)));
+    assert tree_hash(Five { a: 1, b: 2, c: 3, d: 4 }) == tree_hash(((1, 2), (3, (4, 5))));
+    assert tree_hash(Wrapper::<Bytes> { id: 1, value: "x", flag: true }) == tree_hash((
+        1,
+        ("x", true),
+    ));
+}
+
+test fn enum_layout() {
+    assert tree_hash(Shape::Empty) == tree_hash((0, nil));
+    assert tree_hash(Shape::Circle { radius: 3 }) == tree_hash((1, 3));
+    assert tree_hash(Shape::Rect { width: 2, height: 4 }) == tree_hash((10, (2, 4)));
+    assert tree_hash(Shape::Box { width: 2, height: 4, depth: 6 }) == tree_hash((11, (2, (4, 6))));
+    assert tree_hash(Mode::On) == tree_hash(1);
+}
+
+fn sum(value: Five) -> Int {
+    value.a + value.b + value.c + value.d + value.e
+}
+
+test fn fields() {
+    let value = Five { a: 1, b: 2, c: 3, d: 4 };
+    assert sum(value) == 15;
+
+    let { a, d, e } = value;
+    assert a + d + e == 10;
+
+    let wrapper = Wrapper::<Five> { id: 7, value, flag: false };
+    assert wrapper.value.c == 3;
+    assert !wrapper.flag;
+}
+
+test fn update() {
+    let value = Five { a: 1, b: 2, c: 3, d: 4 };
+    let updated = Five { ...value, d: 40 };
+    assert tree_hash(updated) == tree_hash(((1, 2), (3, (40, 5))));
+
+    let first = Five { ...value, a: 10 };
+    assert sum(first) == 24;
+}
+
+fn area(shape: Shape) -> Int {
+    match shape {
+        Shape::Empty => 0,
+        Shape::Circle => 3 * shape.radius * shape.radius,
+        Shape::Rect => shape.width * shape.height,
+        Shape::Box => shape.width * shape.height * shape.depth,
+    }
+}
+
+test fn variants() {
+    assert area(Shape::Empty) == 0;
+    assert area(Shape::Circle { radius: 2 }) == 12;
+    assert area(Shape::Rect { width: 2, height: 3 }) == 6;
+    assert area(Shape::Box { width: 2, height: 3, depth: 4 }) == 24;
+
+    let rect = Shape::Rect { width: 2, height: 3 };
+    let wider = Shape::Rect { ...rect, width: 5 };
+    assert area(wider) == 15;
+}
+
+// Narrowing a field narrows the struct, wherever the field is in the tree
+fn narrowed(value: Maybe) -> Int {
+    if value.a is (Int, Int) && value.c is (Int, Int) {
+        return value.a.first + value.c.rest;
+    }
+
+    if value.c is (Int, Int) {
+        return value.c.first + value.d;
+    }
+
+    value.b
+}
+
+test fn narrowing() {
+    assert narrowed(Maybe { a: (1, 0), b: 2, c: (0, 3), d: 4 }) == 4;
+    assert narrowed(Maybe { a: nil, b: 2, c: (3, 0), d: 4 }) == 7;
+    assert narrowed(Maybe { a: (1, 0), b: 2, c: nil, d: 4 }) == 2;
+}
+
+test fn tree_as_name() {
+    let tree = tree { tree: 1 };
+    assert tree.tree == 1;
+}

@@ -647,6 +647,50 @@ fn main(value: Point | Int) -> Int {
     );
 }
 
+#[test]
+fn test_hover_tree_struct() {
+    check(
+        r#"
+tree struct Po$0int {
+    x: Int,
+    y: Int,
+}
+
+fn main(point: Point) -> Int {
+    point.x + point.y
+}
+"#,
+        expect![[r#"
+            tree struct Point {
+                x: Int,
+                y: Int,
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn test_hover_tree_enum() {
+    check(
+        r#"
+tree enum Sha$0pe {
+    Empty,
+    Rect { width: Int, height: Int },
+}
+
+fn main(shape: Shape) -> Shape {
+    shape
+}
+"#,
+        expect![[r#"
+            tree enum Shape {
+                Empty = 0,
+                Rect = 1 { width: Int, height: Int },
+            }
+        "#]],
+    );
+}
+
 const SHAPE: &str = r#"
 enum Shape {
     Empty,

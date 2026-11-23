@@ -47,6 +47,7 @@ impl Types {
                 .map(ToString::to_string)
                 .collect::<IndexSet<_>>(),
             nil_terminated,
+            layout: rue_types::StructLayout::List,
             narrowed: false,
         });
         id

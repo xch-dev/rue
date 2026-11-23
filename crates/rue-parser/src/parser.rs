@@ -414,6 +414,15 @@ impl Parser {
         token.kind == SyntaxKind::Ident && &self.source.text[token.span.clone()] == word
     }
 
+    /// Whether the `n`th non-trivia token after the current position is an identifier with the
+    /// given text (see [`Self::at_word`]). Unlike that, this doesn't add the word to the expected
+    /// set for diagnostics.
+    pub(crate) fn lookahead_word(&self, n: usize, word: &str) -> bool {
+        self.upcoming()
+            .nth(n)
+            .is_some_and(|token| self.is_word(token, word))
+    }
+
     /// Whether the current token is the first one on its line (ignoring trivia).
     pub(crate) fn at_line_start(&mut self) -> bool {
         self.eat_trivia();

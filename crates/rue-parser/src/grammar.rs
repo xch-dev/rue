@@ -39,11 +39,17 @@ pub(crate) fn at_item_start(p: &mut Parser) -> bool {
 
     let kind = p.lookahead(n);
 
-    if ITEM_KEYWORDS.contains(&kind) {
+    if ITEM_KEYWORDS.contains(&kind) || at_tree_modifier(p, 0) {
         return true;
     }
 
     matches!(kind, T![fn] | T![const]) && p.lookahead(n + 1) == SyntaxKind::Ident
+}
+
+/// Whether the `n`th token is the `tree` before a `struct` or `enum`, which arranges its fields in
+/// a binary tree. It's only a keyword there, so it can still be used as a name.
+pub(crate) fn at_tree_modifier(p: &Parser, n: usize) -> bool {
+    p.lookahead_word(n, "tree") && matches!(p.lookahead(n + 1), T![struct] | T![enum])
 }
 
 /// Whether the parser is at a token that error recovery should stop at rather than skipping past.

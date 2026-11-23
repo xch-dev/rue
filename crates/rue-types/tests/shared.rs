@@ -433,6 +433,7 @@ fn test_doubling_union_extractors() {
             generics: vec![],
             fields: ["a".to_string()].into_iter().collect(),
             nil_terminated: false,
+            layout: rue_types::StructLayout::List,
             narrowed: false,
         });
         let structs = doubling_union(&mut t, vec![struct_id], levels);

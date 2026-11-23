@@ -694,7 +694,8 @@ fn hover(cache: &mut Cache, position: Position) -> Option<Hover> {
                         }
                     }
                     HoverInfo::Struct(info) => format!(
-                        "struct {} {{\n{}\n}}",
+                        "{}struct {} {{\n{}\n}}",
+                        if info.tree { "tree " } else { "" },
                         info.name,
                         field_declarations(&info.fields, info.nil_terminated)
                             .iter()
@@ -703,11 +704,13 @@ fn hover(cache: &mut Cache, position: Position) -> Option<Hover> {
                             .join("\n")
                     ),
                     HoverInfo::Enum(info) => {
+                        let tree = if info.tree { "tree " } else { "" };
+
                         if info.variants.is_empty() {
-                            format!("enum {} {{}}", info.name)
+                            format!("{tree}enum {} {{}}", info.name)
                         } else {
                             format!(
-                                "enum {} {{\n{}\n}}",
+                                "{tree}enum {} {{\n{}\n}}",
                                 info.name,
                                 info.variants
                                     .iter()

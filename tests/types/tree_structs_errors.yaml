@@ -1,0 +1,14 @@
+diagnostics:
+- Unused struct `Spread` at tree_structs_errors.rue:3:13
+- Cannot spread a field of a `tree` struct or enum, since its fields are in a tree at tree_structs_errors.rue:5:5
+- Unused enum `Condition` at tree_structs_errors.rue:8:11
+- Cannot spread a field of a `tree` struct or enum, since its fields are in a tree at tree_structs_errors.rue:9:18
+- Unused struct `Maybe` at tree_structs_errors.rue:12:13
+- Unused function `narrowed` at tree_structs_errors.rue:19:4
+- Unused binding `shown` at tree_structs_errors.rue:21:13
+- "Cannot assign `Maybe { a: nil, b: Bytes, c: (Int, Int) }` to `Int`, since they are incompatible at tree_structs_errors.rue:21:26"
+- Unused function `spread` at tree_structs_errors.rue:25:4
+- Unused struct `List3` at tree_structs_errors.rue:30:8
+- Unused struct `Tree3` at tree_structs_errors.rue:36:13
+- Unused function `mismatch` at tree_structs_errors.rue:42:4
+- Cannot assign `List3` to `Tree3`, since they are incompatible at tree_structs_errors.rue:42:36

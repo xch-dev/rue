@@ -441,10 +441,22 @@ impl AstStructItem {
             .find(|token| token.kind() == T![export])
     }
 
+    /// The `tree` before `struct`, which arranges the fields in a binary tree rather than a list.
+    /// It's an identifier, since it's only a keyword there.
+    pub fn tree(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .take_while(|token| token.kind() != T![struct])
+            .find(|token| token.kind() == SyntaxKind::Ident && token.text() == "tree")
+    }
+
+    /// The name after `struct` (which the `tree` before it isn't).
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
+            .skip_while(|token| token.kind() != T![struct])
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 
@@ -491,10 +503,22 @@ impl AstEnumItem {
             .find(|token| token.kind() == T![export])
     }
 
+    /// The `tree` before `enum`, which arranges the fields in a binary tree rather than a list.
+    /// It's an identifier, since it's only a keyword there.
+    pub fn tree(&self) -> Option<SyntaxToken> {
+        self.syntax()
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .take_while(|token| token.kind() != T![enum])
+            .find(|token| token.kind() == SyntaxKind::Ident && token.text() == "tree")
+    }
+
+    /// The name after `enum` (which the `tree` before it isn't).
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
+            .skip_while(|token| token.kind() != T![enum])
             .find(|token| token.kind() == SyntaxKind::Ident)
     }
 

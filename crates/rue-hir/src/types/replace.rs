@@ -209,6 +209,7 @@ mod tests {
             generics: vec![],
             fields: IndexSet::from(["value".to_string()]),
             nil_terminated: true,
+            layout: rue_types::StructLayout::List,
             narrowed: false,
         });
 

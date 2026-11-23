@@ -1,0 +1,44 @@
+// A field of a tree can't be spread, since there's no list for it to be the rest of. It's an
+// ordinary field instead.
+tree struct Spread {
+    a: Int,
+    ...rest: List<Int>,
+}
+
+tree enum Condition {
+    Remark = 1 { ...rest: Any },
+}
+
+tree struct Maybe {
+    a: Bytes32 | nil,
+    b: Bytes,
+    c: (Int, Int) | nil,
+}
+
+// Narrowed fields are shown where they are, as in a list
+fn narrowed(value: Maybe) {
+    if value.a is nil && value.c is (Int, Int) {
+        let shown: Int = value;
+    }
+}
+
+fn spread(value: Spread, condition: Condition) -> (List<Int>, Any) {
+    (value.rest, condition.rest)
+}
+
+// A tree struct isn't the same type as a list struct with the same fields
+struct List3 {
+    a: Int,
+    b: Int,
+    c: Int,
+}
+
+tree struct Tree3 {
+    a: Int,
+    b: Int,
+    c: Int,
+}
+
+fn mismatch(value: List3) -> Tree3 {
+    value
+}

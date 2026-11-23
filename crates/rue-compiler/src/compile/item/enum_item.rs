@@ -8,7 +8,7 @@ use rue_hir::{
     ConstantSymbol, Declaration, Hir, ModuleDeclarations, ModuleSymbol, Scope, ScopeId,
     StructField, StructInitializer, Symbol, Value,
 };
-use rue_types::{Alias, Apply, DISCRIMINANT_FIELD, Struct, Type, TypeId, Union};
+use rue_types::{Alias, Apply, DISCRIMINANT_FIELD, Struct, StructLayout, Type, TypeId, Union};
 
 use super::{
     compile_field_defaults, compile_fields, declare_fields, resolve_alias_inner,
@@ -50,6 +50,14 @@ pub fn declare_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem) -> (TypeId
         .variants()
         .any(|variant| variant.fields().is_some());
 
+    // In a `tree` enum, each variant's fields are in a tree after its discriminant, which stays
+    // first so that it's in the same place in every variant. Without any fields, there's no tree.
+    let layout = if enum_item.tree().is_some() && has_fields {
+        StructLayout::Tree { prefix: 1 }
+    } else {
+        StructLayout::List
+    };
+
     let mut variants = Vec::new();
 
     for variant in enum_item.variants() {
@@ -61,6 +69,7 @@ pub fn declare_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem) -> (TypeId
             &generics,
             namespace,
             has_fields,
+            layout,
         ));
     }
 
@@ -132,6 +141,7 @@ fn declare_variant(
     generics: &[TypeId],
     namespace: ScopeId,
     has_fields: bool,
+    layout: StructLayout,
 ) -> Option<EnumVariant> {
     let name = variant.name()?;
 
@@ -146,7 +156,12 @@ fn declare_variant(
     let names = IndexSet::from([DISCRIMINANT_FIELD.to_string()]);
 
     let (fields, nil_terminated) = if has_fields {
-        declare_fields(ctx, names, &variant.struct_fields().collect::<Vec<_>>())
+        declare_fields(
+            ctx,
+            names,
+            &variant.struct_fields().collect::<Vec<_>>(),
+            layout,
+        )
     } else {
         (names, false)
     };
@@ -169,6 +184,7 @@ fn declare_variant(
         generics: generics.to_vec(),
         fields,
         nil_terminated,
+        layout,
         narrowed: false,
     });
 
@@ -254,7 +270,12 @@ pub fn compile_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem, ty: TypeId
         resolve_struct_inner(ctx, info.ty, field_types);
 
         if let Some(constant) = info.constant {
-            let Type::Struct(Struct { nil_terminated, .. }) = *ctx.ty(info.ty) else {
+            let Type::Struct(Struct {
+                nil_terminated,
+                layout,
+                ..
+            }) = *ctx.ty(info.ty)
+            else {
                 unreachable!()
             };
 
@@ -279,6 +300,7 @@ pub fn compile_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem, ty: TypeId
                 }],
                 tail: None,
                 nil_terminated,
+                layout,
             }));
 
             *ctx.symbol_mut(constant) = Symbol::Constant(ConstantSymbol {
