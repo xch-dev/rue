@@ -33,10 +33,15 @@ use trace::{Sidecars, run_with_trace};
 
 #[derive(Debug, Parser)]
 pub enum Command {
+    /// Create a new project, with a `Rue.toml` and a `main.rue`
     Init(InitArgs),
+    /// Compile a file, or the project
     Build(BuildArgs),
+    /// Run the tests of a file, or of the project
     Test(TestArgs),
+    /// Run a compiled program with a solution, and print its output
     Debug(DebugArgs),
+    /// Format source files, or check that they're formatted
     Fmt(FmtArgs),
     /// List every lint and lint group, along with each lint's default level
     Lints,
@@ -92,7 +97,8 @@ pub struct TestArgs {
     cost: CostArgs,
 }
 
-/// What programs are compiled for and run with, which takes precedence over `Rue.toml`.
+// What programs are compiled for and run with, which takes precedence over `Rue.toml`. This isn't
+// a doc comment, since clap would use it as the description of every command that flattens it.
 #[derive(Debug, Clone, Copy, Args)]
 pub struct TargetArgs {
     /// Target CLVM with the `LIMITS` flag that mainnet enforces until hard fork 2, which rejects
@@ -1122,6 +1128,29 @@ mod tests {
     #[test]
     fn cli_debug_asserts() {
         Command::command().debug_assert();
+    }
+
+    #[test]
+    fn commands_have_their_own_descriptions() {
+        let command = Command::command();
+        let abouts: Vec<_> = command
+            .get_subcommands()
+            .map(|subcommand| {
+                let about = subcommand.get_about().map(ToString::to_string);
+                (subcommand.get_name().to_string(), about)
+            })
+            .collect();
+
+        for (name, about) in &abouts {
+            let about = about
+                .as_ref()
+                .unwrap_or_else(|| panic!("`{name}` has no description"));
+            let shared = abouts
+                .iter()
+                .filter(|(_, other)| other.as_ref() == Some(about))
+                .count();
+            assert_eq!(shared, 1, "`{name}` shares its description: {about}");
+        }
     }
 
     #[test]
