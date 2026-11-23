@@ -22,6 +22,8 @@ fn main(
     q: Bytes32,
     r: Bytes32,
     s: Bytes32,
+    t: Signature,
+    u: PublicKey,
 ) -> List<Any> {
     assert a + b != a;
     assert c + d != c;
@@ -32,6 +34,7 @@ fn main(
     bls_verify(l, k, m);
     secp256k1_verify(n, o, p);
     keccak256_verify(r, q);
+    bls_verify(t, ...[u, "message"]);
 
     [
         sha256(a as Bytes + b as Bytes),
@@ -50,5 +53,7 @@ fn main(
         // The hash of `keccak256_verify` has a fixed length, but the value doesn't
         sha256(q + s),
         sha256(r + s),
+        // The spread form of `bls_verify` checks the signature
+        sha256(t as Bytes + s),
     ]
 }

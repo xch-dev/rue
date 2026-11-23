@@ -103,8 +103,8 @@ impl LoweringDebugInfo {
 /// Source text on one line, such as a parameter's pattern, since a destructured parameter is named
 /// after its pattern, which can span lines. Line comments are left out, since they would comment
 /// out the rest of the line, and so are the trailing commas before a closing bracket.
-pub fn one_line(pattern: &str) -> String {
-    let text = pattern
+pub fn one_line(text: &str) -> String {
+    let text = text
         .lines()
         .map(|line| line.split_once("//").map_or(line, |(code, _)| code))
         .collect::<Vec<_>>()

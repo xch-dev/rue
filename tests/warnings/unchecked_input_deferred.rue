@@ -27,6 +27,11 @@ fn main(
     user_hashed: Bytes32,
     committed: Bytes32,
     passed: Bytes32,
+    guarded: Bytes,
+    returned_early: Bytes32,
+    partly_hashed: Bytes32,
+    id: Bytes32,
+    flag: Bool,
 ) -> List<Condition> {
     assert checked_owner is Bytes32;
 
@@ -65,6 +70,19 @@ fn main(
             puzzle_hash: tree_hash((1, identity([CreateCoin { puzzle_hash: passed, amount: 1 }]))),
             amount: 1,
         },
+        // A guard around a call that hashes the condition checks it
+        if guarded is Bytes32 {
+            CreateCoin {
+                puzzle_hash: commit([CreateCoin { puzzle_hash: guarded, amount: 1 }]),
+                amount: 1,
+            }
+        } else {
+            CreateCoin { puzzle_hash: id, amount: 1 }
+        },
+        // Checked after an early return, before the condition is hashed
+        commit_after_return(returned_early, flag),
+        // Only the part of the argument that a helper hashes is deferred
+        hash_first((id, CreateCoin { puzzle_hash: partly_hashed, amount: 1 })),
         // A function named `tree_hash` that isn't the standard library's
         CreateCoin {
             puzzle_hash: local::tree_hash([CreateCoin { puzzle_hash: user_hashed, amount: 1 }]),
@@ -96,6 +114,18 @@ fn pay(payee: Bytes32, count: Int) -> List<CreateCoin> {
 
 fn commit(conditions: List<Condition>) -> Bytes32 {
     tree_hash((1, conditions))
+}
+
+fn commit_after_return(owner: Bytes32, flag: Bool) -> CreateCoin {
+    if flag {
+        return CreateCoin { puzzle_hash: owner, amount: 1 };
+    }
+    assert owner == sha256("owner");
+    CreateCoin { puzzle_hash: commit([CreateCoin { puzzle_hash: owner, amount: 1 }]), amount: 1 }
+}
+
+fn hash_first(pair: (Bytes32, CreateCoin)) -> CreateCoin {
+    CreateCoin { puzzle_hash: tree_hash(pair.first), amount: pair.rest.amount }
 }
 
 fn identity(conditions: List<Condition>) -> List<Condition> {

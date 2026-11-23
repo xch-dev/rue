@@ -27,6 +27,8 @@ fn main(
     rest: List<Bytes32>,
     inner: Inner,
     inner_solution: Any,
+    other: Inner,
+    other_solution: Any,
     flag: Bool,
 ) -> List<Any> {
     let hash = hash_pair;
@@ -60,11 +62,17 @@ fn main(
         // The results of function values and `extern fn`s are unchecked
         sha256(inner(...inner_solution) + n),
         sha256(external(nil) + o),
+        // The same call of a function value in a helper called twice gives two different results
+        sha256(run(inner, inner_solution) + run(other, other_solution)),
         // A rest parameter takes the rest of the arguments
         hash_all(p, ...rest),
         // The arguments of an `inline fn` are only evaluated where it uses them
         ignore(coinid(i, j, 1)),
     ]
+}
+
+fn run(puzzle: Inner, solution: Any) -> Bytes32 {
+    puzzle(...solution)
 }
 
 fn hash_pair(left: Bytes32, right: Bytes32) -> Bytes32 {

@@ -9,8 +9,9 @@
 //! 1. **Ambiguous concatenations.** Concatenating bytes can only be split back one way if at most
 //!    one of the parts has an unknown length. When the types say that's the case, but some of the
 //!    parts with a known length are unchecked values from the solution, a spender can move bytes
-//!    from one part to the next and get the same result, as in the bug in the first version of CATs, where bytes moved
-//!    from a coin's puzzle hash into its amount without changing its coin id.
+//!    from one part to the next and get the same result, as in the bug in the first version of
+//!    CATs, where bytes moved from a coin's puzzle hash into its amount without changing its coin
+//!    id.
 //! 2. **Deferred conditions.** A value is put in a field of a condition that consensus checks the
 //!    length of (such as the puzzle hash of `CreateCoin`), but the condition is hashed with
 //!    `tree_hash` rather than output, as in a puzzle that a later spend runs. Consensus only checks
@@ -23,17 +24,24 @@
 //! fn`s are unchecked too.
 //!
 //! A value's length is checked by a check that's always evaluated in its function, before or
-//! after the use, since a spend fails as a whole: an `assert` of a type guard that checks the
-//! length, or of equality with a value of known length, and `coinid` and the BLS and secp
-//! operations, which fail for the wrong length. A type guard that checks the length checks it
-//! inside the branch it guards, and after a branch that never falls through if it's negated
-//! (`if !(value is Bytes32) { raise; }`). These all fail at runtime, so the optimizer keeps them
-//! wherever the program evaluates them. Reading a field or doing arithmetic says nothing about a
-//! length, so it never counts as a check, and neither does narrowing that only rules out other
-//! members of a union (`if value is nil { return ...; }`).
+//! after the use, since a spend fails as a whole. After a statement that can return, a check only
+//! covers the uses in the rest of its block, except that a check of the items of a list that the
+//! statement returns for when it's empty (`if list is nil { return ...; }`) covers every item, so
+//! that recursion over a list checks each of them. The checks are: an `assert` of a type guard that
+//! checks the length, or of equality with a value of known length that isn't itself unchecked;
+//! `coinid`'s parent and puzzle hash; the points of the BLS operations; the message hash and
+//! signature of the secp operations; and the hash of `keccak256_verify`. A type guard that checks
+//! the length checks it inside the branch it guards, and after a branch that never falls through
+//! if it's negated (`if !(value is Bytes32) { raise; }`). These all fail at runtime, so the
+//! optimizer keeps them wherever the program evaluates them. Reading a field or doing arithmetic
+//! says nothing about a length, so it never counts as a check, and neither does narrowing that
+//! only rules out other members of a union (`if value is nil { return ...; }`). A check only counts
+//! for a value that's exactly one unchecked value, not one of several (`if flag { a } else { b }`).
 //!
 //! Values that a `for` loop or a lambda captures from the function around it aren't followed,
-//! so a use of one inside of the loop isn't reported.
+//! so a use of one inside of the loop isn't reported. Items of a list deeper than the paths keep
+//! (see [`MAX_PATH`]) share a path, so a check of one of them counts for the others at the same
+//! depth.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -65,8 +73,10 @@ const MAX_ITERATIONS: usize = 32;
 enum Root {
     /// A parameter of the function being analyzed, by index. For `main`, it's the solution.
     Param(usize),
-    /// The result of calling a function value or an `extern fn`.
-    Call(HirId),
+    /// The result of calling a function value or an `extern fn` (`call`), which is reached
+    /// through the call in the function being analyzed (`site`), so that the results of the same
+    /// call in a function called twice are different values.
+    Call { site: HirId, call: HirId },
 }
 
 /// Part of an unchecked value: the value itself, or a field inside of it.
@@ -82,6 +92,13 @@ impl Origin {
         checked
             .iter()
             .any(|check| check.root == self.root && self.path.starts_with(&check.path))
+    }
+
+    /// Whether this is a field inside of the other origin.
+    fn is_inside(&self, other: &Origin) -> bool {
+        self.root == other.root
+            && self.path.len() > other.path.len()
+            && self.path.starts_with(&other.path)
     }
 
     fn with_field(mut self, name: &str) -> Self {
@@ -122,53 +139,89 @@ impl Flow {
 
     /// The unchecked values at the path inside of this value.
     fn select(&self, path: &[String]) -> BTreeSet<Origin> {
-        path.iter()
-            .fold(self.clone(), |flow, name| flow.field(name))
-            .direct
+        let Some((name, rest)) = path.split_first() else {
+            return self.direct.clone();
+        };
+
+        if self.exact {
+            return self
+                .direct
+                .iter()
+                .map(|origin| {
+                    path.iter()
+                        .fold(origin.clone(), |origin, name| origin.with_field(name))
+                })
+                .collect();
+        }
+
+        match self.fields.as_ref().and_then(|fields| fields.get(name)) {
+            Some(field) => field.select(rest),
+            None => self.direct.clone(),
+        }
+    }
+
+    /// The unchecked value at the path inside of this value, if it's exactly one, which is what a
+    /// check of it checks.
+    fn select_exact(&self, path: &[String]) -> BTreeSet<Origin> {
+        if self.exact {
+            return self.select(path);
+        }
+
+        match path.split_first() {
+            Some((name, rest)) => self
+                .fields
+                .as_ref()
+                .and_then(|fields| fields.get(name))
+                .map(|field| field.select_exact(rest))
+                .unwrap_or_default(),
+            None => BTreeSet::new(),
+        }
+    }
+
+    /// The unchecked value that this value is exactly, if any, which is what a check of it checks.
+    fn exact_origins(&self) -> BTreeSet<Origin> {
+        self.select_exact(&[])
     }
 
     /// The flow of a field of this value, or of the item or the rest of it if it's a pair
     /// (`first` and `rest`).
-    fn field(&self, name: &str) -> Flow {
-        if let Some(field) = self.fields.as_ref().and_then(|fields| fields.get(name)) {
-            return field.clone();
+    fn field(mut self, name: &str) -> Flow {
+        if let Some(field) = self.fields.as_mut().and_then(|fields| fields.remove(name)) {
+            return field;
         }
 
         if self.exact {
-            return Flow {
-                direct: self
-                    .direct
-                    .iter()
-                    .map(|origin| origin.clone().with_field(name))
-                    .collect(),
-                deferred: self.deferred.clone(),
-                exact: true,
-                fields: None,
-            };
+            self.direct = self
+                .direct
+                .into_iter()
+                .map(|origin| origin.with_field(name))
+                .collect();
+            return self;
         }
 
-        self.clone()
+        // A field of a value that's one of several, or one too deep to name, can be any of them
+        self.fields = None;
+        self
     }
 
     /// A pair of the two values, whose fields are `first` and `rest`.
     fn pair(first: Flow, rest: Flow) -> Self {
-        let fields = BTreeMap::from([
-            ("first".to_string(), first.clone()),
-            ("rest".to_string(), rest.clone()),
-        ]);
-
-        let mut flow = first;
-        flow.union(rest);
-        flow.fields = Some(fields);
+        let mut flow = Flow::default();
+        flow.union(&first);
+        flow.union(&rest);
+        flow.fields = Some(BTreeMap::from([
+            ("first".to_string(), first),
+            ("rest".to_string(), rest),
+        ]));
         flow
     }
 
-    fn union(&mut self, other: Flow) {
+    fn union(&mut self, other: &Flow) {
         self.exact = false;
         self.fields = None;
-        self.direct.extend(other.direct);
-        for (origin, site) in other.deferred {
-            self.deferred.entry(origin).or_insert(site);
+        self.direct.extend(other.direct.iter().cloned());
+        for (origin, &site) in &other.deferred {
+            self.deferred.entry(origin.clone()).or_insert(site);
         }
     }
 }
@@ -181,8 +234,9 @@ struct Concat {
     unknown: usize,
     /// For each other operand that's unchecked, the values it's made of.
     operands: Vec<BTreeSet<Origin>>,
-    /// The calls that the concatenation was reached through, from the outermost.
-    calls: Vec<HirId>,
+    /// The outermost call that the concatenation was reached through, if it's in another
+    /// function.
+    call: Option<HirId>,
 }
 
 impl Concat {
@@ -222,8 +276,9 @@ struct Summary {
     /// The values whose length is checked whenever the function returns.
     checked: BTreeSet<Origin>,
     concats: Vec<Concat>,
-    /// Values in deferred conditions that are hashed, with the calls they were hashed through.
-    deferred: BTreeMap<Deferred, Vec<HirId>>,
+    /// Values in deferred conditions that are hashed, with the outermost call they were hashed
+    /// through.
+    deferred: BTreeMap<Deferred, HirId>,
     /// The values that are hashed as a whole, so the deferred conditions inside of them are too.
     hashed: BTreeSet<Origin>,
 }
@@ -297,23 +352,19 @@ fn summarize(
     }
 }
 
-/// The calls a concatenation is first reached through from `main`, and its unchecked values.
-type ReportedConcat<'s> = (Vec<HirId>, BTreeSet<&'s Origin>);
-
 fn report(cx: &mut LintContext<'_>, main: SymbolId, summary: &Summary) {
     // Each concatenation is reported once where it's reached from `main`, naming every unchecked
     // value in it
-    let mut concats: BTreeMap<(HirId, Option<HirId>), ReportedConcat<'_>> = BTreeMap::new();
+    let mut concats: BTreeMap<(HirId, Option<HirId>), BTreeSet<&Origin>> = BTreeMap::new();
 
     for concat in &summary.concats {
-        let (_, origins) = concats
-            .entry((concat.site, concat.calls.first().copied()))
-            .or_insert_with(|| (concat.calls.clone(), BTreeSet::new()));
-
-        origins.extend(concat.operands.iter().flatten());
+        concats
+            .entry((concat.site, concat.call))
+            .or_default()
+            .extend(concat.operands.iter().flatten());
     }
 
-    for (site, (calls, origins)) in concats.into_iter().map(|((site, _), value)| (site, value)) {
+    for ((site, call), origins) in concats {
         // Several items of the same list have the same name, so they're counted by name
         let mut counts: BTreeMap<(String, Part), usize> = BTreeMap::new();
         for origin in &origins {
@@ -340,24 +391,21 @@ fn report(cx: &mut LintContext<'_>, main: SymbolId, summary: &Summary) {
         report_at(
             cx,
             site,
-            &calls,
+            call,
             &message,
             "The concatenation is here",
             "Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments",
         );
     }
 
-    let mut deferred: BTreeMap<(HirId, Option<HirId>, String), &[HirId]> = BTreeMap::new();
+    let mut deferred: BTreeMap<(HirId, HirId, String), ()> = BTreeMap::new();
 
-    for (value, calls) in &summary.deferred {
+    for (value, &call) in &summary.deferred {
         let (path, part) = origin_name(cx, main, &value.origin);
-        let name = part.describe(&path, 1);
-        deferred
-            .entry((value.site, calls.first().copied(), name))
-            .or_insert(calls);
+        deferred.insert((value.site, call, part.describe(&path, 1)), ());
     }
 
-    for ((site, _, name), calls) in deferred {
+    for (site, call, name) in deferred.into_keys() {
         let message = format!(
             "{name} is from the solution, but nothing checks its length, and it's put in a condition that's hashed rather than output, so the condition is only checked when a later spend outputs it, which then fails"
         );
@@ -365,7 +413,7 @@ fn report(cx: &mut LintContext<'_>, main: SymbolId, summary: &Summary) {
         report_at(
             cx,
             site,
-            calls,
+            Some(call),
             &message,
             "The condition's field is here",
             "Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`",
@@ -378,7 +426,7 @@ fn report(cx: &mut LintContext<'_>, main: SymbolId, summary: &Summary) {
 fn report_at(
     cx: &mut LintContext<'_>,
     site: HirId,
-    calls: &[HirId],
+    call: Option<HirId>,
     message: &str,
     site_note: &str,
     help: &str,
@@ -387,15 +435,14 @@ fn report_at(
         return;
     };
 
-    let srcloc = calls
-        .first()
-        .and_then(|call| cx.db().hir_srcloc(*call).cloned())
+    let srcloc = call
+        .and_then(|call| cx.db().hir_srcloc(call).cloned())
         .unwrap_or_else(|| site.clone());
 
     let message = capitalize(message);
 
     if let Some(diagnostic) = cx.report(Lint::UncheckedInput, srcloc, message) {
-        if !calls.is_empty() {
+        if call.is_some() {
             diagnostic.notes.push(Note::at(site, site_note));
         }
         diagnostic.notes.push(Note::new(help));
@@ -435,7 +482,9 @@ fn origin_name(cx: &LintContext<'_>, main: SymbolId, origin: &Origin) -> (String
                 .and_then(|param| cx.db().symbol(*param).name())
                 .map_or_else(|| "_".to_string(), |name| name.text().to_string())
         }
-        Root::Call(call) => cx.db().hir_srcloc(call).map_or_else(
+        // The result of a call in another function is named after the call in `main` that it's
+        // reached through, since the same call can be reached more than once
+        Root::Call { site, .. } => cx.db().hir_srcloc(site).map_or_else(
             || "_".to_string(),
             |srcloc| rue_hir::one_line(srcloc.text()),
         ),
@@ -539,7 +588,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
 
     fn run(&mut self) -> Summary {
         let returns = self.flow(self.body, true);
-        self.summary.returns.union(returns);
+        self.summary.returns.union(&returns);
 
         // A check counts wherever it is in the function, even after the use, since if it fails,
         // the whole spend does
@@ -572,13 +621,6 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         self.branch_checks
             .iter()
             .any(|checked| origin.checked_by(checked))
-    }
-
-    /// Records that the values are checked, if the check is always evaluated.
-    fn check(&mut self, flow: Flow, always: bool) {
-        if always {
-            self.summary.checked.extend(flow.direct);
-        }
     }
 
     /// The flow of the node. If `always` is set, the node is evaluated whenever the function
@@ -660,12 +702,13 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                         }
                     }
 
-                    fields.insert(field.name.clone(), value.clone());
-                    flow.union(value);
+                    flow.union(&value);
+                    fields.insert(field.name.clone(), value);
                 }
 
                 if let Some(tail) = initializer.tail_value() {
-                    flow.union(self.flow(tail, always));
+                    let tail = self.flow(tail, always);
+                    flow.union(&tail);
                 } else {
                     flow.fields = Some(fields);
                 }
@@ -676,7 +719,8 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             Hir::If(condition, then, else_, _) => {
                 self.flow(condition, always);
                 let mut flow = self.branch(condition, then);
-                flow.union(self.flow(else_, false));
+                let else_ = self.flow(else_, false);
+                flow.union(&else_);
                 flow
             }
             Hir::FunctionCall(call) => self.call(hir, &call, always),
@@ -730,7 +774,12 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                 | ClvmOp::BlsPairingIdentity,
                 points,
             ) => {
-                self.checked_operands(&[points], always);
+                // Each item of a list that's written out is checked, or a list passed as a whole
+                if let Hir::List(list) = self.cx.db().hir(points).clone() {
+                    self.checked_operands(&list.items, always);
+                } else {
+                    self.checked_operands(&[points], always);
+                }
                 Flow::default()
             }
             Hir::BlsPairingIdentity(points) => {
@@ -806,7 +855,9 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
     fn checked_operands(&mut self, operands: &[HirId], always: bool) {
         for &operand in operands {
             let flow = self.flow(operand, always);
-            self.check(flow, always);
+            if always {
+                self.summary.checked.extend(flow.exact_origins());
+            }
         }
     }
 
@@ -895,23 +946,19 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         self.summary.concats.extend(region_concats);
 
         let region_deferred = std::mem::replace(&mut self.summary.deferred, deferred);
-        for (value, calls) in region_deferred {
+        for (value, call) in region_deferred {
             if !value.origin.checked_by(&region_checked) {
-                self.summary.deferred.entry(value).or_insert(calls);
+                self.summary.deferred.entry(value).or_insert(call);
             }
         }
 
         // The items of a value that's empty whenever the region isn't evaluated are checked where
         // they exist
-        self.summary
-            .checked
-            .extend(region_checked.into_iter().filter(|origin| {
-                empty.iter().any(|empty| {
-                    empty.root == origin.root
-                        && origin.path.len() > empty.path.len()
-                        && origin.path.starts_with(&empty.path)
-                })
-            }));
+        self.summary.checked.extend(
+            region_checked
+                .into_iter()
+                .filter(|origin| empty.iter().any(|empty| origin.is_inside(empty))),
+        );
 
         flow
     }
@@ -975,7 +1022,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             }
             Statement::Return(value, _) => {
                 let flow = self.flow(*value, always);
-                self.summary.returns.union(flow);
+                self.summary.returns.union(&flow);
                 None
             }
             Statement::Assert(condition, ..) => {
@@ -996,7 +1043,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
     fn empty_if(&mut self, condition: HirId) -> BTreeSet<Origin> {
         match self.cx.db().hir(condition).clone() {
             Hir::Guard(guard) if self.cx.known_atom_length(guard.ty) == Some(0) => {
-                self.flow(guard.value, false).direct
+                self.flow(guard.value, false).exact_origins()
             }
             _ => BTreeSet::new(),
         }
@@ -1024,7 +1071,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                     && check_has_length(&guard.runtime_check());
 
                 if checks_length {
-                    self.flow(guard.value, false).direct
+                    self.flow(guard.value, false).exact_origins()
                 } else {
                     BTreeSet::new()
                 }
@@ -1042,7 +1089,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                             .iter()
                             .all(|origin| origin.checked_by(&self.summary.checked))
                     {
-                        checks.extend(self.flow(value, false).direct);
+                        checks.extend(self.flow(value, false).exact_origins());
                     }
                 }
 
@@ -1088,7 +1135,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                 site,
                 unknown,
                 operands: unchecked,
-                calls: Vec::new(),
+                call: None,
             });
         }
     }
@@ -1120,7 +1167,10 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             self.flow(call.function, always);
 
             return Flow::origin(Origin {
-                root: Root::Call(hir),
+                root: Root::Call {
+                    site: hir,
+                    call: hir,
+                },
                 path: Vec::new(),
             });
         };
@@ -1156,20 +1206,24 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                     args.get(index).into_iter().collect()
                 }
                 Root::Param(_) => args.iter().skip(fixed).collect(),
-                Root::Call(_) => Vec::new(),
+                Root::Call { .. } => Vec::new(),
             }
         };
 
-        // An origin of the callee, in terms of the caller
-        let translate = |origin: &Origin| -> BTreeSet<Origin> {
-            match origin.root {
+        // An origin of the callee, in terms of the caller. The result of a call in the callee is
+        // reached through this call.
+        let translate_with =
+            |origin: &Origin, select: fn(&Flow, &[String]) -> BTreeSet<Origin>| match origin.root {
                 Root::Param(_) => arguments_for(origin.root)
                     .into_iter()
-                    .flat_map(|arg| arg.select(&origin.path))
+                    .flat_map(|arg| select(arg, &origin.path))
                     .collect(),
-                Root::Call(_) => BTreeSet::from([origin.clone()]),
-            }
-        };
+                Root::Call { call, .. } => BTreeSet::from([Origin {
+                    root: Root::Call { site: hir, call },
+                    path: origin.path.clone(),
+                }]),
+            };
+        let translate = |origin: &Origin| translate_with(origin, Flow::select);
 
         let mut returns = Flow::default();
 
@@ -1190,9 +1244,12 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             }
         }
 
+        // A check of a parameter checks the argument, if it's exactly one unchecked value
         if always {
             for origin in &summary.checked {
-                self.summary.checked.extend(translate(origin));
+                self.summary
+                    .checked
+                    .extend(translate_with(origin, Flow::select_exact));
             }
         }
 
@@ -1205,9 +1262,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                     .iter()
                     .map(|operand| operand.iter().flat_map(&translate).collect())
                     .collect(),
-                calls: std::iter::once(hir)
-                    .chain(concat.calls.iter().copied())
-                    .collect(),
+                call: Some(hir),
             };
 
             if concat.retain_unchecked(|origin| self.checked_in_branch(origin)) {
@@ -1215,26 +1270,30 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             }
         }
 
-        for (deferred, calls) in &summary.deferred {
+        for deferred in summary.deferred.keys() {
             for origin in translate(&deferred.origin) {
                 if self.checked_in_branch(&origin) {
                     continue;
                 }
 
-                let calls = std::iter::once(hir).chain(calls.iter().copied()).collect();
                 self.summary
                     .deferred
                     .entry(Deferred {
                         origin,
                         site: deferred.site,
                     })
-                    .or_insert(calls);
+                    .or_insert(hir);
             }
         }
 
+        // The part of each argument that the callee hashes is hashed
         for origin in &summary.hashed {
             for arg in arguments_for(origin.root) {
-                self.hash(hir, arg);
+                let part = origin
+                    .path
+                    .iter()
+                    .fold(arg.clone(), |part, name| part.field(name));
+                self.hash(hir, &part);
             }
         }
 
@@ -1256,7 +1315,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                     origin: origin.clone(),
                     site,
                 })
-                .or_insert_with(|| vec![call]);
+                .or_insert(call);
         }
     }
 

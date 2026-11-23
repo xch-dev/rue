@@ -42,8 +42,8 @@ fn main(
     r: Bytes32,
     s: Bytes32,
     t: Bytes32,
-    u: Bytes,
-    v: Bytes,
+    u: Bytes32,
+    v: Bytes32,
     w: Bytes32,
     x: Bytes32,
     y: Bytes32,
@@ -51,8 +51,31 @@ fn main(
     tail: Bytes,
     deep: Outer,
     choice: Int,
+    z1: Bytes32,
+    z2: Bytes32,
+    z3: Bytes32,
+    z4: Bytes32,
+    z5: Bytes32,
+    z6: Bytes32,
+    z7: Bytes32,
+    z8: Bytes32,
+    z9: Bytes32,
     flag: Bool,
 ) -> List<Any> {
+    // Checking an item of a pair or list literal only checks that item
+    let pr = (z1, z2);
+    let ls = [z3, z4];
+    assert coinid(pr.first, sha256("x"), 1) != nil;
+    assert coinid(ls.first, sha256("x"), 1) != nil;
+
+    // Checking a value that's one of several doesn't check any of them
+    let either = if flag {
+        z5
+    } else {
+        z6
+    };
+    assert coinid(either, sha256("x"), 1) != nil;
+
     assert check_items(checked_items);
     assert check_first(pair);
     assert coinid(deep.a.b.c.first, sha256("x"), 1) != nil;
@@ -73,8 +96,8 @@ fn main(
         checked_after_return(q, r, flag),
         // The same with an `if` and `else if` chain whose branches return
         checked_after_chain(s, t, choice),
-        // Raising unless either value has the right length, inside of a function that's called
-        sha256(u + v + 0x01),
+        // Raising unless both values are checked, inside of a function that's called
+        sha256(u + v),
         check_either(u, v),
         // A negated guard only holds for the rest of its own block
         guarded_in_nested_block(w, x, flag),
@@ -83,6 +106,14 @@ fn main(
         // Checking a field deep inside of a value doesn't check the field next to it
         sha256(tail + deep.a.b.c.rest),
         unused(y),
+        sha256(tail + pr.first),
+        sha256(tail + pr.rest),
+        sha256(tail + ls.first),
+        sha256(tail + ls.rest.first),
+        sha256(tail + z5),
+        // A check in a function that's only called on one branch, and a check in an `else` branch
+        checked_on_one_branch_by_helper(z7, z8, flag),
+        checked_in_else(z9, z8, flag),
     ]
 }
 
@@ -201,17 +232,17 @@ fn checked_after_chain(s: Bytes32, t: Bytes32, choice: Int) -> Bytes32 {
     s
 }
 
-fn check_either(u: Bytes, v: Bytes) -> Bool {
+fn check_either(u: Bytes32, v: Bytes32) -> Bool {
     #[allow(manual_assert)]
-    if !(u is Bytes32) || !(v is Bytes32) {
+    if !(u == sha256("u")) || !(v == sha256("v")) {
         raise "not a hash";
     }
     true
 }
 
 fn guarded_in_nested_block(w: Bytes32, x: Bytes32, flag: Bool) -> Bytes32 {
-    if flag {
-        if !(x == sha256("x")) {
+    if x == sha256("x") {
+        if !flag {
             return w;
         }
     }
@@ -220,4 +251,20 @@ fn guarded_in_nested_block(w: Bytes32, x: Bytes32, flag: Bool) -> Bytes32 {
 
 fn unused(y: Bytes32) -> Bytes32 {
     y
+}
+
+fn checked_on_one_branch_by_helper(z7: Bytes32, z8: Bytes32, flag: Bool) -> Bytes32 {
+    if flag {
+        assert check_first((z7, z8));
+    }
+    sha256(z7 + z8)
+}
+
+fn checked_in_else(z9: Bytes32, z8: Bytes32, flag: Bool) -> Bytes32 {
+    let id = if flag {
+        z8
+    } else {
+        coinid(z9, z8, 1)
+    };
+    sha256(z9 + id)
 }
