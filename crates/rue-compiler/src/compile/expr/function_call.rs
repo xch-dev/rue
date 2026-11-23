@@ -10,7 +10,7 @@ use rue_types::{
 };
 
 use super::builtin::compile_builtin;
-use super::call_inference::{InferredCall, infer_call};
+use super::call_inference::{ArgumentCheck, InferredCall, infer_call};
 use super::lambda::{expected_parameter_count, has_rest_parameter, parameter_count_site};
 use crate::{
     Compiler, CompletionContext, SyntaxCall, SyntaxItemKind, compile_expr, compile_path_value,
@@ -262,7 +262,7 @@ pub fn compile_function_call_expr(
         // against the fully substituted parameter type. This catches arguments that constrain
         // a generic inconsistently, such as `(Int, fn(x: Bytes32) -> Bytes32)` being passed to
         // a parameter of type `(T, fn(x: T) -> Bytes32)`.
-        for (expr, ty, param) in checks {
+        for ArgumentCheck { expr, ty, param } in checks {
             let to = substitute_with_mappings(ctx.types_mut(), param, &mappings);
 
             if let AstExpr::LambdaExpr(lambda) = &expr
@@ -425,7 +425,7 @@ pub(crate) fn generalized_call(
 fn unconstrained_as_never(
     ctx: &mut Compiler,
     function: &FunctionType,
-    checks: &[(AstExpr, TypeId, TypeId)],
+    checks: &[ArgumentCheck],
     mappings: &HashMap<TypeId, TypeId>,
 ) -> Option<HashMap<TypeId, TypeId>> {
     let unmapped: Vec<TypeId> = function
@@ -447,7 +447,7 @@ fn unconstrained_as_never(
     // What the arguments were compiled as, and what the other generics were inferred as from them
     let compiled: Vec<TypeId> = checks
         .iter()
-        .map(|&(_, ty, _)| ty)
+        .map(|check| check.ty)
         .chain(mappings.values().copied())
         .collect();
 
@@ -487,7 +487,7 @@ fn unconstrained_as_never(
         return None;
     }
 
-    let assignable = checks.iter().all(|&(_, ty, param)| {
+    let assignable = checks.iter().all(|&ArgumentCheck { ty, param, .. }| {
         let param = substitute_with_mappings(ctx.types_mut(), param, &with_never);
         ctx.is_unresolved(ty) || ctx.is_assignable(ty, param)
     });
@@ -503,7 +503,7 @@ fn unconstrained_as_never(
 fn defer_stand_ins(
     ctx: &mut Compiler,
     function: &FunctionType,
-    (args, checks): (&[AstExpr], &[(AstExpr, TypeId, TypeId)]),
+    (args, checks): (&[AstExpr], &[ArgumentCheck]),
     (mappings, unrestored): (&mut HashMap<TypeId, TypeId>, &HashMap<TypeId, TypeId>),
     renamed: &HashMap<TypeId, TypeId>,
     reported: usize,
@@ -526,7 +526,7 @@ fn defer_stand_ins(
         .keys()
         .copied()
         .filter(|&copy| {
-            checks.iter().any(|&(_, ty, param)| {
+            checks.iter().any(|&ArgumentCheck { ty, param, .. }| {
                 rue_types::contains_unresolved(ctx.types(), ty)
                     && contains_generic(ctx.types_mut(), param, copy)
             })
@@ -568,12 +568,8 @@ fn defer_stand_ins(
 }
 
 /// Whether an argument that the generic would have been inferred from has failed to compile.
-fn from_unresolved_argument(
-    ctx: &mut Compiler,
-    checks: &[(AstExpr, TypeId, TypeId)],
-    generic: TypeId,
-) -> bool {
-    checks.iter().any(|&(_, ty, param)| {
+fn from_unresolved_argument(ctx: &mut Compiler, checks: &[ArgumentCheck], generic: TypeId) -> bool {
+    checks.iter().any(|&ArgumentCheck { ty, param, .. }| {
         ctx.is_unresolved(ty) && contains_generic(ctx.types_mut(), param, generic)
     })
 }

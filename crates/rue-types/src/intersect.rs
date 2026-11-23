@@ -1,11 +1,10 @@
 use id_arena::Arena;
-use indexmap::IndexMap;
 use log::{Level, log_enabled, trace};
 
 use crate::{
     Atom, BuiltinTypes, Comparison, ComparisonContext, FxIndexSet, Memo, OverlapMemo, Pair, Struct,
     Type, TypeId, Union, compare, compare_impl, grow_stack, reaches_non_contractive_cycle, step,
-    stringify_impl, substitute, types_may_overlap, unwrap_semantic_without_substitution,
+    stringify_substituted, substitute, types_may_overlap, unwrap_semantic_without_substitution,
 };
 
 /// The maximum number of nested intersections before giving up on being more precise.
@@ -41,8 +40,8 @@ pub fn intersect(
 
     let names = log_enabled!(Level::Trace).then(|| {
         (
-            stringify_impl(arena, lhs, &mut IndexMap::new()),
-            stringify_impl(arena, rhs, &mut IndexMap::new()),
+            stringify_substituted(arena, lhs),
+            stringify_substituted(arena, rhs),
         )
     });
 
@@ -53,7 +52,7 @@ pub fn intersect(
     let result = intersect_impl(arena, builtins, &mut IntersectContext::default(), lhs, rhs);
 
     if let Some((lhs_name, rhs_name)) = &names {
-        let new_name = stringify_impl(arena, result, &mut IndexMap::new());
+        let new_name = stringify_substituted(arena, result);
         trace!("Intersection of {lhs_name} with {rhs_name} yielded {new_name}");
     }
 
@@ -186,13 +185,21 @@ fn intersect_structure(
     lhs: TypeId,
     rhs: TypeId,
 ) -> TypeId {
-    match (arena[lhs].clone(), arena[rhs].clone()) {
+    // The arena is only borrowed until each arm has copied what it needs, since the arms allocate
+    match (&arena[lhs], &arena[rhs]) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
-        (Type::Ref(lhs), _) => intersect_impl(arena, builtins, ctx, lhs, rhs),
-        (_, Type::Ref(rhs)) => intersect_impl(arena, builtins, ctx, lhs, rhs),
-        (Type::Alias(alias), _) => intersect_impl(arena, builtins, ctx, alias.inner, rhs),
-        (_, Type::Alias(alias)) => intersect_impl(arena, builtins, ctx, lhs, alias.inner),
+        (&Type::Ref(lhs), _) => intersect_impl(arena, builtins, ctx, lhs, rhs),
+        (_, &Type::Ref(rhs)) => intersect_impl(arena, builtins, ctx, lhs, rhs),
+        (Type::Alias(alias), _) => {
+            let inner = alias.inner;
+            intersect_impl(arena, builtins, ctx, inner, rhs)
+        }
+        (_, Type::Alias(alias)) => {
+            let inner = alias.inner;
+            intersect_impl(arena, builtins, ctx, lhs, inner)
+        }
         (Type::Union(union), _) => {
+            let union = union.clone();
             let variants = union
                 .types
                 .iter()
@@ -201,6 +208,7 @@ fn intersect_structure(
             repackage_union(arena, builtins, lhs, &union, variants)
         }
         (_, Type::Union(union)) => {
+            let union = union.clone();
             let variants = union
                 .types
                 .iter()
@@ -212,19 +220,25 @@ fn intersect_structure(
         (Type::Unresolved | Type::Generic(_) | Type::Any | Type::Function(_), _)
         | (_, Type::Unresolved | Type::Generic(_) | Type::Any | Type::Function(_)) => rhs,
         (Type::Struct(lhs_struct), Type::Struct(rhs_struct)) => {
-            let inner = intersect_impl(arena, builtins, ctx, lhs_struct.inner, rhs_struct.inner);
+            let (lhs_struct, rhs_inner) = (lhs_struct.clone(), rhs_struct.inner);
+            let inner = intersect_impl(arena, builtins, ctx, lhs_struct.inner, rhs_inner);
 
             // The value keeps the struct it had before it was narrowed, even if it's checked
             // against another one, since changing it needs a cast
             repackage_struct(arena, builtins, lhs, lhs_struct, inner)
         }
         (Type::Struct(ty), _) => {
+            let ty = ty.clone();
             let inner = intersect_impl(arena, builtins, ctx, ty.inner, rhs);
             repackage_struct(arena, builtins, lhs, ty, inner)
         }
         // Likewise, a value that wasn't an instance of the struct only takes on its structure
-        (_, Type::Struct(ty)) => intersect_impl(arena, builtins, ctx, lhs, ty.inner),
+        (_, Type::Struct(ty)) => {
+            let inner = ty.inner;
+            intersect_impl(arena, builtins, ctx, lhs, inner)
+        }
         (Type::Pair(lhs_pair), Type::Pair(rhs_pair)) => {
+            let (lhs_pair, rhs_pair) = (*lhs_pair, *rhs_pair);
             let first = intersect_impl(arena, builtins, ctx, lhs_pair.first, rhs_pair.first);
             let rest = intersect_impl(arena, builtins, ctx, lhs_pair.rest, rhs_pair.rest);
 
@@ -239,6 +253,10 @@ fn intersect_structure(
             }
         }
         (Type::Atom(lhs_atom), Type::Atom(rhs_atom)) => {
+            let (semantic, same_semantic) =
+                (lhs_atom.semantic, lhs_atom.semantic == rhs_atom.semantic);
+            let restriction = rhs_atom.restriction.clone();
+
             // An atom's restriction is either a single value or a fixed length, so if both atoms
             // overlap, one restriction contains the other and only the semantics can differ. The
             // narrower restriction is kept, with the semantic of `lhs`, since changing it needs a
@@ -246,13 +264,10 @@ fn intersect_structure(
             if compare(arena, builtins, lhs, rhs) <= Comparison::Cast {
                 lhs
             } else if compare(arena, builtins, rhs, lhs) <= Comparison::Cast {
-                if lhs_atom.semantic == rhs_atom.semantic {
+                if same_semantic {
                     rhs
                 } else {
-                    arena.alloc(Type::Atom(Atom::new(
-                        lhs_atom.semantic,
-                        rhs_atom.restriction,
-                    )))
+                    arena.alloc(Type::Atom(Atom::new(semantic, restriction)))
                 }
             } else {
                 builtins.never
@@ -326,36 +341,14 @@ mod tests {
     use indexmap::IndexSet;
     use rue_diagnostic::Name;
 
-    use crate::{Alias, Atom, AtomRestriction, AtomSemantic, Generic, stringify};
+    use crate::{Alias, Atom, AtomRestriction, AtomSemantic, Generic};
 
     use super::*;
-
-    struct Db {
-        arena: Arena<Type>,
-        builtins: BuiltinTypes,
-    }
+    use crate::test_types::Db;
 
     impl Db {
-        fn new() -> Self {
-            let mut arena = Arena::new();
-            let builtins = BuiltinTypes::new(&mut arena);
-            Self { arena, builtins }
-        }
-
         fn intersect(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
             intersect(&mut self.arena, &self.builtins, lhs, rhs)
-        }
-
-        fn name(&mut self, id: TypeId) -> String {
-            stringify(&mut self.arena, id)
-        }
-
-        fn pair(&mut self, first: TypeId, rest: TypeId) -> TypeId {
-            self.arena.alloc(Type::Pair(Pair::new(first, rest)))
-        }
-
-        fn union(&mut self, types: &[TypeId]) -> TypeId {
-            self.arena.alloc(Type::Union(Union::new(types.to_vec())))
         }
 
         fn atom(&mut self, atom: Atom) -> TypeId {
@@ -363,13 +356,14 @@ mod tests {
         }
 
         fn atom_parts(&self, id: TypeId) -> (AtomSemantic, Option<AtomRestriction>) {
-            let Type::Atom(atom) = self.arena[id].clone() else {
+            let Type::Atom(atom) = &self.arena[id] else {
                 panic!("expected an atom");
             };
-            (atom.semantic, atom.restriction)
+            (atom.semantic, atom.restriction.clone())
         }
 
-        fn strukt(&mut self, name: &str, inner: TypeId) -> TypeId {
+        /// A struct without fields, whose inner type isn't nil-terminated.
+        fn unterminated_struct(&mut self, name: &str, inner: TypeId) -> TypeId {
             let id = self.arena.alloc(Type::Unresolved);
             *self.arena.get_mut(id).unwrap() = Type::Struct(Struct {
                 name: Some(Name::new(name, None)),
@@ -384,7 +378,7 @@ mod tests {
         }
 
         /// Creates `type Name = nil | (item, Name)`.
-        fn list(&mut self, name: &str, item: TypeId) -> TypeId {
+        fn named_list(&mut self, name: &str, item: TypeId) -> TypeId {
             let id = self.arena.alloc(Type::Unresolved);
             let pair = self.pair(item, id);
             let inner = self.union(&[self.builtins.nil, pair]);
@@ -434,7 +428,7 @@ mod tests {
 
         // A struct isn't wrapped around a generic type
         let inner = db.pair(b.int, b.nil);
-        let point = db.strukt("Point", inner);
+        let point = db.unterminated_struct("Point", inner);
         assert_eq!(db.intersect(point, generic), generic);
     }
 
@@ -576,7 +570,7 @@ mod tests {
         let first = db.union(&[b.int, b.nil]);
         let rest = db.union(&[b.bytes32, b.nil]);
         let inner = db.pair(first, rest);
-        let point = db.strukt("Point", inner);
+        let point = db.unterminated_struct("Point", inner);
 
         // The struct is kept, with its fields intersected
         let any_bytes32 = db.pair(b.permissive_any, b.bytes32);
@@ -620,13 +614,13 @@ mod tests {
 
         // Different structs with disjoint fields can't overlap
         let other_inner = db.pair(b.recursive_any_pair, b.nil);
-        let other = db.strukt("Other", other_inner);
+        let other = db.unterminated_struct("Other", other_inner);
         assert_eq!(db.intersect(point, other), b.never);
 
         // But different structs with overlapping fields keep the older struct, with the fields
         // of the newer one intersected into it
         let other_inner = db.pair(b.int, b.nil);
-        let other = db.strukt("Other", other_inner);
+        let other = db.unterminated_struct("Other", other_inner);
         let ty = db.intersect(point, other);
         let Type::Struct(ty_struct) = db.arena[ty].clone() else {
             panic!("expected a struct");
@@ -687,10 +681,10 @@ mod tests {
         let mut db = Db::new();
         let b = db.builtins;
 
-        let ints = db.list("Ints", b.int);
-        let bytes = db.list("Bytes32s", b.bytes32);
+        let ints = db.named_list("Ints", b.int);
+        let bytes = db.named_list("Bytes32s", b.bytes32);
         let pairs_item = db.pair(b.int, b.int);
-        let pairs = db.list("Pairs", pairs_item);
+        let pairs = db.named_list("Pairs", pairs_item);
 
         // The first item of the list is narrowed, keeping its semantic, and the rest falls back
         // to the older type since it would recurse forever otherwise

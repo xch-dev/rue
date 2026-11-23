@@ -15,7 +15,7 @@ use rue_ast::{
     AstEnumItem, AstFunctionItem, AstGenericParameters, AstNode, AstStructFieldBinding,
     AstStructInitializerField,
 };
-use rue_compiler::{Compiler, File, FileTree};
+use rue_compiler::{File, FileTree};
 use rue_diagnostic::SourceKind;
 use rue_hir::{Declaration, Item, Namespace, Scope, ScopeId, Symbol, SymbolId};
 use rue_lexer::{Lexer, TokenKind, string_value};
@@ -78,7 +78,7 @@ struct ModulePath {
     parent: Option<SymbolId>,
 }
 
-impl Cache<Compiler> {
+impl Cache {
     /// The name at the index, if it can be renamed. There's an error if it names something that
     /// can't be, and nothing if it isn't a name.
     pub fn prepare_rename(&self, index: usize) -> Result<Option<Renamable>, String> {

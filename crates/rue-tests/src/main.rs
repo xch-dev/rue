@@ -940,6 +940,7 @@ fn handle_test_case(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_cases_are_matched_by_name() {
@@ -982,23 +983,10 @@ mod tests {
     }
 
     /// A directory under the system temp directory, removed when dropped.
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new(name: &str) -> Result<Self> {
-            let path = env::temp_dir().join(format!("rue-tests-{}-{name}", process::id()));
-            if path.exists() {
-                fs::remove_dir_all(&path)?;
-            }
-            fs::create_dir_all(&path)?;
-            Ok(Self(path))
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
+    fn temp_dir(name: &str) -> Result<TempDir> {
+        Ok(tempfile::Builder::new()
+            .prefix(&format!("rue-tests-{name}-"))
+            .tempdir()?)
     }
 
     const MAIN: &str = "fn main() -> Int {\n    1\n}\n";
@@ -1099,9 +1087,9 @@ mod tests {
 
     /// A base directory laid out like the repo, with the directories `run_tests` reads.
     fn corpus(name: &str) -> Result<TempDir> {
-        let dir = TempDir::new(name)?;
+        let dir = temp_dir(name)?;
         for path in ["tests", "examples", "crates/rue-compiler/src/std"] {
-            fs::create_dir_all(dir.0.join(path))?;
+            fs::create_dir_all(dir.path().join(path))?;
         }
         Ok(dir)
     }
@@ -1123,7 +1111,7 @@ mod tests {
     #[test]
     fn hard_fork_2_compiles_and_runs_for_hard_fork_2() -> Result<()> {
         let dir = corpus("hard_fork_2")?;
-        let tests = dir.0.join("tests");
+        let tests = dir.path().join("tests");
         let source = "test fn hash(value: Bytes) -> Bytes32 {\n    keccak256(value)\n}\n";
 
         for hard_fork_2 in [false, true] {
@@ -1140,7 +1128,7 @@ mod tests {
                 ),
             )?;
 
-            run_tests(None, &dir.0, true)?;
+            run_tests(None, dir.path(), true)?;
 
             // The setting is kept, and `keccak256` is only allowed with it
             let file = read_snapshot(&tests.join("hash.yaml"))?;
@@ -1168,7 +1156,7 @@ mod tests {
             tests.join("hash.yaml"),
             "operand_limits: true\nhard_fork_2: true\n",
         )?;
-        assert!(run_tests(None, &dir.0, true).is_err());
+        assert!(run_tests(None, dir.path(), true).is_err());
 
         Ok(())
     }
@@ -1176,7 +1164,7 @@ mod tests {
     #[test]
     fn operand_limits_compile_and_run_with_limits() -> Result<()> {
         let dir = corpus("operand_limits")?;
-        let tests = dir.0.join("tests");
+        let tests = dir.path().join("tests");
         let source = "test fn product(x: Int, flag: Bool) -> Int {\n    let p = x * 3;\n    if flag {\n        p\n    } else {\n        0\n    }\n}\n";
         let solution = format!("(0x{} ())", "01".repeat(257));
 
@@ -1194,7 +1182,7 @@ mod tests {
                 ),
             )?;
 
-            run_tests(None, &dir.0, true)?;
+            run_tests(None, dir.path(), true)?;
 
             // The setting is kept, and with it, the product is kept and fails for the long operand
             let file = read_snapshot(&tests.join("product.yaml"))?;
@@ -1217,7 +1205,7 @@ mod tests {
     #[test]
     fn bless_keeps_solutions_with_reordered_tests() -> Result<()> {
         let dir = corpus("reordered")?;
-        let tests = dir.0.join("tests");
+        let tests = dir.path().join("tests");
         fs::write(
             tests.join("reordered.rue"),
             "test fn first() {\n    assert 1 == 1;\n}\n\ntest fn second() {\n    assert 2 == 2;\n}\n",
@@ -1228,7 +1216,7 @@ mod tests {
             "tests:\n- name: second\n  solution: (5)\n- name: first\n",
         )?;
 
-        run_tests(None, &dir.0, true)?;
+        run_tests(None, dir.path(), true)?;
 
         let file = read_snapshot(&tests.join("reordered.yaml"))?;
         let solutions: Vec<_> = file
@@ -1247,41 +1235,41 @@ mod tests {
     #[test]
     fn default_run_writes_nothing_and_bless_converges() -> Result<()> {
         let dir = corpus("bless")?;
-        let tests = dir.0.join("tests");
+        let tests = dir.path().join("tests");
         fs::write(tests.join("unformatted.rue"), "fn main()->Int{1}\n")?;
         // An unfinished function at the end of a file without a final newline, where the
         // formatter and the compiler report the syntax error at different positions
         fs::write(tests.join("broken.rue"), "fn main() -> Int {\n    1 +")?;
 
-        let before = read_tree(&dir.0)?;
-        assert!(run_tests(None, &dir.0, false)?);
-        assert_eq!(read_tree(&dir.0)?, before);
+        let before = read_tree(dir.path())?;
+        assert!(run_tests(None, dir.path(), false)?);
+        assert_eq!(read_tree(dir.path())?, before);
 
         // The formatting pass hands files it can't parse on to be checked, not skipped
         let mut failed = false;
-        let unparsed = check_formatting_corpus(&dir.0, None, false, &mut failed)?;
+        let unparsed = check_formatting_corpus(dir.path(), None, false, &mut failed)?;
         assert!(failed);
         let unparsed: Vec<_> = unparsed.into_iter().map(|(path, _)| path).collect();
         assert_eq!(unparsed, [tests.join("broken.rue")]);
 
-        assert!(run_tests(None, &dir.0, true)?);
+        assert!(run_tests(None, dir.path(), true)?);
         assert_eq!(fs::read_to_string(tests.join("unformatted.rue"))?, MAIN);
         assert!(tests.join("unformatted.yaml").exists());
         assert!(tests.join("broken.yaml").exists());
-        assert!(dir.0.join("std_tests.yaml").exists());
+        assert!(dir.path().join("std_tests.yaml").exists());
 
-        assert!(!run_tests(None, &dir.0, false)?);
+        assert!(!run_tests(None, dir.path(), false)?);
 
         // A key the harness doesn't write fails the check, and `--bless` removes it
         let snapshot = tests.join("unformatted.yaml");
         let blessed = fs::read_to_string(&snapshot)?;
         fs::write(&snapshot, format!("{blessed}stale_field: 5\n"))?;
-        let before = read_tree(&dir.0)?;
-        assert!(run_tests(None, &dir.0, false)?);
-        assert_eq!(read_tree(&dir.0)?, before);
-        assert!(run_tests(None, &dir.0, true)?);
+        let before = read_tree(dir.path())?;
+        assert!(run_tests(None, dir.path(), false)?);
+        assert_eq!(read_tree(dir.path())?, before);
+        assert!(run_tests(None, dir.path(), true)?);
         assert_eq!(fs::read_to_string(&snapshot)?, blessed);
-        assert!(!run_tests(None, &dir.0, false)?);
+        assert!(!run_tests(None, dir.path(), false)?);
 
         Ok(())
     }
@@ -1289,7 +1277,7 @@ mod tests {
     #[test]
     fn filter_limits_what_bless_writes() -> Result<()> {
         let dir = corpus("filter")?;
-        let tests = dir.0.join("tests");
+        let tests = dir.path().join("tests");
         let unformatted = "fn main()->Int{1}\n";
         fs::write(tests.join("wanted.rue"), unformatted)?;
         // Without a snapshot
@@ -1304,7 +1292,7 @@ mod tests {
             "fn main() -> Int {\n",
         )?;
 
-        assert!(run_tests(Some("wanted"), &dir.0, true)?);
+        assert!(run_tests(Some("wanted"), dir.path(), true)?);
 
         assert_eq!(fs::read_to_string(tests.join("wanted.rue"))?, MAIN);
         assert!(tests.join("wanted.yaml").exists());
@@ -1317,20 +1305,20 @@ mod tests {
         assert!(!tests.join("wanted_group/broken.yaml").exists());
 
         // The filtered run converges, without checking the syntax error test it didn't run
-        assert!(!run_tests(Some("wanted"), &dir.0, false)?);
+        assert!(!run_tests(Some("wanted"), dir.path(), false)?);
 
         Ok(())
     }
 
     #[test]
     fn names_the_test_that_compiles_a_file() -> Result<()> {
-        let dir = TempDir::new("test-name")?;
-        let project = dir.0.join("group/project");
+        let dir = temp_dir("test-name")?;
+        let project = dir.path().join("group/project");
         fs::create_dir_all(project.join("nested"))?;
-        fs::write(dir.0.join("group/project.yaml"), "")?;
-        fs::write(dir.0.join("group/single.rue"), MAIN)?;
+        fs::write(dir.path().join("group/project.yaml"), "")?;
+        fs::write(dir.path().join("group/single.rue"), MAIN)?;
 
-        assert_eq!(test_name(&dir.0.join("group/single.rue"))?, "single");
+        assert_eq!(test_name(&dir.path().join("group/single.rue"))?, "single");
         assert_eq!(test_name(&project.join("main.rue"))?, "project");
         assert_eq!(test_name(&project.join("nested/helper.rue"))?, "project");
 
@@ -1339,8 +1327,8 @@ mod tests {
 
     #[test]
     fn parse_errors_need_a_snapshot_that_expects_them() -> Result<()> {
-        let dir = TempDir::new("parse-errors")?;
-        let path = dir.0.join("broken.rue");
+        let dir = temp_dir("parse-errors")?;
+        let path = dir.path().join("broken.rue");
         fs::write(&path, "fn main() -> Int {\n")?;
 
         let Err(FormatError::Parse { diagnostics }) =
@@ -1357,7 +1345,7 @@ mod tests {
 
         // A snapshot without the syntax error
         fs::write(
-            dir.0.join("broken.yaml"),
+            dir.path().join("broken.yaml"),
             "diagnostics:\n- Something else\n",
         )?;
         let mut failed = false;
@@ -1370,14 +1358,14 @@ mod tests {
             let message = format!("{} at other.rue:{}", diagnostic.kind, diagnostic.start());
             snapshot.diagnostics.push(message);
         }
-        fs::write(dir.0.join("broken.yaml"), to_yaml(&snapshot)?)?;
+        fs::write(dir.path().join("broken.yaml"), to_yaml(&snapshot)?)?;
         let mut failed = false;
         check_expected_parse_errors(&unparsed, None, &mut failed)?;
         assert!(failed);
 
         // The snapshot the harness writes, which records the syntax error
         let mut failed = false;
-        walk_dir(&dir.0, None, true, &mut failed)?;
+        walk_dir(dir.path(), None, true, &mut failed)?;
         let mut failed = false;
         check_expected_parse_errors(&unparsed, None, &mut failed)?;
         assert!(!failed);

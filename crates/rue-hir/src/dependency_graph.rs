@@ -7,11 +7,12 @@ use indexmap::{IndexSet, set::Slice};
 use rue_options::CompilerOptions;
 
 use crate::{
-    BindingSymbol, Block, ConstantSymbol, Database, FailureAnalysis, FieldAccess, FieldKind,
-    FunctionKind, Hir, HirId, Statement, Symbol, SymbolId, UnaryOp,
+    BindingSymbol, ConstantSymbol, Database, FailureAnalysis, FunctionKind, Hir, HirId, Statement,
+    Symbol, SymbolId,
     analysis::{Callee, Effect, resolve_callee, resolve_function},
     lower::MAX_REPEATED_STATIC_SIZE,
     repeat_cost::is_cheap_to_repeat,
+    small_static::{StaticContext, is_small_static, take},
 };
 
 /// The most reads that are counted for a symbol. Each inline binding that reads another one more
@@ -1569,56 +1570,29 @@ impl ReadCounter<'_> {
         let mut budget = MAX_REPEATED_STATIC_SIZE;
 
         // A chain of constants is as deep as it's long
-        let size = rue_types::grow_stack(|| self.is_small_static(value, &mut budget))
+        let size = rue_types::grow_stack(|| is_small_static(self, self.db, value, &mut budget))
             .then(|| MAX_REPEATED_STATIC_SIZE - budget);
 
         self.static_sizes.insert(symbol, size);
         size
     }
+}
 
-    /// Whether the value is static and its atoms take up no more than the budget, which is
-    /// reduced by their size. This follows references to bindings and constants. It's what the
-    /// lowerer checks for an argument (see `Lowerer::is_small_static`), without the values that
-    /// depend on what's being inlined.
-    fn is_small_static(&mut self, hir: HirId, budget: &mut usize) -> bool {
-        let mut take = |size: usize| match budget.checked_sub(size) {
-            Some(rest) => {
-                *budget = rest;
-                true
+/// A binding or constant's value is small and static as it's checked where it's passed as an
+/// argument (see `Lowerer::is_trivial_argument`), without the values that depend on what's being
+/// inlined. This follows references to bindings and constants (see [`ReadCounter::static_size`]).
+impl StaticContext for ReadCounter<'_> {
+    fn is_small_static_here(&mut self, db: &Database, hir: HirId, budget: &mut usize) -> bool {
+        match db.hir(hir) {
+            Hir::Reference(symbol) => self
+                .static_size(*symbol)
+                .is_some_and(|size| take(budget, size)),
+            // A guard that doesn't use its value at runtime is lowered to a boolean, unless its
+            // value is evaluated for its effect. The lowerer still treats such a guard as static
+            // if its value can't fail, which can depend on what's inlined, so it isn't here
+            Hir::Guard(guard) => {
+                guard.value_uses() == 0 && !self.graph.is_guard_effect(hir) && take(budget, 1)
             }
-            None => false,
-        };
-
-        match self.db.hir(hir) {
-            Hir::Nil | Hir::Bool(_) => take(1),
-            Hir::Int(value) => take(value.bits().div_ceil(8) as usize + 1),
-            Hir::Bytes(bytes) => take(bytes.len() + 1),
-            Hir::String(string) => take(string.len() + 1),
-            Hir::Pair(first, rest) => {
-                self.is_small_static(*first, budget) && self.is_small_static(*rest, budget)
-            }
-            Hir::List(list) => list
-                .items
-                .iter()
-                .all(|&item| self.is_small_static(item, budget)),
-            Hir::Struct(initializer) => initializer
-                .values()
-                .all(|value| self.is_small_static(value, budget)),
-            Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => self.is_small_static(*hir, budget),
-            // A field of a static value is folded, and is no larger than the value
-            Hir::FieldAccess(FieldAccess {
-                value,
-                kind: FieldKind::Path(_),
-                ..
-            }) => self.is_small_static(*value, budget),
-            Hir::Const(expr) => expr
-                .result
-                .is_some_and(|result| self.is_small_static(result, budget)),
-            Hir::Block(Block {
-                statements,
-                body: Some(body),
-            }) if statements.is_empty() => self.is_small_static(*body, budget),
-            Hir::Reference(symbol) => self.static_size(*symbol).is_some_and(take),
             _ => false,
         }
     }

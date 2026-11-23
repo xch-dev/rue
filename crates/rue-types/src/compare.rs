@@ -7,7 +7,6 @@ use std::{
 };
 
 use id_arena::Arena;
-use indexmap::IndexMap;
 use log::{Level, debug, log_enabled, trace};
 
 use crate::{
@@ -15,8 +14,8 @@ use crate::{
     FailedPair, FixpointFrame, FixpointMemo, Frame as MemoFrame, FxHashMap, FxIndexSet, Generic,
     Inference, InferenceCandidates, InferenceSnapshot, InstancePolicy, Join, Memo, Type, TypeId,
     compare_memo_enabled, comparison_step_limit, free_generics, grow_stack,
-    has_non_contractive_cycle, reachable, references_generic, step, stringify_impl, substitute,
-    substitute_with_mappings,
+    has_non_contractive_cycle, reachable, references_generic, step, stringify_substituted,
+    substitute, substitute_with_mappings,
     summary::{self, Branch, ChoiceRecord, Constraint, Summary, Var},
 };
 
@@ -1610,8 +1609,8 @@ pub fn compare_with_inference_limited(
     let rhs = substitute(arena, rhs);
     let names = log_enabled!(Level::Trace).then(|| {
         (
-            stringify_impl(arena, lhs, &mut IndexMap::new()),
-            stringify_impl(arena, rhs, &mut IndexMap::new()),
+            stringify_substituted(arena, lhs),
+            stringify_substituted(arena, rhs),
         )
     });
 
@@ -2049,12 +2048,12 @@ fn compare_structure(
     lhs_semantic: Option<TypeId>,
     rhs_semantic: Option<TypeId>,
 ) -> Comparison {
-    match (arena[lhs].clone(), arena[rhs].clone()) {
+    match (&arena[lhs], &arena[rhs]) {
         (Type::Apply(_), _) | (_, Type::Apply(_)) => unreachable!(),
-        (Type::Ref(lhs), _) => {
+        (&Type::Ref(lhs), _) => {
             compare_impl(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
         }
-        (_, Type::Ref(rhs)) => {
+        (_, &Type::Ref(rhs)) => {
             compare_impl(arena, builtins, ctx, lhs, rhs, lhs_semantic, rhs_semantic)
         }
         (Type::Unresolved, _) | (_, Type::Unresolved) => Comparison::Assign,
@@ -2100,7 +2099,7 @@ fn compare_structure(
                 Comparison::Cast
             };
 
-            let restriction = match (lhs.restriction, rhs.restriction) {
+            let restriction = match (&lhs.restriction, &rhs.restriction) {
                 (_, None) => Comparison::Assign,
                 (None, _) => Comparison::Invalid,
                 (Some(AtomRestriction::Length(lhs)), Some(AtomRestriction::Length(rhs))) => {
@@ -2121,7 +2120,7 @@ fn compare_structure(
                     Comparison::Invalid
                 }
                 (Some(AtomRestriction::Value(lhs)), Some(AtomRestriction::Length(rhs))) => {
-                    if lhs.len() == rhs {
+                    if lhs.len() == *rhs {
                         Comparison::Assign
                     } else {
                         Comparison::Invalid
@@ -2274,8 +2273,8 @@ fn compare_structure(
         {
             debug!(
                 "Inferring {} must be assignable to {}",
-                stringify_impl(arena, lhs, &mut IndexMap::new()),
-                stringify_impl(arena, rhs, &mut IndexMap::new())
+                stringify_substituted(arena, lhs),
+                stringify_substituted(arena, rhs)
             );
             ctx.add_candidate(arena, lhs, CandidateKind::Upper, rhs, ctx.rhs_env);
             Comparison::Assign
@@ -2287,8 +2286,8 @@ fn compare_structure(
         {
             debug!(
                 "Inferring {} could include {}",
-                stringify_impl(arena, rhs, &mut IndexMap::new()),
-                stringify_impl(arena, lhs, &mut IndexMap::new())
+                stringify_substituted(arena, rhs),
+                stringify_substituted(arena, lhs)
             );
             let kind = if ctx.holding {
                 CandidateKind::Held
@@ -2299,7 +2298,7 @@ fn compare_structure(
             ctx.add_candidate(arena, rhs, kind, lhs, ctx.lhs_env);
             Comparison::Assign
         }
-        (_, Type::Generic(_)) => match arena[lhs].clone() {
+        (_, Type::Generic(_)) => match &arena[lhs] {
             Type::Union(lhs) => {
                 let mut result = Comparison::Assign;
 
@@ -2474,7 +2473,7 @@ fn compare_structure(
             // A struct can still be cast to a union that holds its inner type as a whole, such as
             // `struct W { ...value: Int | (Int, Int) }` to `Int | (Int, Int)`
             if result == Comparison::Invalid
-                && let Type::Struct(lhs) = arena[lhs].clone()
+                && let Type::Struct(lhs) = &arena[lhs]
             {
                 result = ctx.compare_member(choice, FALLBACK, |ctx| {
                     max(
@@ -2764,6 +2763,12 @@ enum Semantic {
     Id(TypeId),
 }
 
+/// The semantics of the structs that a type's values can be, with `None` for the values that
+/// aren't in a struct.
+///
+/// This walks the same types as `walk_leaves` with `Walk::ToStructs`, but doesn't use it, since
+/// that counts a step for each type: these would count against the step limits that the tests of
+/// comparisons give them, and make some of them give up.
 fn semantics_of(arena: &Arena<Type>, id: TypeId) -> HashSet<Option<Semantic>> {
     semantics_of_impl(arena, id, &mut HashSet::new())
 }
@@ -2786,9 +2791,9 @@ fn semantics_of_impl_inner(
         return HashSet::new();
     }
 
-    match arena[id].clone() {
+    match &arena[id] {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => semantics_of_impl(arena, id, visited),
+        &Type::Ref(id) => semantics_of_impl(arena, id, visited),
         Type::Alias(alias) => semantics_of_impl(arena, alias.inner, visited),
         Type::Never => HashSet::new(),
         Type::Any => HashSet::from_iter([Some(Semantic::All)]),

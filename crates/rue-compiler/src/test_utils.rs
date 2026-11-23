@@ -4,11 +4,12 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use clvmr::Allocator;
+use clvmr::{Allocator, ChiaDialect, NodePtr, error::EvalErr, run_program};
 use num_bigint::BigInt;
-use rue_clvm::disassemble_program;
+use rue_clvm::{assemble, disassemble_program, disassemble_value};
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, Source, SourceKind};
 use rue_hir::{DependencyGraph, Hir, HirId, ModuleDeclarations, Statement, Symbol, SymbolId};
+use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
 use rue_types::TypeId;
 
@@ -52,6 +53,32 @@ pub(crate) fn compile_with(source: &str, configure: impl FnOnce(&mut CompilerOpt
         tree,
         module,
         diagnostics,
+    }
+}
+
+/// Compiles the source with the options, but without the standard library.
+pub(crate) fn compile_with_options(source: &str, options: CompilerOptions) -> Compiled {
+    compile_with(source, |o| {
+        *o = CompilerOptions {
+            std: false,
+            ..options
+        };
+    })
+}
+
+/// What the program returns for the solution, run for the default target, or what it raises.
+pub(crate) fn run_with_solution(
+    allocator: &mut Allocator,
+    program: NodePtr,
+    solution: &str,
+) -> Result<String, String> {
+    let solution = assemble(allocator, solution).unwrap();
+    let dialect = ChiaDialect::new(ClvmTarget::default().flags());
+
+    match run_program(allocator, &dialect, program, solution, u64::MAX) {
+        Ok(output) => Ok(disassemble_value(allocator, output.1)),
+        Err(EvalErr::Raise(value)) => Err(disassemble_value(allocator, value)),
+        Err(error) => Err(error.to_string()),
     }
 }
 

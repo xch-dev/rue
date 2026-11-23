@@ -25,10 +25,10 @@ use rue_lir::{Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
 
 use crate::{
-    BinaryOp, BindingSymbol, Block, ConstantSymbol, ControlStatement, Database, DependencyGraph,
-    Environment, ExprStatement, FieldAccess, FieldKind, FunctionCall, FunctionKind, FunctionSymbol,
-    Hir, HirId, IfStatement, PathError, Statement, Symbol, SymbolId, TypePath, UnaryOp,
-    generate_check_hir,
+    BinaryOp, BindingSymbol, ConstantSymbol, ControlStatement, Database, DependencyGraph,
+    Environment, ExprStatement, FieldKind, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId,
+    IfStatement, PathError, Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir,
+    small_static::{StaticContext, is_small_static, take},
 };
 
 use crate::analysis::{FunctionFailure, may_fail};
@@ -1200,123 +1200,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
         }
 
         let mut budget = MAX_REPEATED_STATIC_SIZE;
-        self.is_small_static(hir, &mut budget, &mut HashSet::new(), &mut Vec::new())
-    }
-
-    /// Whether the value is static and its atoms take up no more than the budget, which is
-    /// reduced by their size. Such a value is quoted where it's referenced, or folded with what
-    /// uses it. This follows the values that are substituted (see [`Self::substituted_value`]),
-    /// fields of static values, and calls that are inlined (see [`Self::inlined_callee`]) whose
-    /// arguments are static and whose body is static with them, such as `fn() => (1, 2)` or
-    /// `unchecked_cast((1, 2))`. Each argument of such a call is checked once, in the caller's
-    /// context, and its size is kept in `substitutions` and counted at each reference to its
-    /// parameter in the body. The symbols that are being followed are kept in `path`, so that a
-    /// value is never followed back into itself. This can't happen today, since bindings don't
-    /// refer to themselves and functions that call themselves aren't inlined, but it keeps the
-    /// walk finite if that changes.
-    fn is_small_static(
-        &self,
-        hir: HirId,
-        budget: &mut usize,
-        path: &mut HashSet<SymbolId>,
-        substitutions: &mut Vec<(SymbolId, usize)>,
-    ) -> bool {
-        let mut take = |size: usize| match budget.checked_sub(size) {
-            Some(rest) => {
-                *budget = rest;
-                true
-            }
-            None => false,
+        let mut cx = InlinedStatic {
+            lowerer: self,
+            path: HashSet::new(),
+            substitutions: Vec::new(),
         };
-
-        match self.db.hir(hir) {
-            Hir::Nil | Hir::Bool(_) => take(1),
-            Hir::Int(value) => take(value.bits().div_ceil(8) as usize + 1),
-            Hir::Bytes(bytes) => take(bytes.len() + 1),
-            Hir::String(string) => take(string.len() + 1),
-            Hir::Pair(first, rest) => {
-                self.is_small_static(*first, budget, path, substitutions)
-                    && self.is_small_static(*rest, budget, path, substitutions)
-            }
-            Hir::List(list) => list
-                .items
-                .iter()
-                .all(|&item| self.is_small_static(item, budget, path, substitutions)),
-            Hir::Struct(initializer) => initializer
-                .values()
-                .all(|value| self.is_small_static(value, budget, path, substitutions)),
-            Hir::Unary(UnaryOp::Plus, hir) | Hir::Cast(hir) => {
-                self.is_small_static(*hir, budget, path, substitutions)
-            }
-            // A field of a static value is folded, and is no larger than the value
-            Hir::FieldAccess(FieldAccess {
-                value,
-                kind: FieldKind::Path(_),
-                ..
-            }) => self.is_small_static(*value, budget, path, substitutions),
-            Hir::Const(expr) => expr
-                .result
-                .is_some_and(|result| self.is_small_static(result, budget, path, substitutions)),
-            Hir::Guard(_) => self.is_static_hir(hir) && take(1),
-            Hir::Block(Block {
-                statements,
-                body: Some(body),
-            }) if statements.is_empty() => self.is_small_static(*body, budget, path, substitutions),
-            Hir::Reference(symbol) => {
-                if let Some(&(_, size)) = substitutions
-                    .iter()
-                    .rev()
-                    .find(|(parameter, _)| parameter == symbol)
-                {
-                    return take(size);
-                }
-
-                if !path.insert(*symbol) {
-                    return false;
-                }
-
-                let small = self
-                    .substituted_value(*symbol)
-                    .is_some_and(|value| self.is_small_static(value, budget, path, substitutions));
-                path.remove(symbol);
-                small
-            }
-            Hir::FunctionCall(call) => {
-                let Some(callee) = self.inlined_callee(call.function) else {
-                    return false;
-                };
-                let Symbol::Function(function) = self.db.symbol(callee) else {
-                    return false;
-                };
-
-                // Only calls that pass each parameter its own argument
-                if !function.nil_terminated
-                    || !call.nil_terminated
-                    || function.parameters.len() != call.args.len()
-                {
-                    return false;
-                }
-
-                let mut sizes = Vec::with_capacity(call.args.len());
-
-                for &arg in &call.args {
-                    let mut remaining = *budget;
-
-                    if !self.is_small_static(arg, &mut remaining, path, substitutions) {
-                        return false;
-                    }
-
-                    sizes.push(*budget - remaining);
-                }
-
-                let frame = substitutions.len();
-                substitutions.extend(function.parameters.iter().copied().zip(sizes));
-                let small = self.is_small_static(function.body, budget, path, substitutions);
-                substitutions.truncate(frame);
-                small
-            }
-            _ => false,
-        }
+        is_small_static(&mut cx, self.db, hir, &mut budget)
     }
 
     /// Lowers a call to a function that's inlined, by substituting the arguments for its
@@ -2276,6 +2165,87 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
 
                 self.is_path_binding(symbol)
             }
+        }
+    }
+}
+
+/// What decides whether an argument is small and static where it's passed (see
+/// [`Lowerer::is_trivial_argument`]). Such a value is quoted where it's referenced, or folded with
+/// what uses it. This follows the values that are substituted (see [`Lowerer::substituted_value`]),
+/// and calls that are inlined (see [`Lowerer::inlined_callee`]) whose arguments are static and
+/// whose body is static with them, such as `fn() => (1, 2)` or `unchecked_cast((1, 2))`. Each
+/// argument of such a call is checked once, in the caller's context, and its size is kept in
+/// `substitutions` and counted at each reference to its parameter in the body. The symbols that are
+/// being followed are kept in `path`, so that a value is never followed back into itself. This
+/// can't happen today, since bindings don't refer to themselves and functions that call themselves
+/// aren't inlined, but it keeps the walk finite if that changes.
+struct InlinedStatic<'l, 'd, 'a, 'g> {
+    lowerer: &'l Lowerer<'d, 'a, 'g>,
+    path: HashSet<SymbolId>,
+    substitutions: Vec<(SymbolId, usize)>,
+}
+
+impl StaticContext for InlinedStatic<'_, '_, '_, '_> {
+    fn is_small_static_here(&mut self, db: &Database, hir: HirId, budget: &mut usize) -> bool {
+        match db.hir(hir) {
+            Hir::Guard(_) => self.lowerer.is_static_hir(hir) && take(budget, 1),
+            Hir::Reference(symbol) => {
+                if let Some(&(_, size)) = self
+                    .substitutions
+                    .iter()
+                    .rev()
+                    .find(|(parameter, _)| parameter == symbol)
+                {
+                    return take(budget, size);
+                }
+
+                if !self.path.insert(*symbol) {
+                    return false;
+                }
+
+                let small = self
+                    .lowerer
+                    .substituted_value(*symbol)
+                    .is_some_and(|value| is_small_static(self, db, value, budget));
+                self.path.remove(symbol);
+                small
+            }
+            Hir::FunctionCall(call) => {
+                let Some(callee) = self.lowerer.inlined_callee(call.function) else {
+                    return false;
+                };
+                let Symbol::Function(function) = db.symbol(callee) else {
+                    return false;
+                };
+
+                // Only calls that pass each parameter its own argument
+                if !function.nil_terminated
+                    || !call.nil_terminated
+                    || function.parameters.len() != call.args.len()
+                {
+                    return false;
+                }
+
+                let mut sizes = Vec::with_capacity(call.args.len());
+
+                for &arg in &call.args {
+                    let mut remaining = *budget;
+
+                    if !is_small_static(self, db, arg, &mut remaining) {
+                        return false;
+                    }
+
+                    sizes.push(*budget - remaining);
+                }
+
+                let frame = self.substitutions.len();
+                self.substitutions
+                    .extend(function.parameters.iter().copied().zip(sizes));
+                let small = is_small_static(self, db, function.body, budget);
+                self.substitutions.truncate(frame);
+                small
+            }
+            _ => false,
         }
     }
 }

@@ -33,9 +33,9 @@ fn unwrap_semantic_impl_inner(
     resolve_aliases: bool,
     visited: &mut HashSet<TypeId>,
 ) -> TypeId {
-    match arena[id].clone() {
+    match &arena[id] {
         Type::Apply(_) => unreachable!(),
-        Type::Ref(inner) => {
+        &Type::Ref(inner) => {
             if visited.insert(id) {
                 unwrap_semantic_impl(arena, inner, resolve_aliases, visited)
             } else {

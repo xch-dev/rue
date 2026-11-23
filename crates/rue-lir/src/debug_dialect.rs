@@ -131,6 +131,10 @@ pub const KECCAK256_COST_PER_BYTE: u64 = 2;
 /// mainnet consensus constants, which aren't available from `clvmr` itself.
 pub const COST_PER_BYTE: u64 = 12_000;
 
+/// The most that the spends in a block can cost in total, which is `max_block_cost_clvm` in Chia's
+/// mainnet consensus constants. A single program can't cost more than this either.
+pub const MAX_BLOCK_COST: u64 = 11_000_000_000;
+
 #[derive(Debug, Clone)]
 pub struct PrintMessage {
     pub srcloc: String,

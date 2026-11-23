@@ -3529,35 +3529,24 @@ fn many_glob_imports_that_wait_for_each_other_resolve_quickly() {
     // test rather than hanging it.
     const COUNT: usize = 300;
 
-    /// Removes the directory when the test ends, even if it fails.
-    struct TempDir(std::path::PathBuf);
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            std::fs::remove_dir_all(&self.0).ok();
-        }
-    }
-
-    let dir =
-        TempDir(std::env::temp_dir().join(format!("rue-waiting-globs-{}", std::process::id())));
-    std::fs::create_dir_all(&dir.0).unwrap();
+    let dir = tempfile::tempdir().unwrap();
 
     let mut main = String::new();
 
     for i in 0..COUNT {
         writeln!(main, "import f{i}::*;").unwrap();
         std::fs::write(
-            dir.0.join(format!("f{i}.rue")),
+            dir.path().join(format!("f{i}.rue")),
             format!("export const V{i}: Int = {i};\n"),
         )
         .unwrap();
     }
 
     writeln!(main, "fn main() -> Int {{\n    V0 + V{}\n}}", COUNT - 1).unwrap();
-    std::fs::write(dir.0.join("main.rue"), main).unwrap();
+    std::fs::write(dir.path().join("main.rue"), main).unwrap();
 
     let (sender, receiver) = std::sync::mpsc::channel();
-    let path = dir.0.clone();
+    let path = dir.path().to_path_buf();
 
     std::thread::spawn(move || {
         let mut ctx = crate::Compiler::new(rue_options::CompilerOptions {

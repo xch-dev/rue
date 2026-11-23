@@ -10,7 +10,10 @@ mod may_raise;
 mod ops;
 mod repeat_cost;
 mod scope;
+mod small_static;
 mod symbol;
+#[cfg(test)]
+mod test_helpers;
 mod types;
 mod unresolved;
 mod value;

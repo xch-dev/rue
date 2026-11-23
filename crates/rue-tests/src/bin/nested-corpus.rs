@@ -413,8 +413,10 @@ fn compile(rue: &Path, dir: &Path, seed: u64, timeout: Duration) -> Result<Recor
 }
 
 fn run(rue: &Path, seeds: &[u64], threads: usize, timeout: Duration) -> Result<Vec<Record>> {
-    let dir = std::env::temp_dir().join(format!("nested-corpus-{}", std::process::id()));
-    fs::create_dir_all(&dir)?;
+    let temp = tempfile::Builder::new()
+        .prefix("nested-corpus-")
+        .tempdir()?;
+    let dir = temp.path();
 
     let next = AtomicUsize::new(0);
     let records = Mutex::new(Vec::new());
@@ -428,7 +430,7 @@ fn run(rue: &Path, seeds: &[u64], threads: usize, timeout: Duration) -> Result<V
                         let Some(&seed) = seeds.get(index) else {
                             return Ok(());
                         };
-                        let record = match compile(rue, &dir, seed, timeout) {
+                        let record = match compile(rue, dir, seed, timeout) {
                             Ok(record) => record,
                             Err(error) => {
                                 // The other workers stop after the program they're on
@@ -450,7 +452,7 @@ fn run(rue: &Path, seeds: &[u64], threads: usize, timeout: Duration) -> Result<V
             .try_for_each(|handle| handle.join().unwrap())
     });
 
-    fs::remove_dir_all(&dir)?;
+    temp.close()?;
     result?;
 
     let mut records = records.into_inner().unwrap();

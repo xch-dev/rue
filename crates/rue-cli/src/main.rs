@@ -117,7 +117,7 @@ impl TargetArgs {
 }
 
 /// The default cost limit for running a program, which is the same as Chia's block cost limit.
-const DEFAULT_MAX_COST: u64 = 11_000_000_000;
+const DEFAULT_MAX_COST: u64 = rue_lir::MAX_BLOCK_COST;
 
 #[derive(Debug, Clone, Copy, Args)]
 pub struct CostArgs {
@@ -462,19 +462,35 @@ fn init(args: InitArgs) -> Result<()> {
     Ok(())
 }
 
-fn build(args: BuildArgs) -> Result<()> {
-    let mut allocator = Allocator::new();
+/// A project that `rue build` or `rue test` compiled without errors.
+struct LoadedProject {
+    manifest: Option<Manifest>,
+    entrypoint: PathBuf,
+    ctx: Compiler,
+    tree: FileTree,
+    /// The directory that the project's sources are in, which paths are shown relative to.
+    base_path: PathBuf,
+}
 
-    let search_path = &Path::new(args.file.as_deref().unwrap_or(".")).canonicalize()?;
-    let project = find_project(search_path, args.debug)?;
+/// Finds the project that `file` (or the current directory) is in, applies the lint and target
+/// flags to it, and compiles it. It exits if there's no project, the project is pinned to another
+/// compiler version, or there are errors, which it reports.
+fn load_project(
+    file: Option<&str>,
+    debug: bool,
+    lints: &LintArgs,
+    target: TargetArgs,
+) -> Result<LoadedProject> {
+    let search_path = &Path::new(file.unwrap_or(".")).canonicalize()?;
+    let project = find_project(search_path, debug)?;
 
     let Some(mut project) = project else {
         eprintln!("{}", "No project found".red().bold());
         process::exit(1);
     };
 
-    let lint_errors = configure_lints(&mut project, &args.lints);
-    args.target.apply(&mut project.options)?;
+    let lint_errors = configure_lints(&mut project, lints);
+    target.apply(&mut project.options)?;
 
     if project.manifest.as_ref().is_some_and(|manifest| {
         manifest
@@ -486,19 +502,6 @@ fn build(args: BuildArgs) -> Result<()> {
         eprintln!("{}", "Project version mismatch".red().bold());
         process::exit(1);
     }
-
-    let file_kind = args
-        .file
-        .map(|file| normalize_path(Path::new(&file)))
-        .transpose()?;
-
-    let main_kind = if let Some(file_kind) = &file_kind {
-        Some(file_kind.clone())
-    } else if project.entrypoint.join("main.rue").exists() {
-        Some(normalize_path(&project.entrypoint.join("main.rue"))?)
-    } else {
-        None
-    };
 
     let mut ctx = Compiler::new(project.options);
 
@@ -514,6 +517,57 @@ fn build(args: BuildArgs) -> Result<()> {
     if report_diagnostics(ctx.take_diagnostics(), &base_path) || lint_errors {
         process::exit(1);
     }
+
+    Ok(LoadedProject {
+        manifest: project.manifest,
+        entrypoint: project.entrypoint,
+        ctx,
+        tree,
+        base_path,
+    })
+}
+
+/// The hex split into lines of 64 characters, as `--split` prints it.
+fn split_hex(hex: &str) -> impl Iterator<Item = &str> {
+    // Hex is ASCII, so every chunk is on a character boundary
+    hex.as_bytes()
+        .chunks(64)
+        .map(|chunk| std::str::from_utf8(chunk).expect("hex is ASCII"))
+}
+
+/// Where `rue build --all` writes an output of the program `name` with the extension: in the
+/// project's `dist_dir`, if it has one, and otherwise next to its source file.
+fn output_path(dist_dir: Option<&Path>, file_path: &Path, name: &str, extension: &str) -> String {
+    dist_dir
+        .unwrap_or_else(|| file_path.parent().unwrap())
+        .join(format!("{name}.{extension}"))
+        .to_string_lossy()
+        .to_string()
+}
+
+fn build(args: BuildArgs) -> Result<()> {
+    let mut allocator = Allocator::new();
+
+    let LoadedProject {
+        manifest,
+        entrypoint,
+        mut ctx,
+        tree,
+        base_path,
+    } = load_project(args.file.as_deref(), args.debug, &args.lints, args.target)?;
+
+    let file_kind = args
+        .file
+        .map(|file| normalize_path(Path::new(&file)))
+        .transpose()?;
+
+    let main_kind = if let Some(file_kind) = &file_kind {
+        Some(file_kind.clone())
+    } else if entrypoint.join("main.rue").exists() {
+        Some(normalize_path(&entrypoint.join("main.rue"))?)
+    } else {
+        None
+    };
 
     let debug_metadata = args.debug_metadata.is_some();
 
@@ -533,8 +587,7 @@ fn build(args: BuildArgs) -> Result<()> {
             process::exit(1);
         }
 
-        let dist_dir = project
-            .manifest
+        let dist_dir = manifest
             .as_ref()
             .and_then(|manifest| manifest.compiler.dist_dir.clone())
             .map(PathBuf::from);
@@ -625,10 +678,8 @@ fn build(args: BuildArgs) -> Result<()> {
                 let mut output = String::new();
 
                 if args.split {
-                    let chars = hex.chars().collect::<Vec<_>>();
-                    let chunks = chars.chunks(64);
-                    for chunk in chunks {
-                        output.push_str(&chunk.iter().collect::<String>());
+                    for line in split_hex(&hex) {
+                        output.push_str(line);
                         output.push('\n');
                     }
                 } else {
@@ -636,19 +687,7 @@ fn build(args: BuildArgs) -> Result<()> {
                     output.push('\n');
                 }
 
-                let path = if let Some(dist_dir) = &dist_dir {
-                    dist_dir
-                        .join(format!("{name}.rue.hex"))
-                        .to_string_lossy()
-                        .to_string()
-                } else {
-                    file_path
-                        .parent()
-                        .unwrap()
-                        .join(format!("{name}.rue.hex"))
-                        .to_string_lossy()
-                        .to_string()
-                };
+                let path = output_path(dist_dir.as_deref(), file_path, &name, "rue.hex");
 
                 if let Some(metadata) = metadata {
                     outputs.insert(PathBuf::from(debug_metadata_path(&path)), metadata);
@@ -659,19 +698,7 @@ fn build(args: BuildArgs) -> Result<()> {
                 if args.hash {
                     let hash = tree_hash(&allocator, ptr).to_string();
 
-                    let path = if let Some(dist_dir) = &dist_dir {
-                        dist_dir
-                            .join(format!("{name}.rue.hash"))
-                            .to_string_lossy()
-                            .to_string()
-                    } else {
-                        file_path
-                            .parent()
-                            .unwrap()
-                            .join(format!("{name}.rue.hash"))
-                            .to_string_lossy()
-                            .to_string()
-                    };
+                    let path = output_path(dist_dir.as_deref(), file_path, &name, "rue.hash");
 
                     outputs.insert(PathBuf::from(path), format!("{hash}\n").into_bytes());
                 }
@@ -724,10 +751,8 @@ fn build(args: BuildArgs) -> Result<()> {
             let hex = hex::encode(node_to_bytes(&allocator, program)?);
 
             if args.split {
-                let chars = hex.chars().collect::<Vec<_>>();
-                let chunks = chars.chunks(64);
-                for chunk in chunks {
-                    println!("{}", chunk.iter().collect::<String>());
+                for line in split_hex(&hex) {
+                    println!("{line}");
                 }
             } else {
                 println!("{hex}");
@@ -841,31 +866,12 @@ fn single_debug_metadata_path(
 fn test(args: TestArgs) -> Result<()> {
     let mut allocator = Allocator::new();
 
-    let search_path = &Path::new(args.file.as_deref().unwrap_or(".")).canonicalize()?;
-    let project = find_project(search_path, true)?;
-
-    let Some(mut project) = project else {
-        eprintln!("{}", "No project found".red().bold());
-        process::exit(1);
-    };
-
-    let lint_errors = configure_lints(&mut project, &args.lints);
-    args.target.apply(&mut project.options)?;
-
-    let mut ctx = Compiler::new(project.options);
-
-    let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut HashMap::new())?;
-    let base_path = if project.entrypoint.is_file() {
-        project.entrypoint.parent().unwrap().canonicalize()?
-    } else {
-        project.entrypoint.canonicalize()?
-    };
-
-    // Errors in the lint flags are reported before compiling, but don't stop it, so that every
-    // error is reported at once
-    if report_diagnostics(ctx.take_diagnostics(), &base_path) || lint_errors {
-        process::exit(1);
-    }
+    let LoadedProject {
+        mut ctx,
+        tree,
+        base_path,
+        ..
+    } = load_project(args.file.as_deref(), true, &args.lints, args.target)?;
 
     let tests = tree.tests(&mut ctx, &mut allocator, None, None, &base_path, false)?;
 
@@ -1110,6 +1116,7 @@ mod tests {
         run_and_trace_test, run_test, single_debug_metadata_path, trace_test,
     };
     use clap::{CommandFactory, Parser, error::ErrorKind};
+    use clvm_utils::tree_hash;
     use clvmr::{Allocator, SExp, serde::node_from_bytes};
     use rue_clvm::assemble;
     use rue_compiler::{CompiledTest, Compiler, FileTree};
@@ -1417,21 +1424,22 @@ mod tests {
     }
 
     /// A directory with a `main.rue` that has the source, which is removed when it's dropped.
-    struct TempProject(std::path::PathBuf);
+    struct TempProject {
+        /// The directory, without symbolic links in its path (such as macOS's `/var`), since
+        /// it's compared with paths the compiler resolved.
+        path: std::path::PathBuf,
+        _dir: tempfile::TempDir,
+    }
 
     impl TempProject {
         fn new(name: &str, source: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!("rue-cli-{name}-{}", std::process::id()));
-            fs::create_dir_all(&dir).unwrap();
-            let dir = dir.canonicalize().unwrap();
-            fs::write(dir.join("main.rue"), source).unwrap();
-            Self(dir)
-        }
-    }
-
-    impl Drop for TempProject {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
+            let dir = tempfile::Builder::new()
+                .prefix(&format!("rue-cli-{name}-"))
+                .tempdir()
+                .unwrap();
+            let path = dir.path().canonicalize().unwrap();
+            fs::write(path.join("main.rue"), source).unwrap();
+            Self { path, _dir: dir }
         }
     }
 
@@ -1467,7 +1475,7 @@ mod tests {
             "build",
             "fn main(value: Int) -> Int {\n    double(value) + 1\n}\n\nexport fn double(value: Int) -> Int {\n    value * 2\n}\n",
         );
-        let dir = &project.0;
+        let dir = &project.path;
 
         // Without the flag, no sidecars are written
         run_build(dir, &["--all"]);
@@ -1516,6 +1524,50 @@ mod tests {
         );
     }
 
+    /// With `--all`, each program is written next to its source, or to the manifest's `dist_dir`
+    /// if it has one, with its tree hash beside it for `--hash`, and with its hex split into lines
+    /// of 64 characters for `--split`.
+    #[test]
+    fn build_all_writes_programs_and_hashes() {
+        let project = TempProject::new(
+            "build-all",
+            "fn main() -> String {\n    \"a string that's long enough for its program to take more than one line\"\n}\n",
+        );
+        let dir = &project.path;
+
+        let check = |hex_path: &Path, hash_path: &Path| {
+            let hex = fs::read_to_string(hex_path).unwrap();
+            let lines: Vec<&str> = hex.lines().collect();
+            assert!(lines.len() > 1, "{hex}");
+            assert!(lines[..lines.len() - 1].iter().all(|line| line.len() == 64));
+            assert!(!lines[lines.len() - 1].is_empty() && lines[lines.len() - 1].len() <= 64);
+
+            let mut allocator = Allocator::new();
+            let program =
+                node_from_bytes(&mut allocator, &hex::decode(lines.concat()).unwrap()).unwrap();
+            assert_eq!(
+                fs::read_to_string(hash_path).unwrap(),
+                format!("{}\n", tree_hash(&allocator, program))
+            );
+        };
+
+        run_build(dir, &["--all", "--hash", "--split"]);
+        check(&dir.join("main.rue.hex"), &dir.join("main.rue.hash"));
+
+        let dist = dir.join("dist");
+        fs::write(
+            dir.join("Rue.toml"),
+            format!(
+                "[compiler]\nentrypoint = \".\"\ndist_dir = \"{}\"\n",
+                dist.display()
+            ),
+        )
+        .unwrap();
+
+        run_build(dir, &["--all", "--hash", "--split"]);
+        check(&dist.join("main.rue.hex"), &dist.join("main.rue.hash"));
+    }
+
     /// A failing assertion shows its message after its location, and the trace shows the statement.
     #[test]
     fn failing_assert_shows_its_message() {
@@ -1523,20 +1575,21 @@ mod tests {
             "assert-message-test",
             "test fn fails() {\n    check(3);\n}\n\nfn check(value: Int) -> Int {\n    assert value > 10, [\"too small\", value];\n    value\n}\n",
         );
-        let path = project.0.join("main.rue");
+        let path = project.path.join("main.rue");
 
         let mut ctx = Compiler::new(CompilerOptions::debug());
         let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
         let mut allocator = Allocator::new();
         let tests = tree
-            .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+            .tests(&mut ctx, &mut allocator, None, None, &project.path, false)
             .unwrap();
         let cost = CostArgs {
             max_cost: DEFAULT_MAX_COST,
         };
 
         let (failure, trace) =
-            run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost).unwrap_err();
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.path, cost)
+                .unwrap_err();
         assert_eq!(
             failure.message,
             "raise: (\"assertion failed at main.rue:6:5\" (\"too small\" 3))"
@@ -1555,13 +1608,13 @@ mod tests {
     #[test]
     fn failing_tests_are_traced() {
         let project = TempProject::new("trace-test", FAILING_SOURCE);
-        let path = project.0.join("main.rue");
+        let path = project.path.join("main.rue");
 
         let mut ctx = Compiler::new(CompilerOptions::debug());
         let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
         let mut allocator = Allocator::new();
         let tests = tree
-            .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+            .tests(&mut ctx, &mut allocator, None, None, &project.path, false)
             .unwrap();
         let cost = CostArgs {
             max_cost: DEFAULT_MAX_COST,
@@ -1575,7 +1628,7 @@ mod tests {
         assert!(failure.raised);
 
         // The trace shows the test at its call to `check`, and the assertion with its argument
-        let trace = trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap();
+        let trace = trace_test(&mut ctx, &mut allocator, &tests[1], &project.path, cost).unwrap();
         assert_eq!(
             trace,
             "  main.rue:10:5, in fails_too\n    check(3);\n  main.rue:14:5, in check\n    assert value > 10;\n    value = 3"
@@ -1584,16 +1637,20 @@ mod tests {
         // When a failure is traced, what tracing allocates is freed, along with what the test did
         let pairs = allocator.pair_count();
         let (failure, traced) =
-            run_and_trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap_err();
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[1], &project.path, cost)
+                .unwrap_err();
         assert!(failure.raised);
         assert_eq!(traced, Some(Ok(trace.clone())));
         assert_eq!(allocator.pair_count(), pairs);
-        assert!(run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost).is_ok());
+        assert!(
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.path, cost).is_ok()
+        );
 
         // A failure that isn't a raise is traced too
         assert_eq!(tests[2].name.as_deref(), Some("divides"));
         let (failure, traced) =
-            run_and_trace_test(&mut ctx, &mut allocator, &tests[2], &project.0, cost).unwrap_err();
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[2], &project.path, cost)
+                .unwrap_err();
         assert!(failure.raised);
         let traced = traced.unwrap().unwrap();
         assert!(traced.contains("main.rue:23:5, in divide"), "{traced}");
@@ -1601,7 +1658,7 @@ mod tests {
 
         // The test that passes doesn't fail when it's run again
         assert_eq!(
-            trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost),
+            trace_test(&mut ctx, &mut allocator, &tests[0], &project.path, cost),
             Err("it didn't fail when it was run again".to_string())
         );
 
@@ -1617,7 +1674,7 @@ mod tests {
             ..tests[0].clone()
         };
         let (_, traced) =
-            run_and_trace_test(&mut ctx, &mut allocator, &returns_one, &project.0, cost)
+            run_and_trace_test(&mut ctx, &mut allocator, &returns_one, &project.path, cost)
                 .unwrap_err();
         assert_eq!(traced, None);
     }
@@ -1625,13 +1682,13 @@ mod tests {
     #[test]
     fn debug_shows_where_a_program_failed() {
         let project = TempProject::new("trace-debug", FAILING_SOURCE);
-        let path = project.0.join("main.rue");
-        let sidecar = project.0.join("main.bin");
+        let path = project.path.join("main.rue");
+        let sidecar = project.path.join("main.bin");
 
-        run_build(&project.0, &["--all", "--debug-metadata"]);
-        fs::rename(project.0.join("main.rue.debug.clvm.bin"), &sidecar).unwrap();
+        run_build(&project.path, &["--all", "--debug-metadata"]);
+        fs::rename(project.path.join("main.rue.debug.clvm.bin"), &sidecar).unwrap();
 
-        let hex = fs::read_to_string(project.0.join("main.rue.hex")).unwrap();
+        let hex = fs::read_to_string(project.path.join("main.rue.hex")).unwrap();
         let hex = hex.trim();
         let sidecar = sidecar.to_str().unwrap();
 
@@ -1653,7 +1710,7 @@ mod tests {
             "ff0380",
             "--debug-metadata",
             project
-                .0
+                .path
                 .join("main.rue_double.rue.debug.clvm.bin")
                 .to_str()
                 .unwrap(),
@@ -1750,7 +1807,7 @@ mod tests {
             args
         };
 
-        let sub = project.0.join("sub");
+        let sub = project.path.join("sub");
         fs::create_dir_all(&sub).unwrap();
 
         // The project is found from any directory inside it, and the flag still turns `LIMITS` on
@@ -1760,14 +1817,14 @@ mod tests {
             ("[compiler]\noperand_limits = false\n", true, true),
             ("[compiler]\noperand_limits = true\n", false, true),
         ] {
-            fs::write(project.0.join("Rue.toml"), manifest).unwrap();
+            fs::write(project.path.join("Rue.toml"), manifest).unwrap();
             let mut args = vec!["(% 2 (q . 2))", solution.as_str()];
 
             if flag {
                 args.push("--operand-limits");
             }
 
-            for dir in [&project.0, &sub] {
+            for dir in [&project.path, &sub] {
                 let result = debug_in(parse(&args), dir);
                 assert_eq!(
                     result.is_err(),
@@ -1778,7 +1835,7 @@ mod tests {
         }
 
         // A manifest that can't be parsed is reported, along with where it is
-        fs::write(project.0.join("Rue.toml"), "[compiler\n").unwrap();
+        fs::write(project.path.join("Rue.toml"), "[compiler\n").unwrap();
         let error = debug_in(parse(&["(q . 1)"]), &sub).unwrap_err().to_string();
         assert!(error.contains("Rue.toml"), "{error}");
     }
@@ -1805,13 +1862,13 @@ mod tests {
         };
 
         fs::write(
-            project.0.join("Rue.toml"),
+            project.path.join("Rue.toml"),
             "[compiler]\nhard_fork_2 = true\n",
         )
         .unwrap();
-        assert_eq!(debug_in(parse(&[program]), &project.0).unwrap(), hash);
+        assert_eq!(debug_in(parse(&[program]), &project.path).unwrap(), hash);
 
-        let error = debug_in(parse(&[program, "()", "--operand-limits"]), &project.0)
+        let error = debug_in(parse(&[program, "()", "--operand-limits"]), &project.path)
             .unwrap_err()
             .to_string();
         assert!(error.contains("hard_fork_2"), "{error}");
@@ -1822,7 +1879,7 @@ mod tests {
         // The recursion keeps `keccak256` from being folded, so the tests run it
         let source = "fn chain(value: Bytes, times: Int) -> Bytes {\n    if times == 0 {\n        value\n    } else {\n        chain(keccak256(value), times - 1)\n    }\n}\n\ntest fn hashes() {\n    assert chain(\"hello\", 1) == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;\n}\n\ntest fn fails_after_hashing() {\n    assert chain(\"hello\", 1) == 0x00;\n}\n";
         let project = TempProject::new("hard-fork-2-test", source);
-        let path = project.0.join("main.rue");
+        let path = project.path.join("main.rue");
         let cost = CostArgs {
             max_cost: DEFAULT_MAX_COST,
         };
@@ -1834,15 +1891,18 @@ mod tests {
         let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
         let mut allocator = Allocator::new();
         let tests = tree
-            .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+            .tests(&mut ctx, &mut allocator, None, None, &project.path, false)
             .unwrap();
 
-        assert!(run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost).is_ok());
+        assert!(
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.path, cost).is_ok()
+        );
 
         // The trace runs it again with the same flags, so it fails at the assertion rather than at
         // `keccak256`
         let (failure, trace) =
-            run_and_trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap_err();
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[1], &project.path, cost)
+                .unwrap_err();
         assert!(
             failure.message.contains("assertion failed"),
             "{}",
@@ -1892,7 +1952,7 @@ mod tests {
             "00".repeat(299)
         );
         let project = TempProject::new("operand-limits-test", &source);
-        let path = project.0.join("main.rue");
+        let path = project.path.join("main.rue");
         let cost = CostArgs {
             max_cost: DEFAULT_MAX_COST,
         };
@@ -1905,9 +1965,10 @@ mod tests {
             let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
             let mut allocator = Allocator::new();
             let tests = tree
-                .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+                .tests(&mut ctx, &mut allocator, None, None, &project.path, false)
                 .unwrap();
-            let result = run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost);
+            let result =
+                run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.path, cost);
 
             if operand_limits {
                 // The trace runs it again with `LIMITS`, so it fails in the same place
@@ -1921,7 +1982,7 @@ mod tests {
         }
 
         // The flag turns the option on for `rue build` and `rue test`
-        let mut project = rue_options::find_project(&project.0, true)
+        let mut project = rue_options::find_project(&project.path, true)
             .unwrap()
             .unwrap();
         assert!(!project.options.operand_limits);

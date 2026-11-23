@@ -5,33 +5,20 @@
 //! - For every value in `From`, the generated check passes if and only if the value is in `To`.
 //! - Every value in `From` that isn't in `To` is in `subtract(From, To)` (the else branch type).
 
+mod common;
+
+use common::Types;
+
 use std::{borrow::Cow, collections::HashMap};
 
 use clvmr::{Allocator, NodePtr, SExp};
 use id_arena::Arena;
-use indexmap::IndexSet;
 use rue_types::{
-    Alias, Atom, AtomRestriction, AtomSemantic, BuiltinTypes, CHECK_SIZE_LIMIT, Check, CheckError,
-    FunctionType, Generic, Pair, Struct, Type, TypeId, Union, check, stringify, subtract,
-    with_step_limit,
+    Alias, Atom, AtomRestriction, AtomSemantic, CHECK_SIZE_LIMIT, Check, CheckError, FunctionType,
+    Type, TypeId, check, subtract, with_step_limit,
 };
 
-struct Types {
-    arena: Arena<Type>,
-    builtins: BuiltinTypes,
-}
-
 impl Types {
-    fn new() -> Self {
-        let mut arena = Arena::new();
-        let builtins = BuiltinTypes::new(&mut arena);
-        Self { arena, builtins }
-    }
-
-    fn alloc(&mut self, ty: Type) -> TypeId {
-        self.arena.alloc(ty)
-    }
-
     fn atom(&mut self, semantic: AtomSemantic, restriction: Option<AtomRestriction>) -> TypeId {
         self.alloc(Type::Atom(Atom::new(semantic, restriction)))
     }
@@ -55,41 +42,7 @@ impl Types {
         self.atom(AtomSemantic::Bytes, Some(AtomRestriction::Length(length)))
     }
 
-    fn pair(&mut self, first: TypeId, rest: TypeId) -> TypeId {
-        self.alloc(Type::Pair(Pair::new(first, rest)))
-    }
-
-    fn union(&mut self, types: Vec<TypeId>) -> TypeId {
-        self.alloc(Type::Union(Union::new(types)))
-    }
-
-    fn alias(&mut self, inner: TypeId) -> TypeId {
-        self.alloc(Type::Alias(Alias {
-            name: None,
-            inner,
-            generics: vec![],
-        }))
-    }
-
-    fn structure(&mut self, inner: TypeId) -> TypeId {
-        let id = self.alloc(Type::Unresolved);
-        self.arena[id] = Type::Struct(Struct {
-            name: None,
-            semantic: id,
-            inner,
-            generics: vec![],
-            fields: IndexSet::new(),
-            nil_terminated: true,
-            narrowed: false,
-        });
-        id
-    }
-
-    fn generic(&mut self) -> TypeId {
-        self.alloc(Type::Generic(Generic { name: None }))
-    }
-
-    fn function(&mut self) -> TypeId {
+    fn nil_function(&mut self) -> TypeId {
         let ret = self.builtins.nil;
         self.alloc(Type::Function(FunctionType {
             generics: vec![],
@@ -119,10 +72,6 @@ impl Types {
 
     fn subtract(&mut self, from: TypeId, to: TypeId) -> TypeId {
         subtract(&mut self.arena, &self.builtins, from, to)
-    }
-
-    fn name(&mut self, id: TypeId) -> String {
-        stringify(&mut self.arena, id)
     }
 }
 
@@ -597,7 +546,7 @@ fn test_check_errors() {
     let int = t.builtins.int;
 
     // Function types can't be checked at runtime
-    let function = t.function();
+    let function = t.nil_function();
     assert_eq!(t.check(any, function), Err(CheckError::FunctionType));
 
     // Neither can a value that is or could be a function, since how a function is represented
@@ -1078,7 +1027,9 @@ impl Generator<'_> {
             }
             7..=8 => {
                 let count = 2 + self.rng.below(2);
-                let types = (0..count).map(|_| self.random_type(depth + 1)).collect();
+                let types = (0..count)
+                    .map(|_| self.random_type(depth + 1))
+                    .collect::<Vec<_>>();
                 self.t.union(types)
             }
             9 => {

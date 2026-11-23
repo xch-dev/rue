@@ -27,6 +27,21 @@ pub fn opt_path(arena: &mut Arena<Lir>, path: BigUint) -> LirId {
     arena.alloc(Lir::Path(path))
 }
 
+/// Runs a node that's generated as a call to its operator (see [`Lir::operator`]) at compile time
+/// if its operands are all constants (see [`fold_atoms`]), or keeps it as it is.
+pub fn opt_fold(arena: &mut Arena<Lir>, target: ClvmTarget, node: Lir) -> LirId {
+    let op = node
+        .operator()
+        .expect("only nodes that are calls to their operator are folded");
+    let args: Vec<LirId> = node.children().collect();
+
+    if let Some(folded) = fold_atoms(arena, target, op, &args) {
+        return folded;
+    }
+
+    arena.alloc(node)
+}
+
 // There's no way to optimize a quoted value, since nil is optimized by codegen already
 pub fn opt_quote(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     arena.alloc(Lir::Quote(value))
@@ -428,20 +443,6 @@ pub fn opt_mod(arena: &mut Arena<Lir>, target: ClvmTarget, left: LirId, right: L
     arena.alloc(Lir::Mod(left, right))
 }
 
-pub fn opt_modpow(
-    arena: &mut Arena<Lir>,
-    target: ClvmTarget,
-    base: LirId,
-    exponent: LirId,
-    modulus: LirId,
-) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Modpow, &[base, exponent, modulus]) {
-        return folded;
-    }
-
-    arena.alloc(Lir::Modpow(base, exponent, modulus))
-}
-
 // If the value is `(% x 2)`, the result is canonical `0` or `1`
 // Since `=` compares bytes, this only matches the canonical encoding of `1`
 // `logand` doesn't limit the length of its operands, so with `operand_limits`, where `%` fails for
@@ -472,34 +473,14 @@ fn fits_dividend(arena: &Arena<Lir>, value: LirId) -> bool {
 
 pub fn opt_eq(arena: &mut Arena<Lir>, target: ClvmTarget, left: LirId, right: LirId) -> LirId {
     if let Some(value) = is_odd_check(arena, target, left, right) {
-        return opt_logand(arena, vec![value, right]);
+        return opt_bitwise(arena, Bitwise::And, vec![value, right]);
     }
 
     if let Some(value) = is_odd_check(arena, target, right, left) {
-        return opt_logand(arena, vec![value, left]);
+        return opt_bitwise(arena, Bitwise::And, vec![value, left]);
     }
 
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Eq, &[left, right]) {
-        return folded;
-    }
-
-    arena.alloc(Lir::Eq(left, right))
-}
-
-pub fn opt_gt(arena: &mut Arena<Lir>, target: ClvmTarget, left: LirId, right: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Gt, &[left, right]) {
-        return folded;
-    }
-
-    arena.alloc(Lir::Gt(left, right))
-}
-
-pub fn opt_gtbytes(arena: &mut Arena<Lir>, target: ClvmTarget, left: LirId, right: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::GtBytes, &[left, right]) {
-        return folded;
-    }
-
-    arena.alloc(Lir::GtBytes(left, right))
+    opt_fold(arena, target, Lir::Eq(left, right))
 }
 
 // If the value's truthiness is known, we know the result
@@ -1103,269 +1084,81 @@ pub fn opt_strlen(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     }
 }
 
-pub fn opt_substr(
-    arena: &mut Arena<Lir>,
-    target: ClvmTarget,
-    string: LirId,
-    start: LirId,
-    end: Option<LirId>,
-) -> LirId {
-    let args: Vec<LirId> = [string, start].into_iter().chain(end).collect();
-
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Substr, &args) {
-        return folded;
-    }
-
-    arena.alloc(Lir::Substr(string, start, end))
+/// A bitwise operator that takes any number of operands.
+#[derive(Debug, Clone, Copy)]
+pub enum Bitwise {
+    And,
+    Or,
+    Xor,
 }
 
-pub fn opt_logand(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
+impl Bitwise {
+    fn operator(self) -> ClvmOp {
+        match self {
+            Self::And => ClvmOp::Logand,
+            Self::Or => ClvmOp::Logior,
+            Self::Xor => ClvmOp::Logxor,
+        }
+    }
+
+    /// The result of the operator without any operands, which doesn't change the result when
+    /// it's an operand.
+    fn identity(self) -> BigInt {
+        match self {
+            Self::And => BigInt::from(-1),
+            Self::Or | Self::Xor => BigInt::from(0),
+        }
+    }
+
+    fn apply(self, value: &mut BigInt, operand: BigInt) {
+        match self {
+            Self::And => *value &= operand,
+            Self::Or => *value |= operand,
+            Self::Xor => *value ^= operand,
+        }
+    }
+
+    fn node(self, args: Vec<LirId>) -> Lir {
+        match self {
+            Self::And => Lir::Logand(args),
+            Self::Or => Lir::Logior(args),
+            Self::Xor => Lir::Logxor(args),
+        }
+    }
+}
+
+// Nested uses of the same operator are flattened, and the constant operands are combined into one
+// at the end, which is left out if it doesn't change the result
+pub fn opt_bitwise(arena: &mut Arena<Lir>, op: Bitwise, args: Vec<LirId>) -> LirId {
     let mut args = ArgList::new(args);
     let mut result = Vec::new();
-    let mut value = BigInt::from(-1);
+    let identity = op.identity();
+    let mut value = identity.clone();
 
     while let Some(arg) = args.next() {
-        match arena[arg].clone() {
-            Lir::Atom(atom) => value &= atom_bigint(atom),
-            Lir::Logand(items) => args.prepend(items),
+        match &arena[arg] {
+            Lir::Atom(atom) => op.apply(&mut value, atom_bigint(atom)),
+            node if node.operator() == Some(op.operator()) => {
+                args.prepend(node.children().collect());
+            }
             _ => result.push(arg),
         }
     }
 
-    if value != BigInt::from(-1) {
+    if value != identity {
         result.push(arena.alloc(Lir::Atom(bigint_atom(value))));
     }
 
     if result.is_empty() {
-        return arena.alloc(Lir::Atom(bigint_atom(BigInt::from(-1))));
+        return arena.alloc(Lir::Atom(bigint_atom(identity)));
     }
 
     if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
         return result[0];
     }
 
-    arena.alloc(Lir::Logand(result))
+    arena.alloc(op.node(result))
 }
-
-pub fn opt_logior(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    let mut args = ArgList::new(args);
-    let mut result = Vec::new();
-    let mut value = BigInt::from(0);
-
-    while let Some(arg) = args.next() {
-        match arena[arg].clone() {
-            Lir::Atom(atom) => value |= atom_bigint(atom),
-            Lir::Logior(items) => args.prepend(items),
-            _ => result.push(arg),
-        }
-    }
-
-    if value != BigInt::from(0) {
-        result.push(arena.alloc(Lir::Atom(bigint_atom(value))));
-    }
-
-    if result.is_empty() {
-        return arena.alloc(Lir::Atom(vec![]));
-    }
-
-    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
-        return result[0];
-    }
-
-    arena.alloc(Lir::Logior(result))
-}
-
-pub fn opt_logxor(arena: &mut Arena<Lir>, args: Vec<LirId>) -> LirId {
-    let mut args = ArgList::new(args);
-    let mut result = Vec::new();
-    let mut value = BigInt::from(0);
-
-    while let Some(arg) = args.next() {
-        match arena[arg].clone() {
-            Lir::Atom(atom) => value ^= atom_bigint(atom),
-            Lir::Logxor(items) => args.prepend(items),
-            _ => result.push(arg),
-        }
-    }
-
-    if value != BigInt::from(0) {
-        result.push(arena.alloc(Lir::Atom(bigint_atom(value))));
-    }
-
-    if result.is_empty() {
-        return arena.alloc(Lir::Atom(vec![]));
-    }
-
-    if result.len() == 1 && matches!(arena[result[0]], Lir::Atom(_)) {
-        return result[0];
-    }
-
-    arena.alloc(Lir::Logxor(result))
-}
-
-pub fn opt_lognot(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Lognot, &[value]) {
-        return folded;
-    }
-
-    arena.alloc(Lir::Lognot(value))
-}
-
-pub fn opt_ash(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId, shift: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Ash, &[value, shift]) {
-        return folded;
-    }
-
-    arena.alloc(Lir::Ash(value, shift))
-}
-
-pub fn opt_lsh(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId, shift: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::Lsh, &[value, shift]) {
-        return folded;
-    }
-
-    arena.alloc(Lir::Lsh(value, shift))
-}
-
-pub fn opt_pubkey_for_exp(arena: &mut Arena<Lir>, target: ClvmTarget, exp: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::PubkeyForExp, &[exp]) {
-        return folded;
-    }
-
-    arena.alloc(Lir::PubkeyForExp(exp))
-}
-
-pub fn opt_g1_add(arena: &mut Arena<Lir>, target: ClvmTarget, args: Vec<LirId>) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G1Add, &args) {
-        return folded;
-    }
-
-    arena.alloc(Lir::G1Add(args))
-}
-
-pub fn opt_g1_subtract(arena: &mut Arena<Lir>, target: ClvmTarget, args: Vec<LirId>) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G1Subtract, &args) {
-        return folded;
-    }
-
-    arena.alloc(Lir::G1Subtract(args))
-}
-
-pub fn opt_g1_multiply(
-    arena: &mut Arena<Lir>,
-    target: ClvmTarget,
-    left: LirId,
-    right: LirId,
-) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G1Multiply, &[left, right]) {
-        return folded;
-    }
-
-    arena.alloc(Lir::G1Multiply(left, right))
-}
-
-pub fn opt_g1_negate(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G1Negate, &[value]) {
-        return folded;
-    }
-
-    arena.alloc(Lir::G1Negate(value))
-}
-
-pub fn opt_g1_map(
-    arena: &mut Arena<Lir>,
-    target: ClvmTarget,
-    value: LirId,
-    map: Option<LirId>,
-) -> LirId {
-    let args: Vec<LirId> = [value].into_iter().chain(map).collect();
-
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G1Map, &args) {
-        return folded;
-    }
-
-    arena.alloc(Lir::G1Map(value, map))
-}
-
-pub fn opt_g2_add(arena: &mut Arena<Lir>, target: ClvmTarget, args: Vec<LirId>) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G2Add, &args) {
-        return folded;
-    }
-
-    arena.alloc(Lir::G2Add(args))
-}
-
-pub fn opt_g2_subtract(arena: &mut Arena<Lir>, target: ClvmTarget, args: Vec<LirId>) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G2Subtract, &args) {
-        return folded;
-    }
-
-    arena.alloc(Lir::G2Subtract(args))
-}
-
-pub fn opt_g2_multiply(
-    arena: &mut Arena<Lir>,
-    target: ClvmTarget,
-    left: LirId,
-    right: LirId,
-) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G2Multiply, &[left, right]) {
-        return folded;
-    }
-
-    arena.alloc(Lir::G2Multiply(left, right))
-}
-
-pub fn opt_g2_negate(arena: &mut Arena<Lir>, target: ClvmTarget, value: LirId) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G2Negate, &[value]) {
-        return folded;
-    }
-
-    arena.alloc(Lir::G2Negate(value))
-}
-
-pub fn opt_g2_map(
-    arena: &mut Arena<Lir>,
-    target: ClvmTarget,
-    value: LirId,
-    map: Option<LirId>,
-) -> LirId {
-    let args: Vec<LirId> = [value].into_iter().chain(map).collect();
-
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::G2Map, &args) {
-        return folded;
-    }
-
-    arena.alloc(Lir::G2Map(value, map))
-}
-
-pub fn opt_bls_pairing_identity(
-    arena: &mut Arena<Lir>,
-    target: ClvmTarget,
-    args: Vec<LirId>,
-) -> LirId {
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::BlsPairingIdentity, &args) {
-        return folded;
-    }
-
-    arena.alloc(Lir::BlsPairingIdentity(args))
-}
-
-pub fn opt_bls_verify(
-    arena: &mut Arena<Lir>,
-    target: ClvmTarget,
-    sig: LirId,
-    args: Vec<LirId>,
-) -> LirId {
-    let fold_args: Vec<LirId> = [sig].into_iter().chain(args.iter().copied()).collect();
-
-    if let Some(folded) = fold_atoms(arena, target, ClvmOp::BlsVerify, &fold_args) {
-        return folded;
-    }
-
-    arena.alloc(Lir::BlsVerify(sig, args))
-}
-
 pub fn opt_sha256(arena: &mut Arena<Lir>, args: Vec<LirId>, inline: bool) -> LirId {
     let mut args = ArgList::new(args);
     let mut result = Vec::new();
@@ -1442,63 +1235,6 @@ pub fn opt_keccak256(arena: &mut Arena<Lir>, args: Vec<LirId>, inline: bool) -> 
     arena.alloc(Lir::Keccak256(result.into_iter().collect()))
 }
 
-pub fn opt_coin_id(
-    arena: &mut Arena<Lir>,
-    target: ClvmTarget,
-    parent_coin_info: LirId,
-    puzzle_hash: LirId,
-    amount: LirId,
-) -> LirId {
-    if let Some(folded) = fold_atoms(
-        arena,
-        target,
-        ClvmOp::CoinId,
-        &[parent_coin_info, puzzle_hash, amount],
-    ) {
-        return folded;
-    }
-
-    arena.alloc(Lir::CoinId(parent_coin_info, puzzle_hash, amount))
-}
-
-pub fn opt_k1_verify(
-    arena: &mut Arena<Lir>,
-    target: ClvmTarget,
-    public_key: LirId,
-    message: LirId,
-    signature: LirId,
-) -> LirId {
-    if let Some(folded) = fold_atoms(
-        arena,
-        target,
-        ClvmOp::Secp256K1Verify,
-        &[public_key, message, signature],
-    ) {
-        return folded;
-    }
-
-    arena.alloc(Lir::K1Verify(public_key, message, signature))
-}
-
-pub fn opt_r1_verify(
-    arena: &mut Arena<Lir>,
-    target: ClvmTarget,
-    public_key: LirId,
-    message: LirId,
-    signature: LirId,
-) -> LirId {
-    if let Some(folded) = fold_atoms(
-        arena,
-        target,
-        ClvmOp::Secp256R1Verify,
-        &[public_key, message, signature],
-    ) {
-        return folded;
-    }
-
-    arena.alloc(Lir::R1Verify(public_key, message, signature))
-}
-
 // If both values are atoms and the hash matches, the check passes, so it's nil
 // Otherwise it's kept, so that it still fails at runtime
 pub fn opt_keccak256_verify(arena: &mut Arena<Lir>, value: LirId, hash: LirId) -> LirId {
@@ -1569,61 +1305,17 @@ pub fn opt_debug_print(arena: &mut Arena<Lir>, srcloc: String, value: LirId) -> 
 
 #[cfg(test)]
 mod tests {
-    use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
-
-    use rue_clvm::disassemble_program;
-
-    use crate::{CodegenOptions, codegen, optimize};
+    use clvmr::{Allocator, NodePtr, serde::node_to_bytes};
 
     use super::*;
+    use crate::optimize::{
+        optimize,
+        test_helpers::{compile, disassemble, int, path, run},
+    };
 
     const UNLIMITED: ClvmTarget = ClvmTarget::TODAY;
     const LIMITED: ClvmTarget = ClvmTarget::TODAY_WITH_LIMITS;
     const HARD_FORK_2: ClvmTarget = ClvmTarget::HARD_FORK_2;
-
-    fn atom(arena: &mut Arena<Lir>, value: i64) -> LirId {
-        arena.alloc(Lir::Atom(bigint_atom(BigInt::from(value))))
-    }
-
-    fn path(arena: &mut Arena<Lir>, value: u32) -> LirId {
-        arena.alloc(Lir::Path(BigUint::from(value)))
-    }
-
-    fn run(
-        allocator: &mut Allocator,
-        target: ClvmTarget,
-        program: NodePtr,
-        env: NodePtr,
-    ) -> Option<Vec<u8>> {
-        let dialect = ChiaDialect::new(target.flags());
-        let result = run_program(allocator, &dialect, program, env, 11_000_000_000).ok()?;
-        Some(node_to_bytes(allocator, result.1).unwrap())
-    }
-
-    fn compile(
-        arena: &Arena<Lir>,
-        allocator: &mut Allocator,
-        lir: LirId,
-        target: ClvmTarget,
-        optimize: bool,
-    ) -> NodePtr {
-        codegen(
-            arena,
-            allocator,
-            lir,
-            CodegenOptions {
-                optimize_static_pairs: optimize,
-                target,
-            },
-        )
-        .unwrap()
-    }
-
-    fn disassemble(arena: &Arena<Lir>, lir: LirId) -> String {
-        let mut allocator = Allocator::new();
-        let program = compile(arena, &mut allocator, lir, UNLIMITED, true);
-        disassemble_program(&allocator, program)
-    }
 
     /// Checks that the LIR behaves the same after it's optimized, for each target, and returns
     /// what it's optimized to for the default one.
@@ -1677,7 +1369,7 @@ mod tests {
         let a = path(&mut arena, 2);
         let b = path(&mut arena, 5);
         let c = path(&mut arena, 11);
-        let one = atom(&mut arena, 1);
+        let one = int(&mut arena, 1);
         let a_minus_b = arena.alloc(Lir::Sub(vec![a, b]));
         let plus_c = arena.alloc(Lir::Add(vec![a_minus_b, c]));
         let lir = arena.alloc(Lir::Sub(vec![plus_c, one]));
@@ -1720,10 +1412,10 @@ mod tests {
     #[test]
     fn test_sub_constants_fold() {
         let mut arena = Arena::new();
-        let ten = atom(&mut arena, 10);
-        let twenty = atom(&mut arena, 20);
-        let thirty = atom(&mut arena, 30);
-        let one = atom(&mut arena, 1);
+        let ten = int(&mut arena, 10);
+        let twenty = int(&mut arena, 20);
+        let thirty = int(&mut arena, 30);
+        let one = int(&mut arena, 1);
         let inner = arena.alloc(Lir::Sub(vec![ten, twenty]));
         let add = arena.alloc(Lir::Add(vec![inner, thirty]));
         let lir = arena.alloc(Lir::Sub(vec![add, one]));
@@ -1735,9 +1427,9 @@ mod tests {
     #[test]
     fn test_sub_negative_constant_is_minuend() {
         let mut arena = Arena::new();
-        let hundred = atom(&mut arena, 100);
+        let hundred = int(&mut arena, 100);
         let value = path(&mut arena, 2);
-        let three_hundred = atom(&mut arena, 300);
+        let three_hundred = int(&mut arena, 300);
         let lir = arena.alloc(Lir::Sub(vec![hundred, value, three_hundred]));
 
         let optimized = assert_equivalent(&mut arena, lir, &[int_env(&[200])]);
@@ -1751,7 +1443,7 @@ mod tests {
         let a = path(&mut arena, 2);
         let b = path(&mut arena, 5);
         let c = path(&mut arena, 11);
-        let one = atom(&mut arena, 1);
+        let one = int(&mut arena, 1);
         let a_minus_b = arena.alloc(Lir::Sub(vec![a, b]));
         let c_minus_one = arena.alloc(Lir::Sub(vec![c, one]));
         let lir = arena.alloc(Lir::Add(vec![a_minus_b, c_minus_one]));
@@ -1776,7 +1468,7 @@ mod tests {
         let other = path(&mut arena, 5);
 
         for constant in [-1, 1] {
-            let constant = atom(&mut arena, constant);
+            let constant = int(&mut arena, constant);
             for args in [vec![value, constant], vec![value, other, constant]] {
                 let lir = arena.alloc(Lir::Sub(args));
                 let once = optimize(&mut arena, lir, UNLIMITED);
@@ -1797,8 +1489,8 @@ mod tests {
     fn test_odd_check_requires_canonical_one() {
         let mut arena = Arena::new();
         let value = path(&mut arena, 2);
-        let two = atom(&mut arena, 2);
-        let one = atom(&mut arena, 1);
+        let two = int(&mut arena, 2);
+        let one = int(&mut arena, 1);
         let non_canonical_one = arena.alloc(Lir::Atom(vec![0, 1]));
 
         let modulo = arena.alloc(Lir::Mod(value, two));
@@ -1824,8 +1516,8 @@ mod tests {
     fn test_odd_check_with_operand_limits_requires_short_dividend() {
         let mut arena = Arena::new();
         let value = path(&mut arena, 2);
-        let two = atom(&mut arena, 2);
-        let one = atom(&mut arena, 1);
+        let two = int(&mut arena, 2);
+        let one = int(&mut arena, 1);
 
         let modulo = arena.alloc(Lir::Mod(value, two));
         let result = opt_eq(&mut arena, LIMITED, modulo, one);
@@ -1866,8 +1558,8 @@ mod tests {
     fn test_limited_operators_only_fold_without_operand_limits() {
         let mut arena = Arena::new();
         let long_base = arena.alloc(Lir::Atom(vec![1; 257]));
-        let two = atom(&mut arena, 2);
-        let seven = atom(&mut arena, 7);
+        let two = int(&mut arena, 2);
+        let seven = int(&mut arena, 7);
         // The generator of G1
         let generator = "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb";
         let point = arena.alloc(Lir::Atom(
@@ -1888,23 +1580,52 @@ mod tests {
         ));
 
         for (target, folded) in [(UNLIMITED, true), (LIMITED, false), (HARD_FORK_2, true)] {
-            let result = opt_modpow(&mut arena, target, long_base, two, seven);
+            let result = opt_fold(&mut arena, target, Lir::Modpow(long_base, two, seven));
             assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
 
-            let result = opt_g1_multiply(&mut arena, target, point, long_scalar);
+            let result = opt_fold(&mut arena, target, Lir::G1Multiply(point, long_scalar));
             assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
 
-            let result = opt_g2_multiply(&mut arena, target, g2_point, long_scalar);
+            let result = opt_fold(&mut arena, target, Lir::G2Multiply(g2_point, long_scalar));
             assert_eq!(matches!(arena[result], Lir::Atom(_)), folded);
         }
 
         // Short operands fold, unless `modpow` is disabled, as `DISABLE_OP` does with
         // `operand_limits` before hard fork 2
         for (target, folded) in [(UNLIMITED, true), (LIMITED, false), (HARD_FORK_2, true)] {
-            let result = opt_modpow(&mut arena, target, two, two, seven);
+            let result = opt_fold(&mut arena, target, Lir::Modpow(two, two, seven));
             assert_eq!(
                 matches!(&arena[result], Lir::Atom(atom) if *atom == [4]),
                 folded
+            );
+        }
+    }
+
+    // Operands that leave nothing to compute are the operator's identity: -1 for `logand`, and
+    // nil for `logior` and `logxor`
+    #[test]
+    fn test_bitwise_without_operands_is_identity() {
+        let mut arena = Arena::new();
+
+        for (op, operands, expected) in [
+            (Bitwise::And, vec![], -1),
+            (Bitwise::And, vec![-1], -1),
+            (Bitwise::And, vec![-1, -1], -1),
+            (Bitwise::Or, vec![], 0),
+            (Bitwise::Or, vec![0], 0),
+            (Bitwise::Xor, vec![], 0),
+            (Bitwise::Xor, vec![0], 0),
+            (Bitwise::Xor, vec![5, 5], 0),
+        ] {
+            let args = operands
+                .iter()
+                .map(|&value| int(&mut arena, value))
+                .collect();
+            let result = opt_bitwise(&mut arena, op, args);
+            assert!(
+                matches!(&arena[result], Lir::Atom(atom) if *atom == bigint_atom(BigInt::from(expected))),
+                "{op:?} of {operands:?}: {:?}",
+                arena[result]
             );
         }
     }
@@ -1981,7 +1702,7 @@ mod tests {
             }
             _ => {
                 let value = random_arith(arena, rng, depth - 1);
-                let two = atom(arena, 2);
+                let two = int(arena, 2);
                 let one = arena.alloc(Lir::Atom(ATOMS[rng.below(ATOMS.len())].to_vec()));
                 let modulo = arena.alloc(Lir::Mod(value, two));
                 if rng.below(2) == 0 {

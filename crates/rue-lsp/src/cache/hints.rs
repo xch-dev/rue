@@ -10,7 +10,7 @@ use rue_ast::{
     AstBinding, AstExpr, AstForClause, AstForFold, AstFunctionCallExpr, AstLambdaExpr, AstLetStmt,
     AstMatchArm, AstNode, AstPathSegment,
 };
-use rue_compiler::{Compiler, SyntaxCall, SyntaxItemKind};
+use rue_compiler::{SyntaxCall, SyntaxItemKind};
 use rue_hir::{Symbol, SymbolId};
 use rue_types::{ELIDED, Type, TypeId};
 use tower_lsp_server::ls_types::Position;
@@ -75,7 +75,7 @@ enum Pending {
     Parameter(String),
 }
 
-impl Cache<Compiler> {
+impl Cache {
     /// The hints in a range of the file, in the order they appear in it.
     pub fn inlay_hints(&mut self, range: Range<usize>, options: HintOptions) -> Vec<Hint> {
         let Some(file) = self.tree.find(&self.source.kind) else {

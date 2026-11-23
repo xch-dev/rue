@@ -2023,20 +2023,18 @@ fn comparisons_count_what_only_the_new_run_has() {
 
 #[test]
 fn comparisons_load_runs_from_a_file_or_its_directory() {
-    let dir = std::env::temp_dir().join(format!("infer-fuzz-load-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path();
     let record = record(3, &[("all", Category::Inferred, &[])]);
     let line = serde_json::to_string(&record).unwrap();
     std::fs::write(dir.join("results.jsonl"), format!("{line}\n\n{line}\n")).unwrap();
 
-    assert_eq!(compare::load(&dir).unwrap().len(), 2);
+    assert_eq!(compare::load(dir).unwrap().len(), 2);
     assert_eq!(compare::load(&dir.join("results.jsonl")).unwrap().len(), 2);
 
     std::fs::write(dir.join("results.jsonl"), format!("{line}\nnot json\n")).unwrap();
-    let error = format!("{:#}", compare::load(&dir).unwrap_err());
+    let error = format!("{:#}", compare::load(dir).unwrap_err());
     assert!(error.contains("line 2"), "{error}");
-
-    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]
@@ -2733,8 +2731,9 @@ fn outputs_list_every_shrunk_failure_and_count_expected_variants() {
         "{report}"
     );
 
-    let dir = std::env::temp_dir().join(format!("infer-fuzz-outputs-{}", std::process::id()));
-    report::write_outputs(&dir, &records, &clusters, &report).unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path();
+    report::write_outputs(dir, &records, &clusters, &report).unwrap();
     let shrunk = std::fs::read_to_string(dir.join("shrunk.jsonl")).unwrap();
     let lines: Vec<&str> = shrunk.lines().collect();
     assert_eq!(lines.len(), 1);
@@ -2743,7 +2742,6 @@ fn outputs_list_every_shrunk_failure_and_count_expected_variants() {
     assert_eq!(line["seed"], 0);
     assert_eq!(line["variant"], "all");
     assert_eq!(line["shrunk"]["message"], "message");
-    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]

@@ -6,7 +6,7 @@ use log::{Level, log_enabled, trace};
 
 use crate::{
     Alias, FunctionParameter, FunctionType, FxHashMap, FxHashSet, FxIndexMap, FxIndexSet, Pair,
-    Struct, Type, TypeId, Union, grow_stack, step, stringify_impl,
+    Struct, Type, TypeId, Union, grow_stack, step, stringify_substituted,
 };
 
 pub fn substitute(arena: &mut Arena<Type>, id: TypeId) -> TypeId {
@@ -98,7 +98,7 @@ fn substitute_in(
     id: TypeId,
     mappings: &HashMap<TypeId, TypeId>,
 ) -> TypeId {
-    let name = log_enabled!(Level::Trace).then(|| stringify_impl(arena, id, &mut IndexMap::new()));
+    let name = log_enabled!(Level::Trace).then(|| stringify_substituted(arena, id));
 
     if let Some(name) = &name {
         trace!("Substituting {name}");
@@ -123,7 +123,7 @@ fn substitute_in(
     let result = substitute_impl(arena, id, &mappings, scope, ctx);
 
     if let Some(name) = &name {
-        let new_name = stringify_impl(arena, result, &mut IndexMap::new());
+        let new_name = stringify_substituted(arena, result);
         trace!("Substitution from {name} yielded {new_name}");
     }
 

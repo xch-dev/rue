@@ -3,7 +3,7 @@
 
 use rue_options::CompilerOptions;
 
-use crate::test_utils::compile_with;
+use crate::test_utils::compile_with_options;
 
 const TYPES: &str = "
 struct A { kind = 1, value: Int }
@@ -18,12 +18,7 @@ fn make() -> U { C {} }
 /// The program of `main` in the source, after the shared types.
 fn program(main: &str, options: CompilerOptions) -> String {
     let source = format!("{TYPES}\n{main}");
-    let mut compiled = compile_with(&source, |o| {
-        *o = CompilerOptions {
-            std: false,
-            ..options
-        };
-    });
+    let mut compiled = compile_with_options(&source, options);
     compiled.main_program()
 }
 

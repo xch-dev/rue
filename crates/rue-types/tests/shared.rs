@@ -3,49 +3,22 @@
 //! Expanding the references separately would make the work (and the number of types allocated)
 //! exponential in the depth of the type, so these would never finish if that were the case.
 
+mod common;
+
+use common::Types;
+
 use std::collections::HashMap;
 
-use id_arena::Arena;
 use rue_types::{
-    Alias, Apply, BuiltinTypes, Check, Comparison, FunctionParameter, FunctionType, Generic,
-    Inference, Pair, Type, TypeId, Union, check, compare, compare_with_inference, count_steps,
-    intersect, substitute, subtract,
+    Alias, Apply, Atoms, Check, Comparison, FunctionParameter, FunctionType, Generic, Inference,
+    Struct, Type, TypeId, check, compare_with_inference, count_steps, extract_atoms,
+    extract_functions, extract_pairs, extract_structs, intersect, substitute, subtract,
+    with_step_limit,
 };
 
 const DEPTH: usize = 32;
 
-struct Types {
-    arena: Arena<Type>,
-    builtins: BuiltinTypes,
-}
-
 impl Types {
-    fn new() -> Self {
-        let mut arena = Arena::new();
-        let builtins = BuiltinTypes::new(&mut arena);
-        Self { arena, builtins }
-    }
-
-    fn alloc(&mut self, ty: Type) -> TypeId {
-        self.arena.alloc(ty)
-    }
-
-    fn alias(&mut self, inner: TypeId) -> TypeId {
-        self.alloc(Type::Alias(Alias {
-            name: None,
-            inner,
-            generics: vec![],
-        }))
-    }
-
-    fn pair(&mut self, first: TypeId, rest: TypeId) -> TypeId {
-        self.alloc(Type::Pair(Pair::new(first, rest)))
-    }
-
-    fn union(&mut self, types: Vec<TypeId>) -> TypeId {
-        self.alloc(Type::Union(Union::new(types)))
-    }
-
     /// `type T0 = leaf; type T1 = (T0, T0); ...`
     fn pairs(&mut self, leaf: TypeId, depth: usize) -> TypeId {
         let mut ty = self.alias(leaf);
@@ -131,10 +104,6 @@ impl Types {
         let len = self.arena.len();
         substitute(&mut self.arena, ty);
         self.arena.len() - len
-    }
-
-    fn compare(&mut self, lhs: TypeId, rhs: TypeId) -> Comparison {
-        compare(&mut self.arena, &self.builtins, lhs, rhs)
     }
 }
 
@@ -422,5 +391,84 @@ fn test_growth_intersect() {
         let nil = t.builtins.nil;
         let ints_or_nil = t.union(vec![ints, nil]);
         intersect(&mut t.arena, &t.builtins, ints_or_nil, bytes32);
+    });
+}
+
+/// `type U0 = members; type U1 = U0 | U0; ...`, with each level an alias of the union.
+fn doubling_union(t: &mut Types, members: Vec<TypeId>, depth: usize) -> TypeId {
+    let union = t.union(members);
+    let mut ty = t.alias(union);
+
+    for _ in 0..depth {
+        let union = t.union(vec![ty, ty]);
+        ty = t.alias(union);
+    }
+
+    ty
+}
+
+/// The walks over the members of a union visit each member once, rather than once for each way
+/// it's reached, which would double the work at each level of `U1 = U0 | U0` (part of #496). The
+/// shallow union comes first, so that walking a member each time it's reached fails on the number
+/// of results quickly, rather than taking `2^30` steps on the deep one.
+#[test]
+fn test_doubling_union_extractors() {
+    for levels in [8, 30] {
+        let mut t = Types::new();
+        let (int, nil) = (t.builtins.int, t.builtins.nil);
+        let pair = t.pair(int, int);
+        let function = t.alloc(Type::Function(FunctionType {
+            generics: vec![],
+            params: vec![],
+            nil_terminated: true,
+            ret: nil,
+        }));
+        let ty = doubling_union(&mut t, vec![int, pair, function], levels);
+
+        let struct_id = t.alloc(Type::Unresolved);
+        t.arena[struct_id] = Type::Struct(Struct {
+            name: None,
+            semantic: struct_id,
+            inner: pair,
+            generics: vec![],
+            fields: ["a".to_string()].into_iter().collect(),
+            nil_terminated: false,
+            narrowed: false,
+        });
+        let structs = doubling_union(&mut t, vec![struct_id], levels);
+
+        with_step_limit(10_000, || {
+            assert!(matches!(
+                extract_atoms(&mut t.arena, ty, false),
+                Some(Atoms::Unrestricted)
+            ));
+            assert!(extract_atoms(&mut t.arena, ty, true).is_none());
+            assert_eq!(extract_pairs(&mut t.arena, ty, false).len(), 1);
+            assert!(extract_pairs(&mut t.arena, ty, true).is_empty());
+            assert_eq!(extract_functions(&mut t.arena, ty, false).len(), 1);
+            assert!(extract_functions(&mut t.arena, ty, true).is_empty());
+            assert!(extract_structs(&mut t.arena, ty).is_none());
+            assert_eq!(extract_structs(&mut t.arena, structs).unwrap().len(), 1);
+        });
+    }
+}
+
+/// `type U0 = Int | (Int | nil, Int); type U1 = U0 | U0; ...` without aliases, which `substitute`
+/// leaves shared, so subtracting from it takes as many steps as there are levels (part of #496)
+#[test]
+fn test_subtract_doubling_union() {
+    let mut t = Types::new();
+    let (int, nil) = (t.builtins.int, t.builtins.nil);
+    let optional = t.union(vec![int, nil]);
+    let pair = t.pair(optional, int);
+    let mut ty = t.union(vec![int, pair]);
+
+    for _ in 0..30 {
+        ty = t.union(vec![ty, ty]);
+    }
+
+    let nil_pair = t.pair(nil, int);
+    with_step_limit(10_000, || {
+        subtract(&mut t.arena, &t.builtins, ty, nil_pair);
     });
 }

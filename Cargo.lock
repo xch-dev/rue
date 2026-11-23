@@ -1757,6 +1757,7 @@ dependencies = [
  "rue-lir",
  "rue-options",
  "sha2 0.10.9",
+ "tempfile",
  "toml",
  "walkdir",
 ]
@@ -1796,6 +1797,7 @@ dependencies = [
  "rue-parser",
  "rue-types",
  "sha2 0.10.9",
+ "tempfile",
  "thiserror",
 ]
 
@@ -1910,6 +1912,7 @@ version = "0.13.0"
 dependencies = [
  "rue-diagnostic",
  "serde",
+ "tempfile",
  "thiserror",
  "toml",
 ]
@@ -1952,6 +1955,7 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

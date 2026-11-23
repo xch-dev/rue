@@ -4,51 +4,16 @@
 //! to a type that holds every possible `T`. That includes `T` itself and any union or alias that
 //! contains it, but not a concrete type or a different generic.
 
-use id_arena::Arena;
-use rue_types::{
-    Alias, BuiltinTypes, Comparison, Generic, Inference, Type, TypeId, Union, compare,
-    compare_with_inference,
-};
+mod common;
 
-struct Types {
-    arena: Arena<Type>,
-    builtins: BuiltinTypes,
-}
+use common::Types;
+
+use rue_types::{Comparison, Inference, TypeId, compare_with_inference};
 
 impl Types {
-    fn new() -> Self {
-        let mut arena = Arena::new();
-        let builtins = BuiltinTypes::new(&mut arena);
-        Self { arena, builtins }
-    }
-
-    fn alloc(&mut self, ty: Type) -> TypeId {
-        self.arena.alloc(ty)
-    }
-
-    fn union(&mut self, types: Vec<TypeId>) -> TypeId {
-        self.alloc(Type::Union(Union::new(types)))
-    }
-
-    fn alias(&mut self, inner: TypeId) -> TypeId {
-        self.alloc(Type::Alias(Alias {
-            name: None,
-            inner,
-            generics: vec![],
-        }))
-    }
-
-    fn generic(&mut self) -> TypeId {
-        self.alloc(Type::Generic(Generic { name: None }))
-    }
-
     fn optional(&mut self, inner: TypeId) -> TypeId {
         let nil = self.builtins.nil;
         self.union(vec![inner, nil])
-    }
-
-    fn compare(&mut self, lhs: TypeId, rhs: TypeId) -> Comparison {
-        compare(&mut self.arena, &self.builtins, lhs, rhs)
     }
 }
 

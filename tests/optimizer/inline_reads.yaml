@@ -303,6 +303,30 @@ tests:
   runtime_cost: 48
   byte_cost: 12000
   total_cost: 12048
+- name: static_guard_constant
+  program: "2"
+  debug_program: (a (q 2 (i (a (i 2 (q . 2) ()) 1) (q . 5) ()) 1) (c (q . 1) 1))
+  solution: (1)
+  output: "1"
+  runtime_cost: 48
+  byte_cost: 12000
+  total_cost: 12048
+- name: static_guard_binding
+  program: "2"
+  debug_program: (a (q 2 (i (a (i 2 (q . 2) ()) 1) (q . 5) ()) 1) (c (q . 1) 1))
+  solution: (1)
+  output: "1"
+  runtime_cost: 48
+  byte_cost: 12000
+  total_cost: 12048
+- name: guard_effect_is_not_static
+  program: (a (q 3 2 2 ()) (c (i () (a (q 2 (i (> 2 (q . 100)) (q 8) (q . 2)) 1) (c (f (a (i (> 2 (q . 5)) (q 4 2 (* 2 (q . 2))) (q 4 (* 2 (q . 3)) 2)) 1)) 1)) (q . 1)) 1))
+  debug_program: (a (q 2 (q 2 (q 2 (i 2 (q . 2) ()) 1) (c (i () (a 13 (f 2)) (q . 1)) 1)) (c (a 4 5) 1)) (c (c (q 2 (i (> 1 (q . 5)) (q 4 1 (* 1 (q . 2))) (q 4 (* 1 (q . 3)) 1)) 1) (q 2 (i (> 1 (q . 100)) (q 8 (q . "raise called at inline_reads.rue:70:9") (q . "too big")) (q . 1)) 1)) 1))
+  solution: (7)
+  output: "1"
+  runtime_cost: 3490
+  byte_cost: 1596000
+  total_cost: 1599490
 - name: static_cast
   program: (+ 2 (q . 10))
   debug_program: (a (q 16 (+ 2 2) 5) (c (q . 5) 1))
@@ -406,3 +430,6 @@ diagnostics:
     help: Return the value directly
 - Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:281:24
 - Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:296:12
+- Unnecessary type guard from `5` to `Int`, since they are already compatible types at inline_reads.rue:370:23
+- Unnecessary type guard from `nil` to `nil`, since they are already compatible types at inline_reads.rue:377:19
+- Unnecessary type guard from `Int` to `Any`, since they are already compatible types at inline_reads.rue:384:19

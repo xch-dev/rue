@@ -3,12 +3,11 @@
 
 use std::fmt::Write;
 
-use clvmr::{Allocator, ChiaDialect, error::EvalErr, run_program};
-use rue_clvm::{assemble, disassemble_value};
-use rue_lir::ClvmTarget;
+use clvmr::Allocator;
+use rue_clvm::assemble;
 use rue_options::CompilerOptions;
 
-use crate::test_utils::{compile, compile_with};
+use crate::test_utils::{compile, compile_with_options, run_with_solution};
 
 const HELPERS: &str = "
 fn total(xs: List<Int>) -> Int {
@@ -281,14 +280,7 @@ fn program(items: &str) -> String {
 fn run(items: &str, solution: &str) -> Result<String, String> {
     let mut allocator = Allocator::new();
     let program = assemble(&mut allocator, &program(items)).unwrap();
-    let solution = assemble(&mut allocator, solution).unwrap();
-    let dialect = ChiaDialect::new(ClvmTarget::default().flags());
-
-    match run_program(&mut allocator, &dialect, program, solution, u64::MAX) {
-        Ok(output) => Ok(disassemble_value(&allocator, output.1)),
-        Err(EvalErr::Raise(value)) => Err(disassemble_value(&allocator, value)),
-        Err(error) => Err(error.to_string()),
-    }
+    run_with_solution(&mut allocator, program, solution)
 }
 
 /// A lambda that's only called once evaluates the value once, so the value is substituted, and
@@ -544,12 +536,7 @@ fn main(n: Int) -> Int {
     ] {
         assert!(!program(source).is_empty(), "{source}");
 
-        let mut debug = compile_with(&self::source(source), |options| {
-            *options = CompilerOptions {
-                std: false,
-                ..CompilerOptions::debug()
-            };
-        });
+        let mut debug = compile_with_options(&self::source(source), CompilerOptions::debug());
         assert!(!debug.main_program().is_empty(), "{source}");
     }
 }

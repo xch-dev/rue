@@ -1,14 +1,15 @@
 use std::cmp::max;
+use std::ops::ControlFlow;
 
 use id_arena::Arena;
-use indexmap::{IndexMap, IndexSet, indexset};
+use indexmap::IndexSet;
 use log::{Level, log_enabled, trace};
 use thiserror::Error;
 
 use crate::{
-    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxHashSet,
-    FxIndexSet, Memo, Pair, Type, TypeId, compare_impl, grow_stack, reaches_non_contractive_cycle,
-    step, stringify_impl, substitute,
+    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxIndexSet,
+    Memo, Pair, Type, TypeId, Walk, compare_impl, for_each_leaf, grow_stack,
+    reaches_non_contractive_cycle, step, stringify_substituted, substitute, walk_leaves,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -240,8 +241,8 @@ pub fn check(
 
     let names = log_enabled!(Level::Trace).then(|| {
         (
-            stringify_impl(arena, lhs, &mut IndexMap::new()),
-            stringify_impl(arena, rhs, &mut IndexMap::new()),
+            stringify_substituted(arena, lhs),
+            stringify_substituted(arena, rhs),
         )
     });
 
@@ -597,142 +598,81 @@ fn unless_too_large(result: Result<Check, CheckError>) -> Result<Option<Check>, 
     }
 }
 
+/// The types that a type's values can be, with each type once. See [`walk_leaves`] for why a type
+/// that's reached again is skipped.
 fn variants_of(arena: &Arena<Type>, builtins: &BuiltinTypes, id: TypeId) -> Vec<TypeId> {
-    variants_of_impl(arena, builtins, id, &mut FxHashSet::default())
-}
+    let mut variants = Vec::new();
 
-/// Each walk over the variants of a type skips the types it has already seen, which only add the
-/// same variants again. A union that repeats a type at each level, such as `type U1 = U0 | U0`,
-/// would otherwise double the work at each level.
-fn variants_of_impl(
-    arena: &Arena<Type>,
-    builtins: &BuiltinTypes,
-    id: TypeId,
-    seen: &mut FxHashSet<TypeId>,
-) -> Vec<TypeId> {
-    step();
-
-    if !seen.insert(id) {
-        return vec![];
-    }
-
-    grow_stack(|| variants_of_inner(arena, builtins, id, seen))
-}
-
-fn variants_of_inner(
-    arena: &Arena<Type>,
-    builtins: &BuiltinTypes,
-    id: TypeId,
-    seen: &mut FxHashSet<TypeId>,
-) -> Vec<TypeId> {
-    match arena[id].clone() {
-        Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => variants_of_impl(arena, builtins, id, seen),
-        // A function is kept as is, rather than as the atom or pair that it's compiled to, so that
-        // a check which has to look at it is an error. How a function is represented depends on
-        // how it's compiled, so the result would differ between debug and release builds.
-        // Subtracting a type still splits a function into an atom and a pair.
-        Type::Unresolved | Type::Atom(_) | Type::Pair(_) | Type::Generic(_) | Type::Function(_) => {
-            vec![id]
-        }
-        Type::Never => vec![],
-        Type::Alias(alias) => variants_of_impl(arena, builtins, alias.inner, seen),
-        Type::Struct(ty) => variants_of_impl(arena, builtins, ty.inner, seen),
-        Type::Any => vec![builtins.atom, builtins.recursive_any_pair],
-        Type::Union(ty) => {
-            let mut variants = Vec::new();
-
-            for variant in ty.types {
-                variants.extend(variants_of_impl(arena, builtins, variant, seen));
+    for_each_leaf(arena, id, Walk::Leaves, |id, ty, _| {
+        match ty {
+            // A function is kept as is, rather than as the atom or pair that it's compiled to, so
+            // that a check which has to look at it is an error. How a function is represented
+            // depends on how it's compiled, so the result would differ between debug and release
+            // builds. Subtracting a type still splits a function into an atom and a pair.
+            Type::Unresolved
+            | Type::Atom(_)
+            | Type::Pair(_)
+            | Type::Generic(_)
+            | Type::Function(_) => variants.push(id),
+            Type::Never => {}
+            Type::Any => variants.extend([builtins.atom, builtins.recursive_any_pair]),
+            Type::Ref(_) | Type::Alias(_) | Type::Struct(_) | Type::Union(_) | Type::Apply(_) => {
+                unreachable!()
             }
-
-            variants
         }
-    }
+    });
+
+    variants
 }
 
 /// Returns the atoms that a type can contain. If `target` is true, the type is the one being checked
 /// against, so generic types are an error since their values can't be known at runtime. Generic
 /// targets are still allowed if the value is already known to be assignable (see `check_each`).
 fn atoms_of(arena: &Arena<Type>, id: TypeId, target: bool) -> Result<Option<Atoms>, CheckError> {
-    atoms_of_impl(arena, id, target, &mut FxHashSet::default())
+    let mut restrictions = IndexSet::new();
+
+    let flow = walk_leaves(arena, id, Walk::Leaves, |_, ty, _| match ty {
+        Type::Unresolved | Type::Never | Type::Pair(_) => ControlFlow::Continue(()),
+        Type::Generic(_) if target => ControlFlow::Break(Err(CheckError::GenericType)),
+        Type::Generic(_) | Type::Any => ControlFlow::Break(Ok(Atoms::Unrestricted)),
+        Type::Atom(atom) => {
+            let Some(restriction) = &atom.restriction else {
+                return ControlFlow::Break(Ok(Atoms::Unrestricted));
+            };
+            add_restriction(&mut restrictions, restriction.clone());
+            ControlFlow::Continue(())
+        }
+        Type::Function(_) => ControlFlow::Break(Err(CheckError::FunctionType)),
+        Type::Ref(_) | Type::Alias(_) | Type::Struct(_) | Type::Union(_) | Type::Apply(_) => {
+            unreachable!()
+        }
+    });
+
+    match flow {
+        ControlFlow::Break(atoms) => atoms.map(Some),
+        ControlFlow::Continue(()) if restrictions.is_empty() => Ok(None),
+        ControlFlow::Continue(()) => Ok(Some(Atoms::Restricted(restrictions))),
+    }
 }
 
-/// See [`variants_of_impl`] for why the types that have been seen are skipped.
-fn atoms_of_impl(
-    arena: &Arena<Type>,
-    id: TypeId,
-    target: bool,
-    seen: &mut FxHashSet<TypeId>,
-) -> Result<Option<Atoms>, CheckError> {
-    step();
-
-    if !seen.insert(id) {
-        return Ok(None);
+/// Adds an atom's restriction to the ones a type can have, where a length includes every value of
+/// that length.
+fn add_restriction(restrictions: &mut IndexSet<AtomRestriction>, restriction: AtomRestriction) {
+    match &restriction {
+        AtomRestriction::Value(value) => {
+            if restrictions.contains(&AtomRestriction::Length(value.len())) {
+                return;
+            }
+        }
+        AtomRestriction::Length(length) => {
+            restrictions.retain(|item| match item {
+                AtomRestriction::Value(value) => value.len() != *length,
+                AtomRestriction::Length(_) => true,
+            });
+        }
     }
 
-    grow_stack(|| atoms_of_inner(arena, id, target, seen))
-}
-
-fn atoms_of_inner(
-    arena: &Arena<Type>,
-    id: TypeId,
-    target: bool,
-    seen: &mut FxHashSet<TypeId>,
-) -> Result<Option<Atoms>, CheckError> {
-    Ok(match arena[id].clone() {
-        Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => atoms_of_impl(arena, id, target, seen)?,
-        Type::Unresolved | Type::Never | Type::Pair(_) => None,
-        Type::Generic(_) if target => return Err(CheckError::GenericType),
-        Type::Generic(_) => Some(Atoms::Unrestricted),
-        Type::Any => Some(Atoms::Unrestricted),
-        Type::Atom(atom) => {
-            let Some(restriction) = atom.restriction else {
-                return Ok(Some(Atoms::Unrestricted));
-            };
-            Some(Atoms::Restricted(indexset![restriction]))
-        }
-        Type::Alias(alias) => atoms_of_impl(arena, alias.inner, target, seen)?,
-        Type::Struct(ty) => atoms_of_impl(arena, ty.inner, target, seen)?,
-        Type::Function(_) => return Err(CheckError::FunctionType),
-        Type::Union(ty) => {
-            let mut restrictions = IndexSet::new();
-
-            for variant in ty.types {
-                match atoms_of_impl(arena, variant, target, seen)? {
-                    None => {}
-                    Some(Atoms::Unrestricted) => return Ok(Some(Atoms::Unrestricted)),
-                    Some(Atoms::Restricted(new)) => {
-                        for restriction in new {
-                            match &restriction {
-                                AtomRestriction::Value(value) => {
-                                    if restrictions.contains(&AtomRestriction::Length(value.len()))
-                                    {
-                                        continue;
-                                    }
-                                    restrictions.insert(restriction);
-                                }
-                                AtomRestriction::Length(length) => {
-                                    restrictions.retain(|item| match item {
-                                        AtomRestriction::Value(value) => value.len() != *length,
-                                        AtomRestriction::Length(_) => true,
-                                    });
-                                    restrictions.insert(restriction);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if restrictions.is_empty() {
-                None
-            } else {
-                Some(Atoms::Restricted(restrictions))
-            }
-        }
-    })
+    restrictions.insert(restriction);
 }
 
 /// Returns the pairs that a type can contain. See [`atoms_of`] for the meaning of `target`.
@@ -742,55 +682,29 @@ fn pairs_of(
     id: TypeId,
     target: bool,
 ) -> Result<Vec<Pair>, CheckError> {
-    pairs_of_impl(arena, builtins, id, target, &mut FxHashSet::default())
-}
+    let mut pairs = Vec::new();
 
-/// See [`variants_of_impl`] for why the types that have been seen are skipped.
-fn pairs_of_impl(
-    arena: &Arena<Type>,
-    builtins: &BuiltinTypes,
-    id: TypeId,
-    target: bool,
-    seen: &mut FxHashSet<TypeId>,
-) -> Result<Vec<Pair>, CheckError> {
-    step();
-
-    if !seen.insert(id) {
-        return Ok(vec![]);
-    }
-
-    grow_stack(|| pairs_of_inner(arena, builtins, id, target, seen))
-}
-
-fn pairs_of_inner(
-    arena: &Arena<Type>,
-    builtins: &BuiltinTypes,
-    id: TypeId,
-    target: bool,
-    seen: &mut FxHashSet<TypeId>,
-) -> Result<Vec<Pair>, CheckError> {
-    Ok(match arena[id].clone() {
-        Type::Apply(_) => unreachable!(),
-        Type::Ref(id) => pairs_of_impl(arena, builtins, id, target, seen)?,
-        Type::Unresolved | Type::Never | Type::Atom(_) => vec![],
-        Type::Pair(pair) => vec![pair],
-        Type::Generic(_) if target => return Err(CheckError::GenericType),
-        Type::Generic(_) | Type::Any => {
-            vec![Pair::new(builtins.recursive_any, builtins.recursive_any)]
-        }
-        Type::Alias(alias) => pairs_of_impl(arena, builtins, alias.inner, target, seen)?,
-        Type::Struct(ty) => pairs_of_impl(arena, builtins, ty.inner, target, seen)?,
-        Type::Function(_) => return Err(CheckError::FunctionType),
-        Type::Union(ty) => {
-            let mut pairs = Vec::new();
-
-            for variant in ty.types {
-                pairs.extend(pairs_of_impl(arena, builtins, variant, target, seen)?);
+    let flow = walk_leaves(arena, id, Walk::Leaves, |_, ty, _| {
+        match ty {
+            Type::Unresolved | Type::Never | Type::Atom(_) => {}
+            &Type::Pair(pair) => pairs.push(pair),
+            Type::Generic(_) if target => return ControlFlow::Break(CheckError::GenericType),
+            Type::Generic(_) | Type::Any => {
+                pairs.push(Pair::new(builtins.recursive_any, builtins.recursive_any));
             }
-
-            pairs
+            Type::Function(_) => return ControlFlow::Break(CheckError::FunctionType),
+            Type::Ref(_) | Type::Alias(_) | Type::Struct(_) | Type::Union(_) | Type::Apply(_) => {
+                unreachable!()
+            }
         }
-    })
+
+        ControlFlow::Continue(())
+    });
+
+    match flow {
+        ControlFlow::Break(error) => Err(error),
+        ControlFlow::Continue(()) => Ok(pairs),
+    }
 }
 
 /// Completed overlap checks, which can be shared by checks that start from an empty stack.
