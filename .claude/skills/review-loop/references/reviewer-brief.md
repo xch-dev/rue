@@ -75,6 +75,7 @@ Lints and suggestions (the most common source of review findings in this repo):
 - Snapshot diffs in the change (`git diff <base>...HEAD -- tests examples std_tests.yaml crates/rue-compiler/src/std`): is every changed snapshot explained by the goal? A changed `program:`, cost, or `output:` line in an unrelated test, or a new or vanished diagnostic, needs a reason.
 - Formatter, LSP or CLI behaviour changes: are they tested in that crate (`crates/rue-formatter/src/tests`, `crates/rue-lsp/src/tests`)?
 - Would each test fail if the behaviour it covers regressed? A test that passes either way is worth a finding.
+- Does the change add feature documentation to `README.md`? That belongs in the docs (via the PR description), not the README; see `CLAUDE.md`.
 
 ## Checklist: simplification and reuse
 
