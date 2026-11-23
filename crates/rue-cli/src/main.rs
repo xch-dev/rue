@@ -462,19 +462,35 @@ fn init(args: InitArgs) -> Result<()> {
     Ok(())
 }
 
-fn build(args: BuildArgs) -> Result<()> {
-    let mut allocator = Allocator::new();
+/// A project that `rue build` or `rue test` compiled without errors.
+struct LoadedProject {
+    manifest: Option<Manifest>,
+    entrypoint: PathBuf,
+    ctx: Compiler,
+    tree: FileTree,
+    /// The directory that the project's sources are in, which paths are shown relative to.
+    base_path: PathBuf,
+}
 
-    let search_path = &Path::new(args.file.as_deref().unwrap_or(".")).canonicalize()?;
-    let project = find_project(search_path, args.debug)?;
+/// Finds the project that `file` (or the current directory) is in, applies the lint and target
+/// flags to it, and compiles it. It exits if there's no project, the project is pinned to another
+/// compiler version, or there are errors, which it reports.
+fn load_project(
+    file: Option<&str>,
+    debug: bool,
+    lints: &LintArgs,
+    target: TargetArgs,
+) -> Result<LoadedProject> {
+    let search_path = &Path::new(file.unwrap_or(".")).canonicalize()?;
+    let project = find_project(search_path, debug)?;
 
     let Some(mut project) = project else {
         eprintln!("{}", "No project found".red().bold());
         process::exit(1);
     };
 
-    let lint_errors = configure_lints(&mut project, &args.lints);
-    args.target.apply(&mut project.options)?;
+    let lint_errors = configure_lints(&mut project, lints);
+    target.apply(&mut project.options)?;
 
     if project.manifest.as_ref().is_some_and(|manifest| {
         manifest
@@ -486,19 +502,6 @@ fn build(args: BuildArgs) -> Result<()> {
         eprintln!("{}", "Project version mismatch".red().bold());
         process::exit(1);
     }
-
-    let file_kind = args
-        .file
-        .map(|file| normalize_path(Path::new(&file)))
-        .transpose()?;
-
-    let main_kind = if let Some(file_kind) = &file_kind {
-        Some(file_kind.clone())
-    } else if project.entrypoint.join("main.rue").exists() {
-        Some(normalize_path(&project.entrypoint.join("main.rue"))?)
-    } else {
-        None
-    };
 
     let mut ctx = Compiler::new(project.options);
 
@@ -514,6 +517,57 @@ fn build(args: BuildArgs) -> Result<()> {
     if report_diagnostics(ctx.take_diagnostics(), &base_path) || lint_errors {
         process::exit(1);
     }
+
+    Ok(LoadedProject {
+        manifest: project.manifest,
+        entrypoint: project.entrypoint,
+        ctx,
+        tree,
+        base_path,
+    })
+}
+
+/// The hex split into lines of 64 characters, as `--split` prints it.
+fn split_hex(hex: &str) -> impl Iterator<Item = &str> {
+    // Hex is ASCII, so every chunk is on a character boundary
+    hex.as_bytes()
+        .chunks(64)
+        .map(|chunk| std::str::from_utf8(chunk).expect("hex is ASCII"))
+}
+
+/// Where `rue build --all` writes an output of the program `name` with the extension: in the
+/// project's `dist_dir`, if it has one, and otherwise next to its source file.
+fn output_path(dist_dir: Option<&Path>, file_path: &Path, name: &str, extension: &str) -> String {
+    dist_dir
+        .unwrap_or_else(|| file_path.parent().unwrap())
+        .join(format!("{name}.{extension}"))
+        .to_string_lossy()
+        .to_string()
+}
+
+fn build(args: BuildArgs) -> Result<()> {
+    let mut allocator = Allocator::new();
+
+    let LoadedProject {
+        manifest,
+        entrypoint,
+        mut ctx,
+        tree,
+        base_path,
+    } = load_project(args.file.as_deref(), args.debug, &args.lints, args.target)?;
+
+    let file_kind = args
+        .file
+        .map(|file| normalize_path(Path::new(&file)))
+        .transpose()?;
+
+    let main_kind = if let Some(file_kind) = &file_kind {
+        Some(file_kind.clone())
+    } else if entrypoint.join("main.rue").exists() {
+        Some(normalize_path(&entrypoint.join("main.rue"))?)
+    } else {
+        None
+    };
 
     let debug_metadata = args.debug_metadata.is_some();
 
@@ -533,8 +587,7 @@ fn build(args: BuildArgs) -> Result<()> {
             process::exit(1);
         }
 
-        let dist_dir = project
-            .manifest
+        let dist_dir = manifest
             .as_ref()
             .and_then(|manifest| manifest.compiler.dist_dir.clone())
             .map(PathBuf::from);
@@ -625,10 +678,8 @@ fn build(args: BuildArgs) -> Result<()> {
                 let mut output = String::new();
 
                 if args.split {
-                    let chars = hex.chars().collect::<Vec<_>>();
-                    let chunks = chars.chunks(64);
-                    for chunk in chunks {
-                        output.push_str(&chunk.iter().collect::<String>());
+                    for line in split_hex(&hex) {
+                        output.push_str(line);
                         output.push('\n');
                     }
                 } else {
@@ -636,19 +687,7 @@ fn build(args: BuildArgs) -> Result<()> {
                     output.push('\n');
                 }
 
-                let path = if let Some(dist_dir) = &dist_dir {
-                    dist_dir
-                        .join(format!("{name}.rue.hex"))
-                        .to_string_lossy()
-                        .to_string()
-                } else {
-                    file_path
-                        .parent()
-                        .unwrap()
-                        .join(format!("{name}.rue.hex"))
-                        .to_string_lossy()
-                        .to_string()
-                };
+                let path = output_path(dist_dir.as_deref(), file_path, &name, "rue.hex");
 
                 if let Some(metadata) = metadata {
                     outputs.insert(PathBuf::from(debug_metadata_path(&path)), metadata);
@@ -659,19 +698,7 @@ fn build(args: BuildArgs) -> Result<()> {
                 if args.hash {
                     let hash = tree_hash(&allocator, ptr).to_string();
 
-                    let path = if let Some(dist_dir) = &dist_dir {
-                        dist_dir
-                            .join(format!("{name}.rue.hash"))
-                            .to_string_lossy()
-                            .to_string()
-                    } else {
-                        file_path
-                            .parent()
-                            .unwrap()
-                            .join(format!("{name}.rue.hash"))
-                            .to_string_lossy()
-                            .to_string()
-                    };
+                    let path = output_path(dist_dir.as_deref(), file_path, &name, "rue.hash");
 
                     outputs.insert(PathBuf::from(path), format!("{hash}\n").into_bytes());
                 }
@@ -724,10 +751,8 @@ fn build(args: BuildArgs) -> Result<()> {
             let hex = hex::encode(node_to_bytes(&allocator, program)?);
 
             if args.split {
-                let chars = hex.chars().collect::<Vec<_>>();
-                let chunks = chars.chunks(64);
-                for chunk in chunks {
-                    println!("{}", chunk.iter().collect::<String>());
+                for line in split_hex(&hex) {
+                    println!("{line}");
                 }
             } else {
                 println!("{hex}");
@@ -841,31 +866,12 @@ fn single_debug_metadata_path(
 fn test(args: TestArgs) -> Result<()> {
     let mut allocator = Allocator::new();
 
-    let search_path = &Path::new(args.file.as_deref().unwrap_or(".")).canonicalize()?;
-    let project = find_project(search_path, true)?;
-
-    let Some(mut project) = project else {
-        eprintln!("{}", "No project found".red().bold());
-        process::exit(1);
-    };
-
-    let lint_errors = configure_lints(&mut project, &args.lints);
-    args.target.apply(&mut project.options)?;
-
-    let mut ctx = Compiler::new(project.options);
-
-    let tree = FileTree::compile_path(&mut ctx, &project.entrypoint, &mut HashMap::new())?;
-    let base_path = if project.entrypoint.is_file() {
-        project.entrypoint.parent().unwrap().canonicalize()?
-    } else {
-        project.entrypoint.canonicalize()?
-    };
-
-    // Errors in the lint flags are reported before compiling, but don't stop it, so that every
-    // error is reported at once
-    if report_diagnostics(ctx.take_diagnostics(), &base_path) || lint_errors {
-        process::exit(1);
-    }
+    let LoadedProject {
+        mut ctx,
+        tree,
+        base_path,
+        ..
+    } = load_project(args.file.as_deref(), true, &args.lints, args.target)?;
 
     let tests = tree.tests(&mut ctx, &mut allocator, None, None, &base_path, false)?;
 

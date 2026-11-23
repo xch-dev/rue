@@ -1757,6 +1757,7 @@ dependencies = [
  "rue-lir",
  "rue-options",
  "sha2 0.10.9",
+ "tempfile",
  "toml",
  "walkdir",
 ]
