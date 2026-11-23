@@ -33,26 +33,39 @@ env:
 # caches stay within the repository's limit.
 
 jobs:
-  # The tests are split into two partitions, each built and run on its own runner. Building takes
-  # most of each job, and running the tests about a minute.
+  # The tests are split into three groups, each built and run on its own runner, since building
+  # takes as long as running them. The snapshot test and the two sweeps each use every core, so
+  # they get runners of their own. A group that matches no tests fails, so renaming one of them
+  # needs a change here, and the `rest` group must leave out the same tests.
   test:
-    name: Test (${{ matrix.partition }}/2)
+    name: Test (${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        partition: [1, 2]
+        include:
+          - group: snapshots
+            filter: binary(rue-tests) & test(=tests::tests)
+          - group: sweeps
+            filter: >-
+              test(=tests::sweep::crash_sweep_sampled)
+              | test(=tests::leak_oracle_flags_nothing_in_the_snapshot_tests)
+          - group: rest
+            filter: >-
+              not ((binary(rue-tests) & test(=tests::tests))
+              | test(=tests::sweep::crash_sweep_sampled)
+              | test(=tests::leak_oracle_flags_nothing_in_the_snapshot_tests))
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Both partitions build the same thing, so they share a cache, and only the first saves it
+      # The groups build the same thing, so they share a cache, and only one of them saves it
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: test
-          save-if: ${{ github.ref == 'refs/heads/main' && matrix.partition == 1 }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.group == 'rest' }}
 
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
@@ -66,7 +79,7 @@ jobs:
       - name: Run tests
         run: >-
           cargo nextest run --all-features --workspace --profile ci
-          --partition hash:${{ matrix.partition }}/2
+          -E '${{ matrix.filter }}'
 
   lint:
     runs-on: ubuntu-latest
@@ -134,10 +147,24 @@ jobs:
   # A short run of each fuzzer on fixed seeds, so a failure reproduces locally with the same
   # command. It fails on bugs (unsound, leaked or crashed variants, and crashes in nested-corpus),
   # not on inference giving up or a compile running past its time limit. See the doc comments in
-  # `crates/rue-tests/src/bin/infer-fuzz/main.rs` and `nested-corpus.rs` for longer runs.
+  # `crates/rue-tests/src/bin/infer-fuzz/main.rs` and `nested-corpus.rs` for longer runs. The
+  # generator versions are split over two runners, which take about a minute each.
   fuzz:
+    name: Fuzz (generators ${{ matrix.generators }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Each run is `version:seeds`. The later versions make larger programs, so they get
+          # fewer seeds.
+          - generators: 1-3
+            runs: 1:0..1000 2:0..1000 3:0..400
+            nested: true
+          - generators: 4-5
+            runs: 4:0..400 5:0..300
+            nested: false
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -145,16 +172,18 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          shared-key: fuzz
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.nested }}
 
       - name: Build
         run: cargo build --locked --package rue-tests --package rue-cli --bins
 
-      # The later generator versions make larger programs, so they get fewer seeds
       - name: Inference fuzzer
+        env:
+          RUNS: ${{ matrix.runs }}
         run: |
           set -eo pipefail
-          for run in 1:0..1000 2:0..1000 3:0..400 4:0..400 5:0..300; do
+          for run in $RUNS; do
             echo "::group::Generator ${run%%:*}, seeds ${run#*:}"
             target/debug/infer-fuzz --generator "${run%%:*}" --seeds "${run#*:}" \
               --threads "$(nproc)" --check
@@ -162,6 +191,7 @@ jobs:
           done
 
       - name: Nested type corpus
+        if: matrix.nested
         run: >-
           target/debug/nested-corpus --rue target/debug/rue --seeds 0..300 --threads "$(nproc)"
           --timeout 10 --check
