@@ -43,15 +43,19 @@ use rue_hir::{
     SymbolId, UnaryOp,
 };
 use rue_lir::ClvmOp;
-use rue_types::Type;
+use rue_types::{Check, Type};
 
-use crate::{LintContext, LintInput, check_has_length};
+use crate::{LintContext, LintInput};
 
 pub(crate) const LINTS: &[Lint] = &[Lint::UncheckedInput];
 
-/// Paths into a value are cut off after this many fields, so that recursion over a list reaches a
-/// fixed point. A shorter path covers everything inside of it, so this only loses precision.
+/// Paths into a value keep this many fields before the last one, so that recursion over a list
+/// reaches a fixed point. The fields in between are replaced by [`CUT`], so a path that's cut still
+/// ends in the field it reads, and a check of one field doesn't cover the fields next to it.
 const MAX_PATH: usize = 3;
+
+/// What replaces the fields in the middle of a path that's too long.
+const CUT: &str = "...";
 
 /// The most times the summaries are recomputed before giving up on a fixed point.
 const MAX_ITERATIONS: usize = 32;
@@ -81,9 +85,12 @@ impl Origin {
     }
 
     fn with_field(mut self, name: &str) -> Self {
-        if self.path.len() < MAX_PATH {
-            self.path.push(name.to_string());
+        if self.path.len() > MAX_PATH {
+            self.path.pop();
+        } else if self.path.len() == MAX_PATH {
+            self.path.push(CUT.to_string());
         }
+        self.path.push(name.to_string());
         self
     }
 }
@@ -99,7 +106,8 @@ struct Flow {
     /// Whether the value is exactly its `direct` origin, so that reading a field of it reads the
     /// same field of the origin.
     exact: bool,
-    /// The flow of each field, if the value is a struct initializer.
+    /// The flow of each field, if the value is a struct initializer, a pair or a list (whose
+    /// fields are `first` and `rest`).
     fields: Option<BTreeMap<String, Flow>>,
 }
 
@@ -114,29 +122,13 @@ impl Flow {
 
     /// The unchecked values at the path inside of this value.
     fn select(&self, path: &[String]) -> BTreeSet<Origin> {
-        let Some((name, rest)) = path.split_first() else {
-            return self.direct.clone();
-        };
-
-        if let Some(field) = self.fields.as_ref().and_then(|fields| fields.get(name)) {
-            return field.select(rest);
-        }
-
-        if self.exact {
-            return self
-                .direct
-                .iter()
-                .map(|origin| {
-                    path.iter()
-                        .fold(origin.clone(), |origin, name| origin.with_field(name))
-                })
-                .collect();
-        }
-
-        self.direct.clone()
+        path.iter()
+            .fold(self.clone(), |flow, name| flow.field(name))
+            .direct
     }
 
-    /// The flow of a field of this value.
+    /// The flow of a field of this value, or of the item or the rest of it if it's a pair
+    /// (`first` and `rest`).
     fn field(&self, name: &str) -> Flow {
         if let Some(field) = self.fields.as_ref().and_then(|fields| fields.get(name)) {
             return field.clone();
@@ -156,6 +148,19 @@ impl Flow {
         }
 
         self.clone()
+    }
+
+    /// A pair of the two values, whose fields are `first` and `rest`.
+    fn pair(first: Flow, rest: Flow) -> Self {
+        let fields = BTreeMap::from([
+            ("first".to_string(), first.clone()),
+            ("rest".to_string(), rest.clone()),
+        ]);
+
+        let mut flow = first;
+        flow.union(rest);
+        flow.fields = Some(fields);
+        flow
     }
 
     fn union(&mut self, other: Flow) {
@@ -310,18 +315,14 @@ fn report(cx: &mut LintContext<'_>, main: SymbolId, summary: &Summary) {
 
     for (site, (calls, origins)) in concats.into_iter().map(|((site, _), value)| (site, value)) {
         // Several items of the same list have the same name, so they're counted by name
-        let mut counts: BTreeMap<(String, bool), usize> = BTreeMap::new();
+        let mut counts: BTreeMap<(String, Part), usize> = BTreeMap::new();
         for origin in &origins {
             *counts.entry(origin_name(cx, main, origin)).or_default() += 1;
         }
 
         let names = counts
             .into_iter()
-            .map(|((path, item), count)| match (item, count) {
-                (false, _) => format!("`{path}`"),
-                (true, 1) => format!("an item of `{path}`"),
-                (true, _) => format!("items of `{path}`"),
-            })
+            .map(|((path, part), count)| part.describe(&path, count))
             .collect::<Vec<_>>();
 
         let message = if origins.len() == 1 {
@@ -349,10 +350,8 @@ fn report(cx: &mut LintContext<'_>, main: SymbolId, summary: &Summary) {
     let mut deferred: BTreeMap<(HirId, Option<HirId>, String), &[HirId]> = BTreeMap::new();
 
     for (value, calls) in &summary.deferred {
-        let name = match origin_name(cx, main, &value.origin) {
-            (path, false) => format!("`{path}`"),
-            (path, true) => format!("an item of `{path}`"),
-        };
+        let (path, part) = origin_name(cx, main, &value.origin);
+        let name = part.describe(&path, 1);
         deferred
             .entry((value.site, calls.first().copied(), name))
             .or_insert(calls);
@@ -421,8 +420,9 @@ fn join_names(names: &[String]) -> String {
 
 /// How an unchecked value is written in a diagnostic: the parameter of `main` and the fields read
 /// from it, or the call it's the result of. The path stops at an item of a list or pair, since it
-/// can be any of them, and whether it did is returned along with it.
-fn origin_name(cx: &LintContext<'_>, main: SymbolId, origin: &Origin) -> (String, bool) {
+/// can be any of them, or at a field that's too deep to name, and which part of it the value is
+/// is returned along with it.
+fn origin_name(cx: &LintContext<'_>, main: SymbolId, origin: &Origin) -> (String, Part) {
     let root = match origin.root {
         Root::Param(index) => {
             let Symbol::Function(function) = cx.db().symbol(main) else {
@@ -435,34 +435,51 @@ fn origin_name(cx: &LintContext<'_>, main: SymbolId, origin: &Origin) -> (String
                 .and_then(|param| cx.db().symbol(*param).name())
                 .map_or_else(|| "_".to_string(), |name| name.text().to_string())
         }
-        // A call written over several lines is shown on one
         Root::Call(call) => cx.db().hir_srcloc(call).map_or_else(
             || "_".to_string(),
-            |srcloc| {
-                srcloc
-                    .text()
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .replace("( ", "(")
-                    .replace(", )", ")")
-                    .replace(" )", ")")
-            },
+            |srcloc| rue_hir::one_line(srcloc.text()),
         ),
     };
 
     let fields = origin
         .path
         .iter()
-        .take_while(|name| *name != "first" && *name != "rest");
-    let item = fields.clone().count() < origin.path.len();
+        .take_while(|name| !matches!(name.as_str(), "first" | "rest" | CUT));
+
+    let part = match origin.path.get(fields.clone().count()).map(String::as_str) {
+        None => Part::Whole,
+        Some(CUT) => Part::Inside,
+        Some(_) => Part::Item,
+    };
 
     let path = std::iter::once(root)
         .chain(fields.cloned())
         .collect::<Vec<_>>()
         .join(".");
 
-    (path, item)
+    (path, part)
+}
+
+/// Which part of the named value an unchecked value is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Part {
+    Whole,
+    /// An item of a list or pair.
+    Item,
+    /// A field too deep inside of it to name.
+    Inside,
+}
+
+impl Part {
+    fn describe(self, path: &str, count: usize) -> String {
+        match (self, count) {
+            (Self::Whole, _) => format!("`{path}`"),
+            (Self::Item, 1) => format!("an item of `{path}`"),
+            (Self::Item, _) => format!("items of `{path}`"),
+            (Self::Inside, 1) => format!("a value inside of `{path}`"),
+            (Self::Inside, _) => format!("values inside of `{path}`"),
+        }
+    }
 }
 
 /// Whether the name was declared in the standard library.
@@ -482,7 +499,9 @@ struct Analysis<'c, 'a, 'i> {
     /// The functions that are called, whose summaries are needed.
     callees: Vec<SymbolId>,
     bindings: HashMap<SymbolId, Flow>,
-    /// The values checked by the conditions of the branches being analyzed.
+    /// The values checked by the conditions of the branches being analyzed, and by the negated
+    /// conditions of the branches that left the blocks being analyzed (`if !(value is Bytes32) {
+    /// return ...; }`), which hold for the rest of their block.
     branch_checks: Vec<BTreeSet<Origin>>,
     /// The flow of each node, along with whether it's always evaluated, for nodes outside of
     /// checking branches. Inside of one, a node such as the value of an `inline let` would be
@@ -593,30 +612,36 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             }
             // The items of a `for` loop are read with `first` and `rest`
             Hir::Unary(op @ (UnaryOp::First | UnaryOp::Rest), value) => {
-                let value = self.flow(value, always);
-
-                if value.exact {
-                    value.field(if op == UnaryOp::First {
-                        "first"
-                    } else {
-                        "rest"
-                    })
+                self.flow(value, always).field(if op == UnaryOp::First {
+                    "first"
                 } else {
-                    value
-                }
+                    "rest"
+                })
             }
             Hir::Cast(value) => self.flow(value, always),
             Hir::Pair(first, rest) => {
-                let mut flow = self.flow(first, always);
-                flow.union(self.flow(rest, always));
-                flow
+                let first = self.flow(first, always);
+                let rest = self.flow(rest, always);
+                Flow::pair(first, rest)
             }
+            // A list is nested pairs, which end in nil or in the last item if it's spread
             Hir::List(list) => {
-                let mut flow = Flow::default();
-                for item in list.items {
-                    flow.union(self.flow(item, always));
-                }
-                flow
+                let mut items: Vec<Flow> = list
+                    .items
+                    .iter()
+                    .map(|&item| self.flow(item, always))
+                    .collect();
+
+                let end = if list.nil_terminated {
+                    Flow::default()
+                } else {
+                    items.pop().unwrap_or_default()
+                };
+
+                items
+                    .into_iter()
+                    .rev()
+                    .fold(end, |rest, item| Flow::pair(item, rest))
             }
             Hir::Struct(initializer) => {
                 let condition = self.condition_type(hir);
@@ -650,12 +675,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             Hir::Block(block) => self.block(&block.statements, block.body, always),
             Hir::If(condition, then, else_, _) => {
                 self.flow(condition, always);
-
-                let checks = self.condition_checks(condition);
-                self.branch_checks.push(checks);
-                let mut flow = self.flow(then, false);
-                self.branch_checks.pop();
-
+                let mut flow = self.branch(condition, then);
                 flow.union(self.flow(else_, false));
                 flow
             }
@@ -738,11 +758,12 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                 }
                 Flow::default()
             }
-            // The secp operations fail unless the key, the message hash and the signature each
-            // have the right length
+            // The secp operations fail unless the message hash and the signature have the right
+            // length, but the key can also be uncompressed, which is longer
             Hir::Secp256K1Verify(public_key, message, signature)
             | Hir::Secp256R1Verify(public_key, message, signature) => {
-                self.checked_operands(&[public_key, message, signature], always);
+                self.flow(public_key, always);
+                self.checked_operands(&[message, signature], always);
                 Flow::default()
             }
             Hir::Keccak256Verify(value, hash) => {
@@ -810,7 +831,14 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                 self.bindings.insert(symbol, flow.clone());
                 flow
             }
-            _ => Flow::default(),
+            // A parameter of another function is one that a `for` loop or a lambda captures, which
+            // isn't followed
+            Symbol::Parameter(_)
+            | Symbol::Constant(_)
+            | Symbol::Function(_)
+            | Symbol::Builtin(_)
+            | Symbol::Module(_)
+            | Symbol::Unresolved => Flow::default(),
         }
     }
 
@@ -854,35 +882,46 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
     ) -> Flow {
         let checked = self.summary.checked.clone();
         let concats = self.summary.concats.len();
-        let deferred: BTreeSet<Deferred> = self.summary.deferred.keys().cloned().collect();
+        let deferred = std::mem::take(&mut self.summary.deferred);
 
         let flow = analyze(self);
 
         let region_checked = std::mem::replace(&mut self.summary.checked, checked);
 
-        self.summary.checked.extend(
-            region_checked
-                .iter()
-                .filter(|origin| {
-                    empty.iter().any(|empty| {
-                        empty.root == origin.root
-                            && origin.path.len() > empty.path.len()
-                            && origin.path.starts_with(&empty.path)
-                    })
+        let mut region_concats = self.summary.concats.split_off(concats);
+        region_concats.retain_mut(|concat| {
+            concat.retain_unchecked(|origin| origin.checked_by(&region_checked))
+        });
+        self.summary.concats.extend(region_concats);
+
+        let region_deferred = std::mem::replace(&mut self.summary.deferred, deferred);
+        for (value, calls) in region_deferred {
+            if !value.origin.checked_by(&region_checked) {
+                self.summary.deferred.entry(value).or_insert(calls);
+            }
+        }
+
+        // The items of a value that's empty whenever the region isn't evaluated are checked where
+        // they exist
+        self.summary
+            .checked
+            .extend(region_checked.into_iter().filter(|origin| {
+                empty.iter().any(|empty| {
+                    empty.root == origin.root
+                        && origin.path.len() > empty.path.len()
+                        && origin.path.starts_with(&empty.path)
                 })
-                .cloned(),
-        );
+            }));
 
-        let mut index = 0;
-        self.summary.concats.retain_mut(|concat| {
-            index += 1;
-            index <= concats || concat.retain_unchecked(|origin| origin.checked_by(&region_checked))
-        });
+        flow
+    }
 
-        self.summary.deferred.retain(|value, _| {
-            deferred.contains(value) || !value.origin.checked_by(&region_checked)
-        });
-
+    /// Analyzes the branch that's taken if the condition is true, with the condition's checks.
+    fn branch(&mut self, condition: HirId, then: HirId) -> Flow {
+        let checks = self.condition_checks(condition);
+        self.branch_checks.push(checks);
+        let flow = self.flow(then, false);
+        self.branch_checks.pop();
         flow
     }
 
@@ -916,11 +955,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             }
             Statement::If(statement) => {
                 self.flow(statement.condition, always);
-
-                let checks = self.condition_checks(statement.condition);
-                self.branch_checks.push(checks);
-                self.flow(statement.then, false);
-                self.branch_checks.pop();
+                self.branch(statement.condition, statement.then);
 
                 let may_return = rue_hir::control_may_return(self.cx.db(), statement.then);
 
@@ -1258,5 +1293,16 @@ fn flatten_concat(db: &rue_hir::Database, hir: HirId, operands: &mut Vec<HirId>)
             flatten_concat(db, *right, operands);
         }
         _ => operands.push(hir),
+    }
+}
+
+/// Whether a guard's runtime check rejects every atom of the wrong length, on every way it can
+/// pass.
+fn check_has_length(check: &Check) -> bool {
+    match check {
+        Check::Atom(_) | Check::Impossible => true,
+        Check::And(checks) => checks.iter().any(check_has_length),
+        Check::Or(checks) => checks.iter().all(check_has_length),
+        Check::None | Check::IsAtom { .. } | Check::IsPair { .. } | Check::Pair(..) => false,
     }
 }

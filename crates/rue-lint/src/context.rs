@@ -6,9 +6,7 @@ use rue_diagnostic::{
     SrcLoc,
 };
 use rue_hir::{Database, Declaration, HirId, ScopeId, SymbolId};
-use rue_types::{
-    AtomRestriction, Atoms, BuiltinTypes, Check, Comparison, Type, TypeId, extract_atoms,
-};
+use rue_types::{AtomRestriction, Atoms, BuiltinTypes, Comparison, Type, TypeId, extract_atoms};
 
 use crate::{
     ScopedLintLevels, WalkState,
@@ -261,15 +259,5 @@ fn restriction_length(restriction: &AtomRestriction) -> usize {
     match restriction {
         AtomRestriction::Length(length) => *length,
         AtomRestriction::Value(value) => value.len(),
-    }
-}
-
-/// Whether the check rejects every atom of the wrong length, on every way it can pass.
-pub(crate) fn check_has_length(check: &Check) -> bool {
-    match check {
-        Check::Atom(_) | Check::Impossible => true,
-        Check::And(checks) => checks.iter().any(check_has_length),
-        Check::Or(checks) => checks.iter().all(check_has_length),
-        Check::None | Check::IsAtom { .. } | Check::IsPair { .. } | Check::Pair(..) => false,
     }
 }

@@ -2,6 +2,18 @@
 
 // A check only counts on the paths that evaluate it
 
+struct Outer {
+    a: Middle,
+}
+
+struct Middle {
+    b: Inner,
+}
+
+struct Inner {
+    c: (Bytes32, Bytes32),
+}
+
 struct Item {
     parent: Bytes32,
     amount: Int,
@@ -26,9 +38,24 @@ fn main(
     p: Bytes32,
     checked_items: List<Item>,
     items: List<Item>,
+    q: Bytes32,
+    r: Bytes32,
+    s: Bytes32,
+    t: Bytes32,
+    u: Bytes,
+    v: Bytes,
+    w: Bytes32,
+    x: Bytes32,
+    y: Bytes32,
+    pair: (Bytes32, Bytes32),
+    tail: Bytes,
+    deep: Outer,
+    choice: Int,
     flag: Bool,
 ) -> List<Any> {
     assert check_items(checked_items);
+    assert check_first(pair);
+    assert coinid(deep.a.b.c.first, sha256("x"), 1) != nil;
 
     [
         checked_after_early_return(a, b, flag),
@@ -42,6 +69,20 @@ fn main(
         // Recursion over a list checks each item, after returning early for an empty list
         hash_items(checked_items),
         hash_items(items),
+        // Checks after an early return cover the uses after it
+        checked_after_return(q, r, flag),
+        // The same with an `if` and `else if` chain whose branches return
+        checked_after_chain(s, t, choice),
+        // Raising unless either value has the right length, inside of a function that's called
+        sha256(u + v + 0x01),
+        check_either(u, v),
+        // A negated guard only holds for the rest of its own block
+        guarded_in_nested_block(w, x, flag),
+        // Checking one item of a pair doesn't check the other
+        sha256(tail + pair.rest),
+        // Checking a field deep inside of a value doesn't check the field next to it
+        sha256(tail + deep.a.b.c.rest),
+        unused(y),
     ]
 }
 
@@ -135,4 +176,48 @@ fn check_items(items: List<Item>) -> Bool {
     }
     assert coinid(items.first.parent, sha256("puzzle"), items.first.amount) != nil;
     check_items(items.rest)
+}
+
+fn check_first(pair: (Bytes32, Bytes32)) -> Bool {
+    assert coinid(pair.first, sha256("x"), 1) != nil;
+    true
+}
+
+fn checked_after_return(q: Bytes32, r: Bytes32, flag: Bool) -> Bytes32 {
+    if flag {
+        return q;
+    }
+    assert coinid(q, r, 1) != nil;
+    sha256(q + r)
+}
+
+fn checked_after_chain(s: Bytes32, t: Bytes32, choice: Int) -> Bytes32 {
+    if choice == 1 {
+        return sha256(s + t);
+    } else if choice == 2 {
+        return t;
+    }
+    assert coinid(s, t, 1) != nil;
+    s
+}
+
+fn check_either(u: Bytes, v: Bytes) -> Bool {
+    #[allow(manual_assert)]
+    if !(u is Bytes32) || !(v is Bytes32) {
+        raise "not a hash";
+    }
+    true
+}
+
+fn guarded_in_nested_block(w: Bytes32, x: Bytes32, flag: Bool) -> Bytes32 {
+    if flag {
+        if !(x == sha256("x")) {
+            return w;
+        }
+    }
+    sha256(w + x)
+}
+
+fn unused(y: Bytes32) -> Bytes32 {
+    y
 }

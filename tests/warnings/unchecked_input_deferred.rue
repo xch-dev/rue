@@ -25,6 +25,8 @@ fn main(
     output_owner: Bytes32,
     wrapper: Wrapper,
     user_hashed: Bytes32,
+    committed: Bytes32,
+    passed: Bytes32,
 ) -> List<Condition> {
     assert checked_owner is Bytes32;
 
@@ -54,6 +56,15 @@ fn main(
         } else {
             CreateCoin { puzzle_hash: wrapper.other, amount: 1 }
         },
+        // Hashed by a helper, and passed through a function before being hashed
+        CreateCoin {
+            puzzle_hash: commit([CreateCoin { puzzle_hash: committed, amount: 1 }]),
+            amount: 1,
+        },
+        CreateCoin {
+            puzzle_hash: tree_hash((1, identity([CreateCoin { puzzle_hash: passed, amount: 1 }]))),
+            amount: 1,
+        },
         // A function named `tree_hash` that isn't the standard library's
         CreateCoin {
             puzzle_hash: local::tree_hash([CreateCoin { puzzle_hash: user_hashed, amount: 1 }]),
@@ -81,6 +92,14 @@ fn pay(payee: Bytes32, count: Int) -> List<CreateCoin> {
         return nil;
     }
     [CreateCoin { puzzle_hash: payee, amount: 1 }, ...pay(payee, count - 1)]
+}
+
+fn commit(conditions: List<Condition>) -> Bytes32 {
+    tree_hash((1, conditions))
+}
+
+fn identity(conditions: List<Condition>) -> List<Condition> {
+    conditions
 }
 
 mod local {
