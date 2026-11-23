@@ -3676,6 +3676,7 @@ fn suggestions_fix_spread_list_builtins() {
     let source = "\
 fn main(first: Int, rest: List<Int>, keys: List<PublicKey>, parts: List<Bytes>) -> Int {
     let _ = g1_sum(... keys);
+    let _ = g2_sum(... /* a comment */ []);
     let _ = concat(\"prefix\", /* the rest */ ...parts);
     sum(...rest) + sum(first, ...[2, 3], ...rest,)
 }
@@ -3688,6 +3689,7 @@ fn main(first: Int, rest: List<Int>, keys: List<PublicKey>, parts: List<Bytes>) 
         "\
 fn main(first: Int, rest: List<Int>, keys: List<PublicKey>, parts: List<Bytes>) -> Int {
     let _ = g1_sum(keys);
+    let _ = g2_sum(/* a comment */ []);
     let _ = concat([\"prefix\", /* the rest */ ...parts]);
     sum(rest) + sum(first, ...[2, 3], ...rest,)
 }

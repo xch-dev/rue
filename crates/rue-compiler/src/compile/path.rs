@@ -366,17 +366,21 @@ where
             (None, Some((ty, _, type_import))) => PathResult::Type(ty, type_import),
             (None, None) => {
                 match kind {
-                    PathKind::Symbol => ctx.diagnostic(
-                        &name,
-                        DiagnosticKind::UndeclaredSymbol(name.text().to_string()),
-                    ),
+                    PathKind::Symbol => {
+                        ctx.diagnostic(
+                            &name,
+                            DiagnosticKind::UndeclaredSymbol(name.text().to_string()),
+                        );
+                    }
                     PathKind::Type if name.text() == "_" => {
                         ctx.diagnostic(&name, DiagnosticKind::PlaceholderType);
                     }
-                    PathKind::Type => ctx.diagnostic(
-                        &name,
-                        DiagnosticKind::UndeclaredType(name.text().to_string()),
-                    ),
+                    PathKind::Type => {
+                        ctx.diagnostic(
+                            &name,
+                            DiagnosticKind::UndeclaredType(name.text().to_string()),
+                        );
+                    }
                 }
                 PathResult::Unresolved
             }

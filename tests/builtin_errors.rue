@@ -42,6 +42,10 @@ fn main(
     let _ = g1_sum(pk, pk, ...pks);
     let _ = concat(...[bytes], ...[bytes]);
 
+    // and the arguments are still checked, as the list's items
+    let _ = sum(...bools);
+    let _ = sum(bytes, ...bools);
+
     // Builtins with a fixed number of arguments
     let _ = coinid(hash, hash);
     let _ = coinid(hash, hash, bytes);

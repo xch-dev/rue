@@ -39,48 +39,57 @@ diagnostics:
     help: Put the arguments in a list
 - Can only spread the last argument at builtin_errors.rue:43:20
 - "`concat` takes the list itself, so its arguments can't be spread at builtin_errors.rue:43:32"
-- Expected 3 arguments, but found 2 at builtin_errors.rue:46:13
-- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:47:32
-- Expected 3 arguments, but found 1 at builtin_errors.rue:48:13
-- Spread operator cannot be used on this builtin at builtin_errors.rue:48:20
-- Expected 2 arguments, but found 1 at builtin_errors.rue:49:13
-- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:50:25
-- "`modpow` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at builtin_errors.rue:51:13"
-- Expected 3 arguments, but found 2 at builtin_errors.rue:51:13
-- "`modpow` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at builtin_errors.rue:52:13"
-- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:52:30
-- Expected 1 argument, but found 0 at builtin_errors.rue:53:13
-- Cannot assign `PublicKey` to `Int | Bytes32` without a cast, since they are semantically different at builtin_errors.rue:54:28
-- Spread operator cannot be used on this builtin at builtin_errors.rue:55:28
-- Cannot assign `(Int, nil)` to `Int | Bytes32`, since they are incompatible at builtin_errors.rue:55:31
-- Expected between 1 and 2 arguments, but found 0 at builtin_errors.rue:56:13
-- Expected between 1 and 2 arguments, but found 3 at builtin_errors.rue:57:13
-- Cannot assign `Int` to `Bytes` without a cast, since they are semantically different at builtin_errors.rue:58:20
-- Cannot assign `Int` to `Bytes` without a cast, since they are semantically different at builtin_errors.rue:59:27
-- Spread operator cannot be used on this builtin at builtin_errors.rue:60:20
-- Cannot assign `(Bytes, nil)` to `Bytes`, since they are incompatible at builtin_errors.rue:60:23
-- Expected an even number of arguments at builtin_errors.rue:63:13
-- Cannot assign `Signature` to `PublicKey`, since they are incompatible at builtin_errors.rue:64:34
-- Cannot assign `PublicKey` to `Signature`, since they are incompatible at builtin_errors.rue:64:39
-- Expected 1 argument, but found 2 at builtin_errors.rue:65:13
-- Cannot assign `PublicKey` to `AlternatingList<PublicKey, Signature>`, since they are incompatible at builtin_errors.rue:65:34
-- Expected one argument followed by an even number of additional arguments at builtin_errors.rue:66:13
-- Expected one argument followed by an even number of additional arguments at builtin_errors.rue:67:13
-- Cannot assign `PublicKey` to `Signature`, since they are incompatible at builtin_errors.rue:68:24
-- Expected 2 arguments, but found 3 at builtin_errors.rue:69:13
-- Cannot assign `List<PublicKey>` to `AlternatingList<PublicKey, Bytes>`, since they are incompatible at builtin_errors.rue:70:32
-- Cannot assign `List<PublicKey>` to `AlternatingList<PublicKey, Signature>` without a type guard, since the value isn't always a valid `AlternatingList<PublicKey, Signature>` at builtin_errors.rue:71:37
-- Expected 3 arguments, but found 2 at builtin_errors.rue:74:13
-- Cannot assign `R1PublicKey` to `K1PublicKey` without a cast, since they are semantically different at builtin_errors.rue:75:30
-- Cannot assign `Bytes` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at builtin_errors.rue:76:37
-- Cannot assign `K1Signature` to `R1Signature` without a cast, since they are semantically different at builtin_errors.rue:77:43
-- Expected 3 arguments, but found 1 at builtin_errors.rue:78:13
-- Spread operator cannot be used on this builtin at builtin_errors.rue:78:30
-- Expected 2 arguments, but found 1 at builtin_errors.rue:79:13
+- |-
+  `sum` takes the list itself, so its arguments can't be spread at builtin_errors.rue:46:17
+    help: Remove the `...`
+- Cannot assign `List<Bool>` to `List<Int>` without a cast, since they are semantically different at builtin_errors.rue:46:20
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:47:17
+- |-
+  `sum` takes the list itself, so its arguments can't be spread at builtin_errors.rue:47:24
+    help: Put the arguments in a list
+- Cannot assign `List<Bool>` to `List<Int>` without a cast, since they are semantically different at builtin_errors.rue:47:27
+- Expected 3 arguments, but found 2 at builtin_errors.rue:50:13
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:51:32
+- Expected 3 arguments, but found 1 at builtin_errors.rue:52:13
+- Spread operator cannot be used on this builtin at builtin_errors.rue:52:20
+- Expected 2 arguments, but found 1 at builtin_errors.rue:53:13
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:54:25
+- "`modpow` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at builtin_errors.rue:55:13"
+- Expected 3 arguments, but found 2 at builtin_errors.rue:55:13
+- "`modpow` isn't available on mainnet until hard fork 2, so it needs `hard_fork_2 = true` in `Rue.toml` or `--hard-fork-2` at builtin_errors.rue:56:13"
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at builtin_errors.rue:56:30
+- Expected 1 argument, but found 0 at builtin_errors.rue:57:13
+- Cannot assign `PublicKey` to `Int | Bytes32` without a cast, since they are semantically different at builtin_errors.rue:58:28
+- Spread operator cannot be used on this builtin at builtin_errors.rue:59:28
+- Cannot assign `(Int, nil)` to `Int | Bytes32`, since they are incompatible at builtin_errors.rue:59:31
+- Expected between 1 and 2 arguments, but found 0 at builtin_errors.rue:60:13
+- Expected between 1 and 2 arguments, but found 3 at builtin_errors.rue:61:13
+- Cannot assign `Int` to `Bytes` without a cast, since they are semantically different at builtin_errors.rue:62:20
+- Cannot assign `Int` to `Bytes` without a cast, since they are semantically different at builtin_errors.rue:63:27
+- Spread operator cannot be used on this builtin at builtin_errors.rue:64:20
+- Cannot assign `(Bytes, nil)` to `Bytes`, since they are incompatible at builtin_errors.rue:64:23
+- Expected an even number of arguments at builtin_errors.rue:67:13
+- Cannot assign `Signature` to `PublicKey`, since they are incompatible at builtin_errors.rue:68:34
+- Cannot assign `PublicKey` to `Signature`, since they are incompatible at builtin_errors.rue:68:39
+- Expected 1 argument, but found 2 at builtin_errors.rue:69:13
+- Cannot assign `PublicKey` to `AlternatingList<PublicKey, Signature>`, since they are incompatible at builtin_errors.rue:69:34
+- Expected one argument followed by an even number of additional arguments at builtin_errors.rue:70:13
+- Expected one argument followed by an even number of additional arguments at builtin_errors.rue:71:13
+- Cannot assign `PublicKey` to `Signature`, since they are incompatible at builtin_errors.rue:72:24
+- Expected 2 arguments, but found 3 at builtin_errors.rue:73:13
+- Cannot assign `List<PublicKey>` to `AlternatingList<PublicKey, Bytes>`, since they are incompatible at builtin_errors.rue:74:32
+- Cannot assign `List<PublicKey>` to `AlternatingList<PublicKey, Signature>` without a type guard, since the value isn't always a valid `AlternatingList<PublicKey, Signature>` at builtin_errors.rue:75:37
+- Expected 3 arguments, but found 2 at builtin_errors.rue:78:13
+- Cannot assign `R1PublicKey` to `K1PublicKey` without a cast, since they are semantically different at builtin_errors.rue:79:30
 - Cannot assign `Bytes` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at builtin_errors.rue:80:37
-- Expected 2 arguments, but found 1 at builtin_errors.rue:81:13
-- Spread operator cannot be used on this builtin at builtin_errors.rue:81:30
-- Expected 1 argument, but found 2 at builtin_errors.rue:84:13
-- Can only spread the last argument at builtin_errors.rue:84:20
-- Cannot assign `List<Int>` to `Bytes` without a type guard, since the value isn't always a valid `Bytes` at builtin_errors.rue:84:23
-- Cannot assign `(R1Signature, 1)` to `(Int, Int)` without a cast, since they are semantically different at builtin_errors.rue:87:25
+- Cannot assign `K1Signature` to `R1Signature` without a cast, since they are semantically different at builtin_errors.rue:81:43
+- Expected 3 arguments, but found 1 at builtin_errors.rue:82:13
+- Spread operator cannot be used on this builtin at builtin_errors.rue:82:30
+- Expected 2 arguments, but found 1 at builtin_errors.rue:83:13
+- Cannot assign `Bytes` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at builtin_errors.rue:84:37
+- Expected 2 arguments, but found 1 at builtin_errors.rue:85:13
+- Spread operator cannot be used on this builtin at builtin_errors.rue:85:30
+- Expected 1 argument, but found 2 at builtin_errors.rue:88:13
+- Can only spread the last argument at builtin_errors.rue:88:20
+- Cannot assign `List<Int>` to `Bytes` without a type guard, since the value isn't always a valid `Bytes` at builtin_errors.rue:88:23
+- Cannot assign `(R1Signature, 1)` to `(Int, Int)` without a cast, since they are semantically different at builtin_errors.rue:91:25
