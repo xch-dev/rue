@@ -77,8 +77,9 @@ pub struct CompilerOptions {
     /// build returns is the result the source computes without `LIMITS`. So leaving this off never
     /// makes a release build accept such a spend that the source rejects. (A value that doesn't
     /// match its type, such as a pair passed for an `Int`, can make a release build succeed where
-    /// the debug build fails with or without this option, since the compiler trusts declared types
-    /// and doesn't check them at runtime.) The risk is the other way: a spend can fail on mainnet
+    /// the debug build fails with or without this option, since declared types are assumptions
+    /// about the solution, as in Chialisp, and aren't checked at runtime unless the program checks
+    /// them with a type guard.) The risk is the other way: a spend can fail on mainnet
     /// although its tests pass, and if the long operand is fixed by the puzzle, such as a constant
     /// or a curried value, that path can't be spent at all.
     ///

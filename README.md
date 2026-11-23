@@ -29,6 +29,18 @@ fn main(public_key: PublicKey, conditions: List<Condition>) -> List<Condition> {
 - **Batteries included:** A standard library with conditions, tree hashing, currying, singletons, offers, and more.
 - **Tooling:** A built-in test runner, formatter, CLVM debugger, and language server.
 
+## Used in Production
+
+Rue is used to write real puzzles on Chia, including:
+
+- [Partial offers](https://github.com/Yakuhito/partial) ([CHIP-0052](https://github.com/Chia-Network/chips/blob/main/CHIPs/chip-0052.md)), the first standard to use Rue's output.
+- The slot primitive and the action layer, with [CATalog and XCHandles](https://github.com/Yakuhito/slot-machine) built on them.
+- The DIG Network's [reward distributor](https://github.com/DIG-Network/reward-distributor-clsp) ([CHIP-0051](https://github.com/Chia-Network/chips/pull/165)).
+- [Auctions](https://github.com/xch-dev/auctions) of NFTs for XCH and CATs.
+- The [DOG](https://github.com/xch-dev/dog-standard) fungible token standard, which isn't on mainnet yet.
+
+A deployed puzzle is identified by its hash, and a newer compiler can produce different bytecode for the same source. So build a puzzle you deploy with a fixed compiler version (`cargo install rue-cli --version <version> --locked`), and commit its compiled hex and hash (`rue build --all --hash`) rather than recompiling it later.
+
 ## Installation
 
 Install the CLI from [crates.io](https://crates.io/crates/rue-cli):

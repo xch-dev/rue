@@ -1,8 +1,10 @@
 // The checks are only kept when values have the shapes their types say (see the docs of
 // `rue_hir::analysis`). The compiler can't check that for the solution, the results of calling a
-// function value from the solution or an `extern fn`, or `unchecked_cast`, so it trusts it. These
-// tests break that trust, so release builds return a value where debug builds fail, which is
-// expected. Checking solutions against `main`'s types is part 2 of #142.
+// function value from the solution or an `extern fn`, or `unchecked_cast`, so it assumes it. These
+// tests break that assumption, so release builds return a value where debug builds fail, which is
+// expected: neither build validates these values, and the debug build only fails because an
+// operation on them happens to. A program that must reject such values takes them as `Any` and
+// checks them with a type guard.
 
 // The solution passes a function that returns a pair of pairs, although its type says it returns
 // a pair of integers, so adding to its first element fails. That's moved into a branch that isn't

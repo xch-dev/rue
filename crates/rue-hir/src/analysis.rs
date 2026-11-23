@@ -6,16 +6,19 @@
 //! dependency graph and lints, which only know what's written in the source (see
 //! [`FailureAnalysis`]).
 //!
-//! # What this guarantees, and what it trusts
+//! # What this guarantees, and what it assumes
 //!
 //! Automatic inlining, and evaluating unused bindings (and the values of type guards with nothing
 //! to check at runtime) for their effect, never skip a check that a build without them would run,
 //! as long as every value has the shape its type says it has. A value has the wrong shape if it's
 //! an atom where its type says a pair, or a pair where its type says an atom, at any depth. The
-//! compiler can't check that for these values, so it trusts it:
+//! compiler can't see where these values come from, so it assumes that they match their types:
 //!
-//! - The solution, which must match the parameter types of `main`, including every element of a
-//!   list and every field of a struct.
+//! - The solution, which is assumed to match the parameter types of `main`, including every
+//!   element of a list and every field of a struct. These types are assumptions about the
+//!   solution, the same assumptions a Chialisp puzzle makes about the values it destructures, and
+//!   they aren't checked at runtime. A program that must reject a solution of the wrong shape
+//!   takes it as `Any` and checks it with a type guard, which is checked at runtime.
 //! - The result of calling a function value that comes from the solution (or from anywhere else
 //!   the compiler can't see the body of), which must match the function type's return type. The
 //!   call itself is treated as able to fail, but what it returns isn't checked.
@@ -43,10 +46,13 @@
 //! being 0 or 1, or a `PublicKey` being a valid point, since the operations that need those
 //! (`coinid`, the BLS and secp operations, and so on) are treated as able to fail.
 //!
-//! If one of the trusted values has the wrong shape, a release build can return a value where a
+//! If one of the assumed values has the wrong shape, a release build can return a value where a
 //! debug build fails, such as when reading a field of it was moved into a branch that isn't taken.
-//! Checking solutions against `main`'s types is part 2 of
-//! [#142](https://github.com/xch-dev/rue/issues/142).
+//! Neither build validates such a value: the debug build only fails because an operation on it
+//! happens to, as a Chialisp puzzle reading the same value would. The compiler doesn't add runtime
+//! checks of its own; the planned `unchecked_input` lint
+//! ([#118](https://github.com/xch-dev/rue/issues/118)) reports where a program relies on these
+//! assumptions without checking them.
 //!
 //! This is only about where the compiler decides to evaluate values. Checks can still be skipped,
 //! in debug and release alike, where the language says a value isn't evaluated: an argument of an
@@ -142,12 +148,12 @@ pub(crate) trait AnalysisContext {
 /// referenced. The parameters of a function can't fail either, since a check in an argument is
 /// kept at the call.
 ///
-/// Like the checks used while lowering, this trusts that values have the shapes their types say
+/// Like the checks used while lowering, this assumes that values have the shapes their types say
 /// (atoms where atoms are expected, and pairs where pairs are) wherever the compiler can't check
 /// it: the solution passed to `main`, the results of calling a function value from the solution
 /// or an `extern fn`, and the results of `unchecked_cast`. Reading a field of one of these, or
-/// doing arithmetic on it, is treated as unable to fail. If a value breaks that trust, a check
-/// can be moved or skipped.
+/// doing arithmetic on it, is treated as unable to fail. If a value doesn't match its type, a
+/// check can be moved or skipped.
 #[derive(Debug, Default, Clone)]
 pub struct FailureAnalysis {
     /// Whether the program is compiled with `operand_limits`, so that operators can fail for an

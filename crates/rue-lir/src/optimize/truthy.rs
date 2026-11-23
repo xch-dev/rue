@@ -27,10 +27,11 @@ pub enum Truthiness {
 //
 // One of these rewrites assumes that a value matches its static type, the same way opt_cons
 // does: `(= x ())` is `(not x)` when `x` is an atom type. If the solution has a pair where an atom
-// is expected, the optimized program skips the `=` failure. Rue doesn't check values against their
-// types at runtime anyway, so this doesn't give the spender anything that a wrongly shaped value
-// couldn't, and it keeps conditions cheaper. It's only applied where just the truthiness is
-// observed.
+// is expected, the optimized program skips the `=` failure. That failure was never a check: types
+// are assumptions about the solution, as in Chialisp, and aren't checked at runtime unless the
+// program checks them with a type guard. So this doesn't give the spender anything that a wrongly
+// shaped value couldn't, and it keeps conditions cheaper. It's only applied where just the
+// truthiness is observed.
 //
 // A type guard between nil and a pair (such as `is nil` on a `List`) doesn't need a rewrite like
 // this, since it's already generated as a truthiness check (see `generate_check_hir`).

@@ -1,9 +1,10 @@
 # chia_puzzles ports
 
 > [!WARNING]
-> These are compiler regression tests, not examples. They haven't been audited, they're only
-> checked against the solutions in their tests, and they must not be used to secure real coins.
-> Use the original Chialisp puzzles from chia_puzzles instead.
+> These ports are compiler regression tests, not examples. They haven't been audited and they're
+> only checked against the solutions in their tests, so don't use them to secure real coins: use the
+> original Chialisp puzzles from chia_puzzles. This is about these test files, not about Rue, which
+> is used for puzzles on mainnet (see [Used in Production](../../README.md#used-in-production)).
 
 Each `.rue` file here is a hand-written Rue port of the Chialisp puzzle with the same path in the
 `puzzles` directory of [chia_puzzles](https://github.com/Chia-Network/chia_puzzles), at commit
@@ -17,13 +18,22 @@ Their tree hashes are expected to differ from the reference, and to change as th
 
 ## Known differences from the originals
 
-The ports trust their parameter types, so on inputs that don't match those types they can accept a
-spend the original rejects, or the other way around. The tests only use inputs that match.
+Neither a port nor its original validates the solution. A Chialisp puzzle has no types to check
+it against, and a port's parameter types are assumptions about the solution, which the compiler
+doesn't check at runtime and relies on when it optimizes. On a solution that doesn't match them,
+such as an atom where a pair is expected, the original sometimes fails, but only because some
+operation it runs happens to fail on that value, and the port may fail in a different place or not
+at all. So on such a solution a port can accept a spend its original rejects, or the other way
+around. The tests only use solutions that match.
 
-The one known case is **coin ids**. Ports use the `coinid` operator where the original calls
-`calculate_coin_id`, which only checks lengths and that the amount isn't negative. `coinid` also
-rejects amounts with leading zero bytes or above the largest coin amount, which no real coin can
-have.
+A puzzle that has to reject malformed values, because an attacker chooses them, should take them as
+`Any` and check them with an `is` guard, which checks the whole shape of the value. That holds in
+Chialisp as well, where the check has to be written by hand.
+
+On solutions that do match, the one known difference is **coin ids**. Ports use the `coinid`
+operator where the original calls `calculate_coin_id`, which only checks lengths and that the amount
+isn't negative. `coinid` also rejects amounts with leading zero bytes or above the largest coin
+amount, which no real coin can have.
 
 A list that ends in an atom other than nil, such as `(a b . 5)`, isn't a difference. `is nil` on a
 `List` checks whether the value is nil, the same way Chialisp's `(if list ...)` does, so a port

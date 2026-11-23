@@ -2,9 +2,9 @@
 //! referenced anyway, since their value is only a path into the environment.
 //!
 //! A path, such as a field of a parameter, costs the same to evaluate anywhere, and it can't fail
-//! as far as the failure analysis trusts the shapes of values (see the [`crate::analysis`] module
-//! docs), which is the same trust that lets a binding that's referenced once be evaluated where
-//! it's referenced. It's usually a single byte, so reading it at each reference is smaller than
+//! as far as the failure analysis assumes the shapes of values (see the [`crate::analysis`] module
+//! docs), which is the same assumption that lets a binding that's referenced once be evaluated
+//! where it's referenced. It's usually a single byte, so reading it at each reference is smaller than
 //! binding it, which takes at least five bytes more than the value itself (`(c VALUE REST)`).
 //!
 //! It isn't always smaller: a path that's deep enough needs a longer atom at each reference, and
