@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 // Candidates that are unions with the generic they bound as a member, which inference used as they
 // were, leaving the callee's generic in the call's type (#362, 13k4 and 13k5). A lower one is split
 // into its members, since `T ≥ X | T` is `T ≥ X`, and an upper one says nothing, since `T ≤ X | T`

@@ -1,3 +1,6 @@
+// The unions in these tests overlap on purpose, to test how the compiler handles them
+#![allow(indistinguishable_union_member)]
+
 fn map<T, U>(list: List<T>, function: fn(item: T) -> U) -> List<U> {
     if list is nil {
         return nil;

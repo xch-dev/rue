@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 // A lambda that's an element of a pair or list argument has its untyped parameters compiled as
 // references to the callee's generics, and a call in its body sees through the reference, so its
 // return type can have the generic itself. Those generics are instantiated with what the call

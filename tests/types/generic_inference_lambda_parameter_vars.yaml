@@ -246,12 +246,12 @@ tests:
   total_cost: 420559
 diagnostics:
 - |-
-  Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:61:5
+  Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:64:5
     help: Return the value directly
 - |-
-  Binding `y` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:63:13
+  Binding `y` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:66:13
     help: Return the value directly
-- Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:340:5
-- Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:435:5
-- Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:459:5
-- Unnecessary type guard from `1` to `1`, since they are already compatible types at generic_inference_lambda_parameter_vars.rue:469:16
+- Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:343:5
+- Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:438:5
+- Binding `result` is returned directly after it's declared at generic_inference_lambda_parameter_vars.rue:462:5
+- Unnecessary type guard from `1` to `1`, since they are already compatible types at generic_inference_lambda_parameter_vars.rue:472:16

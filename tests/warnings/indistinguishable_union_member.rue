@@ -1,0 +1,72 @@
+#![allow(unused)]
+
+// Members that are the same at runtime, so they can't be told apart
+type IntOrBytes = Int | Bytes;
+type StringOrInt = String | Int;
+
+struct First {
+    value: Int,
+}
+
+struct Second {
+    value: Int,
+}
+
+struct Third {
+    value: Bytes,
+}
+
+type SameShape = First | Second;
+type FlippedPairs = (Int, Bytes) | (Bytes, Int);
+type NilOrFalse = nil | false;
+
+// Each member is reported against the first one it's the same as
+type ThreeStructs = First | Second | Third;
+
+// They're reported wherever the union is written
+fn parameter(value: Int | Bytes) -> Int {
+    value as Int
+}
+
+// A member whose values are all valid values of another member at runtime, though not the other
+// way around, is reported wherever it is in the union. A check for `nil` also takes the `Int` zero.
+type IntOrNil = Int | nil;
+type NilOrInt = nil | Int;
+type Bytes32OrInt = Bytes32 | Int;
+type BoolOrInt = Bool | Int;
+type Pairs = (Int, nil) | (Int, Int);
+
+// Members that don't overlap at runtime aren't reported
+type Distinct = Bytes32 | PublicKey;
+type AtomOrPair = Int | (Int, Int);
+
+// A redundant member is reported as redundant instead, and isn't compared with the others, so
+// `nil` is reported against `Bool` rather than `false`
+type Redundant = Bytes | Bytes32;
+type RedundantFalse = false | Bool | nil;
+
+// Structs with a constant field can be told apart
+struct Tagged {
+    tag: 1,
+    value: Int,
+}
+
+struct OtherTagged {
+    tag: 2,
+    value: Int,
+}
+
+type Tags = Tagged | OtherTagged;
+
+#[allow(indistinguishable_union_member)]
+type Allowed = Int | Bytes;
+
+#[allow(indistinguishable_union_member)]
+test fn narrows_nil() -> Int {
+    let value: Int | nil = 5;
+    if value is nil {
+        0
+    } else {
+        value
+    }
+}

@@ -1,3 +1,6 @@
+// The unions in these tests overlap on purpose, to test how the compiler handles them
+#![allow(redundant_union_member)]
+
 // A `for` is a list already, so brackets around it make a list with one list in it
 
 fn check(x: Int) {

@@ -104,7 +104,7 @@ tests:
   total_cost: 108450
 - name: block_arms
   program: (a (i 2 (q 16 (* 2 (q . 2)) (q . 1)) (q 8)) 1)
-  debug_program: (a (i (= 2 ()) (q 8 (q . "raise called at match.rue:149:13") (q . "missing")) (q 2 (q 16 2 (q . 1)) (c (* 2 (q . 2)) 1))) 1)
+  debug_program: (a (i (= 2 ()) (q 8 (q . "raise called at match.rue:152:13") (q . "missing")) (q 2 (q 16 2 (q . 1)) (c (* 2 (q . 2)) 1))) 1)
   solution: (4)
   output: "9"
   runtime_cost: 2101
@@ -168,7 +168,7 @@ tests:
   total_cost: 300481
 - name: no_arms
   program: (a (i 2 (q . 2) (q 8)) 1)
-  debug_program: (a (i (= 2 ()) (q 8 (q . "raise called at match.rue:226:13") (q . "never")) (q . 2)) 1)
+  debug_program: (a (i (= 2 ()) (q 8 (q . "raise called at match.rue:229:13") (q . "never")) (q . 2)) 1)
   solution: (5)
   output: "5"
   runtime_cost: 305
@@ -240,7 +240,7 @@ tests:
   total_cost: 540525
 - name: block_scrutinee_evaluated_once
   program: (a (q 2 (i 2 (q 3 (= (strlen 2) (q . 32)) (q . 1) (q . 2)) ()) 1) (c 2 1))
-  debug_program: (a (q 2 (i (= 2 ()) () (q 2 (i (= (strlen 2) (q . 32)) (q 1 . 1) (q 1 . 2)) 1)) 1) (c (a (i ("debug_print" (q . "match.rue:309:9") (q . "evaluated")) () (q . 2)) 1) 1))
+  debug_program: (a (q 2 (i (= 2 ()) () (q 2 (i (= (strlen 2) (q . 32)) (q 1 . 1) (q 1 . 2)) 1)) 1) (c (a (i ("debug_print" (q . "match.rue:312:9") (q . "evaluated")) () (q . 2)) 1) 1))
   solution: (0x0101010101010101010101010101010101010101010101010101010101010101)
   output: "1"
   runtime_cost: 1013
@@ -250,7 +250,7 @@ tests:
   - "\"evaluated\""
 - name: block_scrutinee_narrows_path
   program: (a (q 2 (i 2 (q 2 (i (= (strlen 2) (q . 32)) (q 13 5) (q 16 5 (q . 1))) 1) ()) 1) (c 2 1))
-  debug_program: (a (q 2 (i (= 2 ()) () (q 2 (i (= (strlen 2) (q . 32)) (q 13 5) (q 16 5 (q . 1))) 1)) 1) (c (a (i ("debug_print" (q . "match.rue:321:9") (q . "evaluated")) () (q . 2)) 1) 1))
+  debug_program: (a (q 2 (i (= 2 ()) () (q 2 (i (= (strlen 2) (q . 32)) (q 13 5) (q 16 5 (q . 1))) 1)) 1) (c (a (i ("debug_print" (q . "match.rue:324:9") (q . "evaluated")) () (q . 2)) 1) 1))
   solution: (0x0101010101010101010101010101010101010101010101010101010101010101)
   output: "32"
   runtime_cost: 1416

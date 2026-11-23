@@ -45,7 +45,7 @@ inline fn get_price_factor(length: Int, number_of_numbers: Int) -> Int {
     p / q
 }
 
-fn count_numbers_and_validate(handle: String | nil) -> Int {
+fn count_numbers_and_validate(handle: String) -> Int {
     if handle is nil {
         0
     } else {

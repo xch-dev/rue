@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 // A lambda's body is expected to be what the function type expected of the lambda returns, so
 // that a literal in the body isn't widened when it doesn't need to be (#354)
 

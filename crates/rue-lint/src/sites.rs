@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use rue_diagnostic::{Name, SrcLoc};
 use rue_hir::{Declaration, HirId, SymbolId};
+use rue_types::TypeId;
 
 /// Facts recorded by the compiler while compiling, for lints that need something that isn't kept
 /// in the HIR. The compiler records every site; the lints decide what to report.
@@ -53,6 +54,26 @@ pub struct LintSites {
     /// The lists whose only item is a `for` that makes a list. Whether it does, and whether a
     /// list of lists is expected there, is only known while the list is compiled.
     pub bracketed_fors: Vec<BracketedFor>,
+    /// The union types written in the source, with the type of each member. Unions that the
+    /// compiler makes itself (such as by inference or narrowing) aren't in the source, so the ones
+    /// that are written are recorded as they're compiled.
+    pub written_unions: Vec<WrittenUnion>,
+}
+
+/// A union type written in the source, such as `Int | nil` (see [`LintSites::written_unions`]).
+#[derive(Debug, Clone)]
+pub struct WrittenUnion {
+    /// The members, in the order they're written.
+    pub members: Vec<UnionMember>,
+}
+
+/// A member of a [`WrittenUnion`].
+#[derive(Debug, Clone)]
+pub struct UnionMember {
+    /// The member as it's written.
+    pub srcloc: SrcLoc,
+    /// The member's type.
+    pub ty: TypeId,
 }
 
 /// Why nothing is read from a value spread in a struct initializer.
@@ -186,6 +207,7 @@ pub struct LintSitesCheckpoint {
     imprecise_narrowings: usize,
     unused_struct_spreads: usize,
     bracketed_fors: usize,
+    written_unions: usize,
     qualified_references: usize,
 }
 
@@ -217,6 +239,7 @@ impl LintSites {
             imprecise_narrowings,
             unused_struct_spreads,
             bracketed_fors,
+            written_unions,
             // What's added after the checkpoint in the order is taken out of the references
             qualified_reference_order,
             qualified_references: _,
@@ -232,6 +255,7 @@ impl LintSites {
             imprecise_narrowings: imprecise_narrowings.len(),
             unused_struct_spreads: unused_struct_spreads.len(),
             bracketed_fors: bracketed_fors.len(),
+            written_unions: written_unions.len(),
             qualified_references: qualified_reference_order.len(),
         }
     }
@@ -253,6 +277,7 @@ impl LintSites {
         self.unused_struct_spreads
             .truncate(checkpoint.unused_struct_spreads);
         self.bracketed_fors.truncate(checkpoint.bracketed_fors);
+        self.written_unions.truncate(checkpoint.written_unions);
         for declaration in self
             .qualified_reference_order
             .split_off(checkpoint.qualified_references)

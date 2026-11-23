@@ -1,51 +1,51 @@
 diagnostics:
-- Unused struct `Box` at struct_display_errors.rue:1:8
-- Unused struct `Pair` at struct_display_errors.rue:5:8
-- Unused struct `Wrapper` at struct_display_errors.rue:10:8
-- Unused function `narrowed` at struct_display_errors.rue:15:4
-- "Cannot assign `Box { value: Int }` to `Box<(Int, Int)>`, since they are incompatible at struct_display_errors.rue:17:16"
-- Unused function `merged` at struct_display_errors.rue:23:4
-- "Cannot assign `Box<Int | (Int, Int)> | Box { value: Int } | Box { value: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:23:57"
+- Unused struct `Box` at struct_display_errors.rue:5:8
+- Unused struct `Pair` at struct_display_errors.rue:9:8
+- Unused struct `Wrapper` at struct_display_errors.rue:14:8
+- Unused function `narrowed` at struct_display_errors.rue:19:4
+- "Cannot assign `Box { value: Int }` to `Box<(Int, Int)>`, since they are incompatible at struct_display_errors.rue:21:16"
+- Unused function `merged` at struct_display_errors.rue:27:4
+- "Cannot assign `Box<Int | (Int, Int)> | Box { value: Int } | Box { value: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:27:57"
 - |-
-  Both branches of this `if` are the same, so the condition has no effect at struct_display_errors.rue:26:12
-    note: The `else` branch is the same at struct_display_errors.rue:28:12
+  Both branches of this `if` are the same, so the condition has no effect at struct_display_errors.rue:30:12
+    note: The `else` branch is the same at struct_display_errors.rue:32:12
     help: Replace the `if` with one of its branches
-- Unused function `identical` at struct_display_errors.rue:34:4
-- Cannot assign `Box<Int | (Int, Int)>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:34:60
+- Unused function `identical` at struct_display_errors.rue:38:4
+- Cannot assign `Box<Int | (Int, Int)>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:38:60
 - |-
-  Both branches of this `if` are the same, so the condition has no effect at struct_display_errors.rue:35:5
-    note: The `else` branch is the same at struct_display_errors.rue:37:12
+  Both branches of this `if` are the same, so the condition has no effect at struct_display_errors.rue:39:5
+    note: The `else` branch is the same at struct_display_errors.rue:41:12
     help: Replace the `if` with one of its branches
-- Unused function `fields` at struct_display_errors.rue:43:4
-- "Cannot assign `Pair { left: (Int, Int), right: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:43:31"
-- "Cannot assign `Pair { left: nil, right: (Int, Int) | nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:45:16"
-- "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:48:16"
-- Unused function `correlated` at struct_display_errors.rue:54:4
-- "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:54:35"
-- "Cannot assign `Pair { left: nil, right: (Int, Int) | nil } | Pair { left: (Int, Int) | nil, right: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:56:16"
-- Unused function `spread` at struct_display_errors.rue:62:4
-- "Cannot assign `Wrapper { ...value: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:62:34"
-- "Cannot assign `Wrapper { ...value: Int }` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at struct_display_errors.rue:64:16"
-- Unused struct `Triple` at struct_display_errors.rue:69:8
-- Unused function `correlated_rest` at struct_display_errors.rue:76:4
-- "Cannot assign `Triple { first: Int, second: (Int, Int), ...rest: (Int, Int) } | Triple { first: Int, second: nil, ...rest: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:76:42"
-- "Cannot assign `Triple { first: Int, second: nil, ...rest: (Int, Int) } | Triple { first: Int, second: (Int, Int), ...rest: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:78:16"
-- Unused struct `Node` at struct_display_errors.rue:83:8
-- Unused function `unchanged` at struct_display_errors.rue:89:4
-- Cannot assign `Box<Int | nil>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:89:44
-- "Cannot assign `Box { value: Int }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:91:16"
-- Unused function `recursive` at struct_display_errors.rue:97:4
-- Cannot assign `Node<Int>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:97:39
-- "Cannot assign `Node { value: Int, next: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:99:16"
-- Unused function `nested` at struct_display_errors.rue:105:4
-- "Cannot assign `Box<Int> | Box { value: Never }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:105:44"
+- Unused function `fields` at struct_display_errors.rue:47:4
+- "Cannot assign `Pair { left: (Int, Int), right: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:47:31"
+- "Cannot assign `Pair { left: nil, right: (Int, Int) | nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:49:16"
+- "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:52:16"
+- Unused function `correlated` at struct_display_errors.rue:58:4
+- "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:58:35"
+- "Cannot assign `Pair { left: nil, right: (Int, Int) | nil } | Pair { left: (Int, Int) | nil, right: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:60:16"
+- Unused function `spread` at struct_display_errors.rue:66:4
+- "Cannot assign `Wrapper { ...value: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:66:34"
+- "Cannot assign `Wrapper { ...value: Int }` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at struct_display_errors.rue:68:16"
+- Unused struct `Triple` at struct_display_errors.rue:73:8
+- Unused function `correlated_rest` at struct_display_errors.rue:80:4
+- "Cannot assign `Triple { first: Int, second: (Int, Int), ...rest: (Int, Int) } | Triple { first: Int, second: nil, ...rest: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:80:42"
+- "Cannot assign `Triple { first: Int, second: nil, ...rest: (Int, Int) } | Triple { first: Int, second: (Int, Int), ...rest: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:82:16"
+- Unused struct `Node` at struct_display_errors.rue:87:8
+- Unused function `unchanged` at struct_display_errors.rue:93:4
+- Cannot assign `Box<Int | nil>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:93:44
+- "Cannot assign `Box { value: Int }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:95:16"
+- Unused function `recursive` at struct_display_errors.rue:101:4
+- Cannot assign `Node<Int>` to `Bytes32`, since they are incompatible at struct_display_errors.rue:101:39
+- "Cannot assign `Node { value: Int, next: nil }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:103:16"
+- Unused function `nested` at struct_display_errors.rue:109:4
+- "Cannot assign `Box<Int> | Box { value: Never }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:109:44"
 - |-
-  Both branches of this `if` are the same, so the condition has no effect at struct_display_errors.rue:108:12
-    note: The `else` branch is the same at struct_display_errors.rue:110:12
+  Both branches of this `if` are the same, so the condition has no effect at struct_display_errors.rue:112:12
+    note: The `else` branch is the same at struct_display_errors.rue:114:12
     help: Replace the `if` with one of its branches
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at struct_display_errors.rue:108:15
-- Unused function `split_pair` at struct_display_errors.rue:116:4
-- "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) | nil } | Pair { left: nil, right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:116:35"
-- Unused struct `Spread` at struct_display_errors.rue:123:8
-- Unused function `spread_union` at struct_display_errors.rue:128:4
-- "Cannot assign `Spread { ...value: 1 | 2 }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:128:39"
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at struct_display_errors.rue:112:15
+- Unused function `split_pair` at struct_display_errors.rue:120:4
+- "Cannot assign `Pair { left: (Int, Int), right: (Int, Int) | nil } | Pair { left: nil, right: (Int, Int) }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:120:35"
+- Unused struct `Spread` at struct_display_errors.rue:127:8
+- Unused function `spread_union` at struct_display_errors.rue:132:4
+- "Cannot assign `Spread { ...value: 1 | 2 }` to `Bytes32`, since they are incompatible at struct_display_errors.rue:132:39"

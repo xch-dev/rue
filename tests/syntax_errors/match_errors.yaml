@@ -1,63 +1,63 @@
 diagnostics:
-- Expected one of `as`, `if`, `=>`, found integer literal at match_errors.rue:3:13
-- Expected one of `,`, `}`, found identifier at match_errors.rue:11:9
-- Expected one of `,`, `}`, found identifier at match_errors.rue:17:28
-- Cannot assign `(1, 2) | 1 | 2` to `Int` without a type guard, since the value isn't always a valid `Int` at match_errors.rue:22:49
-- Expected one of `,`, `}`, found `.` at match_errors.rue:24:26
-- Expected expression, found `,` at match_errors.rue:31:15
-- Expected one of `}`, type, found `=` at match_errors.rue:38:9
-- Expected `{`, found `}` at match_errors.rue:45:1
-- Undeclared symbol `_` at match_errors.rue:49:9
-- Expected one of `;`, `}`, found `=` at match_errors.rue:49:11
-- Expected `{`, found `}` at match_errors.rue:51:1
-- Undeclared symbol `foo` at match_errors.rue:64:14
-- Expected one of `,`, `)`, found `=` at match_errors.rue:65:11
-- Expected one of `)`, `...`, expression, found `}` at match_errors.rue:66:5
-- Expected one of `as`, `if`, `=>`, found identifier at match_errors.rue:86:14
-- Undeclared symbol `whole` at match_errors.rue:86:14
-- Expected one of `,`, `}`, found `=` at match_errors.rue:86:20
-- Expected binding, found integer literal at match_errors.rue:87:24
-- Undeclared symbol `first` at match_errors.rue:94:19
-- Expected one of `;`, `}`, found `,` at match_errors.rue:94:24
-- Undeclared type `first` at match_errors.rue:94:33
-- Expected one of `as`, `if`, `=>`, found `+` at match_errors.rue:94:39
-- Undeclared symbol `rest` at match_errors.rue:94:41
-- Expected one of `as`, `if`, `=>`, found `{` at match_errors.rue:102:14
-- Unused binding `List` at match_errors.rue:109:23
+- Expected one of `as`, `if`, `=>`, found integer literal at match_errors.rue:7:13
+- Expected one of `,`, `}`, found identifier at match_errors.rue:15:9
+- Expected one of `,`, `}`, found identifier at match_errors.rue:21:28
+- Cannot assign `(1, 2) | 1 | 2` to `Int` without a type guard, since the value isn't always a valid `Int` at match_errors.rue:26:49
+- Expected one of `,`, `}`, found `.` at match_errors.rue:28:26
+- Expected expression, found `,` at match_errors.rue:35:15
+- Expected one of `}`, type, found `=` at match_errors.rue:42:9
+- Expected `{`, found `}` at match_errors.rue:49:1
+- Undeclared symbol `_` at match_errors.rue:53:9
+- Expected one of `;`, `}`, found `=` at match_errors.rue:53:11
+- Expected `{`, found `}` at match_errors.rue:55:1
+- Undeclared symbol `foo` at match_errors.rue:68:14
+- Expected one of `,`, `)`, found `=` at match_errors.rue:69:11
+- Expected one of `)`, `...`, expression, found `}` at match_errors.rue:70:5
+- Expected one of `as`, `if`, `=>`, found identifier at match_errors.rue:90:14
+- Undeclared symbol `whole` at match_errors.rue:90:14
+- Expected one of `,`, `}`, found `=` at match_errors.rue:90:20
+- Expected binding, found integer literal at match_errors.rue:91:24
+- Undeclared symbol `first` at match_errors.rue:98:19
+- Expected one of `;`, `}`, found `,` at match_errors.rue:98:24
+- Undeclared type `first` at match_errors.rue:98:33
+- Expected one of `as`, `if`, `=>`, found `+` at match_errors.rue:98:39
+- Undeclared symbol `rest` at match_errors.rue:98:41
+- Expected one of `as`, `if`, `=>`, found `{` at match_errors.rue:106:14
+- Unused binding `List` at match_errors.rue:113:23
 - |-
-  Binding `List` should be named in snake_case at match_errors.rue:109:23
+  Binding `List` should be named in snake_case at match_errors.rue:113:23
     note: Consider renaming it to `list`
-- Expected one of `,`, `}`, found `<` at match_errors.rue:109:27
-- Unused binding `rest` at match_errors.rue:109:34
-- Expected binding, found integer literal at match_errors.rue:109:40
-- Undeclared symbol `first` at match_errors.rue:109:47
-- Expected one of `as`, `if`, `=>`, found `(` at match_errors.rue:117:20
-- Undeclared symbol `first` at match_errors.rue:117:21
-- Undeclared symbol `rest` at match_errors.rue:117:28
-- Expected one of `,`, `}`, found `=` at match_errors.rue:117:34
-- Expected binding, found `=` at match_errors.rue:118:16
-- Expected one of `as`, `if`, `=>`, found `[` at match_errors.rue:119:11
-- Undeclared symbol `first` at match_errors.rue:119:12
-- Cannot assign `nil | 1` to `Int` without a cast, since they are semantically different at match_errors.rue:125:74
-- Expected one of `as`, `if`, `=>`, found `nil` at match_errors.rue:128:9
-- Expected one of `,`, `}`, found `=` at match_errors.rue:128:13
-- Expected one of `as`, `if`, `=>`, found `{` at match_errors.rue:136:9
-- Undeclared symbol `first` at match_errors.rue:136:11
-- Expected one of `;`, `}`, found `,` at match_errors.rue:136:16
-- Expected one of `,`, `}`, found `=` at match_errors.rue:136:25
-- Match arm `Int` also handles `nil`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at match_errors.rue:145:9
-- Expected `=>`, found `{` at match_errors.rue:145:26
-- Expected `=>`, found `{` at match_errors.rue:152:26
-- Expected one of `,`, `}`, found `else` at match_errors.rue:152:32
-- Expected expression, found `=` at match_errors.rue:159:16
-- Expected symbol, but found type `Pair` at match_errors.rue:167:26
-- Expected `=>`, found `{` at match_errors.rue:167:31
-- Undeclared symbol `first` at match_errors.rue:167:33
-- Expected one of `;`, `}`, found `:` at match_errors.rue:167:38
-- Expected one of `,`, `}`, found `=` at match_errors.rue:167:53
-- Unused binding `first` at match_errors.rue:174:16
-- Unused binding `rest` at match_errors.rue:174:23
-- Expected one of `:`, `,`, `}`, found `=` at match_errors.rue:174:28
-- Expected one of `}`, `...`, identifier, found `nil` at match_errors.rue:175:9
-- Expected one of `if`, `=>`, found `}` at match_errors.rue:177:1
-- Expected `}`, found eof at match_errors.rue:178:1
+- Expected one of `,`, `}`, found `<` at match_errors.rue:113:27
+- Unused binding `rest` at match_errors.rue:113:34
+- Expected binding, found integer literal at match_errors.rue:113:40
+- Undeclared symbol `first` at match_errors.rue:113:47
+- Expected one of `as`, `if`, `=>`, found `(` at match_errors.rue:121:20
+- Undeclared symbol `first` at match_errors.rue:121:21
+- Undeclared symbol `rest` at match_errors.rue:121:28
+- Expected one of `,`, `}`, found `=` at match_errors.rue:121:34
+- Expected binding, found `=` at match_errors.rue:122:16
+- Expected one of `as`, `if`, `=>`, found `[` at match_errors.rue:123:11
+- Undeclared symbol `first` at match_errors.rue:123:12
+- Cannot assign `nil | 1` to `Int` without a cast, since they are semantically different at match_errors.rue:129:74
+- Expected one of `as`, `if`, `=>`, found `nil` at match_errors.rue:132:9
+- Expected one of `,`, `}`, found `=` at match_errors.rue:132:13
+- Expected one of `as`, `if`, `=>`, found `{` at match_errors.rue:140:9
+- Undeclared symbol `first` at match_errors.rue:140:11
+- Expected one of `;`, `}`, found `,` at match_errors.rue:140:16
+- Expected one of `,`, `}`, found `=` at match_errors.rue:140:25
+- Match arm `Int` also handles `nil`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at match_errors.rue:149:9
+- Expected `=>`, found `{` at match_errors.rue:149:26
+- Expected `=>`, found `{` at match_errors.rue:156:26
+- Expected one of `,`, `}`, found `else` at match_errors.rue:156:32
+- Expected expression, found `=` at match_errors.rue:163:16
+- Expected symbol, but found type `Pair` at match_errors.rue:171:26
+- Expected `=>`, found `{` at match_errors.rue:171:31
+- Undeclared symbol `first` at match_errors.rue:171:33
+- Expected one of `;`, `}`, found `:` at match_errors.rue:171:38
+- Expected one of `,`, `}`, found `=` at match_errors.rue:171:53
+- Unused binding `first` at match_errors.rue:178:16
+- Unused binding `rest` at match_errors.rue:178:23
+- Expected one of `:`, `,`, `}`, found `=` at match_errors.rue:178:28
+- Expected one of `}`, `...`, identifier, found `nil` at match_errors.rue:179:9
+- Expected one of `if`, `=>`, found `}` at match_errors.rue:181:1
+- Expected `}`, found eof at match_errors.rue:182:1

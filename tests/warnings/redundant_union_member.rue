@@ -1,0 +1,112 @@
+#![allow(unused)]
+
+// A literal or a narrower atom inside a wider one
+type WithLiteral = Int | 5;
+type WithBytes32 = Bytes | Bytes32;
+
+// A member that's covered by another one
+type WithAny = Any | (Int, Int);
+type WithNil = List<Int> | nil;
+type BytesOrNil = Bytes | nil;
+type WithNever = Int | Never;
+
+// The later of two members that are the same type
+type Twice = Int | Int;
+type Number = Int;
+type ThroughAlias = Int | Number;
+
+// Members before the one that covers them
+type Literals = 5 | 6 | Int;
+type AroundInt = 5 | Int | 6;
+
+// A member covered by a later one is redundant, even if it's the same at runtime as an earlier one
+type IndistinguishableThenCovered = Int | Bytes | Any;
+
+// A generic member covered by `Any`
+type OrAny<T> = T | Any;
+
+// Members of an alias that's also in the union
+type Either = Bytes32 | PublicKey;
+type WithEither = Bytes32 | Either;
+
+// Unions are checked everywhere they're written
+struct Holder {
+    value: Int | 5,
+}
+
+enum Choice {
+    Value { value: Bytes | Bytes32 },
+}
+
+fn parameter(value: Int | 1) -> Int {
+    value
+}
+
+fn return_type(value: Int) -> Int | 2 {
+    value
+}
+
+fn annotation(value: Int) -> Int {
+    let local: Int | 3 = value;
+    local + 1
+}
+
+fn cast(value: Bytes) -> Int {
+    value as Int | 5
+}
+
+fn guard(value: Any) -> Bool {
+    value is (Int, Int) | (Int, 1)
+}
+
+fn generic_argument(value: List<Int | 4>) -> List<Int> {
+    value
+}
+
+fn lambda_type(f: fn(value: Int | 6) -> Int) -> Int {
+    f(1)
+}
+
+fn grouped(value: (Int | 7) | (Bytes32, Int)) -> Any {
+    value
+}
+
+// An inline function is reported once, however many times it's called
+inline fn twice(value: Int | 8) -> Int {
+    value
+}
+
+// Unions that the compiler infers aren't written, so they aren't reported
+fn inferred(flag: Bool, number: Int) -> Int {
+    let value = if flag {
+        5
+    } else {
+        number
+    };
+    value + 1
+}
+
+// Removing a generic member could stop the generic from being inferred, so it's not fixed
+// automatically
+fn generic_member<T>(value: T | Any) -> List<T> {
+    nil
+}
+
+// Members that only overlap at runtime, are generic or don't overlap at all aren't redundant (the
+// ones that overlap at runtime are reported by `indistinguishable_union_member`)
+#[allow(indistinguishable_union_member)]
+type IntOrNil = Int | nil;
+
+type Optional<T> = T | nil;
+type Distinct = Bytes32 | PublicKey;
+
+// An allowed union isn't reported
+#[allow(redundant_union_member)]
+type Allowed = Int | 9;
+
+#[expect(redundant_union_member)]
+type Expected = Int | 10;
+
+test fn calls_inline_function() -> Int {
+    twice(1) + twice(2)
+}

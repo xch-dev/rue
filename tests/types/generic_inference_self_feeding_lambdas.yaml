@@ -70,22 +70,22 @@ tests:
   byte_cost: 828000
   total_cost: 828931
 diagnostics:
-- Unused binding `unused` at generic_inference_self_feeding_lambdas.rue:122:17
+- Unused binding `unused` at generic_inference_self_feeding_lambdas.rue:125:17
 - |-
-  Unreachable match arm, since an earlier arm handles every value that's left at generic_inference_self_feeding_lambdas.rue:126:17
-    note: This arm handles every value that's left at generic_inference_self_feeding_lambdas.rue:125:17
-- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at generic_inference_self_feeding_lambdas.rue:128:24
+  Unreachable match arm, since an earlier arm handles every value that's left at generic_inference_self_feeding_lambdas.rue:129:17
+    note: This arm handles every value that's left at generic_inference_self_feeding_lambdas.rue:128:17
+- Unnecessary type guard from `Int` to `Int`, since they are already compatible types at generic_inference_self_feeding_lambdas.rue:131:24
 - |-
-  A `for` expression is a list already, so the brackets around it make a list with one list in it at generic_inference_self_feeding_lambdas.rue:133:23
+  A `for` expression is a list already, so the brackets around it make a list with one list in it at generic_inference_self_feeding_lambdas.rue:136:23
     help: Remove the brackets
     help: Spread the `for` into the list with `...`
 - |-
-  Every field of `Stats` is specified, so nothing is copied from the spread value at generic_inference_self_feeding_lambdas.rue:134:35
+  Every field of `Stats` is specified, so nothing is copied from the spread value at generic_inference_self_feeding_lambdas.rue:137:35
     help: Remove the spread
-- Match arm `SameShapeA` also handles `SameShapeB`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at generic_inference_self_feeding_lambdas.rue:137:17
-- Unused parameter `b` at generic_inference_self_feeding_lambdas.rue:144:21
-- Unused parameter `b` at generic_inference_self_feeding_lambdas.rue:148:45
-- Binding `check` is returned directly after it's declared at generic_inference_self_feeding_lambdas.rue:202:5
+- Match arm `SameShapeA` also handles `SameShapeB`, since they can't be told apart from it at runtime; add them to this pattern if that's intended at generic_inference_self_feeding_lambdas.rue:140:17
+- Unused parameter `b` at generic_inference_self_feeding_lambdas.rue:147:21
+- Unused parameter `b` at generic_inference_self_feeding_lambdas.rue:151:45
+- Binding `check` is returned directly after it's declared at generic_inference_self_feeding_lambdas.rue:205:5
 - |-
-  Binding `acc` is returned directly after it's declared at generic_inference_self_feeding_lambdas.rue:228:13
+  Binding `acc` is returned directly after it's declared at generic_inference_self_feeding_lambdas.rue:231:13
     help: Return the value directly

@@ -1,3 +1,6 @@
+// The unions in these tests overlap on purpose, to test how the compiler handles them
+#![allow(redundant_union_member, indistinguishable_union_member)]
+
 // An untyped lambda parameter's type is inferred along with the call's generics while the lambda's
 // body has been compiled with the type the other arguments gave it, so a bound that only reaches it
 // through the lambda's own return type still narrows it (#362, step 13c)

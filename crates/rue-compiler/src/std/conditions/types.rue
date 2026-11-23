@@ -2,7 +2,10 @@
 export Condition::*;
 
 // The conditions that a puzzle can output, each a list that starts with its opcode. A condition
-// without fields is written with braces, like the others (`AssertEphemeral {}`).
+// without fields is written with braces, like the others (`AssertEphemeral {}`). The senders and
+// receivers of messages are each bytes or an amount, depending on the mode, which are the same at
+// runtime but written as both to show what's expected.
+#[allow(indistinguishable_union_member)]
 export enum Condition {
     Remark = 1 { ...rest: Any = nil },
     AggSigParent = 43 { public_key: PublicKey, message: Bytes },

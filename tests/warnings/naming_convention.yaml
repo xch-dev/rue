@@ -4,50 +4,50 @@ byte_cost: 228000
 clvm_error: path into atom
 diagnostics:
 - |-
-  Function `camelCase` should be named in snake_case at naming_convention.rue:1:4
+  Function `camelCase` should be named in snake_case at naming_convention.rue:5:4
     note: Consider renaming it to `camel_case`
 - |-
-  Parameter `firstValue` should be named in snake_case, SCREAMING_SNAKE_CASE or Title_Snake_Case at naming_convention.rue:1:14
+  Parameter `firstValue` should be named in snake_case, SCREAMING_SNAKE_CASE or Title_Snake_Case at naming_convention.rue:5:14
     note: Consider renaming it to `first_value`
 - |-
-  Binding `innerValue` is returned directly after it's declared at naming_convention.rue:2:5
+  Binding `innerValue` is returned directly after it's declared at naming_convention.rue:6:5
     help: Return the value directly
 - |-
-  Binding `innerValue` should be named in snake_case at naming_convention.rue:2:9
+  Binding `innerValue` should be named in snake_case at naming_convention.rue:6:9
     note: Consider renaming it to `inner_value`
 - |-
-  Constant `maxValue` should be named in SCREAMING_SNAKE_CASE at naming_convention.rue:7:7
+  Constant `maxValue` should be named in SCREAMING_SNAKE_CASE at naming_convention.rue:11:7
     note: Consider renaming it to `MAX_VALUE`
 - |-
-  Struct `coin_info` should be named in UpperCamelCase at naming_convention.rue:9:8
+  Struct `coin_info` should be named in UpperCamelCase at naming_convention.rue:13:8
     note: Consider renaming it to `CoinInfo`
 - |-
-  Field `parentCoinInfo` should be named in snake_case, SCREAMING_SNAKE_CASE or Title_Snake_Case at naming_convention.rue:10:5
+  Field `parentCoinInfo` should be named in snake_case, SCREAMING_SNAKE_CASE or Title_Snake_Case at naming_convention.rue:14:5
     note: Consider renaming it to `parent_coin_info`
 - |-
-  Type alias `my_alias` should be named in UpperCamelCase at naming_convention.rue:14:6
+  Type alias `my_alias` should be named in UpperCamelCase at naming_convention.rue:18:6
     note: Consider renaming it to `MyAlias`
 - |-
-  Enum `coin_kind` should be named in UpperCamelCase at naming_convention.rue:16:6
+  Enum `coin_kind` should be named in UpperCamelCase at naming_convention.rue:20:6
     note: Consider renaming it to `CoinKind`
 - |-
-  Variant `cat_coin` should be named in UpperCamelCase at naming_convention.rue:18:5
+  Variant `cat_coin` should be named in UpperCamelCase at naming_convention.rue:22:5
     note: Consider renaming it to `CatCoin`
 - |-
-  Field `assetId` should be named in snake_case, SCREAMING_SNAKE_CASE or Title_Snake_Case at naming_convention.rue:18:16
+  Field `assetId` should be named in snake_case, SCREAMING_SNAKE_CASE or Title_Snake_Case at naming_convention.rue:22:16
     note: Consider renaming it to `asset_id`
 - |-
-  Generic type `t` should be named in UpperCamelCase at naming_convention.rue:21:13
+  Generic type `t` should be named in UpperCamelCase at naming_convention.rue:25:13
     note: Consider renaming it to `T`
 - |-
-  Module `InnerModule` should be named in snake_case at naming_convention.rue:25:5
+  Module `InnerModule` should be named in snake_case at naming_convention.rue:29:5
     note: Consider renaming it to `inner_module`
 - |-
-  Binding `firstPart` should be named in snake_case at naming_convention.rue:58:24
+  Binding `firstPart` should be named in snake_case at naming_convention.rue:62:24
     note: Consider renaming it to `first_part`
 - |-
-  Binding `RestPart` should be named in snake_case at naming_convention.rue:58:35
+  Binding `RestPart` should be named in snake_case at naming_convention.rue:62:35
     note: Consider renaming it to `rest_part`
 - |-
-  Binding `EphemeralState` should be named in snake_case at naming_convention.rue:64:35
+  Binding `EphemeralState` should be named in snake_case at naming_convention.rue:68:35
     note: Consider renaming it to `ephemeral_state`

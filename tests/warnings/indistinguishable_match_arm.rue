@@ -1,3 +1,6 @@
+// The unions in these tests overlap on purpose, to test how the compiler handles them
+#![allow(indistinguishable_union_member)]
+
 // An arm whose check also lets through other members of the value's type, which can't be told
 // apart from it at runtime, sees them as its own type
 struct SameShapeA {

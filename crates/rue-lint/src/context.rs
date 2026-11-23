@@ -197,6 +197,11 @@ impl<'a> LintContext<'a> {
         rue_types::contains_unresolved(self.db.types(), ty)
     }
 
+    /// Whether the type references a generic, other than one that a function type in it binds.
+    pub fn references_generics(&mut self, ty: TypeId) -> bool {
+        !rue_types::referenced_generics(self.db.types_mut(), ty).is_empty()
+    }
+
     /// The name of a type as it would be written in the given scope.
     pub fn type_name(&mut self, scope: ScopeId, ty: TypeId) -> String {
         self.db.type_name_in(scope, ty)

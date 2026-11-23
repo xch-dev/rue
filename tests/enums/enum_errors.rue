@@ -1,3 +1,6 @@
+// The unions in these tests overlap on purpose, to test how the compiler handles them
+#![allow(indistinguishable_union_member)]
+
 enum Duplicates {
     Same,
     Same,

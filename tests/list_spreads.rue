@@ -1,3 +1,6 @@
+// The unions in these tests overlap on purpose, to test how the compiler handles them
+#![allow(indistinguishable_union_member)]
+
 // A list can spread items before its last one, which puts the spread list's items in front of the
 // rest. Each list goes through `runtime`, which the compiler can't fold, so the spreads are run.
 

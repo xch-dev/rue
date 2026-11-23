@@ -1,3 +1,6 @@
+// The unions in these tests overlap on purpose, to test how the compiler handles them
+#![allow(redundant_union_member)]
+
 // A generic function type expected of a call still rejects functions that don't fit it, and only
 // generalizes the generics that no parameter depends on (#340)
 

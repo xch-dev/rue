@@ -6,23 +6,23 @@ byte_cost: 516000
 total_cost: 516442
 debug_clvm_error: "InvalidOperatorArg: rest of non-cons"
 diagnostics:
-- Unused type alias `Tree` at generic_inference_expected_wide_seed_875.rue:7:6
-- Unused function `optional` at generic_inference_expected_wide_seed_875.rue:18:4
-- Unused parameter `value` at generic_inference_expected_wide_seed_875.rue:18:16
-- Unused parameter `list` at generic_inference_expected_wide_seed_875.rue:22:15
-- Unused function `swap` at generic_inference_expected_wide_seed_875.rue:26:4
-- Unused function `compose` at generic_inference_expected_wide_seed_875.rue:30:4
-- Unused parameter `value` at generic_inference_expected_wide_seed_875.rue:38:20
-- Unused parameter `function` at generic_inference_expected_wide_seed_875.rue:46:19
-- Unused parameter `third` at generic_inference_expected_wide_seed_875.rue:53:5
-- Unused function `five_only` at generic_inference_expected_wide_seed_875.rue:59:4
-- Unused parameter `value` at generic_inference_expected_wide_seed_875.rue:59:14
-- Unused function `increment` at generic_inference_expected_wide_seed_875.rue:63:4
-- Unused function `five` at generic_inference_expected_wide_seed_875.rue:67:4
-- Unused function `g0` at generic_inference_expected_wide_seed_875.rue:71:4
-- Unused parameter `p2` at generic_inference_expected_wide_seed_875.rue:74:5
-- Unused function `g1` at generic_inference_expected_wide_seed_875.rue:87:4
-- Unused parameter `p0` at generic_inference_expected_wide_seed_875.rue:87:10
-- Unused parameter `p0` at generic_inference_expected_wide_seed_875.rue:91:13
-- Unused parameter `p1` at generic_inference_expected_wide_seed_875.rue:91:50
-- Unused parameter `p2` at generic_inference_expected_wide_seed_875.rue:91:59
+- Unused type alias `Tree` at generic_inference_expected_wide_seed_875.rue:10:6
+- Unused function `optional` at generic_inference_expected_wide_seed_875.rue:21:4
+- Unused parameter `value` at generic_inference_expected_wide_seed_875.rue:21:16
+- Unused parameter `list` at generic_inference_expected_wide_seed_875.rue:25:15
+- Unused function `swap` at generic_inference_expected_wide_seed_875.rue:29:4
+- Unused function `compose` at generic_inference_expected_wide_seed_875.rue:33:4
+- Unused parameter `value` at generic_inference_expected_wide_seed_875.rue:41:20
+- Unused parameter `function` at generic_inference_expected_wide_seed_875.rue:49:19
+- Unused parameter `third` at generic_inference_expected_wide_seed_875.rue:56:5
+- Unused function `five_only` at generic_inference_expected_wide_seed_875.rue:62:4
+- Unused parameter `value` at generic_inference_expected_wide_seed_875.rue:62:14
+- Unused function `increment` at generic_inference_expected_wide_seed_875.rue:66:4
+- Unused function `five` at generic_inference_expected_wide_seed_875.rue:70:4
+- Unused function `g0` at generic_inference_expected_wide_seed_875.rue:74:4
+- Unused parameter `p2` at generic_inference_expected_wide_seed_875.rue:77:5
+- Unused function `g1` at generic_inference_expected_wide_seed_875.rue:90:4
+- Unused parameter `p0` at generic_inference_expected_wide_seed_875.rue:90:10
+- Unused parameter `p0` at generic_inference_expected_wide_seed_875.rue:94:13
+- Unused parameter `p1` at generic_inference_expected_wide_seed_875.rue:94:50
+- Unused parameter `p2` at generic_inference_expected_wide_seed_875.rue:94:59

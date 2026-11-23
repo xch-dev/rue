@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 // The type expected of a call reaches the generics that are only inferred through other generics,
 // so that a literal isn't widened past it (#284)
 

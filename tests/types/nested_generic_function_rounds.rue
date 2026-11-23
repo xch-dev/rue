@@ -1,3 +1,7 @@
+// These tests use unions that overlap at runtime, such as `Int | nil` for an optional `Int`,
+// since how they overlap isn't what's being tested
+#![allow(indistinguishable_union_member)]
+
 // From the corpus of nested generic programs (`nested-corpus`, seed 1969). Each comparison that's
 // revisited is computed again until what it puts on the instances its key refers to stops
 // changing (#362's step 13b.1). They're nested about 80 deep here, so without starting each one

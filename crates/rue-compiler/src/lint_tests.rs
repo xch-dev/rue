@@ -2111,7 +2111,12 @@ fn main(flag: Bool, value: Int | nil) -> Int {
 "
     );
 
-    let (reports, has_errors) = reports(&fixed, |_| {});
+    let (reports, has_errors) = reports(&fixed, |options| {
+        // `Int | nil` overlaps at runtime, which these tests aren't about
+        options
+            .lints
+            .set(Lint::IndistinguishableUnionMember, LintLevel::Allow);
+    });
 
     assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
@@ -3153,7 +3158,12 @@ fn main(value: Int | nil) -> Int {
 
     assert!(fixed.ends_with("        }\n    }\n}\n"), "{fixed}");
 
-    let (reports, has_errors) = reports(&fixed, |_| {});
+    let (reports, has_errors) = reports(&fixed, |options| {
+        // `Int | nil` overlaps at runtime, which these tests aren't about
+        options
+            .lints
+            .set(Lint::IndistinguishableUnionMember, LintLevel::Allow);
+    });
 
     assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
@@ -3366,7 +3376,12 @@ fn none(value: nil) -> nil {
     );
 
     // They're still reported, and the fixed code compiles and has nothing else to fix
-    let (reports, has_errors) = reports(&fixed, |_| {});
+    let (reports, has_errors) = reports(&fixed, |options| {
+        // `Int | nil` overlaps at runtime, which these tests aren't about
+        options
+            .lints
+            .set(Lint::IndistinguishableUnionMember, LintLevel::Allow);
+    });
 
     assert_eq!(
         reports,
@@ -3729,4 +3744,63 @@ fn spread_list_builtins_have_no_fix_for_a_missing_argument() {
 
     // Putting the arguments in a list would keep the missing one, so nothing is suggested
     assert!(spread.suggestions.is_empty());
+}
+
+#[test]
+fn suggestions_fix_redundant_union_members() {
+    // Removing every redundant member at once leaves a valid union, whether they're before,
+    // between or after the members that are kept. A member with a comment in what's removed, or
+    // that references a generic that might only be inferred from it, is left for the user.
+    let source = "\
+type Before = 5 | 6 | Int;
+type After = Int | 5 | 6;
+type Around = 5 | Int | 6 | Bytes32;
+type Twice = Int | Int;
+type Spaced = Bytes   |   Bytes32;
+type Commented = Int | /* five */ 5;
+type Generic<T> = T | Any;
+type GenericTwice<T> = T | T;
+
+fn main(
+    a: Before,
+    b: After,
+    c: Around,
+    d: Twice,
+    e: Spaced,
+    f: Commented,
+    g: List<Int | 7>,
+) -> Int {
+    let _value: Int | 8 = a;
+    0
+}
+";
+
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+type Before = Int;
+type After = Int;
+type Around = Int | Bytes32;
+type Twice = Int;
+type Spaced = Bytes;
+type Commented = Int | /* five */ 5;
+type Generic<T> = T | Any;
+type GenericTwice<T> = T;
+
+fn main(
+    a: Before,
+    b: After,
+    c: Around,
+    d: Twice,
+    e: Spaced,
+    f: Commented,
+    g: List<Int>,
+) -> Int {
+    let _value: Int = a;
+    0
+}
+"
+    );
 }

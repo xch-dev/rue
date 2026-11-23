@@ -6,14 +6,14 @@ runtime_cost: 115
 byte_cost: 156000
 total_cost: 156115
 diagnostics:
-- Unused function `duplicate` at generic_inference_expected_wide_seed_2855.rue:6:4
-- Unused parameter `value` at generic_inference_expected_wide_seed_2855.rue:14:15
-- Unused function `map_list` at generic_inference_expected_wide_seed_2855.rue:22:4
-- Unused parameter `list` at generic_inference_expected_wide_seed_2855.rue:22:19
-- Unused function `pair_fn` at generic_inference_expected_wide_seed_2855.rue:26:4
-- Unused parameter `value` at generic_inference_expected_wide_seed_2855.rue:30:20
-- Unused function `five_only` at generic_inference_expected_wide_seed_2855.rue:34:4
-- Unused parameter `value` at generic_inference_expected_wide_seed_2855.rue:34:14
-- Unused function `maybe` at generic_inference_expected_wide_seed_2855.rue:38:4
-- Unused parameter `p0` at generic_inference_expected_wide_seed_2855.rue:42:16
-- Unused parameter `p2` at generic_inference_expected_wide_seed_2855.rue:42:48
+- Unused function `duplicate` at generic_inference_expected_wide_seed_2855.rue:9:4
+- Unused parameter `value` at generic_inference_expected_wide_seed_2855.rue:17:15
+- Unused function `map_list` at generic_inference_expected_wide_seed_2855.rue:25:4
+- Unused parameter `list` at generic_inference_expected_wide_seed_2855.rue:25:19
+- Unused function `pair_fn` at generic_inference_expected_wide_seed_2855.rue:29:4
+- Unused parameter `value` at generic_inference_expected_wide_seed_2855.rue:33:20
+- Unused function `five_only` at generic_inference_expected_wide_seed_2855.rue:37:4
+- Unused parameter `value` at generic_inference_expected_wide_seed_2855.rue:37:14
+- Unused function `maybe` at generic_inference_expected_wide_seed_2855.rue:41:4
+- Unused parameter `p0` at generic_inference_expected_wide_seed_2855.rue:45:16
+- Unused parameter `p2` at generic_inference_expected_wide_seed_2855.rue:45:48

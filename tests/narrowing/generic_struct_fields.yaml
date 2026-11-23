@@ -33,11 +33,11 @@ tests:
   total_cost: 204337
 diagnostics:
 - |-
-  Binding `value` is returned directly after it's declared at generic_struct_fields.rue:12:5
+  Binding `value` is returned directly after it's declared at generic_struct_fields.rue:16:5
     help: Return the value directly
 - |-
-  Binding `value` is returned directly after it's declared at generic_struct_fields.rue:20:5
+  Binding `value` is returned directly after it's declared at generic_struct_fields.rue:24:5
     help: Return the value directly
 - |-
-  Binding `value` is returned directly after it's declared at generic_struct_fields.rue:28:5
+  Binding `value` is returned directly after it's declared at generic_struct_fields.rue:32:5
     help: Return the value directly

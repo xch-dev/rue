@@ -1,3 +1,6 @@
+// The unions in these tests overlap on purpose, to test how the compiler handles them
+#![allow(indistinguishable_union_member)]
+
 // A type guard with nothing to check at runtime still evaluates its value if the value may fail,
 // the same way a binding that's never referenced does. Unless they say otherwise, the tests below
 // must fail for the given solution in both debug and release builds.

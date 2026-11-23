@@ -1,28 +1,28 @@
 diagnostics:
-- Unused function `any_else` at errors.rue:2:4
-- Cannot assign `Int` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at errors.rue:2:60
-- Unused function `not_reference` at errors.rue:10:4
-- Cannot assign `Bool` to `true` without a type guard, since the value isn't always a valid `true` at errors.rue:10:35
+- Unused function `any_else` at errors.rue:6:4
+- Cannot assign `Int` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at errors.rue:6:60
+- Unused function `not_reference` at errors.rue:14:4
+- Cannot assign `Bool` to `true` without a type guard, since the value isn't always a valid `true` at errors.rue:14:35
 - |-
-  This `if` statement only raises, so it can be written as an `assert` at errors.rue:11:5
+  This `if` statement only raises, so it can be written as an `assert` at errors.rue:15:5
     help: Replace it with an `assert`
-- Unused function `not_reference_true` at errors.rue:17:4
-- Cannot assign `Bool` to `false` without a type guard, since the value isn't always a valid `false` at errors.rue:17:41
-- Unused function `and_else` at errors.rue:25:4
-- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:25:62
-- Unused function `all_else` at errors.rue:33:4
-- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:33:62
-- Unused function `or_then` at errors.rue:41:4
-- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:41:61
-- Unused function `any_then` at errors.rue:49:4
-- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:49:62
-- Unused function `all_right` at errors.rue:58:4
-- Cannot use `>` operator with `Int | (Int, Int)` and `5` at errors.rue:59:19
-- Unused function `any_right` at errors.rue:62:4
-- Cannot use `>` operator with `Int | (Int, Int)` and `5` at errors.rue:63:26
-- Unused function `same_path_any` at errors.rue:67:4
-- Cannot assign `Bytes32 | (Int, Int)` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at errors.rue:67:60
-- Unused function `inline_if` at errors.rue:76:4
-- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:76:42
-- Unused function `if_expr_escape` at errors.rue:81:4
-- Cannot use `+` operator with `Int | (Int, Int)` and `Int` at errors.rue:87:5
+- Unused function `not_reference_true` at errors.rue:21:4
+- Cannot assign `Bool` to `false` without a type guard, since the value isn't always a valid `false` at errors.rue:21:41
+- Unused function `and_else` at errors.rue:29:4
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:29:62
+- Unused function `all_else` at errors.rue:37:4
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:37:62
+- Unused function `or_then` at errors.rue:45:4
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:45:61
+- Unused function `any_then` at errors.rue:53:4
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:53:62
+- Unused function `all_right` at errors.rue:62:4
+- Cannot use `>` operator with `Int | (Int, Int)` and `5` at errors.rue:63:19
+- Unused function `any_right` at errors.rue:66:4
+- Cannot use `>` operator with `Int | (Int, Int)` and `5` at errors.rue:67:26
+- Unused function `same_path_any` at errors.rue:71:4
+- Cannot assign `Bytes32 | (Int, Int)` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at errors.rue:71:60
+- Unused function `inline_if` at errors.rue:80:4
+- Cannot assign `Int | (Int, Int)` to `Int` without a type guard, since the value isn't always a valid `Int` at errors.rue:80:42
+- Unused function `if_expr_escape` at errors.rue:85:4
+- Cannot use `+` operator with `Int | (Int, Int)` and `Int` at errors.rue:91:5

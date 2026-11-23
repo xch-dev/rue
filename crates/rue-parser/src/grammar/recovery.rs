@@ -1563,3 +1563,28 @@ fn test_multiple_independent_errors() {
             Expected `:`, found identifier at main.rue:9:8"#]],
     );
 }
+
+#[test]
+fn test_missing_paren_before_function_type_return() {
+    // Recovery stops at the return type, rather than reading it as more parameters
+    check(
+        "type F = (fn(a: Int, b: Int -> Int, Int);",
+        expect![[r#"
+            Document
+              TypeAliasItem
+                PairType
+                  LambdaType
+                    LambdaParameter
+                      PathType
+                        PathSegment
+                    LambdaParameter
+                      PathType
+                        PathSegment
+                    PathType
+                      PathSegment
+                  PathType
+                    PathSegment
+        "#]],
+        expect!["Expected one of `,`, `)`, found `-` at main.rue:1:29"],
+    );
+}

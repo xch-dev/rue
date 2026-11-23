@@ -1,4 +1,4 @@
 diagnostics:
-- Unused generic type `B` at nested_generic_function_rounds.rue:6:12
-- Unused generic type `U320` at nested_generic_function_rounds.rue:12:43
-- Cannot assign `Q2` to `Q1`, since they are incompatible at nested_generic_function_rounds.rue:16:18
+- Unused generic type `B` at nested_generic_function_rounds.rue:10:12
+- Unused generic type `U320` at nested_generic_function_rounds.rue:16:43
+- Cannot assign `Q2` to `Q1`, since they are incompatible at nested_generic_function_rounds.rue:20:18

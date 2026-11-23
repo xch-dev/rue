@@ -1,20 +1,20 @@
 tests:
 - name: diverging_function
   program: (q . 5)
-  debug_program: (a (q 2 4 (c 6 (q . 5))) (c (c (q 2 (i (> () 3) (q 2 2 (q . "negative")) (q . 3)) 1) (q 8 (q . "raise called at never.rue:5:5") 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (q . 5))) (c (c (q 2 (i (> () 3) (q 2 2 (q . "negative")) (q . 3)) 1) (q 8 (q . "raise called at never.rue:8:5") 1)) ()))
   output: "5"
   runtime_cost: 20
   byte_cost: 36000
   total_cost: 36020
 - name: diverging_function_raises
   program: (a (q 2 (i (> () 2) (q 8) (q . 2)) 1) (c (q . -1) 1))
-  debug_program: (a (q 2 4 (c 6 (- () (q . 1)))) (c (c (q 2 (i (> () 3) (q 2 2 (q . "negative")) (q . 3)) 1) (q 8 (q . "raise called at never.rue:5:5") 1)) ()))
+  debug_program: (a (q 2 4 (c 6 (- () (q . 1)))) (c (c (q 2 (i (> () 3) (q 2 2 (q . "negative")) (q . 3)) 1) (q 8 (q . "raise called at never.rue:8:5") 1)) ()))
   byte_cost: 528000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at never.rue:5:5" "negative")
+  debug_clvm_error: clvm raise ("raise called at never.rue:8:5" "negative")
 - name: function_type
   program: (q . 1)
-  debug_program: (a (q 2 10 (c 14 (c (q . 1) (c (q . 2) (c (c (q . 1) (q 2 2 (q . "unused"))) (c (c (q . 4) (c (c (q . 1) 4) (c () ()))) ())))))) (c (c (q 8 (q . "raise called at never.rue:5:5") 1) (c (q 2 (i 5 (q 1 . 1) (q 2 2 7)) 1) (q 2 1 ()))) ()))
+  debug_program: (a (q 2 10 (c 14 (c (q . 1) (c (q . 2) (c (c (q . 1) (q 2 2 (q . "unused"))) (c (c (q . 4) (c (c (q . 1) 4) (c () ()))) ())))))) (c (c (q 8 (q . "raise called at never.rue:8:5") 1) (c (q 2 (i 5 (q 1 . 1) (q 2 2 7)) 1) (q 2 1 ()))) ()))
   output: "1"
   runtime_cost: 20
   byte_cost: 36000
@@ -35,7 +35,7 @@ tests:
   total_cost: 36020
 - name: explicit_generic
   program: (q . 2)
-  debug_program: (a (q 2 (i () (q 2 4 (a 6 (q . "unused"))) (q 2 4 (q . 2))) 1) (c (c (q . 1) (q 8 (q . "raise called at never.rue:5:5") 1)) ()))
+  debug_program: (a (q 2 (i () (q 2 4 (a 6 (q . "unused"))) (q 2 4 (q . 2))) 1) (c (c (q . 1) (q 8 (q . "raise called at never.rue:8:5") 1)) ()))
   output: "2"
   runtime_cost: 20
   byte_cost: 36000
@@ -49,7 +49,7 @@ tests:
   total_cost: 36020
 - name: unreachable_after_call
   program: (q . 4)
-  debug_program: (a (q 2 (i () (q 2 4 (c 6 ())) (q 1 . 4)) 1) (c (c (q 3 (q . 1) (q . 1) (a 2 (q . "stops here"))) (q 8 (q . "raise called at never.rue:5:5") 1)) ()))
+  debug_program: (a (q 2 (i () (q 2 4 (c 6 ())) (q 1 . 4)) 1) (c (c (q 3 (q . 1) (q . 1) (a 2 (q . "stops here"))) (q 8 (q . "raise called at never.rue:8:5") 1)) ()))
   output: "4"
   runtime_cost: 20
   byte_cost: 36000
@@ -77,83 +77,83 @@ tests:
   total_cost: 36020
 - name: match_on_raising_value
   program: (x)
-  debug_program: (a (q 3 () (x (q . "raise called at never.rue:158:5")) (a 2 (q . "subject"))) (c (q 8 (q . "raise called at never.rue:5:5") 1) ()))
+  debug_program: (a (q 3 () (x (q . "raise called at never.rue:161:5")) (a 2 (q . "subject"))) (c (q 8 (q . "raise called at never.rue:8:5") 1) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at never.rue:5:5" "subject")
+  debug_clvm_error: clvm raise ("raise called at never.rue:8:5" "subject")
 - name: match_statement_on_raising_value
   program: (x)
-  debug_program: (a (q 3 () (x (q . "raise called at never.rue:164:5")) (a 2 (q . "statement"))) (c (q 8 (q . "raise called at never.rue:5:5") 1) ()))
+  debug_program: (a (q 3 () (x (q . "raise called at never.rue:167:5")) (a 2 (q . "statement"))) (c (q 8 (q . "raise called at never.rue:8:5") 1) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at never.rue:5:5" "statement")
+  debug_clvm_error: clvm raise ("raise called at never.rue:8:5" "statement")
 - name: match_on_raising_binding
   program: (x)
-  debug_program: (a (q 3 () (x (q . "raise called at never.rue:172:5")) (a 2 (q . "binding"))) (c (q 8 (q . "raise called at never.rue:5:5") 1) ()))
+  debug_program: (a (q 3 () (x (q . "raise called at never.rue:175:5")) (a 2 (q . "binding"))) (c (q 8 (q . "raise called at never.rue:8:5") 1) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at never.rue:5:5" "binding")
+  debug_clvm_error: clvm raise ("raise called at never.rue:8:5" "binding")
 - name: unused_binding_before_raise
   program: (x)
-  debug_program: (a (q 3 () (x (q . "raise called at never.rue:181:5") (q . "after")) (a 2 (q . "unused"))) (c (q 8 (q . "raise called at never.rue:5:5") 1) ()))
+  debug_program: (a (q 3 () (x (q . "raise called at never.rue:184:5") (q . "after")) (a 2 (q . "unused"))) (c (q 8 (q . "raise called at never.rue:8:5") 1) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at never.rue:5:5" "unused")
+  debug_clvm_error: clvm raise ("raise called at never.rue:8:5" "unused")
 - name: unused_binding_before_statement_and_raise
   program: (x)
-  debug_program: (a (q 3 () (i (q . 1) (x (q . "raise called at never.rue:192:5") (q . "after")) (a 6 (q . 5))) (a 4 (q . "unused"))) (c (c (q 8 (q . "raise called at never.rue:5:5") 1) (q 2 (i (> 1 ()) () (q 8 (q . "assertion failed at never.rue:185:5"))) 1)) ()))
+  debug_program: (a (q 3 () (i (q . 1) (x (q . "raise called at never.rue:195:5") (q . "after")) (a 6 (q . 5))) (a 4 (q . "unused"))) (c (c (q 8 (q . "raise called at never.rue:8:5") 1) (q 2 (i (> 1 ()) () (q 8 (q . "assertion failed at never.rue:188:5"))) 1)) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at never.rue:5:5" "unused")
+  debug_clvm_error: clvm raise ("raise called at never.rue:8:5" "unused")
 - name: unused_binding_before_raising_branches
   program: (x)
-  debug_program: (a (q 3 () (a (i 5 (q 8 (q . "raise called at never.rue:198:9") (q . "then")) (q 8 (q . "raise called at never.rue:200:9") (q . "else"))) 1) (a 2 (q . "unused"))) (c (q 8 (q . "raise called at never.rue:5:5") 1) 1))
+  debug_program: (a (q 3 () (a (i 5 (q 8 (q . "raise called at never.rue:201:9") (q . "then")) (q 8 (q . "raise called at never.rue:203:9") (q . "else"))) 1) (a 2 (q . "unused"))) (c (q 8 (q . "raise called at never.rue:8:5") 1) 1))
   byte_cost: 36000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at never.rue:5:5" "unused")
+  debug_clvm_error: clvm raise ("raise called at never.rue:8:5" "unused")
 - name: unused_binding_before_raising_condition
   program: (x)
-  debug_program: (a (q 3 () (a (i (x (q . "raise called at never.rue:207:9") (q . "condition")) (q 1 . 1) (q 1 . 2)) 1) (a 2 (q . "unused"))) (c (q 8 (q . "raise called at never.rue:5:5") 1) ()))
+  debug_program: (a (q 3 () (a (i (x (q . "raise called at never.rue:210:9") (q . "condition")) (q 1 . 1) (q 1 . 2)) 1) (a 2 (q . "unused"))) (c (q 8 (q . "raise called at never.rue:8:5") 1) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at never.rue:5:5" "unused")
+  debug_clvm_error: clvm raise ("raise called at never.rue:8:5" "unused")
 - name: unused_binding_that_returns_before_raise
   program: (x)
-  debug_program: (a (q 3 () (x (q . "raise called at never.rue:218:5") (q . "after")) (a 4 (c 6 (q . 5)))) (c (c (q 2 (i (> () 3) (q 2 2 (q . "negative")) (q . 3)) 1) (q 8 (q . "raise called at never.rue:5:5") 1)) ()))
+  debug_program: (a (q 3 () (x (q . "raise called at never.rue:221:5") (q . "after")) (a 4 (c 6 (q . 5)))) (c (c (q 2 (i (> () 3) (q 2 2 (q . "negative")) (q . 3)) 1) (q 8 (q . "raise called at never.rue:8:5") 1)) ()))
   byte_cost: 36000
   clvm_error: clvm raise ()
-  debug_clvm_error: clvm raise ("raise called at never.rue:218:5" "after")
+  debug_clvm_error: clvm raise ("raise called at never.rue:221:5" "after")
 diagnostics:
-- Binding `int` is returned directly after it's declared at never.rue:59:5
-- Condition always evaluates to `false` at never.rue:68:8
+- Binding `int` is returned directly after it's declared at never.rue:62:5
+- Condition always evaluates to `false` at never.rue:71:8
 - |-
-  Unreachable code at never.rue:93:5
-    note: Any code after this is never evaluated at never.rue:92:5
-- Condition always evaluates to `false` at never.rue:97:8
-- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:107:9
-- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:108:9
-- Unreachable match arm, since the matched value's type `Empty` has no values at never.rue:145:9
-- Unreachable match arm, since the matched value's type `Empty` has no values at never.rue:146:9
-- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:159:9
-- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:165:9
+  Unreachable code at never.rue:96:5
+    note: Any code after this is never evaluated at never.rue:95:5
+- Condition always evaluates to `false` at never.rue:100:8
+- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:110:9
+- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:111:9
+- Unreachable match arm, since the matched value's type `Empty` has no values at never.rue:148:9
+- Unreachable match arm, since the matched value's type `Empty` has no values at never.rue:149:9
+- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:162:9
+- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:168:9
 - |-
-  Unreachable code at never.rue:167:5
-    note: Any code after this is never evaluated at never.rue:164:5
+  Unreachable code at never.rue:170:5
+    note: Any code after this is never evaluated at never.rue:167:5
     help: Remove the unreachable code
 - |-
-  Unreachable code at never.rue:172:5
-    note: Any code after this is never evaluated at never.rue:171:5
-- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:173:9
-- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:174:9
+  Unreachable code at never.rue:175:5
+    note: Any code after this is never evaluated at never.rue:174:5
+- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:176:9
+- Unreachable match arm, since the matched value's type `Never` has no values at never.rue:177:9
 - |-
-  Unreachable code at never.rue:181:5
-    note: Any code after this is never evaluated at never.rue:180:5
+  Unreachable code at never.rue:184:5
+    note: Any code after this is never evaluated at never.rue:183:5
 - |-
-  Unreachable code at never.rue:191:5
-    note: Any code after this is never evaluated at never.rue:190:5
+  Unreachable code at never.rue:194:5
+    note: Any code after this is never evaluated at never.rue:193:5
 - |-
-  Unreachable code at never.rue:197:5
-    note: Any code after this is never evaluated at never.rue:196:5
+  Unreachable code at never.rue:200:5
+    note: Any code after this is never evaluated at never.rue:199:5
 - |-
-  Unreachable code at never.rue:206:5
-    note: Any code after this is never evaluated at never.rue:205:5
+  Unreachable code at never.rue:209:5
+    note: Any code after this is never evaluated at never.rue:208:5

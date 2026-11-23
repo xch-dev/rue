@@ -1,0 +1,59 @@
+tests:
+- name: narrows_nil
+  program: (a (q 2 (i 2 (q . 2) ()) 1) (c (q . 5) 1))
+  debug_program: (a (q 2 (i (= 2 ()) () (q . 2)) 1) (c (q . 5) 1))
+  output: "5"
+  runtime_cost: 555
+  byte_cost: 396000
+  total_cost: 396555
+diagnostics:
+- |-
+  Union member `Bytes` can't be told apart from `Int`, since they're the same at runtime, so a type guard or `match` can't narrow the union to either of them at indistinguishable_union_member.rue:4:25
+    note: `Int` is in the union here at indistinguishable_union_member.rue:4:19
+- |-
+  Union member `Int` can't be told apart from `String`, since they're the same at runtime, so a type guard or `match` can't narrow the union to either of them at indistinguishable_union_member.rue:5:29
+    note: `String` is in the union here at indistinguishable_union_member.rue:5:20
+- |-
+  Union member `Second` can't be told apart from `First`, since they're the same at runtime, so a type guard or `match` can't narrow the union to either of them at indistinguishable_union_member.rue:19:26
+    note: `First` is in the union here at indistinguishable_union_member.rue:19:18
+- |-
+  Union member `(Bytes, Int)` can't be told apart from `(Int, Bytes)`, since they're the same at runtime, so a type guard or `match` can't narrow the union to either of them at indistinguishable_union_member.rue:20:36
+    note: `(Int, Bytes)` is in the union here at indistinguishable_union_member.rue:20:21
+- |-
+  Union member `false` can't be told apart from `nil`, since they're the same at runtime, so a type guard or `match` can't narrow the union to either of them at indistinguishable_union_member.rue:21:25
+    note: `nil` is in the union here at indistinguishable_union_member.rue:21:19
+- |-
+  Union member `Second` can't be told apart from `First`, since they're the same at runtime, so a type guard or `match` can't narrow the union to either of them at indistinguishable_union_member.rue:24:29
+    note: `First` is in the union here at indistinguishable_union_member.rue:24:21
+- |-
+  Union member `Third` can't be told apart from `First`, since they're the same at runtime, so a type guard or `match` can't narrow the union to either of them at indistinguishable_union_member.rue:24:38
+    note: `First` is in the union here at indistinguishable_union_member.rue:24:21
+- |-
+  Union member `Bytes` can't be told apart from `Int`, since they're the same at runtime, so a type guard or `match` can't narrow the union to either of them at indistinguishable_union_member.rue:27:27
+    note: `Int` is in the union here at indistinguishable_union_member.rue:27:21
+- |-
+  Union member `nil` overlaps with `Int` at runtime, since every `nil` is also a valid `Int`, so a type guard or `match` for `nil` also takes the `Int` values that are the same as one at indistinguishable_union_member.rue:33:23
+    note: `Int` is in the union here at indistinguishable_union_member.rue:33:17
+- |-
+  Union member `nil` overlaps with `Int` at runtime, since every `nil` is also a valid `Int`, so a type guard or `match` for `nil` also takes the `Int` values that are the same as one at indistinguishable_union_member.rue:34:17
+    note: `Int` is in the union here at indistinguishable_union_member.rue:34:23
+- |-
+  Union member `Bytes32` overlaps with `Int` at runtime, since every `Bytes32` is also a valid `Int`, so a type guard or `match` for `Bytes32` also takes the `Int` values that are the same as one at indistinguishable_union_member.rue:35:21
+    note: `Int` is in the union here at indistinguishable_union_member.rue:35:31
+- |-
+  Union member `Bool` overlaps with `Int` at runtime, since every `Bool` is also a valid `Int`, so a type guard or `match` for `Bool` also takes the `Int` values that are the same as one at indistinguishable_union_member.rue:36:18
+    note: `Int` is in the union here at indistinguishable_union_member.rue:36:25
+- |-
+  Union member `(Int, nil)` overlaps with `(Int, Int)` at runtime, since every `(Int, nil)` is also a valid `(Int, Int)`, so a type guard or `match` for `(Int, nil)` also takes the `(Int, Int)` values that are the same as one at indistinguishable_union_member.rue:37:14
+    note: `(Int, Int)` is in the union here at indistinguishable_union_member.rue:37:27
+- |-
+  Redundant union member `Bytes32`, since `Bytes` is already in the union, and it includes every `Bytes32` at indistinguishable_union_member.rue:45:26
+    note: `Bytes` is in the union here at indistinguishable_union_member.rue:45:18
+    help: Remove `Bytes32` from the union
+- |-
+  Redundant union member `false`, since `Bool` is already in the union, and it includes every `false` at indistinguishable_union_member.rue:46:23
+    note: `Bool` is in the union here at indistinguishable_union_member.rue:46:31
+    help: Remove `false` from the union
+- |-
+  Union member `nil` overlaps with `Bool` at runtime, since every `nil` is also a valid `Bool`, so a type guard or `match` for `nil` also takes the `Bool` values that are the same as one at indistinguishable_union_member.rue:46:38
+    note: `Bool` is in the union here at indistinguishable_union_member.rue:46:31

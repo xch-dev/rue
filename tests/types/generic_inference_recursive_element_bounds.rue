@@ -1,3 +1,6 @@
+// The unions in these tests overlap on purpose, to test how the compiler handles them
+#![allow(redundant_union_member, indistinguishable_union_member)]
+
 // In a recursive call, the argument's expected type has the callee's generics that aren't inferred
 // yet restored to the caller's generics they were renamed from. A lambda in a pair or list in the
 // argument still gets what the elements before it infer for the callee's generic, as in any other
