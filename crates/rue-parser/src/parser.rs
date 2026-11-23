@@ -2,7 +2,9 @@ use std::{mem, ops::Range};
 
 use indexmap::IndexSet;
 use rowan::{Checkpoint, GreenNodeBuilder, Language};
-use rue_diagnostic::{Diagnostic, DiagnosticKind, DiagnosticSeverity, Source, SrcLoc};
+use rue_diagnostic::{
+    Applicability, Diagnostic, DiagnosticKind, DiagnosticSeverity, Edit, Source, SrcLoc, Suggestion,
+};
 use rue_lexer::{EscapeError, Token, TokenKind, check_string_escapes};
 
 use crate::{RueLang, SyntaxKind, SyntaxNode, T, document};
@@ -63,6 +65,9 @@ pub struct Parser {
     recovering: bool,
     depth: usize,
     too_deep: bool,
+    /// How many expressions before the body of an `if`, `match` or `for` the parser is in (see
+    /// `condition_expr`).
+    pub(crate) header_depth: usize,
     diagnostics: Vec<Diagnostic>,
     builder: GreenNodeBuilder<'static>,
 }
@@ -214,6 +219,7 @@ impl Parser {
             recovering: false,
             depth: 0,
             too_deep: false,
+            header_depth: 0,
             diagnostics,
             builder: GreenNodeBuilder::new(),
         }
@@ -448,6 +454,88 @@ impl Parser {
                 return tokens.next();
             }
         }
+    }
+
+    /// Whether the delimited group that starts at the current token is followed by the given token
+    /// on the same line, like the body of an `if` after a struct initializer in its condition, as
+    /// in `if value == Point {} {`.
+    pub(crate) fn past_group_on_line_at(&self, kind: SyntaxKind) -> bool {
+        let mut depth = 0usize;
+        let start = if self.too_deep {
+            self.parse_tokens.len()
+        } else {
+            self.pos.min(self.parse_tokens.len())
+        };
+        let mut tokens = self.parse_tokens[start..].iter();
+
+        loop {
+            let Some(token) = tokens.next() else {
+                return false;
+            };
+
+            match token.kind {
+                T!['('] | T!['['] | T!['{'] => depth += 1,
+                T![')'] | T![']'] | T!['}'] => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+
+            if depth == 0 && !token.kind.is_trivia() {
+                break;
+            }
+        }
+
+        for token in tokens {
+            if !token.kind.is_trivia() {
+                return token.kind == kind;
+            }
+
+            if self.source.text[token.span.clone()].contains('\n') {
+                return false;
+            }
+        }
+
+        false
+    }
+
+    /// Where the next non-trivia token starts.
+    pub(crate) fn next_start(&self) -> usize {
+        self.upcoming()
+            .next()
+            .map_or(self.source.text.len(), |token| token.span.start)
+    }
+
+    /// Where the last non-trivia token that was parsed ends.
+    pub(crate) fn previous_end(&self) -> usize {
+        self.parse_tokens[..self.pos.min(self.parse_tokens.len())]
+            .iter()
+            .rev()
+            .find(|token| !token.kind.is_trivia())
+            .map_or(0, |token| token.span.end)
+    }
+
+    /// Reports that a struct initializer in the given range needs parentheses, since it's before
+    /// the body of an `if`, `match` or `for`, with a suggestion that adds them.
+    pub(crate) fn error_unparenthesized_struct_initializer(
+        &mut self,
+        span: Range<usize>,
+        path_end: usize,
+    ) {
+        let path = self.source.text[span.start..path_end].trim().to_string();
+        let message = format!("Wrap it in parentheses: `({path} {{ ... }})`");
+        let at = |offset: usize| SrcLoc::new(self.source.clone(), offset..offset);
+
+        let mut diagnostic = Diagnostic::new(
+            SrcLoc::new(self.source.clone(), span.clone()),
+            DiagnosticKind::UnparenthesizedStructInitializer(path),
+            DiagnosticSeverity::Error,
+        );
+        diagnostic.suggestions.push(Suggestion::new(
+            message,
+            vec![Edit::new(at(span.start), "("), Edit::new(at(span.end), ")")],
+            Applicability::MachineApplicable,
+        ));
+
+        self.diagnostics.push(diagnostic);
     }
 
     pub(crate) fn try_eat(&mut self, kind: SyntaxKind) -> bool {

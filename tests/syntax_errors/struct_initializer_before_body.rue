@@ -1,0 +1,80 @@
+// A struct initializer before the body of an `if`, `match` or `for` needs parentheses, since its
+// braces would be read as the body. Braces that can't be a body are parsed as an initializer and
+// reported once, rather than misreading the body and everything after it.
+struct Summary {
+    total: Int = 0,
+    count: Int = 0,
+}
+
+struct Holder {
+    items: List<Int>,
+}
+
+// Empty braces followed by the body on the same line
+export fn fold_empty(items: List<Int>) -> Int {
+    let summary = for item in items fold summary = Summary {} {
+        Summary { ...summary, total: summary.total + item }
+    };
+    summary.total
+}
+
+// A field, which a block can't start with
+export fn fold_field(items: List<Int>) -> Int {
+    let summary = for item in items fold summary = Summary { total: 0 } {
+        Summary { ...summary, total: summary.total + item }
+    };
+    summary.total
+}
+
+// A spread, which a block can't start with either
+export fn fold_spread(items: List<Int>, start: Summary) -> Int {
+    let summary = for item in items fold summary = Summary { ...start } {
+        Summary { ...summary, total: summary.total + item }
+    };
+    summary.total
+}
+
+// A shorthand field followed by a field access, and one followed by another field
+export fn for_list(items: List<Int>, total: Int, count: Int) -> List<Int> {
+    let doubled = for item in Holder { items }.items {
+        item * 2
+    };
+    for item in doubled if item > Summary { total, count }.total {
+        item
+    }
+}
+
+export fn if_condition(total: Int) -> Int {
+    if total > Summary { total: 1 }.total {
+        1
+    } else if total < Summary { total: 0 }.total {
+        2
+    } else {
+        3
+    }
+}
+
+export fn match_value(total: Int) -> Int {
+    match Summary { total } {
+        Summary { total, count } => total + count,
+    }
+}
+
+// With the body on the next line, the braces are a body, so the type is used as a value, and the
+// error says how to write the initializer
+export fn body_on_next_line(items: List<Int>) -> Int {
+    let summary = for item in items fold summary = Summary {}
+    {
+        Summary { ...summary, total: summary.total + item }
+    };
+    summary.total
+}
+
+// Braces that can be a body still are one
+export fn bodies(flag: Bool, value: Int) -> Int {
+    if flag {
+        value
+    } else {
+        0
+    }
+}
