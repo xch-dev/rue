@@ -455,11 +455,11 @@ test fn captured_value_that_cannot_fail_for_a_loop_called_some_of_the_time() -> 
 
 // A fold whose body doesn't read its accumulator never calls itself again, so it's inlined where
 // it's called. What only it uses is bound before it then, since there's no call to evaluate it at:
-// a value, an outer fold's accumulator, a lambda, and the argument of a call that's inlined
-test fn captured_value_for_a_fold_that_ignores_its_accumulator() -> (Int, Int) {
+// a value, an outer fold's accumulator, and a lambda
+test fn captured_value_for_a_fold_that_ignores_its_accumulator() -> Int {
     let xs = runtime([1, 2, 3]);
     let k = positive(xs.first) + 1;
-    (for _x in xs fold _total = 3 { k }, for _x in runtime(nil) fold _total = 3 { k })
+    for _x in xs fold _total = 3 { k }
 }
 
 test fn accumulator_of_a_fold_used_by_a_fold_that_ignores_its_own() -> Int {
@@ -474,13 +474,20 @@ test fn lambda_for_a_fold_that_ignores_its_accumulator() -> Int {
     for _x in xs fold _total = 3 { add(1) }
 }
 
+// An argument of an inlined call that only such a fold uses is evaluated once, so it's bound if
+// the fold refers to it twice, and substituted if it refers to it once
 fn squared_for_any(xs: List<Int>, k: Int) -> Int {
     for _x in xs fold _total = 3 { k * k }
 }
 
-test fn argument_for_a_fold_that_ignores_its_accumulator() -> Int {
+fn offset_for_any(xs: List<Int>, value: Int, offset: Int) -> Int {
+    for _x in xs fold _total = 0 { value + offset }
+}
+
+test fn arguments_for_a_fold_that_ignores_its_accumulator() -> (Int, Int) {
     let xs = runtime([1, 2, 3]);
-    squared_for_any(xs, positive(xs.first) + 1)
+    let y = runtime([4]).first;
+    (squared_for_any(xs, y + 1), offset_for_any(xs, y, y * 3))
 }
 
 // A loop that's called somewhere that can be evaluated more than once, or not at all, for each
