@@ -372,6 +372,9 @@ pub enum DiagnosticKind {
     #[error("Spread operator cannot be used on this builtin")]
     InvalidSpreadBuiltin,
 
+    #[error("`{0}` takes the list itself, so its arguments can't be spread")]
+    SpreadListBuiltin(String),
+
     #[error("Field `{0}` exists on struct `{1}`, but it's not present in the underlying type")]
     MissingField(String, String),
 

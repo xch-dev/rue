@@ -37,6 +37,11 @@ fn main(
     let _ = g2_sum(pks);
     let _ = g2_difference(...sigs);
 
+    // Spreading their argument suggests passing the list instead
+    let _ = sum(int, ...ints);
+    let _ = g1_sum(pk, pk, ...pks);
+    let _ = concat(...[bytes], ...[bytes]);
+
     // Builtins with a fixed number of arguments
     let _ = coinid(hash, hash);
     let _ = coinid(hash, hash, bytes);

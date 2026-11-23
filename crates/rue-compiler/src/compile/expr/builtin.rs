@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
 use log::debug;
+use rowan::TextRange;
 use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode};
-use rue_diagnostic::{DiagnosticKind, SpreadTarget};
+use rue_diagnostic::{Applicability, DiagnosticKind, Edit, SpreadTarget, Suggestion};
 use rue_hir::{BinaryOp, Builtin, Hir, HirId, UnaryOp, Value};
 use rue_lir::ClvmOp;
 use rue_parser::SyntaxToken;
 use rue_types::{Pair, Type, TypeId, Union, substitute_with_mappings};
 
 use super::call_inference::list_of;
-use crate::{Compiler, compile_expr};
+use crate::{Compiler, compile_expr, trimmed_range};
 
 /// Builtins don't have a function type, since some of them accept more than one shape of
 /// arguments, so each one checks its own arguments here.
@@ -51,20 +52,40 @@ pub(crate) fn compile_builtin(
             [UnaryOp::Keccak256, UnaryOp::Keccak256Inline],
             ClvmOp::Keccak256,
         ),
-        Builtin::Concat => call.list_op(ctx, ClvmOp::Concat, types.bytes, types.bytes),
-        Builtin::Sum => call.list_op(ctx, ClvmOp::Add, types.int, types.int),
-        Builtin::Difference => call.list_op(ctx, ClvmOp::Sub, types.int, types.int),
-        Builtin::Product => call.list_op(ctx, ClvmOp::Mul, types.int, types.int),
-        Builtin::Any => call.list_op(ctx, ClvmOp::Any, types.bool, types.bool),
-        Builtin::All => call.list_op(ctx, ClvmOp::All, types.bool, types.bool),
-        Builtin::G1Sum => call.list_op(ctx, ClvmOp::G1Add, types.public_key, types.public_key),
-        Builtin::G1Difference => {
-            call.list_op(ctx, ClvmOp::G1Subtract, types.public_key, types.public_key)
-        }
-        Builtin::G2Sum => call.list_op(ctx, ClvmOp::G2Add, types.signature, types.signature),
-        Builtin::G2Difference => {
-            call.list_op(ctx, ClvmOp::G2Subtract, types.signature, types.signature)
-        }
+        Builtin::Concat => call.list_op(ctx, builtin, ClvmOp::Concat, types.bytes, types.bytes),
+        Builtin::Sum => call.list_op(ctx, builtin, ClvmOp::Add, types.int, types.int),
+        Builtin::Difference => call.list_op(ctx, builtin, ClvmOp::Sub, types.int, types.int),
+        Builtin::Product => call.list_op(ctx, builtin, ClvmOp::Mul, types.int, types.int),
+        Builtin::Any => call.list_op(ctx, builtin, ClvmOp::Any, types.bool, types.bool),
+        Builtin::All => call.list_op(ctx, builtin, ClvmOp::All, types.bool, types.bool),
+        Builtin::G1Sum => call.list_op(
+            ctx,
+            builtin,
+            ClvmOp::G1Add,
+            types.public_key,
+            types.public_key,
+        ),
+        Builtin::G1Difference => call.list_op(
+            ctx,
+            builtin,
+            ClvmOp::G1Subtract,
+            types.public_key,
+            types.public_key,
+        ),
+        Builtin::G2Sum => call.list_op(
+            ctx,
+            builtin,
+            ClvmOp::G2Add,
+            types.signature,
+            types.signature,
+        ),
+        Builtin::G2Difference => call.list_op(
+            ctx,
+            builtin,
+            ClvmOp::G2Subtract,
+            types.signature,
+            types.signature,
+        ),
         Builtin::CoinId => call.fixed(
             ctx,
             [types.bytes, types.bytes, types.int],
@@ -322,15 +343,85 @@ impl<'a> BuiltinCall<'a> {
         Value::new(ctx.alloc_hir(hir), types.bytes32)
     }
 
-    /// A builtin that applies `op` to a single list of `item` values.
-    fn list_op(&self, ctx: &mut Compiler, op: ClvmOp, item: TypeId, ret: TypeId) -> Value {
-        self.expect_count(ctx, 1);
-        self.reject_spread(ctx);
-
+    /// A builtin that applies `op` to a single list of `item` values. Its argument is the list
+    /// itself, so spreading it would only be a second way to write the same call.
+    fn list_op(
+        &self,
+        ctx: &mut Compiler,
+        builtin: Builtin,
+        op: ClvmOp,
+        item: TypeId,
+        ret: TypeId,
+    ) -> Value {
         let list = list_of(ctx, item);
-        let value = self.arg_or_unresolved(ctx, 0, list);
+
+        let value = if let Some(spread) = &self.spread {
+            self.spread_list_error(ctx, builtin, spread);
+
+            // Several arguments are what the list should hold, which the suggestion puts in one,
+            // so they aren't checked against it here
+            if self.args.len() == 1 {
+                self.check(ctx, 0, list)
+            } else {
+                ctx.unresolved().hir
+            }
+        } else {
+            self.expect_count(ctx, 1);
+            self.arg_or_unresolved(ctx, 0, list)
+        };
 
         Value::new(ctx.alloc_hir(Hir::ClvmOp(op, value)), ret)
+    }
+
+    /// Reports a spread argument of a builtin that takes a list, with a suggestion that passes
+    /// the list instead: `sum(...values)` becomes `sum(values)`, and `sum(first, ...rest)`
+    /// becomes `sum([first, ...rest])`.
+    fn spread_list_error(&self, ctx: &mut Compiler, builtin: Builtin, spread: &SyntaxToken) {
+        let args: Vec<_> = self.ast.args().collect();
+
+        let suggestion = match args.as_slice() {
+            [arg] => arg.expr().map(|expr| {
+                let start = spread.text_range().start();
+                let end = trimmed_range(expr.syntax()).start();
+                let srcloc = ctx.srcloc(&TextRange::new(start, end));
+                Suggestion::replace(
+                    "Remove the `...`",
+                    srcloc,
+                    "",
+                    Applicability::MachineApplicable,
+                )
+            }),
+            // Only the last argument can be spread in a list too, so there's no fix if another
+            // one is
+            [first, .., last]
+                if args[..args.len() - 1]
+                    .iter()
+                    .all(|arg| arg.spread().is_none() && arg.expr().is_some()) =>
+            {
+                let start = trimmed_range(first.syntax()).start();
+                let end = trimmed_range(last.syntax()).end();
+                let open = ctx.srcloc(&TextRange::empty(start));
+                let close = ctx.srcloc(&TextRange::empty(end));
+                Some(Suggestion::new(
+                    "Put the arguments in a list",
+                    vec![Edit::new(open, "["), Edit::new(close, "]")],
+                    Applicability::MachineApplicable,
+                ))
+            }
+            _ => None,
+        };
+
+        let count = ctx.diagnostic_count();
+        ctx.diagnostic(
+            spread,
+            DiagnosticKind::SpreadListBuiltin(builtin.to_string()),
+        );
+
+        if let Some(suggestion) = suggestion {
+            for diagnostic in ctx.diagnostics_since_mut(count) {
+                diagnostic.suggestions.push(suggestion.clone());
+            }
+        }
     }
 
     /// `g1_map` and `g2_map` hash a value onto a curve, with an optional domain separation tag.
