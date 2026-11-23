@@ -227,6 +227,7 @@ fn is_unnarrowed_error(kind: &DiagnosticKind) -> bool {
             | DiagnosticKind::InvalidFunctionCall(..)
             | DiagnosticKind::CannotDestructurePair(..)
             | DiagnosticKind::CannotIndexPair(..)
+            | DiagnosticKind::StructSpreadType(..)
     )
 }
 
@@ -824,7 +825,17 @@ impl Compiler {
                 .iter()
                 .find(|reference| covering.contains_range(**reference))
             {
-                diagnostic.notes.push(note(reference));
+                // A branch of an inline expression in another one is compared with both, so the
+                // note is only added once
+                let note = note(reference);
+
+                if !diagnostic
+                    .notes
+                    .iter()
+                    .any(|other| other.message == note.message)
+                {
+                    diagnostic.notes.push(note);
+                }
             }
         }
 

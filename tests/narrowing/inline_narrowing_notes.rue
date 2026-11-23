@@ -75,6 +75,33 @@ fn condition(value: Bool | (Int, Int)) -> Int {
     }
 }
 
+fn match_condition(value: Bool | (Int, Int)) -> Bool {
+    assert inline match value {
+        Bool => value,
+        _ => false,
+    };
+    true
+}
+
+// Other errors that narrowing would avoid
+fn kinds(flag: Bool | Int, pair: (Int, Int) | nil, point: Point | nil, fallback: Point) -> Int {
+    let negated = inline if flag is Bool { !flag } else { false };
+    let first = inline if pair is nil {
+        0
+    } else {
+        let (first, _) = pair;
+        first
+    };
+    let spread = inline if point is Point { Point { ...point } } else { fallback };
+    let _ = negated;
+    first + spread.x
+}
+
+// A branch of an inline expression in another one has the note once
+fn nested(point: Point | nil) -> Int {
+    inline if point is Point { inline if point is Point { point.x } else { 0 } } else { 0 }
+}
+
 // Nor does a later error about the code around a branch that was already reported
 fn later(value: Bytes32 | nil, fallback: Bytes32) -> Bytes32 {
     let result: Bytes32 = inline if value is Bytes32 { value } else { fallback };
@@ -120,6 +147,8 @@ export fn main(
     point: Point | nil,
     pair: Int | (Int, Int),
     flag: Bool | (Int, Int),
+    choice: Bool | Int,
+    maybe_pair: (Int, Int) | nil,
 ) -> List<Any> {
     [
         field(list),
@@ -138,5 +167,8 @@ export fn main(
         wildcard(point),
         condition(flag),
         untyped(value),
+        match_condition(flag),
+        nested(point),
+        kinds(choice, maybe_pair, point, Point { x: 1 }),
     ]
 }

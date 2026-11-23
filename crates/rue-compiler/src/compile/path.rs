@@ -604,16 +604,12 @@ where
                 // A local binding of the same name would shadow the module, so a name by itself
                 // only refers to it when nothing else named that is in scope. A name after a
                 // module in a path is only looked up in that module.
-                let single = length == 1;
-
-                for diagnostic in ctx
-                    .diagnostics_since_mut(count)
-                    .iter_mut()
-                    .filter(|_| single)
-                {
-                    diagnostic.notes.push(Note::new(format!(
-                        "No value named `{name}` is in scope here, so `{name}` is the module, which can't be used as a value; use one of its items, as in `{name}::item`"
-                    )));
+                if length == 1 {
+                    for diagnostic in ctx.diagnostics_since_mut(count) {
+                        diagnostic.notes.push(Note::new(format!(
+                            "No value named `{name}` is in scope here, so `{name}` is the module, which can't be used as a value; use one of its items, as in `{name}::item`"
+                        )));
+                    }
                 }
             }
             value

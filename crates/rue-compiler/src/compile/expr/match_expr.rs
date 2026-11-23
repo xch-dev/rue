@@ -547,27 +547,26 @@ fn compile_arm(
 
     let expected_type = matched.expected_type;
     let start = ctx.branch_start(InlineBranch::Match, matched.expression);
-    let body_node = body.as_ref().map(|body| body.syntax().clone());
 
-    let body = match (body, matched.branches) {
+    let value = match (&body, matched.branches) {
         (None, _) => {
             debug!("Unresolved match arm body");
             ctx.unresolved()
         }
         (Some(body), Some(branches)) if branches.is_statement() && !arm.ends_with_brace() => {
             ctx.diagnostic(body.syntax(), DiagnosticKind::StatementMatchArmValue);
-            compile_expr(ctx, &body, expected_type)
+            compile_expr(ctx, body, expected_type)
         }
         (Some(body), Some(branches)) => {
-            compile_branching_expr(ctx, &body, expected_type, branches).0
+            compile_branching_expr(ctx, body, expected_type, branches).0
         }
-        (Some(body), None) => compile_expr(ctx, &body, expected_type),
+        (Some(body), None) => compile_expr(ctx, body, expected_type),
     };
 
     // The body of an arm of an `inline match` sees neither the value narrowed to the arm's type
     // nor what its condition narrows
     if matched.inline
-        && let Some(body_node) = body_node
+        && let Some(body) = &body
     {
         // An arm without a type narrows the value to what the arms before it didn't handle, if
         // they handled anything
@@ -575,12 +574,12 @@ fn compile_arm(
             guarded.insert(matched.reference.symbol);
         }
 
-        ctx.note_unnarrowed_branch(start, &guarded, &body_node, body.ty, expected_type);
+        ctx.note_unnarrowed_branch(start, &guarded, body.syntax(), value.ty, expected_type);
     }
 
     ctx.revert_mappings(index, range.end());
 
-    (body, condition)
+    (value, condition)
 }
 
 /// Compiles the condition and body of an arm that's never taken, so that their errors are

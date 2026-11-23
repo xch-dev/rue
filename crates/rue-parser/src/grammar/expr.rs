@@ -89,7 +89,7 @@ fn expr_with_inner(p: &mut Parser, checkpoint: Checkpoint, options: ExprOptions)
         // says so, rather than the body and everything after it being misread
         let unparenthesized = !options.allow_struct_initializer && at_struct_initializer_braces(p);
 
-        if p.at_quiet(T!['{']) && (options.allow_struct_initializer || unparenthesized) {
+        if p.at(T!['{']) && (options.allow_struct_initializer || unparenthesized) {
             p.start_at(checkpoint, SyntaxKind::StructInitializerExpr);
             p.expect(T!['{']);
             delimited_list(p, T!['}'], |p| {

@@ -394,15 +394,19 @@ impl Parser {
 
     /// The non-trivia tokens from the current position on.
     fn upcoming(&self) -> impl Iterator<Item = &ParseToken> {
-        let start = if self.too_deep {
+        self.parse_tokens[self.lookahead_start()..]
+            .iter()
+            .filter(|token| !token.kind.is_trivia())
+    }
+
+    /// Where the tokens that are looked ahead at start, which is the end once the nesting limit is
+    /// exceeded, so that nothing more is parsed.
+    fn lookahead_start(&self) -> usize {
+        if self.too_deep {
             self.parse_tokens.len()
         } else {
             self.pos.min(self.parse_tokens.len())
-        };
-
-        self.parse_tokens[start..]
-            .iter()
-            .filter(|token| !token.kind.is_trivia())
+        }
     }
 
     /// Whether the token is an identifier with the given text.
@@ -448,11 +452,7 @@ impl Parser {
     /// Where in the tokens the delimited group that starts at the current token ends, which is
     /// right after its closing token, if it's closed.
     fn group_end(&self) -> Option<usize> {
-        let start = if self.too_deep {
-            self.parse_tokens.len()
-        } else {
-            self.pos.min(self.parse_tokens.len())
-        };
+        let start = self.lookahead_start();
         let mut depth = 0usize;
 
         for (index, token) in self.parse_tokens.iter().enumerate().skip(start) {
