@@ -1,9 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use clvmr::error::EvalErr;
 use clvmr::{Allocator, ChiaDialect, NodePtr, SExp, run_program};
 use id_arena::Arena;
+use indexmap::IndexSet;
 use rue_diagnostic::DiagnosticKind;
 use rue_hir::{
     Declaration, DependencyGraph, Environment, Hir, HirId, Lowerer, MAX_LOWERING_DEPTH, Symbol,
@@ -86,7 +87,7 @@ fn evaluate_const(ctx: &mut Compiler, states: &mut HashMap<HirId, ConstState>, h
                 // of this one
                 let root = const_root(ctx, expr.value);
                 let graph = DependencyGraph::build(ctx, root, const_options(ctx));
-                let dependencies: Vec<HirId> = graph.const_exprs().collect();
+                let dependencies = const_dependencies(ctx, &graph);
 
                 stack.push(ConstFrame {
                     hir,
@@ -185,6 +186,29 @@ fn finish_const(
     states.insert(hir, ConstState::Failed);
 }
 
+/// The const expressions that must be evaluated before the one whose dependency graph this is:
+/// the ones it reaches, and the ones in the programs of the functions it uses as values, which
+/// are compiled on their own (see `DependencyGraph::program_values`), along with the ones in
+/// theirs.
+fn const_dependencies(ctx: &Compiler, graph: &DependencyGraph) -> Vec<HirId> {
+    let options = ctx.options().release();
+    let mut dependencies: IndexSet<HirId> = graph.const_exprs().collect();
+    let mut visited = HashSet::new();
+    let mut stack: Vec<SymbolId> = graph.program_values().collect();
+
+    while let Some(symbol) = stack.pop() {
+        if !visited.insert(symbol) {
+            continue;
+        }
+
+        let graph = DependencyGraph::build(ctx, symbol, options);
+        dependencies.extend(graph.const_exprs());
+        stack.extend(graph.program_values());
+    }
+
+    dependencies.into_iter().collect()
+}
+
 /// A function that returns the value of a const expression, which it's evaluated as.
 fn const_root(ctx: &mut Compiler, value: HirId) -> SymbolId {
     let unresolved = ctx.builtins().unresolved.ty;
@@ -281,9 +305,14 @@ fn evaluate_const_expr(
         }
     }
 
+    // A function that's used as a value is compiled as it would be for the target, rather than
+    // with the options above, so that it's the same program as it is anywhere else
+    let program_options = *ctx.options();
+
     let mut arena = Arena::new();
     let lir = {
-        let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, root, PathBuf::new());
+        let mut lowerer = Lowerer::new(ctx, &mut arena, &graph, options, root, PathBuf::new())
+            .with_program_options(program_options);
         let lir = lowerer.lower_symbol_value(&Environment::default(), root);
 
         if lowerer.too_deep().is_some() {

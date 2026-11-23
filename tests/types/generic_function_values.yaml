@@ -1,49 +1,49 @@
 tests:
 - name: pass_generic_function
   program: (a (q . 2) (q 42))
-  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 42))) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 2 (c (q . 2) (q . 42))) (c (q 2 2 (c 3 ())) ()))
   output: "42"
   runtime_cost: 179
   byte_cost: 156000
   total_cost: 156179
 - name: pass_generic_function_bytes32
   program: (a (q . 2) (c (sha256 (q . "hello")) ()))
-  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (sha256 (q . "hello")))) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 2 (c (q . 2) (sha256 (q . "hello")))) (c (q 2 2 (c 3 ())) ()))
   output: "0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
   runtime_cost: 826
   byte_cost: 312000
   total_cost: 312826
 - name: instantiate_generic_function
   program: (a (q . 2) (q 42))
-  debug_program: (a (q 2 (q 2 2 (c (q . 42) ())) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q . 2) ()))
+  debug_program: (a (q 2 2 (c (q . 42) ())) (c (q . 2) 1))
   output: "42"
   runtime_cost: 179
   byte_cost: 156000
   total_cost: 156179
 - name: instantiate_wider_return
   program: (a (q . 2) (q 42))
-  debug_program: (a (q 2 (q 2 2 (c (q . 42) ())) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q . 2) ()))
+  debug_program: (a (q 2 2 (c (q . 42) ())) (c (q . 2) 1))
   output: "42"
   runtime_cost: 179
   byte_cost: 156000
   total_cost: 156179
 - name: instantiate_multiple_generics
   program: (a (q . 2) (q 42 "hello"))
-  debug_program: (a (q 2 (q 2 2 (c (q . 42) (c (q . "hello") ()))) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q . 2) ()))
+  debug_program: (a (q 2 2 (c (q . 42) (c (q . "hello") ()))) (c (q . 2) 1))
   output: "42"
   runtime_cost: 179
   byte_cost: 240000
   total_cost: 240179
 - name: rename_generics
   program: (a (q . 2) (q 42))
-  debug_program: (a (q 2 (q 2 2 (c (q . 42) ())) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q . 2) ()))
+  debug_program: (a (q 2 2 (c (q . 42) ())) (c (q . 2) 1))
   output: "42"
   runtime_cost: 179
   byte_cost: 156000
   total_cost: 156179
 - name: rename_multiple_generics
   program: (a (q . 2) (q 42 "hello"))
-  debug_program: (a (q 2 (q 2 2 (c (q . 42) (c (q . "hello") ()))) (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) 1)) (c (q . 2) ()))
+  debug_program: (a (q 2 2 (c (q . 42) (c (q . "hello") ()))) (c (q . 2) 1))
   output: "42"
   runtime_cost: 179
   byte_cost: 240000
@@ -57,7 +57,7 @@ tests:
   total_cost: 36020
 - name: pass_polymorphic_function
   program: (a (q 2 2 (c (a 2 (q 42)) ())) (c (q . 2) 1))
-  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 42))) (c (c (q . 2) (q 2 2 (c (a 2 (c 3 ())) ()))) ()))
+  debug_program: (a (q 2 2 (c (q . 2) (q . 42))) (c (q 2 2 (c (a 2 (c 3 ())) ())) ()))
   output: "42"
   runtime_cost: 715
   byte_cost: 468000

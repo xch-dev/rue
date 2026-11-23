@@ -254,13 +254,13 @@ tests:
   byte_cost: 732000
   total_cost: 732822
 - name: function_used_as_a_value
-  program: (a (q 2 (a (i 11 (q . 2) (q 1 33 (= 2 11) (= 2 5))) 1) (c 5 (c 5 (c 5 ())))) (c (q 2 (i (= 2 5) (q 1 . 1) (q 9 2 11)) 1) 1))
-  debug_program: (a (q 2 (q 2 2 (c 11 (c 11 (c 11 ())))) (c (a (i 11 (q 4 (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (q 4 (q . 2) (c (c (q . 1) (q 2 (i (= 2 11) (q 1 . 1) (q 9 2 5)) 1)) (c (q . 1) ())))) 1) 1)) (c (q 2 (i (= 2 5) (q 1 . 1) (q 9 2 11)) 1) 1))
+  program: (a (a (i 5 (q 1 2 (i (= 2 5) (q 1 . 1) (q 9 2 11)) 1) (q 1 33 (= 2 11) (= 2 5))) 1) (c 2 (c 2 (c 2 ()))))
+  debug_program: (a (q 2 2 (c 5 (c 5 (c 5 ())))) (c (a (i 5 (q 1 2 (i (= 2 5) (q 1 . 1) (q 9 2 11)) 1) (q 4 (q . 2) (c (c (q . 1) (q 2 (i (= 2 11) (q 1 . 1) (q 9 2 5)) 1)) (c (q . 1) ())))) 1) 1))
   solution: (3 1)
   output: "1"
-  runtime_cost: 1432
-  byte_cost: 1332000
-  total_cost: 1333432
+  runtime_cost: 1162
+  byte_cost: 1164000
+  total_cost: 1165162
 - name: small_operand
   program: (any (> 2 ()) (> (+ 2 2 2) (q . 5)))
   debug_program: (a (i (> 2 ()) (q 1 . 1) (q 21 (+ (+ 2 2) 2) (q . 5))) 1)

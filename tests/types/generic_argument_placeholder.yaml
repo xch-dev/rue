@@ -42,12 +42,12 @@ tests:
   byte_cost: 60000
   total_cost: 60020
 - name: function_value
-  program: (a (q 2 (q 16 (f (a 2 (q 1))) (f (a 5 (q 2))) (not (= (r (a 2 (q 1))) ()))) (c 2 1)) (c (q 4 2 ()) ()))
-  debug_program: (a (q 2 (q 2 (q 16 (+ (f (a 9 (c (q . 1) ()))) (f (a 13 (c (q . 2) ())))) (a (i (= 2 ()) () (q 1 . 1)) 1)) (c (r (a 4 (c (q . 1) ()))) 1)) (c (c (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) 2) (c (q . 1) ())))) 1)) (c (q 4 2 ()) ()))
+  program: (a (q 16 (f (a 2 (q 1))) (f (a (q 4 2 ()) (q 2))) (not (= (r (a 2 (q 1))) ()))) (c (q 4 2 ()) 1))
+  debug_program: (a (q 2 (q 16 (+ (f (a 9 (c (q . 1) ()))) (f (a 13 (c (q . 2) ())))) (a (i (= 2 ()) () (q 1 . 1)) 1)) (c (r (a 4 (c (q . 1) ()))) 1)) (c (c (q 4 2 ()) (q 4 2 ())) 1))
   output: "3"
-  runtime_cost: 2922
-  byte_cost: 1164000
-  total_cost: 1166922
+  runtime_cost: 2636
+  byte_cost: 1092000
+  total_cost: 1094636
 - name: builtin
   program: (q . 6)
   debug_program: (a (q 16 2 (q . 1)) (c (q . 5) 1))

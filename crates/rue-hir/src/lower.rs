@@ -6,6 +6,7 @@ mod inline;
 mod layout;
 mod measure;
 mod path_binding;
+mod program;
 mod substitution;
 
 pub use debug::*;
@@ -151,6 +152,13 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// than the program reaches them in, so that [`Layout::Written`] or
     /// [`Layout::EverythingReached`] could lower the program differently.
     reordered: Cell<Reordered>,
+    /// The options that a function is compiled with on its own, where it's used as a value and
+    /// lowered to that program (see [`crate::program_value`]), which are the release options for
+    /// the target.
+    program_options: CompilerOptions,
+    /// The programs that functions used as values have been compiled to, which are shared with
+    /// the lowerers that compile them, since a program can use the same function as a value.
+    programs: program::Programs,
 }
 
 /// What a block's statements are followed by.
@@ -245,7 +253,19 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             layout: Layout::CANDIDATES[0],
             nesting: None,
             reordered: Cell::default(),
+            program_options: options.release(),
+            programs: program::Programs::default(),
         }
+    }
+
+    /// Sets the options that a function is compiled with where it's used as a value (see
+    /// [`crate::program_value`]). They're the release options of the ones it's lowered with
+    /// unless this is called, which is only needed when those aren't the target's options, such
+    /// as for a const expression.
+    #[must_use]
+    pub fn with_program_options(mut self, options: CompilerOptions) -> Self {
+        self.program_options = options.release();
+        self
     }
 
     /// Records where each LIR node comes from in the source, and which nodes are the bodies of
@@ -1393,6 +1413,10 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_symbol(&mut self, env: &Environment, symbol: SymbolId, is_lambda: bool) -> LirId {
+        if self.graph.is_program_value(symbol) {
+            return self.lower_program_value(symbol);
+        }
+
         let mut reference = if self.should_inline(symbol) || is_lambda {
             self.lower_symbol_value(env, symbol)
         } else {

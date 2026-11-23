@@ -24,7 +24,7 @@ pub fn reads_env(arena: &Arena<Lir>, lir: LirId) -> bool {
 
 fn reads_env_step(arena: &Arena<Lir>, lir: LirId) -> bool {
     match &arena[lir] {
-        Lir::Atom(_) | Lir::Quote(_) => false,
+        Lir::Atom(_) | Lir::Value(_) | Lir::Quote(_) => false,
         Lir::Path(_) => true,
         node => node.children().any(|child| reads_env(arena, child)),
     }

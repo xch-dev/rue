@@ -18,6 +18,7 @@ workspace = true
 [dependencies]
 rue-options = { workspace = true }
 rue-lir = { workspace = true }
+clvmr = { workspace = true }
 rue-types = { workspace = true }
 rue-diagnostic = { workspace = true }
 id-arena = { workspace = true }

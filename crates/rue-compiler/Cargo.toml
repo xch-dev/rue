@@ -38,6 +38,7 @@ thiserror = { workspace = true }
 include_dir = { workspace = true }
 
 [dev-dependencies]
+clvm-utils = { workspace = true }
 rue-types = { workspace = true, features = ["step-counter"] }
 rue-lexer = { workspace = true }
 expect-test = { workspace = true }

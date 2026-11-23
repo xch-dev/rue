@@ -11,6 +11,7 @@ use crate::{
     Symbol, SymbolId,
     analysis::{Callee, Effect, resolve_callee, resolve_function},
     lower::MAX_REPEATED_STATIC_SIZE,
+    program_value::ProgramValues,
     repeat_cost::is_cheap_to_repeat,
     small_static::{StaticContext, is_small_static, take},
 };
@@ -78,6 +79,11 @@ pub struct DependencyGraph {
 
     // Keeps track of whether a symbol is ever used as a closure
     closures: HashSet<SymbolId>,
+    /// The functions that are used as values and lowered to the program they're compiled to on
+    /// their own (see [`crate::program_value`]). They're constants, so they aren't dependencies.
+    program_values: IndexSet<SymbolId>,
+    /// Decides which functions are lowered that way.
+    program_value_decisions: ProgramValues,
     /// The functions that `for` expressions are compiled to (see `FunctionKind::Loop`).
     loops: HashSet<SymbolId>,
     /// The symbols that are referenced inside of a loop they're defined outside of, which
@@ -228,6 +234,8 @@ impl DependencyGraph {
             repeated: HashSet::new(),
             inline_values: HashSet::new(),
             closures: HashSet::new(),
+            program_values: IndexSet::new(),
+            program_value_decisions: ProgramValues::default(),
             loops: HashSet::new(),
             loop_captures: HashSet::new(),
             loop_dependencies: HashMap::new(),
@@ -694,6 +702,18 @@ impl DependencyGraph {
 
     pub fn is_closure(&self, symbol: SymbolId) -> bool {
         self.closures.contains(&symbol)
+    }
+
+    /// Whether the function is lowered to the program it's compiled to on its own where it's
+    /// used as a value, rather than to a closure (see [`crate::program_value`]).
+    pub fn is_program_value(&self, symbol: SymbolId) -> bool {
+        self.program_values.contains(&symbol)
+    }
+
+    /// The functions that are lowered to their own programs where they're used as values, in the
+    /// order they were found in.
+    pub fn program_values(&self) -> impl Iterator<Item = SymbolId> + '_ {
+        self.program_values.iter().copied()
     }
 
     /// Whether the symbol is the function a `for` expression is compiled to.
@@ -1784,6 +1804,16 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             }
         }
         Hir::Reference(symbol) => {
+            // A function whose value is its own program is a constant, so it isn't a dependency
+            if !is_call
+                && graph
+                    .program_value_decisions
+                    .is_program_value(db, graph.main, *symbol)
+            {
+                graph.program_values.insert(*symbol);
+                return;
+            }
+
             if !is_call {
                 graph.closures.insert(*symbol);
             }

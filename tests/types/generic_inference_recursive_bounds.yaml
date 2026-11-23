@@ -1,18 +1,18 @@
 tests:
 - name: expected_bound_through_another_generic
   program: (a (q . 2) (q 1))
-  debug_program: (a (q 2 6 (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 1))) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 2 (c (q . 2) (q . 1))) (c (q 2 2 (c 3 ())) ()))
   output: "1"
   runtime_cost: 179
   byte_cost: 156000
   total_cost: 156179
 - name: upper_bound_through_another_generic
-  program: (a (q 2 (a 14 (c 2 (c 10 (c 4 (q . 1))))) (q 1)) (c (c (q 16 2 (q . 1)) (c (q . 2) (q 2 (i (> 15 ()) (q 2 (q 4 (q . 2) (c (q 1 16 (a 11 (c (a 5 (c 23 ())) ())) (a 2 (q 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 23) (q 1))) ()))) ()))) ()))) (c (a 14 (c 2 (c 10 (c 4 (- 15 (q . 1)))))) 1)) (q 4 (q . 2) (c (q 1 2 5 (c (a 2 (c 11 ())) ())) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 11) (q 1))) ()))) ())))) 1))) ()))
-  debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (a 14 (c (c 4 (c 10 14)) (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (q . 1))))) 1)) (c (c (q 16 2 (q . 1)) (c (q . 2) (q 2 (i (> 15 ()) (q 2 (q 4 (q . 2) (c (c (q . 1) (q 16 (a 11 (c (a 5 (c 23 ())) ())) (a 2 (c (q . 1) ())))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 23) (c (q . 1) ()))) ()))) ()))) ()))) (c (a 14 (c (c 4 (c 10 14)) (c (c (q . 2) (c (c (q . 1) 10) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (- 15 (q . 1)))))) 1)) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 11) (c (q . 1) ()))) ()))) ())))) 1))) ()))
+  program: (a (q 2 (a 2 (c 2 (c (q . 2) (c (q 16 2 (q . 1)) (q . 1))))) (q 1)) (c (q 2 (i (> 15 ()) (q 2 (q 4 (q . 2) (c (q 1 16 (a 11 (c (a 5 (c 23 ())) ())) (a 2 (q 1))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 23) (q 1))) ()))) ()))) ()))) (c (a 2 (c 2 (c (q . 2) (c (q 16 2 (q . 1)) (- 15 (q . 1)))))) 1)) (q 4 (q . 2) (c (q 1 2 5 (c (a 2 (c 11 ())) ())) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 11) (q 1))) ()))) ())))) 1) ()))
+  debug_program: (a (q 2 (q 2 2 (c (q . 1) ())) (c (a 2 (c 2 (c (q . 2) (c (q 16 2 (q . 1)) (q . 1))))) 1)) (c (q 2 (i (> 15 ()) (q 2 (q 4 (q . 2) (c (c (q . 1) (q 16 (a 11 (c (a 5 (c 23 ())) ())) (a 2 (c (q . 1) ())))) (c (c (q . 4) (c (c (q . 1) 2) (c (c (q . 4) (c (c (q . 1) 11) (c (c (q . 4) (c (c (q . 1) 23) (c (q . 1) ()))) ()))) ()))) ()))) (c (a 2 (c 2 (c (q . 2) (c (q 16 2 (q . 1)) (- 15 (q . 1)))))) 1)) (q 4 (q . 2) (c (c (q . 1) (q 2 5 (c (a 2 (c 11 ())) ()))) (c (c (q . 4) (c (c (q . 1) 5) (c (c (q . 4) (c (c (q . 1) 11) (c (q . 1) ()))) ()))) ())))) 1) ()))
   output: "4"
-  runtime_cost: 10485
+  runtime_cost: 10191
   byte_cost: 4740000
-  total_cost: 4750485
+  total_cost: 4750191
 - name: expected_type_only
   program: (a (q 5 (a 2 (c 2 (q . 1)))) (c (q 2 (i (> 3 ()) (q 2 2 (c 2 (- 3 (q . 1)))) (q 1 1)) 1) ()))
   debug_program: (a (q 2 (q 5 2) (c (a 2 (c 2 (q . 1))) 1)) (c (q 2 (i (> 3 ()) (q 2 2 (c 2 (- 3 (q . 1)))) (q 4 (q . 1) ())) 1) ()))
@@ -29,21 +29,21 @@ tests:
   total_cost: 951392
 - name: guard_bound_held_by_the_original
   program: (a (q 2 2 (c 2 (c (q . 3) (c (q . 1) (c (q . 2) (q . 2)))))) (c (q 2 (i (> 11 ()) (q 2 2 (c 2 (c 5 (c (- 11 (q . 1)) (c (q . 2) (q 1 . 1)))))) (q . 5)) 1) ()))
-  debug_program: (a (q 2 4 (c (c 4 6) (c (q . 3) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (c (c (q 2 (i (> 11 ()) (q 2 (q . 2) (c (a 4 (c (c 4 6) (c 5 (c (- 11 (q . 1)) (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))))) 1)) (q . 5)) 1) (q . 2)) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 3) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (c (q 2 (i (> 11 ()) (q 2 (q . 2) (c (a 2 (c 2 (c 5 (c (- 11 (q . 1)) (c (q . 2) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))))) 1)) (q . 5)) 1) ()))
   output: "3"
   runtime_cost: 3672
   byte_cost: 1476000
   total_cost: 1479672
 - name: guard_lambda_through_another_generic
   program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 2) (q . 2))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (q . 2) (q 1 . 1))))) (q 1 . 4)) 1) ()))
-  debug_program: (a (q 2 4 (c (c 4 6) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (c (q 2 (i (> 5 ()) (q 2 (q . 2) (c (a 4 (c (c 4 6) (c (- 5 (q . 1)) (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))))))) 1)) (q 1 . 4)) 1) (q . 2)) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))))))) (c (q 2 (i (> 5 ()) (q 2 (q . 2) (c (a 2 (c 2 (c (- 5 (q . 1)) (c (q . 2) (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))))))) 1)) (q 1 . 4)) 1) ()))
   output: "4"
   runtime_cost: 3454
   byte_cost: 1332000
   total_cost: 1335454
 - name: guard_held_only
   program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 2) (c (q . 1) (q . 2)))))) (c (q 2 (i (> 5 ()) (q 2 2 (c 2 (c (- 5 (q . 1)) (c (q . 2) (c () (q 1 . 1)))))) (q 2 11 (c 23 ()))) 1) ()))
-  debug_program: (a (q 2 4 (c (c 4 6) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (c (c (q 2 (i (> 5 ()) (q 2 (q . 2) (c (a 4 (c (c 4 6) (c (- 5 (q . 1)) (c (c (q . 2) (c (c (q . 1) 6) (c (q . 1) ()))) (c () (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))))) 1)) (q 2 11 (c 23 ()))) 1) (q . 2)) ()))
+  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (q . 1) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (c (q 2 (i (> 5 ()) (q 2 (q . 2) (c (a 2 (c 2 (c (- 5 (q . 1)) (c (q . 2) (c () (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ())))))))) 1)) (q 2 11 (c 23 ()))) 1) ()))
   output: ()
   runtime_cost: 3950
   byte_cost: 1620000

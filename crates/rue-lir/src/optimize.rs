@@ -97,6 +97,7 @@ fn optimize_step(
 
     match node {
         Lir::Atom(atom) => opt_atom(arena, atom),
+        Lir::Value(value) => arena.alloc(Lir::Value(value)),
         Lir::Path(path) => opt_path(arena, path),
         Lir::Quote(value) => opt_quote(arena, value),
         Lir::Run(callee, env) => opt_run(arena, callee, env),

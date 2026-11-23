@@ -8,6 +8,7 @@ mod import;
 mod lower;
 mod may_raise;
 mod ops;
+mod program_value;
 mod repeat_cost;
 mod scope;
 mod small_static;

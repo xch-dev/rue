@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use clvm_traits::{ToClvm, ToClvmError};
 use clvmr::{Allocator, NodePtr};
 use id_arena::Id;
@@ -10,6 +12,9 @@ pub type LirId = Id<Lir>;
 #[derive(Debug, Clone)]
 pub enum Lir {
     Atom(Vec<u8>),
+    /// A constant value of any shape, as serialized CLVM, which is generated quoted whatever the
+    /// options are, such as the program of a function that's used as a value.
+    Value(Rc<[u8]>),
     Path(BigUint),
     Quote(LirId),
     Run(LirId, LirId),
@@ -72,7 +77,7 @@ impl Lir {
     /// The nodes directly inside of this one, in the order they're evaluated and generated.
     pub fn children(&self) -> impl Iterator<Item = LirId> + '_ {
         let (fixed, list): ([Option<LirId>; 3], &[LirId]) = match self {
-            Self::Atom(_) | Self::Path(_) => ([None; 3], &[]),
+            Self::Atom(_) | Self::Value(_) | Self::Path(_) => ([None; 3], &[]),
             Self::Quote(a)
             | Self::First(a)
             | Self::Rest(a)
@@ -141,7 +146,7 @@ impl Lir {
         }
 
         match self {
-            Self::Atom(_) | Self::Path(_) => self,
+            Self::Atom(_) | Self::Value(_) | Self::Path(_) => self,
             Self::Quote(a) => Self::Quote(f(a)),
             Self::Run(a, b) => Self::Run(f(a), f(b)),
             Self::Closure(a, args, has_parameters) => {
@@ -217,14 +222,15 @@ impl Lir {
 
     /// The CLVM operator that this node is generated as, called with its children (see
     /// [`Lir::children`]) as the operands, as in `(OPERATOR CHILD ...)`. This is `None` for nodes
-    /// that are generated some other way: atoms, paths, quotes, closures, conditions, calls to an
-    /// operator at runtime ([`Lir::Op`]), debug prints and Keccak-256 checks.
+    /// that are generated some other way: atoms, values, paths, quotes, closures, conditions,
+    /// calls to an operator at runtime ([`Lir::Op`]), debug prints and Keccak-256 checks.
     ///
     /// The secp operators are generated with the opcode for the target (see
     /// [`ClvmOp::to_target_atom`]).
     pub fn operator(&self) -> Option<ClvmOp> {
         Some(match self {
             Self::Atom(_)
+            | Self::Value(_)
             | Self::Path(_)
             | Self::Quote(_)
             | Self::Closure(..)

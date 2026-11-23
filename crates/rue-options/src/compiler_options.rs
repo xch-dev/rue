@@ -170,6 +170,21 @@ impl CompilerOptions {
         Ok(())
     }
 
+    /// These options with every optimization on and no debug symbols, which is how a program
+    /// is built for release. The standard library, the target and the lints are kept.
+    #[must_use]
+    pub fn release(self) -> Self {
+        let defaults = Self::default();
+
+        Self {
+            auto_inline: defaults.auto_inline,
+            optimize_lir: defaults.optimize_lir,
+            debug_symbols: defaults.debug_symbols,
+            optimize_static_pairs: defaults.optimize_static_pairs,
+            ..self
+        }
+    }
+
     pub fn debug() -> Self {
         Self {
             auto_inline: false,
@@ -222,6 +237,24 @@ mod tests {
                 operand_limits && hard_fork_2
             );
         }
+    }
+
+    #[test]
+    fn release_options_keep_the_target_and_turn_optimizations_on() {
+        let options = CompilerOptions {
+            operand_limits: true,
+            std: false,
+            ..CompilerOptions::debug()
+        };
+
+        assert_eq!(
+            options.release(),
+            CompilerOptions {
+                operand_limits: true,
+                std: false,
+                ..CompilerOptions::default()
+            }
+        );
     }
 
     #[test]
