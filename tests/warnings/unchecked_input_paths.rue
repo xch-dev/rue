@@ -14,6 +14,27 @@ struct Inner {
     c: ((Bytes32, Bytes32), Bytes32),
 }
 
+struct Proof {
+    parent: Bytes32,
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+struct Other {
+    puzzle_hash: Bytes32,
+    parent: Bytes32,
+    amount: Int,
+}
+
+struct Two {
+    a: Bytes32,
+    b: Bytes32,
+}
+
+struct One {
+    a: Bytes32,
+}
+
 struct Item {
     parent: Bytes32,
     amount: Int,
@@ -72,8 +93,23 @@ fn main(
     e10: Bytes,
     e11: Bytes,
     e12: Bytes32,
+    cast_proof: Proof,
+    f1: Bytes32,
+    f2: Bytes32,
+    f3: Bytes32,
     flag: Bool,
 ) -> List<Any> {
+    // A field read through a struct with another layout is another value
+    let other = cast_proof as Other;
+    assert other.parent == sha256("x");
+
+    // Structs with different fields are merged as a whole
+    let either_shape: Two | One = if flag {
+        Two { a: f1, b: f2 }
+    } else {
+        One { a: f3 }
+    };
+
     // Checking an item of a pair or list literal only checks that item
     let pr = (z1, z2);
     let ls = [z3, z4];
@@ -157,6 +193,12 @@ fn main(
         sha256(tail + e6),
         // A negated guard before an early return doesn't check a use before it
         negated_after_use(e11, e12),
+        sha256(cast_proof.parent + cast_proof.amount as Bytes),
+        if either_shape is Two {
+            sha256(tail + either_shape.b)
+        } else {
+            tail
+        },
     ]
 }
 

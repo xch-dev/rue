@@ -219,6 +219,11 @@ impl<'a> LintContext<'a> {
         rue_types::unwrap_semantic(self.db.types_mut(), ty, true)
     }
 
+    /// Whether a value of the type can be a pair, such as a struct, so it has fields.
+    pub fn has_pairs(&mut self, ty: TypeId) -> bool {
+        !rue_types::extract_pairs(self.db.types_mut(), ty, false).is_empty()
+    }
+
     /// The declared type of a field of a struct, by name.
     pub fn struct_field_type(&mut self, ty: TypeId, name: &str) -> Option<TypeId> {
         let (fields, _) = rue_types::struct_field_types(self.db.types_mut(), self.types.never, ty)?;

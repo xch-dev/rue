@@ -1,0 +1,28 @@
+#![warn(unchecked_input)]
+
+// A value built from the same value many times over stays small enough to follow
+
+fn main(x: Bytes32) -> Bytes32 {
+    let p0 = x;
+    let p1 = (p0, p0);
+    let p2 = (p1, p1);
+    let p3 = (p2, p2);
+    let p4 = (p3, p3);
+    let p5 = (p4, p4);
+    let p6 = (p5, p5);
+    let p7 = (p6, p6);
+    let p8 = (p7, p7);
+    let p9 = (p8, p8);
+    let p10 = (p9, p9);
+    let p11 = (p10, p10);
+    let p12 = (p11, p11);
+    let p13 = (p12, p12);
+    let p14 = (p13, p13);
+    let p15 = (p14, p14);
+    let p16 = (p15, p15);
+    let p17 = (p16, p16);
+    let p18 = (p17, p17);
+    let p19 = (p18, p18);
+    let p20 = (p19, p19);
+    tree_hash(p20)
+}

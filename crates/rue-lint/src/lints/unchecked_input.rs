@@ -151,7 +151,7 @@ impl Flow {
     /// The unchecked value that this value is exactly, if any, which is what a check of it checks.
     /// A value that's exact is always exactly one.
     fn exact(&self) -> Option<&Origin> {
-        self.exact.then(|| self.direct.first()).flatten()
+        self.direct.first().filter(|_| self.exact)
     }
 
     /// The flow of a field of this value, or of the item or the rest of it if it's a pair
@@ -184,56 +184,68 @@ impl Flow {
         ]))
     }
 
-    /// A value made of the fields.
-    fn with_fields(fields: BTreeMap<String, Flow>) -> Self {
+    /// A value made of the fields. The fields are only kept as deep as paths are (see
+    /// [`MAX_PATH`]), so that values built from the same value many times over, as in
+    /// `let b = (a, a); let c = (b, b);`, stay small. A field below that is the union of its
+    /// values, like a value whose fields aren't known.
+    fn with_fields(mut fields: BTreeMap<String, Flow>) -> Self {
         let mut flow = Flow::default();
-        for field in fields.values() {
+        for field in fields.values_mut() {
+            field.limit_depth(MAX_PATH);
             flow.union(field);
         }
         flow.fields = Some(fields);
         flow
     }
 
-    /// A value that's one of the two values. If they're both structs with the same fields, each
-    /// field is one of the two fields, so reading one doesn't read the others.
-    fn either(first: Flow, second: Flow) -> Self {
-        let first_deferred = first.deferred.clone();
-        let second_deferred = second.deferred.clone();
+    /// Forgets the fields more than the depth below this value.
+    fn limit_depth(&mut self, depth: usize) {
+        let Some(fields) = &mut self.fields else {
+            return;
+        };
 
-        match (first.fields, second.fields) {
-            (Some(mut first), Some(second))
-                if first.len() == second.len()
-                    && second.keys().all(|name| first.contains_key(name)) =>
-            {
-                let mut flow = Self::with_fields(
-                    second
-                        .into_iter()
-                        .map(|(name, field)| {
-                            let other = first.remove(&name).unwrap_or_default();
-                            (name, Self::either(other, field))
-                        })
-                        .collect(),
-                );
-
-                // A condition's unchecked values are on the struct, not on its fields
-                for (origin, site) in first_deferred.into_iter().chain(second_deferred) {
-                    flow.deferred.entry(origin).or_insert(site);
-                }
-
-                flow
-            }
-            (first_fields, second_fields) => {
-                let mut flow = Flow {
-                    fields: first_fields,
-                    ..first
-                };
-                flow.union(&Flow {
-                    fields: second_fields,
-                    ..second
-                });
-                flow
+        if depth == 0 {
+            self.fields = None;
+        } else {
+            for field in fields.values_mut() {
+                field.limit_depth(depth - 1);
             }
         }
+    }
+
+    /// A value that's one of the two values. If they're both structs with the same fields, each
+    /// field is one of the two fields, so reading one doesn't read the others.
+    fn either(mut first: Flow, mut second: Flow) -> Self {
+        let same_fields = match (&first.fields, &second.fields) {
+            (Some(first), Some(second)) => first.keys().eq(second.keys()),
+            _ => false,
+        };
+
+        if !same_fields {
+            first.union(&second);
+            return first;
+        }
+
+        let (Some(first_fields), Some(second_fields)) = (first.fields.take(), second.fields.take())
+        else {
+            unreachable!("both values have fields");
+        };
+
+        // The fields have the same names, in the same order
+        let mut flow = Self::with_fields(
+            first_fields
+                .into_iter()
+                .zip(second_fields)
+                .map(|((name, first), (_, second))| (name, Self::either(first, second)))
+                .collect(),
+        );
+
+        // A condition's unchecked values are on the struct, not on its fields
+        for (origin, site) in first.deferred.into_iter().chain(second.deferred) {
+            flow.deferred.entry(origin).or_insert(site);
+        }
+
+        flow
     }
 
     fn union(&mut self, other: &Flow) {
@@ -694,7 +706,18 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                     "rest"
                 })
             }
-            Hir::Cast(value) => self.flow(value, always),
+            Hir::Cast(inner) => {
+                let mut flow = self.flow(inner, always);
+
+                // Fields are named by the type they're read through, so a cast to a struct or pair
+                // with another layout loses track of them
+                if self.changes_layout(inner, hir) {
+                    flow.exact = false;
+                    flow.fields = None;
+                }
+
+                flow
+            }
             Hir::Pair(first, rest) => {
                 let first = self.flow(first, always);
                 let rest = self.flow(rest, always);
@@ -721,8 +744,8 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             }
             Hir::Struct(initializer) => {
                 let condition = self.condition_type(hir);
-                let mut flow = Flow::default();
                 let mut fields = BTreeMap::new();
+                let mut deferred = BTreeMap::new();
 
                 for field in &initializer.fields {
                     let value = self.flow(field.value, always);
@@ -732,19 +755,24 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                         && self.field_has_length(ty, &field.name)
                     {
                         for origin in &value.direct {
-                            flow.deferred.entry(origin.clone()).or_insert(field.value);
+                            deferred.entry(origin.clone()).or_insert(field.value);
                         }
                     }
 
-                    flow.union(&value);
                     fields.insert(field.name.clone(), value);
                 }
 
+                let mut flow = Flow::with_fields(fields);
+
+                // The rest of a struct that spreads another one is that value as it is, so the
+                // fields aren't known
                 if let Some(tail) = initializer.tail_value() {
                     let tail = self.flow(tail, always);
                     flow.union(&tail);
-                } else {
-                    flow.fields = Some(fields);
+                }
+
+                for (origin, site) in deferred {
+                    flow.deferred.entry(origin).or_insert(site);
                 }
 
                 flow
@@ -1345,6 +1373,18 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         }
     }
 
+    /// Whether a cast from the value to the cast's type reads its fields through another struct or
+    /// pair, whose fields can have the same names in other places.
+    fn changes_layout(&mut self, value: HirId, cast: HirId) -> bool {
+        let (Some(from), Some(to)) = (self.cx.db().hir_type(value), self.cx.db().hir_type(cast))
+        else {
+            return false;
+        };
+
+        self.cx.unwrap_semantic(from) != self.cx.unwrap_semantic(to)
+            && (self.cx.has_pairs(from) || self.cx.has_pairs(to))
+    }
+
     /// The type of the struct, if it's one of the standard library's conditions.
     fn condition_type(&mut self, hir: HirId) -> Option<rue_types::TypeId> {
         let ty = self.cx.db().hir_type(hir)?;
@@ -1396,21 +1436,23 @@ fn check_has_length(check: &Check) -> bool {
 /// A value that's exactly one origin is exactly what that origin translates to, and the fields of a
 /// struct are translated one by one, up to the same depth as paths.
 fn translate_flow(flow: &Flow, translate: &impl Fn(&Origin) -> Flow, depth: usize) -> Flow {
-    let mut result = match (&flow.fields, flow.exact) {
-        _ if let Some(origin) = flow.exact() => translate(origin),
-        (Some(fields), _) if depth <= MAX_PATH => Flow::with_fields(
+    let mut result = if let Some(origin) = flow.exact() {
+        translate(origin)
+    } else if let Some(fields) = &flow.fields
+        && depth <= MAX_PATH
+    {
+        Flow::with_fields(
             fields
                 .iter()
                 .map(|(name, field)| (name.clone(), translate_flow(field, translate, depth + 1)))
                 .collect(),
-        ),
-        _ => {
-            let mut result = Flow::default();
-            for origin in &flow.direct {
-                result.union(&translate(origin));
-            }
-            result
+        )
+    } else {
+        let mut result = Flow::default();
+        for origin in &flow.direct {
+            result.union(&translate(origin));
         }
+        result
     };
 
     for (origin, &site) in &flow.deferred {
