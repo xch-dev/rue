@@ -20,6 +20,8 @@ fn main() -> Int {
         let inner = 1;
         0xff
     };
+    let hash: Int = 0xabababababababababababababababababababababababababababababababab;
+    let long: Int = 0xababababababababababababababababababababababababababababababab;
     let named = 0xff;
     let variable: Int = named;
     high_bit

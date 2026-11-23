@@ -1905,7 +1905,8 @@ impl Compiler {
             return None;
         };
 
-        if bytes.is_empty() {
+        // A literal of 32 bytes or more is a hash, public key or signature rather than a number
+        if bytes.is_empty() || bytes.len() >= 32 {
             return None;
         }
 
