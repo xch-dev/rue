@@ -171,16 +171,25 @@ pub struct Compiler {
 struct UnnarrowedBranch {
     source: SourceKind,
     range: TextRange,
-    expected: TypeId,
+    /// The range of the whole inline expression.
+    expression: TextRange,
+    /// The type that was expected of the branch, if any. Without one, the value is only explained
+    /// where the expression itself is checked, such as when it's a condition, so that a later
+    /// error about the code around it doesn't get the note.
+    expected: Option<TypeId>,
+    value: TypeId,
     note: Note,
 }
 
 /// What [`Compiler::note_unnarrowed_branch`] compares a branch with: where the compile was before
-/// the branch was compiled.
+/// the branch was compiled, and the inline expression it's a branch of.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BranchStart {
     diagnostics: usize,
     syntax_items: usize,
+    kind: InlineBranch,
+    /// The range of the whole inline expression.
+    expression: TextRange,
 }
 
 /// Which kind of inline expression a branch is of, which says what its note says.
@@ -731,10 +740,12 @@ impl Compiler {
 
     /// Where the compile is before a branch of an inline expression, which
     /// [`Self::note_unnarrowed_branch`] takes once it's compiled.
-    pub(crate) fn branch_start(&self) -> BranchStart {
+    pub(crate) fn branch_start(&self, kind: InlineBranch, expression: TextRange) -> BranchStart {
         BranchStart {
             diagnostics: self.diagnostics.len(),
             syntax_items: self.syntax_map.len(),
+            kind,
+            expression,
         }
     }
 
@@ -748,7 +759,6 @@ impl Compiler {
     pub(crate) fn note_unnarrowed_branch(
         &mut self,
         start: BranchStart,
-        kind: InlineBranch,
         symbols: &HashSet<SymbolId>,
         branch: &SyntaxNode,
         value: TypeId,
@@ -775,7 +785,11 @@ impl Compiler {
 
         let source = self.source.clone();
         let note = |reference: TextRange| {
-            Note::new(kind.note(&source.text[Range::<usize>::from(reference)]))
+            Note::new(
+                start
+                    .kind
+                    .note(&source.text[Range::<usize>::from(reference)]),
+            )
         };
         let branch_range = branch.text_range();
 
@@ -803,8 +817,8 @@ impl Compiler {
             let covering = branch
                 .covering_element(span)
                 .ancestors()
-                .find(|node| AstExpr::cast(node.clone()).is_some())
-                .map_or(span, |node| node.text_range());
+                .find_map(AstExpr::cast)
+                .map_or(span, |expr| expr.syntax().text_range());
 
             if let Some(&reference) = references
                 .iter()
@@ -814,13 +828,13 @@ impl Compiler {
             }
         }
 
-        if let Some(expected_type) = expected_type
-            && !self.is_assignable(value, expected_type)
-        {
+        if expected_type.is_none_or(|expected_type| !self.is_assignable(value, expected_type)) {
             self.unnarrowed_branches.push(UnnarrowedBranch {
                 source: source.kind.clone(),
                 range: branch_range,
+                expression: start.expression,
                 expected: expected_type,
+                value,
                 note: note(first),
             });
         }
@@ -828,27 +842,37 @@ impl Compiler {
 
     /// Adds the note of each inline branch at `range` whose value isn't assignable to `to` (see
     /// [`Self::note_unnarrowed_branch`]) to the errors reported since there were `count`
-    /// diagnostics, which say that the value at `range` isn't. The branches at `range` have
-    /// had their type checked then, so they're taken out, and a later error about the code around
-    /// them isn't explained by them.
+    /// diagnostics, which say that the value at `range` isn't. The branches at `range` have had
+    /// their type checked then, so they're taken out, and a later error about the code around them
+    /// isn't explained by them.
     fn note_unnarrowed_value(&mut self, count: usize, range: TextRange, to: TypeId) {
         if self.unnarrowed_branches.is_empty() {
             return;
         }
 
+        let (checked, rest) = mem::take(&mut self.unnarrowed_branches)
+            .into_iter()
+            .partition::<Vec<_>, _>(|branch| {
+                branch.source == self.source.kind && range.contains_range(branch.range)
+            });
+        self.unnarrowed_branches = rest;
+
+        if self.diagnostics.len() == count {
+            return;
+        }
+
         let mut notes = Vec::new();
 
-        self.unnarrowed_branches.retain(|branch| {
-            if branch.source != self.source.kind || !range.contains_range(branch.range) {
-                return true;
-            }
+        for branch in checked {
+            let explained = match branch.expected {
+                Some(expected) => expected == to,
+                None => range == branch.expression && !self.is_assignable(branch.value, to),
+            };
 
-            if branch.expected == to {
-                notes.push(branch.note.clone());
+            if explained {
+                notes.push(branch.note);
             }
-
-            false
-        });
+        }
 
         for diagnostic in &mut self.diagnostics[count..] {
             for note in &notes {

@@ -2,3 +2,4 @@ diagnostics:
 - |-
   Cannot reference module `policy` at main.rue:56:5
     note: No value named `policy` is in scope here, so `policy` is the module, which can't be used as a value; use one of its items, as in `policy::item`
+- Cannot reference module `rules` at main.rue:64:5

@@ -61,15 +61,13 @@ pub fn check_symbol_value(ctx: &mut Compiler, node: &impl GetTextRange, symbol: 
 /// most likely a struct initializer whose braces were read as the body. A struct initializer whose
 /// braces can't be a body is parsed as one, and reported as needing parentheses, by the parser.
 fn note_struct_before_body(ctx: &mut Compiler, count: usize, path: &AstPathExpr) {
-    let Some(brace) = path
-        .syntax()
-        .last_token()
-        .and_then(|token| token.next_token())
-        .and_then(|token| {
-            iter::successors(Some(token), SyntaxToken::next_token)
-                .find(|token| !token.kind().is_trivia())
-        })
-    else {
+    let Some(brace) = iter::successors(
+        path.syntax()
+            .last_token()
+            .and_then(|token| token.next_token()),
+        SyntaxToken::next_token,
+    )
+    .find(|token| !token.kind().is_trivia()) else {
         return;
     };
 
@@ -82,8 +80,8 @@ fn note_struct_before_body(ctx: &mut Compiler, count: usize, path: &AstPathExpr)
         return;
     }
 
-    let name = path.syntax().text().to_string();
-    let name = name.trim();
+    let srcloc = ctx.trimmed_srcloc(path.syntax());
+    let name = srcloc.text();
 
     for diagnostic in ctx.diagnostics_since_mut(count) {
         if matches!(diagnostic.kind, DiagnosticKind::ExpectedSymbol(..)) {

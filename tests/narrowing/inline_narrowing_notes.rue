@@ -52,6 +52,29 @@ fn unrelated(value: Bytes32 | nil, point: Point | nil) -> Int {
     inline if value is Bytes32 { point.x } else { 0 }
 }
 
+// In a branch that uses the narrowed value, an error on another value has no note
+fn mixed(value: Bytes32 | nil, fallback: Bytes32, point: Point | nil) -> Bytes32 {
+    inline if value is Bytes32 { pick(value, point.x) } else { fallback }
+}
+
+// An arm without a type, before any arm handles part of the value, has no note either, since a
+// `match` wouldn't narrow the value there
+fn wildcard(point: Point | nil) -> Int {
+    inline match point {
+        _ => point.x,
+    }
+}
+
+// Where the expression itself is checked against a type, such as in a condition or an assertion
+fn condition(value: Bool | (Int, Int)) -> Int {
+    assert inline if value is Bool { value } else { false };
+    if inline if value is Bool { value } else { true } {
+        1
+    } else {
+        0
+    }
+}
+
 // Nor does a later error about the code around a branch that was already reported
 fn later(value: Bytes32 | nil, fallback: Bytes32) -> Bytes32 {
     let result: Bytes32 = inline if value is Bytes32 { value } else { fallback };
@@ -75,6 +98,17 @@ fn narrowed(list: List<Int>) -> Int {
     }
 }
 
+fn pick(value: Bytes32, _index: Int) -> Bytes32 {
+    value
+}
+
+// A later error about the code around a branch without an expected type has no note
+fn untyped(value: Bytes32 | nil) -> Bytes32 {
+    let result = inline if value is Bytes32 { value } else { nil };
+    let _ = result;
+    "text"
+}
+
 fn hash(value: Bytes32) -> Bytes32 {
     sha256(value)
 }
@@ -85,6 +119,7 @@ export fn main(
     fallback: Bytes32,
     point: Point | nil,
     pair: Int | (Int, Int),
+    flag: Bool | (Int, Int),
 ) -> List<Any> {
     [
         field(list),
@@ -99,5 +134,9 @@ export fn main(
         later(value, fallback),
         assignable(value),
         narrowed(list),
+        mixed(value, fallback, point),
+        wildcard(point),
+        condition(flag),
+        untyped(value),
     ]
 }

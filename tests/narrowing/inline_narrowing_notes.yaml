@@ -24,8 +24,20 @@ diagnostics:
   Unknown field `first` on type `Int | (Int, Int)` at inline_narrowing_notes.rue:45:43
     note: Every arm of an `inline match` is evaluated, so the arm doesn't narrow the type of `value`; use `match` instead
 - Unknown field `x` on type `Point | nil` at inline_narrowing_notes.rue:52:40
-- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:56:62
 - |-
-  Cannot assign `Bytes32 | nil` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at inline_narrowing_notes.rue:57:27
+  Cannot assign `Bytes32 | nil` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at inline_narrowing_notes.rue:57:39
     note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
-- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:63:48
+- Unknown field `x` on type `Point | nil` at inline_narrowing_notes.rue:57:52
+- Unknown field `x` on type `Point | nil` at inline_narrowing_notes.rue:64:20
+- |-
+  Cannot assign `Bool | (Int, Int)` to `Bool` without a type guard, since the value isn't always a valid `Bool` at inline_narrowing_notes.rue:70:12
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
+- |-
+  Cannot assign `Bool | (Int, Int)` to `Bool` without a type guard, since the value isn't always a valid `Bool` at inline_narrowing_notes.rue:71:8
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
+- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:79:62
+- |-
+  Cannot assign `Bytes32 | nil` to `Bytes32` without a type guard, since the value isn't always a valid `Bytes32` at inline_narrowing_notes.rue:80:27
+    note: Both branches of an `inline if` are evaluated, so its condition doesn't narrow the type of `value`; use `if` instead
+- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:86:48
+- Cannot assign `"text"` to `Bytes32`, since they are incompatible at inline_narrowing_notes.rue:106:45

@@ -440,51 +440,46 @@ impl Parser {
     /// The first non-trivia token after the delimited group that starts at the current token, if
     /// the group is closed and there's a token after it.
     fn token_past_group(&self) -> Option<&ParseToken> {
-        let mut depth = 0usize;
-        let mut tokens = self.upcoming();
+        self.parse_tokens[self.group_end()?..]
+            .iter()
+            .find(|token| !token.kind.is_trivia())
+    }
 
-        loop {
-            match tokens.next()?.kind {
+    /// Where in the tokens the delimited group that starts at the current token ends, which is
+    /// right after its closing token, if it's closed.
+    fn group_end(&self) -> Option<usize> {
+        let start = if self.too_deep {
+            self.parse_tokens.len()
+        } else {
+            self.pos.min(self.parse_tokens.len())
+        };
+        let mut depth = 0usize;
+
+        for (index, token) in self.parse_tokens.iter().enumerate().skip(start) {
+            match token.kind {
                 T!['('] | T!['['] | T!['{'] => depth += 1,
                 T![')'] | T![']'] | T!['}'] => depth = depth.saturating_sub(1),
+                kind if kind.is_trivia() => continue,
                 _ => {}
             }
 
             if depth == 0 {
-                return tokens.next();
+                return Some(index + 1);
             }
         }
+
+        None
     }
 
     /// Whether the delimited group that starts at the current token is followed by the given token
     /// on the same line, like the body of an `if` after a struct initializer in its condition, as
     /// in `if value == Point {} {`.
     pub(crate) fn past_group_on_line_at(&self, kind: SyntaxKind) -> bool {
-        let mut depth = 0usize;
-        let start = if self.too_deep {
-            self.parse_tokens.len()
-        } else {
-            self.pos.min(self.parse_tokens.len())
+        let Some(end) = self.group_end() else {
+            return false;
         };
-        let mut tokens = self.parse_tokens[start..].iter();
 
-        loop {
-            let Some(token) = tokens.next() else {
-                return false;
-            };
-
-            match token.kind {
-                T!['('] | T!['['] | T!['{'] => depth += 1,
-                T![')'] | T![']'] | T!['}'] => depth = depth.saturating_sub(1),
-                _ => {}
-            }
-
-            if depth == 0 && !token.kind.is_trivia() {
-                break;
-            }
-        }
-
-        for token in tokens {
+        for token in &self.parse_tokens[end..] {
             if !token.kind.is_trivia() {
                 return token.kind == kind;
             }
@@ -520,7 +515,7 @@ impl Parser {
         span: Range<usize>,
         path_end: usize,
     ) {
-        let path = self.source.text[span.start..path_end].trim().to_string();
+        let path = self.source.text[span.start..path_end].to_string();
         let message = format!("Wrap it in parentheses: `({path} {{ ... }})`");
         let at = |offset: usize| SrcLoc::new(self.source.clone(), offset..offset);
 

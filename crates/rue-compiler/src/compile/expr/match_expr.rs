@@ -97,6 +97,7 @@ pub fn compile_match_expr(
     };
 
     let matched = Matched {
+        expression: expr.syntax().text_range(),
         scrutinee: &scrutinee,
         reference: &reference,
         recast,
@@ -441,6 +442,8 @@ pub fn compile_match_expr(
 
 /// The value that a `match` is on, and what its arms are compiled with.
 struct Matched<'a> {
+    /// The range of the whole `match`.
+    expression: TextRange,
     scrutinee: &'a Value,
     /// What the arms narrow: the path that the value is or that the block it is ends in, and
     /// otherwise the binding of the value.
@@ -543,7 +546,7 @@ fn compile_arm(
     });
 
     let expected_type = matched.expected_type;
-    let start = ctx.branch_start();
+    let start = ctx.branch_start(InlineBranch::Match, matched.expression);
     let body_node = body.as_ref().map(|body| body.syntax().clone());
 
     let body = match (body, matched.branches) {
@@ -566,19 +569,13 @@ fn compile_arm(
     if matched.inline
         && let Some(body_node) = body_node
     {
-        // An arm without a type narrows the value to what the arms before it didn't handle
-        if pattern.is_some() || remaining != matched.scrutinee.ty {
+        // An arm without a type narrows the value to what the arms before it didn't handle, if
+        // they handled anything
+        if pattern.is_some() || !ctx.is_assignable(matched.scrutinee.ty, remaining) {
             guarded.insert(matched.reference.symbol);
         }
 
-        ctx.note_unnarrowed_branch(
-            start,
-            InlineBranch::Match,
-            &guarded,
-            &body_node,
-            body.ty,
-            expected_type,
-        );
+        ctx.note_unnarrowed_branch(start, &guarded, &body_node, body.ty, expected_type);
     }
 
     ctx.revert_mappings(index, range.end());

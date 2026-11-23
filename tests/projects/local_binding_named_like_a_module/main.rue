@@ -55,3 +55,11 @@ test fn folded() -> Int {
 test fn module_as_value() -> Int {
     policy
 }
+
+// A name after a module in a path is only looked up in that module, so a local of the same name
+// doesn't change what it refers to
+test fn nested_module_as_value() -> Int {
+    let rules = 1;
+    let _ = rules;
+    policy::rules
+}
