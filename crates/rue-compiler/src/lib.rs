@@ -28,6 +28,8 @@ mod comparison_limit_tests;
 #[cfg(test)]
 mod const_eval_tests;
 #[cfg(test)]
+mod eager_operand_tests;
+#[cfg(test)]
 mod entrypoint_tests;
 #[cfg(test)]
 mod enum_tests;

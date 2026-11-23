@@ -37,7 +37,9 @@
 //! multiplication and division are only treated as unable to fail if every operand is a suitable
 //! constant, and a product or quotient of values that aren't known at compile time can fail.
 //! Without `operand_limits`, a release build can succeed under `LIMITS` where a debug build
-//! fails, since a check that only fails for a long operand can be skipped.
+//! fails, since a check that only fails for a long operand can be skipped. It never fails where
+//! the debug build succeeds, though: the right operand of `&&` or `||` is only evaluated early if
+//! it can't fail under `LIMITS` either (see `lower/eager.rs`).
 //!
 //! Nothing relies on narrower facts about atoms, such as a `Bytes32` having 32 bytes, a `Bool`
 //! being 0 or 1, or a `PublicKey` being a valid point, since the operations that need those

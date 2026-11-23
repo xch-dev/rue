@@ -582,7 +582,7 @@ impl<'a, C: AnalysisContext> Visitor<'a, C> {
 /// `operand_limits`. Then `LIMITS` (see [`rue_lir::ClvmTarget::flags`]) rejects operands of
 /// multiplication and division that are too long, so those can only be known not to fail if both
 /// operands are suitable constants.
-fn binary_may_fail(
+pub(crate) fn binary_may_fail(
     db: &Database,
     op: BinaryOp,
     left: HirId,
@@ -646,7 +646,7 @@ fn binary_may_fail(
 /// Whether the builtin operation may fail for well-typed arguments. These are only created for
 /// builtins that take a list of arguments. Multiplication may fail when compiling with
 /// `operand_limits`, since `LIMITS` rejects operands that are too long.
-fn clvm_op_may_fail(op: ClvmOp, operand_limits: bool) -> bool {
+pub(crate) fn clvm_op_may_fail(op: ClvmOp, operand_limits: bool) -> bool {
     match op {
         ClvmOp::Mul => operand_limits,
         _ => !matches!(

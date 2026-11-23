@@ -1,9 +1,47 @@
 tests:
-- name: product_is_eager
-  program: (a (q 2 2 (c 2 (c 5 11))) (c (q 2 (i 5 (q 2 (i (any (> 9 (q . 100)) (> (* 9 7) (q . 100))) (q 1 . 1) (q 2 2 (c 2 (c 13 7)))) 1) ()) 1) 1))
+- name: product_is_lazy
+  program: (a (q 2 2 (c 2 (c 5 11))) (c (q 2 (i 5 (q 2 (i (> 9 (q . 100)) (q 1 . 1) (q 2 (i (> (* 9 7) (q . 100)) (q 1 . 1) (q 2 2 (c 2 (c 13 7)))) 1)) 1) ()) 1) 1))
   debug_program: (a (q 2 2 (c 2 (c 5 11))) (c (q 2 (i (not 5) () (q 2 (i (a (i (> (f 5) (q . 100)) (q 1 . 1) (q 21 (* (f 5) 7) (q . 100))) 1) (q 1 . 1) (q 2 2 (c 2 (c (r 5) 7)))) 1)) 1) 1))
-  solution: ((200 0x01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000) 2)
+  solution: ((200 7) 2)
   output: "1"
-  runtime_cost: 4168
-  byte_cost: 1404000
-  total_cost: 1408168
+  runtime_cost: 1718
+  byte_cost: 1572000
+  total_cost: 1573718
+- name: length_check_guards_product
+  program: (a (q 2 (i (> (strlen 2) (q . 256)) () (q 21 (* 2 (q . 3)) (q . 5))) 1) (c (ash (q . 1) (q . 2392)) 1))
+  debug_program: (a (q 2 2 (ash (q . 1) (q . 2392))) (c (q 2 (i (not (> (strlen 1) (q . 256))) (q 21 (* 1 (q . 3)) (q . 5)) ()) 1) ()))
+  output: ()
+  runtime_cost: 6092
+  byte_cost: 876000
+  total_cost: 882092
+- name: guarded_product_runs
+  program: (q . 1)
+  debug_program: (a (q 2 2 (q . 10)) (c (q 2 (i (not (> (strlen 1) (q . 256))) (q 21 (* 1 (q . 3)) (q . 5)) ()) 1) ()))
+  output: "1"
+  runtime_cost: 20
+  byte_cost: 36000
+  total_cost: 36020
+- name: guarded_quotient_is_lazy
+  program: (a (i (> (q . 1000) 2) (q 21 (/ 2 (q . 3)) (q . 5)) ()) 1)
+  debug_program: (a (q 2 2 5) (c (q 2 (i (> (q . 1000) 1) (q 21 (/ 1 (q . 3)) (q . 5)) ()) 1) 1))
+  solution: (5000)
+  output: ()
+  runtime_cost: 852
+  byte_cost: 516000
+  total_cost: 516852
+- name: guarded_product_or_is_lazy
+  program: (a (i (> 2 (q . 1000)) (q 1 . 1) (q 21 (* 2 (q . 3)) (q . 5))) 1)
+  debug_program: (a (q 2 2 5) (c (q 2 (i (> 1 (q . 1000)) (q 1 . 1) (q 21 (* 1 (q . 3)) (q . 5))) 1) 1))
+  solution: (5000)
+  output: "1"
+  runtime_cost: 804
+  byte_cost: 564000
+  total_cost: 564804
+- name: constant_product_is_eager
+  program: (any (> 2 (q . 1000)) (> (q . 21) 2))
+  debug_program: (a (q 2 2 5) (c (q 2 (i (> 1 (q . 1000)) (q 1 . 1) (q 21 (* (q . 3) (q . 7)) 1)) 1) 1))
+  solution: (5000)
+  output: "1"
+  runtime_cost: 1949
+  byte_cost: 300000
+  total_cost: 301949
