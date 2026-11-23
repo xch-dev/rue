@@ -1833,7 +1833,7 @@ dependencies = [
  "rue-compiler",
  "rue-lir",
  "rue-options",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "stacker",
  "thiserror",
 ]
