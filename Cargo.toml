@@ -60,7 +60,7 @@ rue-lint = { path = "crates/rue-lint", version = "0.13.0" }
 rue-types = { path = "crates/rue-types", version = "0.13.0" }
 rue-clvm = { path = "crates/rue-clvm", version = "0.13.0" }
 anyhow = "1.0.98"
-clvm-traits = "0.54.0"
+clvm-traits = "0.55.0"
 clvm-utils = "0.54.0"
 clvmr = "0.22.0"
 chialisp = "0.7.0"
