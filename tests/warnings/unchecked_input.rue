@@ -8,7 +8,10 @@ struct Coin {
     amount: Int,
 }
 
-type Inner = fn(...solution: Any) -> Bytes32;
+struct Proof {
+    hash: Bytes,
+    other: Bytes32,
+}
 
 fn main(
     coin: Coin,
@@ -20,27 +23,32 @@ fn main(
     e: Bytes32,
     f: Bytes32,
     g: Bytes32,
-    h: Bytes32 | nil,
-    w: Bytes32 | (Bytes32, Bytes32),
-    x: Bytes32,
-    i: Bytes32,
+    h: Bytes,
+    i: Bytes,
     j: Bytes32,
     k: Bytes32,
     l: Bytes32,
     m: Bytes32,
     n: Bytes32,
-    o: Bytes32,
-    p: Bytes32,
+    pk: PublicKey,
+    pk2: PublicKey,
+    pk3: PublicKey,
+    pk4: PublicKey,
+    sig: Signature,
     q: Any,
     r: Bytes32,
+    pair: (Bytes32, Bytes32),
+    proof: Proof,
+    checked_proof: Proof,
     s: Bytes32,
-    t: Bytes,
-    u: Bytes32,
-    v: Bytes32,
-    inner: Inner,
-    inner_solution: Any,
-    flag: Bool,
+    t: Bytes32,
 ) -> List<Any> {
+    // Checks that are always evaluated count, wherever they are in the function
+    assert coinid(f, g, 1) != nil;
+    assert j == sha256("j");
+    assert checked_proof.hash is Bytes32;
+    bls_verify(sig, pk3, "message", pk4, "message");
+
     [
         // A coin id hashed by hand can move bytes between its parts
         sha256(coin.parent_coin_id + coin.puzzle_hash + coin.amount as Bytes),
@@ -48,85 +56,49 @@ fn main(
         coinid(checked_coin.parent_coin_id, checked_coin.puzzle_hash, checked_coin.amount),
         // Two values whose lengths aren't checked
         sha256(a + b),
+        concat([a, b]),
         // Only one value of unknown length can't be split more than one way
         sha256(c + 0x01),
         sha256(d + sha256("x")),
+        // Two values that don't have a known length by their type aren't for this lint
+        sha256(h + i + c),
         // The same value twice has the same length both times
         sha256(e + e),
-        // Checked before or after the use
-        checked_by_assert(f, g),
-        // Narrowing `Bytes32 | nil` checks the length, since nil is an atom too
-        narrowed_union(h, i),
-        // Narrowing away a pair only checks that it's an atom, not its length
-        narrowed_from_pair(w, x),
-        // Checked by comparing with a value of known length
-        checked_by_equality(j, k),
-        // Only checked on one branch, which doesn't cover the other
-        checked_on_one_branch(l, m, flag),
-        // Checked by a guard on the branch the concatenation is in
-        checked_on_branch(t, n),
-        // Checked inside of a function that's called on every path
-        checked_by_helper(o, p),
+        // Checked by `coinid`, after the use
+        sha256(f + g),
+        // Checked by equality with a value of known length, but not with another unchecked value
+        sha256(j + sha256("x") + n),
+        equal_to_unchecked(k, l, m),
+        // Checked by point operations and `bls_verify`
+        point_sum(pk, pk2),
+        sha256(pk3 as Bytes + pk4 as Bytes + sig as Bytes),
         // `unchecked_cast` doesn't check anything
         sha256(unchecked_cast::<Bytes32>(q) + r),
-        // A concatenation inside of a function that's called
-        hash_pair(s, u),
-        hash_pair(sha256("x"), v),
-        // The result of a function value is unchecked too
-        sha256(inner(...inner_solution) + v),
+        // Items of a pair, whose name is cut at the pair
+        sha256(pair.first + pair.rest),
+        // A field checked by a guard, inside of the branch, and in an `assert`
+        if proof.hash is Bytes32 {
+            sha256(proof.hash + proof.other)
+        } else {
+            proof.other
+        },
+        if proof.hash is Bytes32 {
+            proof.other
+        } else {
+            sha256(proof.other + s)
+        },
+        sha256(checked_proof.hash + checked_proof.other),
+        sha256(t + t + 0x01),
     ]
 }
 
-fn checked_by_assert(f: Bytes32, g: Bytes32) -> Bytes32 {
-    let hash = sha256(f + g);
-    assert coinid(f, g, 1) != nil;
-    hash
+fn equal_to_unchecked(k: Bytes32, l: Bytes32, m: Bytes32) -> Bytes32 {
+    assert k == l;
+    sha256(k + m)
 }
 
-fn narrowed_union(h: Bytes32 | nil, i: Bytes32) -> Bytes32 {
-    if h is Bytes32 {
-        return sha256(h + i);
-    }
-    i
-}
-
-fn narrowed_from_pair(w: Bytes32 | (Bytes32, Bytes32), x: Bytes32) -> Bytes32 {
-    if w is Bytes32 {
-        return sha256(w + x);
-    }
-    x
-}
-
-fn checked_by_equality(j: Bytes32, k: Bytes32) -> Bytes32 {
-    assert j == sha256("j") && k == sha256("k");
-    sha256(j + k)
-}
-
-fn checked_on_one_branch(l: Bytes32, m: Bytes32, flag: Bool) -> Bytes32 {
-    let hash = sha256(l + m);
-    if flag {
-        assert l == sha256("l");
-        assert m == sha256("m");
-    }
-    hash
-}
-
-fn checked_on_branch(t: Bytes, n: Bytes32) -> Bytes32 {
-    if t is Bytes32 {
-        return sha256(t + n);
-    }
-    n
-}
-
-fn checked_by_helper(o: Bytes32, p: Bytes32) -> Bytes32 {
-    assert_coin_id_parts(o, p);
-    sha256(o + p)
-}
-
-fn assert_coin_id_parts(parent: Bytes32, puzzle_hash: Bytes32) {
-    assert coinid(parent, puzzle_hash, 0) != nil;
-}
-
-fn hash_pair(left: Bytes32, right: Bytes32) -> Bytes32 {
-    sha256(left + right)
+fn point_sum(pk: PublicKey, pk2: PublicKey) -> Bytes32 {
+    let sum = pk + pk2;
+    assert sum != pk;
+    sha256(pk as Bytes + pk2 as Bytes)
 }

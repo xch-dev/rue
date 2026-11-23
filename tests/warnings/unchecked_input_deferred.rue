@@ -5,25 +5,35 @@
 
 struct State {
     owner: Bytes32,
+    launcher_id: Bytes32,
     amount: Int,
+}
+
+struct Wrapper {
+    owner: Bytes,
+    other: Bytes32,
 }
 
 fn main(
     mod_hash: Bytes32,
     state: State,
     new_owner: Bytes32,
+    launcher_id: Bytes32,
     checked_owner: Bytes,
     payee: Bytes32,
     announced: Bytes32,
     output_owner: Bytes32,
+    wrapper: Wrapper,
+    user_hashed: Bytes32,
 ) -> List<Condition> {
     assert checked_owner is Bytes32;
 
-    let next = State { owner: new_owner, amount: state.amount + 1 };
-    let checked_next = State { owner: checked_owner, amount: state.amount + 1 };
+    let next = State { owner: new_owner, launcher_id, amount: state.amount + 1 };
+    let checked_next = State { owner: checked_owner, launcher_id, amount: state.amount + 1 };
 
     [
-        // The owner ends up in a `CreateCoin` of a puzzle that's only hashed
+        // The owner ends up in a `CreateCoin` of a puzzle that's only hashed, and the launcher id
+        // is only curried, which isn't a condition
         create_next(mod_hash, next),
         create_next(mod_hash, checked_next),
         // The payee is put in a deferred `CreateCoin` by a recursive helper
@@ -35,6 +45,20 @@ fn main(
         },
         // A condition that's output now is checked by consensus now
         CreateCoin { puzzle_hash: output_owner, amount: 1 },
+        // A field checked by a guard around the condition
+        if wrapper.owner is Bytes32 {
+            CreateCoin {
+                puzzle_hash: tree_hash((1, [CreateCoin { puzzle_hash: wrapper.owner, amount: 1 }])),
+                amount: 1,
+            }
+        } else {
+            CreateCoin { puzzle_hash: wrapper.other, amount: 1 }
+        },
+        // A function named `tree_hash` that isn't the standard library's
+        CreateCoin {
+            puzzle_hash: local::tree_hash([CreateCoin { puzzle_hash: user_hashed, amount: 1 }]),
+            amount: 1,
+        },
     ]
 }
 
@@ -57,4 +81,10 @@ fn pay(payee: Bytes32, count: Int) -> List<CreateCoin> {
         return nil;
     }
     [CreateCoin { puzzle_hash: payee, amount: 1 }, ...pay(payee, count - 1)]
+}
+
+mod local {
+    export fn tree_hash(_value: Any) -> Bytes32 {
+        sha256("not a tree hash")
+    }
 }

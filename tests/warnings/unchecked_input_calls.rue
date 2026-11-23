@@ -1,0 +1,97 @@
+#![warn(unchecked_input)]
+
+// Values are followed into the functions they're passed to, and out of the ones they're returned
+// from
+
+type Inner = fn(...solution: Any) -> Bytes32;
+
+extern fn external(value: Any) -> Bytes32 from "../chia_puzzles/notification.clsp.hex";
+
+fn main(
+    a: Bytes32,
+    b: Bytes32,
+    c: Bytes32,
+    d: Bytes32,
+    e: Bytes,
+    f: Bytes32,
+    g: Bytes,
+    h: Bytes32,
+    i: Bytes32,
+    j: Bytes32,
+    k: Bytes32,
+    l: Bytes32,
+    m: Bytes32,
+    n: Bytes32,
+    o: Bytes32,
+    p: Bytes32,
+    rest: List<Bytes32>,
+    inner: Inner,
+    inner_solution: Any,
+    flag: Bool,
+) -> List<Any> {
+    let hash = hash_pair;
+
+    // Allowed at the call
+    #[expect(unchecked_input)]
+    let allowed = hash_pair(c, d);
+
+    [
+        // A concatenation inside of a function that's called, reported at the call
+        hash_pair(a, b),
+        hash_pair(sha256("x"), b),
+        allowed,
+        // Checked inside of a function that's called on every path
+        checked_by_helper(e, f),
+        // Checked by a guard around the call, but only on one branch for the second call
+        if g is Bytes32 {
+            hash_pair(g, h)
+        } else {
+            h
+        },
+        if flag {
+            hash_pair(i, j)
+        } else {
+            i
+        },
+        // The value is returned unchanged from a function
+        sha256(identity(k) + l),
+        // A known function called through a binding is still known
+        sha256(hash(sha256("x"), sha256("y")) + m),
+        // The results of function values and `extern fn`s are unchecked
+        sha256(inner(...inner_solution) + n),
+        sha256(external(nil) + o),
+        // A rest parameter takes the rest of the arguments
+        hash_all(p, ...rest),
+        // The arguments of an `inline fn` are only evaluated where it uses them
+        ignore(coinid(i, j, 1)),
+    ]
+}
+
+fn hash_pair(left: Bytes32, right: Bytes32) -> Bytes32 {
+    sha256(left + right)
+}
+
+fn checked_by_helper(e: Bytes, f: Bytes32) -> Bytes32 {
+    check(e, f);
+    sha256(e + f)
+}
+
+fn check(parent: Bytes, puzzle_hash: Bytes32) {
+    assert parent is Bytes32;
+    assert coinid(parent, puzzle_hash, 0) != nil;
+}
+
+fn identity(value: Bytes32) -> Bytes32 {
+    value
+}
+
+fn hash_all(first: Bytes32, ...rest: List<Bytes32>) -> Bytes32 {
+    if rest is nil {
+        return first;
+    }
+    sha256(first + rest.first)
+}
+
+inline fn ignore(_value: Any) -> Int {
+    1
+}

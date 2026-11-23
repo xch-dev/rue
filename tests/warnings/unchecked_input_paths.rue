@@ -1,0 +1,138 @@
+#![warn(unchecked_input)]
+
+// A check only counts on the paths that evaluate it
+
+struct Item {
+    parent: Bytes32,
+    amount: Int,
+}
+
+fn main(
+    a: Bytes32,
+    b: Bytes32,
+    c: Bytes32,
+    d: Bytes32,
+    e: Bytes32 | nil,
+    f: Bytes32,
+    g: Bytes,
+    h: Bytes32,
+    i: Bytes32,
+    j: Bytes32,
+    k: Bytes32,
+    l: Bytes32,
+    m: Bytes32,
+    n: Bytes32,
+    o: Bytes32 | (Bytes32, Bytes32),
+    p: Bytes32,
+    checked_items: List<Item>,
+    items: List<Item>,
+    flag: Bool,
+) -> List<Any> {
+    assert check_items(checked_items);
+
+    [
+        checked_after_early_return(a, b, flag),
+        checked_on_one_branch(c, d, flag),
+        narrowed_by_ruling_out_nil(e, f),
+        checked_by_negated_guard(g, h),
+        checked_by_right_operand(i, j, flag),
+        checked_by_unused_binding(k, l, flag),
+        checked_by_inline_binding(m, n, flag),
+        narrowed_from_pair(o, p),
+        // Recursion over a list checks each item, after returning early for an empty list
+        hash_items(checked_items),
+        hash_items(items),
+    ]
+}
+
+// The check only runs when the function doesn't return early
+fn checked_after_early_return(a: Bytes32, b: Bytes32, flag: Bool) -> Bytes32 {
+    if flag {
+        return sha256(a + b);
+    }
+    assert coinid(a, b, 1) != nil;
+    a
+}
+
+fn checked_on_one_branch(c: Bytes32, d: Bytes32, flag: Bool) -> Bytes32 {
+    let hash = sha256(c + d);
+    if flag {
+        assert c == sha256("c");
+        assert d == sha256("d");
+    }
+    hash
+}
+
+// Ruling out nil only checks that the value isn't nil, not its length
+fn narrowed_by_ruling_out_nil(e: Bytes32 | nil, f: Bytes32) -> Bytes32 {
+    if e is nil {
+        return f;
+    }
+    sha256(e + f)
+}
+
+// Leaving the block unless the value has the right length checks it for the rest of the block
+fn checked_by_negated_guard(g: Bytes, h: Bytes32) -> Bytes32 {
+    if !(g is Bytes32) {
+        return h;
+    }
+    sha256(g + h)
+}
+
+// The right operand of `&&` isn't always evaluated
+fn checked_by_right_operand(i: Bytes32, j: Bytes32, flag: Bool) -> Bytes32 {
+    assert flag || coinid(i, j, 1) != nil;
+    sha256(i + j)
+}
+
+// A binding that can fail is evaluated where it's declared, even though it's only referenced in
+// one branch
+fn checked_by_unused_binding(k: Bytes32, l: Bytes32, flag: Bool) -> Bytes32 {
+    let id = coinid(k, l, 1);
+    let hash = sha256(k + l);
+    if flag {
+        hash
+    } else {
+        id
+    }
+}
+
+// An `inline let` used in a branch that checks it and in one that doesn't
+fn checked_by_inline_binding(m: Bytes32, n: Bytes32, flag: Bool) -> (Bytes32, Bytes32) {
+    inline let hash = sha256(m + n);
+    (
+        if m == sha256("m") && n == sha256("n") {
+            hash
+        } else {
+            m
+        },
+        if flag {
+            hash
+        } else {
+            n
+        },
+    )
+}
+
+// Narrowing away a pair only checks that the value is an atom, not its length
+fn narrowed_from_pair(o: Bytes32 | (Bytes32, Bytes32), p: Bytes32) -> Bytes32 {
+    if o is Bytes32 {
+        return sha256(o + p);
+    }
+    p
+}
+
+fn hash_items(items: List<Item>) -> List<Bytes32> {
+    if items is nil {
+        return nil;
+    }
+    [sha256(items.first.parent + items.first.amount as Bytes), ...hash_items(items.rest)]
+}
+
+fn check_items(items: List<Item>) -> Bool {
+    if items is nil {
+        return true;
+    }
+    assert coinid(items.first.parent, sha256("puzzle"), items.first.amount) != nil;
+    check_items(items.rest)
+}

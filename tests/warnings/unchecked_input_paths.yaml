@@ -1,0 +1,33 @@
+program: (a (q 2 (i (a 6 (c 6 393215)) (q 4 (a (i 1572863 (q 11 5 11) (q 2 (i (coinid 5 11 (q . 1)) (q . 5) (q 8)) 1)) 1) (c (i () (a (i 1572863 (q 2 (i (all (= 23 (sha256 (q . 99))) (= 47 (sha256 (q . 100)))) () (q 8)) 1) ()) 1) (sha256 23 47)) (c (a (i 95 (q 11 95 -65) (q . -65)) 1) (c (a (i (= (strlen 383) (q . 32)) (q 11 383 767) (q . 767)) 1) (c (a (i (a (i 1572863 (q 1 . 1) (q 48 1535 3071 (q . 1))) 1) (q 11 1535 3071) (q 8)) 1) (c (a (q 2 (i 3145727 (q 11 12287 24575) (q . 2)) 1) (c (coinid 6143 12287 (q . 1)) 1)) (c (c (a (i (a (i (= 24575 (sha256 (q . 109))) (q 9 -16385 (sha256 (q . 110))) ()) 1) (q 11 24575 -16385) (q . 24575)) 1) (a (i 1572863 (q 11 24575 -16385) (q . -16385)) 1)) (c (a (i (l 98303) (q . 196607) (q 11 98303 196607)) 1) (c (a 4 (c 4 393215)) (c (a 4 (c 4 786431)) ())))))))))) (q 8)) 1) (c (c (q 2 (i 3 (q 4 (sha256 9 21) (a 2 (c 2 7))) ()) 1) (q 2 (i 3 (q 2 (i (coinid 9 (sha256 (q . "puzzle")) 21) (q 2 2 (c 2 7)) (q 8)) 1) (q 1 . 1)) 1)) 1))
+debug_program: (a (q 2 (i (a 20 (c 20 393215)) (q 4 (a 62 (c 5 (c 11 1572863))) (c (a 46 (c 23 (c 47 1572863))) (c (a 54 (c 95 -65)) (c (a 38 (c 383 767)) (c (a 58 (c 1535 (c 3071 1572863))) (c (a 42 (c 6143 (c 12287 1572863))) (c (a 18 (c 24575 (c -16385 1572863))) (c (a 28 (c 98303 196607)) (c (a 8 (c 8 393215)) (c (a 8 (c 8 786431)) ())))))))))) (q 8 (q . "assertion failed at unchecked_input_paths.rue:31:5"))) 1) (c (c (c (q 2 (i (not 3) () (q 4 (sha256 (concat (f (f 3)) (f (r (f 3))))) (a 2 (c 2 (r 3))))) 1) (c (q 2 (i (not 3) (q 1 . 1) (q 2 (i (not (= (coinid (f (f 3)) (sha256 (q . "puzzle")) (f (r (f 3)))) ())) (q 2 2 (c 2 (r 3))) (q 8 (q . "assertion failed at unchecked_input_paths.rue:136:5"))) 1)) 1) (q 2 (i (not (l 2)) (q 11 (concat 2 3)) (q . 3)) 1))) (c (c (q 4 (a (i (a (i (= 2 (sha256 (q . 109))) (q 9 5 (sha256 (q . 110))) ()) 1) (q 11 (concat 2 5)) (q . 2)) 1) (a (i 7 (q 11 (concat 2 5)) (q . 5)) 1)) (c (q 2 (q 2 (i 15 (q . 6) (q . 4)) 1) (c (c (coinid 2 5 (q . 1)) (sha256 (concat 2 5))) 1)) (q 2 (i (a (i 7 (q 1 . 1) (q 32 (= (coinid 2 5 (q . 1)) ()))) 1) (q 11 (concat 2 5)) (q 8 (q . "assertion failed at unchecked_input_paths.rue:84:5"))) 1))) (c (c (q 2 (i (not (= (strlen 2) (q . 32))) (q . 3) (q 11 (concat 2 3))) 1) (q 2 (i (= 2 ()) (q . 3) (q 11 (concat 2 3))) 1)) (c (q 2 (q 3 () (a (i 15 (q 2 (i (= 5 (sha256 (q . 99))) (q 2 (i (= 11 (sha256 (q . 100))) () (q 8 (q . "assertion failed at unchecked_input_paths.rue:61:9"))) 1) (q 8 (q . "assertion failed at unchecked_input_paths.rue:60:9"))) 1) ()) 1) 2) (c (sha256 (concat 2 5)) 1)) (q 2 (i 7 (q 11 (concat 2 5)) (q 2 (i (not (= (coinid 2 5 (q . 1)) ())) (q . 2) (q 8 (q . "assertion failed at unchecked_input_paths.rue:53:5"))) 1)) 1))))) 1))
+byte_cost: 8988000
+clvm_error: path into atom
+diagnostics:
+- |-
+  `a` and `b` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_paths.rue:34:9
+    note: The concatenation is here at unchecked_input_paths.rue:51:23
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  `c` and `d` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_paths.rue:35:9
+    note: The concatenation is here at unchecked_input_paths.rue:58:23
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  `e` and `f` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_paths.rue:36:9
+    note: The concatenation is here at unchecked_input_paths.rue:71:12
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  `i` and `j` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_paths.rue:38:9
+    note: The concatenation is here at unchecked_input_paths.rue:85:12
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  `m` and `n` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_paths.rue:40:9
+    note: The concatenation is here at unchecked_input_paths.rue:102:30
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  `o` and `p` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_paths.rue:41:9
+    note: The concatenation is here at unchecked_input_paths.rue:120:23
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  Items of `items` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_paths.rue:44:9
+    note: The concatenation is here at unchecked_input_paths.rue:129:13
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments

@@ -8,7 +8,6 @@ use rue_diagnostic::{
 use rue_hir::{Database, Declaration, HirId, ScopeId, SymbolId};
 use rue_types::{
     AtomRestriction, Atoms, BuiltinTypes, Check, Comparison, Type, TypeId, extract_atoms,
-    extract_pairs,
 };
 
 use crate::{
@@ -217,47 +216,17 @@ impl<'a> LintContext<'a> {
         lengths.all(|length| length == first).then_some(first)
     }
 
-    /// Whether narrowing a value of one type to the other checks its length at runtime, rather
-    /// than only telling the other members of a union apart (from `Bytes32 | nil`, a guard only
-    /// checks that the value isn't nil).
-    pub fn narrowing_checks_length(&mut self, from: TypeId, to: TypeId) -> bool {
-        rue_types::check(self.db.types_mut(), self.types, from, to)
-            .is_ok_and(|check| check_has_length(&check.simplify()))
-    }
-
     /// The type that the type refers to, without aliases or references.
     pub fn unwrap_semantic(&mut self, ty: TypeId) -> TypeId {
         rue_types::unwrap_semantic(self.db.types_mut(), ty, true)
     }
 
-    /// The declared type of a field of a struct, by name. A union of structs isn't looked into.
+    /// The declared type of a field of a struct, by name.
     pub fn struct_field_type(&mut self, ty: TypeId, name: &str) -> Option<TypeId> {
-        let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
-
-        let Type::Struct(ty) = self.db.ty(semantic).clone() else {
-            return None;
-        };
-
-        let mut inner = ty.inner;
-
-        for (index, field) in ty.fields.iter().enumerate() {
-            let value = if index == ty.fields.len() - 1 && !ty.nil_terminated {
-                inner
-            } else {
-                let pairs = extract_pairs(self.db.types_mut(), inner, false);
-                let [pair] = pairs.as_slice() else {
-                    return None;
-                };
-                inner = pair.rest;
-                pair.first
-            };
-
-            if field == name {
-                return Some(value);
-            }
-        }
-
-        None
+        let (fields, _) = rue_types::struct_field_types(self.db.types_mut(), self.types.never, ty)?;
+        fields
+            .into_iter()
+            .find_map(|(field, ty)| (field == name).then_some(ty))
     }
 
     /// The name of a type as it would be written in the given scope.

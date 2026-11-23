@@ -79,6 +79,7 @@ use crate::{
 };
 
 pub(crate) use evaluation::*;
+pub use may_fail::resolve_function;
 pub(crate) use may_fail::*;
 
 /// What the checks need to know about how the HIR is lowered.

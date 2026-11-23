@@ -1276,51 +1276,8 @@ impl Cache {
 
     /// The names and types of a struct's fields, and whether it's nil terminated.
     fn struct_field_types(&mut self, ty: TypeId) -> Option<(Vec<(String, TypeId)>, bool)> {
-        let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
-
-        let mut fields = Vec::new();
-
-        let Type::Struct(ty) = self.ctx.ty(semantic).clone() else {
-            return None;
-        };
-
-        let mut inner = ty.inner;
-
-        for (i, name) in ty.fields.iter().enumerate() {
-            let next = if i == ty.fields.len() - 1 && !ty.nil_terminated {
-                inner
-            } else {
-                let pairs = rue_types::extract_pairs(self.ctx.types_mut(), inner, false);
-
-                let (firsts, rests) = if pairs.is_empty() {
-                    let never = self.ctx.builtins().types.never;
-                    (never, never)
-                } else if pairs.len() == 1 {
-                    (pairs[0].first, pairs[0].rest)
-                } else {
-                    let firsts = self.ctx.alloc_type(Type::Union(Union::new(
-                        pairs.iter().map(|pair| pair.first).collect(),
-                    )));
-                    let rests = self.ctx.alloc_type(Type::Union(Union::new(
-                        pairs.iter().map(|pair| pair.rest).collect(),
-                    )));
-                    (firsts, rests)
-                };
-
-                inner = rests;
-
-                firsts
-            };
-
-            // The discriminant of an enum variant isn't a field that can be named
-            if name == DISCRIMINANT_FIELD {
-                continue;
-            }
-
-            fields.push((name.clone(), next));
-        }
-
-        Some((fields, ty.nil_terminated))
+        let never = self.ctx.builtins().types.never;
+        rue_types::struct_field_types(self.ctx.types_mut(), never, ty)
     }
 }
 

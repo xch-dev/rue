@@ -19,7 +19,7 @@ mod types;
 mod unresolved;
 mod value;
 
-pub use analysis::FailureAnalysis;
+pub use analysis::{FailureAnalysis, resolve_function};
 pub use builtins::*;
 pub use database::*;
 pub use dependency_graph::*;

@@ -1,0 +1,29 @@
+program: (a (q 4 (a 4 (c 5 (c 11 ()))) (c (a 4 (c (sha256 (q . 120)) (c 11 ()))) (c (a 4 (c 23 (c 47 ()))) (c (i () (a (i (= (strlen 95) (q . 32)) (q 2 (i (coinid 95 -65 ()) () (q 8)) 1) (q 8)) 1) (sha256 95 -65)) (c (a (i (= (strlen 383) (q . 32)) (q 2 4 (c 383 (c 767 ()))) (q . 767)) 1) (c (a (i 3145727 (q 2 4 (c 1535 (c 3071 ()))) (q . 1535)) 1) (c (sha256 6143 12287) (c (sha256 (a 4 (c (sha256 (q . 120)) (c (sha256 (q . 121)) ()))) 24575) (c (sha256 (a 786431 1572863) -16385) (c (sha256 (a 6 (q ())) 98303) (c (a (i 393215 (q 11 196607 655359) (q . 196607)) 1) (q 1)))))))))))) (c (c (q 11 2 5) (q 2 (q 4 (c 4 (c 5 (c 11 ()))) (c (c 6 (q ())) ())) (c (q 51 . 60) 1))) 1))
+debug_program: (a (q 2 (q 4 (a 9 (c 11 (c 23 ()))) (c (a 9 (c (sha256 (q . 120)) (c 23 ()))) (c 6 (c (a 93 (c 125 (c -65 383))) (c (a (i (= (strlen 767) (q . 32)) (q 2 9 (c 767 (c 1535 ()))) (q . 1535)) 1) (c (a (i 6291455 (q 2 9 (c 3071 (c 6143 ()))) (q . 3071)) 1) (c (sha256 (concat (a 45 12287) 24575)) (c (sha256 (concat (a 4 (c (sha256 (q . 120)) (c (sha256 (q . 121)) ()))) -16385)) (c (sha256 (concat (a 1572863 3145727) 98303)) (c (sha256 (concat (a 53 (c () ())) 196607)) (c (a 37 (c 393215 786431)) (c (q . 1) ())))))))))))) (c (c (c (q . 2) (c (c (q . 1) 4) (c (q . 1) ()))) (a 4 (c 23 (c 47 ())))) 1)) (c (c (q 11 (concat 2 5)) (c (c (q 2 (i (not 3) (q . 2) (q 11 (concat 2 (f 3)))) 1) (c (q . 2) (c (c (q . 1) (c (q . 4) (c (c (q . 4) (c (q . 4) (c (c (q . 4) (c (q . 5) (c (c (q . 4) (c (q . 11) (c () ()))) ()))) ()))) (c (c (q . 4) (c (c (q . 4) (c (q . 6) (c (c (q . 1) (c () ())) ()))) (c () ()))) ())))) (c (c (q . 4) (c (c (q . 1) (c (q . 51) (q . 60))) (c (q . 1) ()))) ())))) (c (q . 1) (c (q 3 (q . 1) (sha256 (concat 5 7)) (a 2 (c 5 7))) (q 2 (i (= (strlen 2) (q . 32)) (q 2 (i (not (= (coinid 2 3 ()) ())) () (q 8 (q . "assertion failed at unchecked_input_calls.rue:81:5"))) 1) (q 8 (q . "assertion failed at unchecked_input_calls.rue:80:5"))) 1))))) 1))
+byte_cost: 6204000
+clvm_error: path into atom
+diagnostics:
+- |-
+  `a` and `b` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_calls.rue:40:9
+    note: The concatenation is here at unchecked_input_calls.rue:71:12
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  `i` and `j` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_calls.rue:52:13
+    note: The concatenation is here at unchecked_input_calls.rue:71:12
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  `k` and `l` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_calls.rue:57:16
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  `inner(...inner_solution)` and `n` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_calls.rue:61:16
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  `external(nil)` and `o` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_calls.rue:62:16
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  `p` and an item of `rest` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_calls.rue:64:9
+    note: The concatenation is here at unchecked_input_calls.rue:92:12
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  This argument can fail, but `ignore` is an `inline fn` that doesn't always evaluate its parameter `_value`, so its check can be skipped at unchecked_input_calls.rue:66:16
+    note: Bind the argument with `let` before the call to always evaluate it, or remove `inline` from the function

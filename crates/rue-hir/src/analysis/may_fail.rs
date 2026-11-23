@@ -137,7 +137,7 @@ pub(crate) fn resolve_callee(db: &Database, mut callee: HirId) -> Callee {
 }
 
 /// The function that's called, if it's known (see [`resolve_callee`]).
-pub(crate) fn resolve_function(db: &Database, callee: HirId) -> Option<SymbolId> {
+pub fn resolve_function(db: &Database, callee: HirId) -> Option<SymbolId> {
     match resolve_callee(db, callee) {
         Callee::Function(function) => Some(function),
         Callee::Parameter(_) | Callee::Unknown => None,
