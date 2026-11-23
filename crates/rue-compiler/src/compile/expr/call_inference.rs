@@ -36,6 +36,11 @@ pub(crate) struct InferredCall {
     pub checks: Vec<(AstExpr, TypeId, TypeId)>,
     /// What the callee's generics were inferred as. A generic that couldn't be inferred is left out.
     pub mappings: HashMap<TypeId, TypeId>,
+    /// The mappings before the renamed generics that weren't inferred were restored to the
+    /// caller's generics they were renamed from (see `restore_renamed`), which leaves those out,
+    /// and has them as they are in what the others were inferred as. It's empty for a call
+    /// without renamed generics.
+    pub unrestored: HashMap<TypeId, TypeId>,
 }
 
 /// Compiles the arguments of a call to `function`, inferring its generics from them and from the
@@ -561,7 +566,7 @@ pub(crate) fn infer_call(
     // they are in the lambdas' parameters
     let mut first_unsolved = None;
 
-    let (mappings, solved_checks) = loop {
+    let (mappings, unrestored, solved_checks) = loop {
         if has_own {
             for (i, own) in argument_own.iter().enumerate() {
                 let Some((_, ty, param)) = checks[i].clone().filter(|_| !own.is_empty()) else {
@@ -590,6 +595,7 @@ pub(crate) fn infer_call(
         }
 
         let mut mappings = ctx.solve_call(&solver, order.merged().clone());
+        let mut unrestored = unrestored_mappings(&mappings, renamed);
         restore_renamed(ctx, &mut mappings, renamed);
 
         let mut solved_checks = checks.clone();
@@ -624,6 +630,7 @@ pub(crate) fn infer_call(
                 );
 
                 // What the vars are inferred as can reference the renamed generics too
+                let alternative_unrestored = unrestored_mappings(&alternative_mappings, renamed);
                 let restored = restore_renamed(ctx, &mut alternative_mappings, renamed);
 
                 for (_, ty, _) in alternative.iter_mut().flatten() {
@@ -645,6 +652,7 @@ pub(crate) fn infer_call(
                     .any(|&ty| references_generics(ctx, ty, &function.generics))
                 {
                     mappings = alternative_mappings;
+                    unrestored = alternative_unrestored;
                     solved_checks = alternative;
                 } else {
                     solved_checks = instantiated;
@@ -654,14 +662,14 @@ pub(crate) fn infer_call(
         }
 
         if solved {
-            break (mappings, solved_checks);
+            break (mappings, unrestored, solved_checks);
         }
 
         if !with_own {
-            break first_unsolved.unwrap_or((mappings, solved_checks));
+            break first_unsolved.unwrap_or((mappings, unrestored, solved_checks));
         }
 
-        first_unsolved = Some((mappings, solved_checks));
+        first_unsolved = Some((mappings, unrestored, solved_checks));
         with_own = false;
     };
 
@@ -670,11 +678,12 @@ pub(crate) fn infer_call(
     // type to the required type. So its generics are narrowed (see `CallSolver::solve_narrowed`),
     // and that's used if it solves it. A call that's solved isn't narrowed, so that nothing that
     // compiles changes
-    let (mappings, solved_checks) = match required_type {
+    let (mappings, unrestored, solved_checks) = match required_type {
         Some(required_type)
             if !solves_call_as_checked(ctx, function, &solved_checks, &mappings, required_type) =>
         {
             let mut narrowed = ctx.solve_call_narrowed(&solver, order.merged().clone());
+            let narrowed_unrestored = unrestored_mappings(&narrowed, renamed);
             restore_renamed(ctx, &mut narrowed, renamed);
 
             let mut narrowed_checks = checks.clone();
@@ -696,12 +705,12 @@ pub(crate) fn infer_call(
             if narrowed != mappings
                 && solves_call_as_checked(ctx, function, &narrowed_checks, &narrowed, required_type)
             {
-                (narrowed, narrowed_checks)
+                (narrowed, narrowed_unrestored, narrowed_checks)
             } else {
-                (mappings, solved_checks)
+                (mappings, unrestored, solved_checks)
             }
         }
-        _ => (mappings, solved_checks),
+        _ => (mappings, unrestored, solved_checks),
     };
 
     let mut checks = solved_checks;
@@ -715,6 +724,7 @@ pub(crate) fn infer_call(
         results,
         checks,
         mappings,
+        unrestored,
     }
 }
 
@@ -1631,9 +1641,9 @@ fn solve_with_lambda_parameters(
 /// mapping from the type expected of the call replaced by a weaker one. Each has a test in
 /// `tests/types/generic_inference_argument_order.rue`.
 ///
-/// Among the arguments that can go, it's today's order (#265): the other arguments in order, then
-/// the lambdas, the first whose parameter types have been inferred first. When none can, because
-/// they depend on each other, it's today's order too.
+/// Among the arguments that can go, the other arguments go in order, then the lambdas, the first
+/// whose parameter types have been inferred first (#265). When none can, because they depend on
+/// each other, they go in that order too.
 struct ArgumentOrder {
     arguments: Vec<Argument>,
     /// The arguments still to be compiled, the others in order and then the lambdas in order.
@@ -2118,11 +2128,11 @@ impl ArgumentOrder {
         })
     }
 
-    /// Whether compiling the argument now would change the expected type of an argument before it
-    /// in today's order that isn't a lambda, by adding to a generic that's already mapped in it.
-    /// That argument would have been compiled first, against that mapping, which can come from
-    /// the type expected of the call, so this one waits for it rather than widen a literal the
-    /// expected type keeps.
+    /// Whether compiling the argument now would change the expected type of an argument that
+    /// isn't a lambda and comes before it among those still to be compiled, by adding to a generic
+    /// that's already mapped in it. That argument would have been compiled first, against that
+    /// mapping, which can come from the type expected of the call, so this one waits for it rather
+    /// than widen a literal the expected type keeps.
     fn would_change_earlier(&self, i: usize, state: &State<'_>) -> bool {
         self.earlier_others(i).any(|other| {
             self.reads_now(other, state).iter().any(|generic| {
@@ -3019,6 +3029,19 @@ fn has_uninferred_parameters(
                         .any(|generic| contains_generic(ctx.types_mut(), param.ty, generic))
             })
         })
+}
+
+/// The mappings as they are before `restore_renamed`, for `InferredCall::unrestored`, which only a
+/// call with renamed generics needs.
+fn unrestored_mappings(
+    mappings: &HashMap<TypeId, TypeId>,
+    renamed: &HashMap<TypeId, TypeId>,
+) -> HashMap<TypeId, TypeId> {
+    if renamed.is_empty() {
+        HashMap::new()
+    } else {
+        mappings.clone()
+    }
 }
 
 /// Maps the renamed generics that haven't been inferred back to the caller's generics they were

@@ -2141,7 +2141,13 @@ fn compare_structure(
         (Type::Atom(_), Type::Pair(_)) => Comparison::Invalid,
         (Type::Pair(_), Type::Atom(_)) => Comparison::Invalid,
         (Type::Function(lhs), Type::Function(rhs)) => {
-            // TODO: We could relax the identical parameter requirement
+            // Each parameter is read from the list of arguments by its position, and a spread
+            // parameter is the rest of the list rather than an element of it. So a function with
+            // more parameters than the type would read past the arguments it's passed, and where
+            // only one of the two ends in a spread parameter, the last parameter would be given
+            // the rest of the list where it expects an element, or the other way around. A
+            // function with fewer parameters would only leave the extra arguments unread, which
+            // could be allowed, but isn't
 
             if lhs.nil_terminated != rhs.nil_terminated || lhs.params.len() != rhs.params.len() {
                 Comparison::Invalid

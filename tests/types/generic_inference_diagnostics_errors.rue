@@ -346,3 +346,76 @@ fn uninferred_parameter<T>(outer: T, thing: Thing, either: First | Second) -> ni
     let destructured_argument = call(fn((a, b)) => 1);
     nil
 }
+
+fn recursive_walk<T, U>(list: List<T>, f: fn(x: T) -> U, depth: Int) -> List<U> {
+    if depth > 0 {
+        // The inner lambda's parameter isn't inferred, so `U` isn't either, and the call's type
+        // doesn't show the caller's `U` that stands for it, which `List<Int>` would be rejected for
+        let inner = recursive_walk([(fn(y) => y + 1, 1)], fn(p) => p.first(p.rest), depth - 1);
+        let _k: List<Int> = inner;
+
+        // Where `f` is passed on, `U` is inferred as the caller's `U` from it, which the error in
+        // another argument doesn't change, so `List<Int>` is still rejected
+        let passed_on = recursive_walk(list, f, missing);
+        let _j: List<Int> = passed_on;
+
+        // An argument that couldn't be compiled before the call is why `U` isn't inferred, too
+        let unknown = missing;
+        let unresolved_argument = recursive_walk(list, unknown, depth - 1);
+        let _l: List<Int> = unresolved_argument;
+
+        // So are the missing arguments, where nothing else gives `U` a type
+        let missing_arguments = recursive_walk(list);
+        let _m: List<Int> = missing_arguments;
+
+        // Where `T` is inferred as the caller's `U`, which the lambda's parameter is too, `U` is
+        // still only a stand-in for what the lambda would have returned
+        let caller_list: List<U> = recursive_walk(list, f, depth - 1);
+        let from_caller = recursive_walk(caller_list, fn(y) => y.bogus, depth - 1);
+        let _n: List<Int> = from_caller;
+    }
+
+    if list is nil {
+        nil
+    } else {
+        [f(list.first), ...recursive_walk(list.rest, f, depth)]
+    }
+}
+
+fn recursive_empty<T>(depth: Int) -> List<T> {
+    if depth > 0 {
+        // `T` is only in the return type, so the error in the argument isn't why it isn't
+        // inferred, and the caller's `T` that stands for it is still rejected for `List<Int>`
+        let empty = recursive_empty(missing);
+        let _e: List<Int> = empty;
+    }
+
+    nil
+}
+
+fn recursive_element_lambdas<T, U>(
+    list: List<fn(x: T) -> U>,
+    items: List<T>,
+    depth: Int,
+) -> List<U> {
+    if depth > 0 {
+        // `U` is inferred as the callee's `T`, which only stands in as the caller's `T` because
+        // the missing argument didn't give it a type, so what the call returns doesn't show that
+        let returned = recursive_element_lambdas([fn(x) => x], missing, depth - 1);
+        let _r: List<Int> = returned;
+    }
+
+    recursive_element_lambdas(list, items, depth)
+}
+
+fn recursive_untyped_parameters<T, U>(f: fn(x: U) -> T, g: fn(y: U) -> Int, depth: Int) -> (T, U) {
+    if depth > 0 {
+        // A known gap: here the lambdas' parameters are compiled as the caller's `U` that stands
+        // for the callee's while the arguments are, so the call infers it as that, and what it
+        // returns still shows it after the error
+        let stood_in = recursive_untyped_parameters(fn(x) => [x], fn(y) => missing, depth - 1);
+        let _s: (Int, Int) = stood_in;
+    }
+
+    recursive_untyped_parameters(f, g, depth)
+}

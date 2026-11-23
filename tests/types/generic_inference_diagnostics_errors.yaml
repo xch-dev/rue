@@ -237,3 +237,18 @@ diagnostics:
 - Cannot destructure type `T` into a pair at generic_inference_diagnostics_errors.rue:346:41
 - Unused binding `a` at generic_inference_diagnostics_errors.rue:346:42
 - Unused binding `b` at generic_inference_diagnostics_errors.rue:346:45
+- Unused function `recursive_walk` at generic_inference_diagnostics_errors.rue:350:4
+- Type of parameter cannot be inferred, it must be specified explicitly at generic_inference_diagnostics_errors.rue:354:41
+- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:359:49
+- Cannot assign `List<U>` to `List<Int>`, since they are incompatible at generic_inference_diagnostics_errors.rue:360:29
+- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:363:23
+- Expected 3 arguments, but found 1 at generic_inference_diagnostics_errors.rue:368:33
+- Unknown field `bogus` on type `U` at generic_inference_diagnostics_errors.rue:374:66
+- Unused function `recursive_empty` at generic_inference_diagnostics_errors.rue:385:4
+- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:389:37
+- Cannot assign `List<T>` to `List<Int>`, since they are incompatible at generic_inference_diagnostics_errors.rue:390:29
+- Unused function `recursive_element_lambdas` at generic_inference_diagnostics_errors.rue:396:4
+- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:404:64
+- Unused function `recursive_untyped_parameters` at generic_inference_diagnostics_errors.rue:411:4
+- Undeclared symbol `missing` at generic_inference_diagnostics_errors.rue:416:76
+- Cannot assign `((U, nil), U)` to `(Int, Int)`, since they are incompatible at generic_inference_diagnostics_errors.rue:417:30
