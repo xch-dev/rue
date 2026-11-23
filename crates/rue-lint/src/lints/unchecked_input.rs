@@ -582,7 +582,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
 
         self.summary
             .concats
-            .retain_mut(|concat| concat.retain_unchecked(|origin| origin.checked_by(&checked)));
+            .retain_mut(|concat| concat.retain_unchecked(|origin| origin.checked_by(checked)));
 
         // The same concatenation reached through different calls (or around a recursive call
         // again) is kept once, with the first calls it was reached through
@@ -593,7 +593,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
 
         self.summary
             .deferred
-            .retain(|deferred, _| !deferred.origin.checked_by(&checked));
+            .retain(|deferred, _| !deferred.origin.checked_by(checked));
 
         std::mem::take(&mut self.summary)
     }
