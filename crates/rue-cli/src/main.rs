@@ -44,6 +44,17 @@ pub enum Command {
     /// Run a compiled program with a solution, and print its output
     Debug(DebugArgs),
     /// Show a compiled program as pseudocode, with where each line is in the source
+    ///
+    /// The pseudocode comes from the program's debug metadata sidecar (`rue build
+    /// --debug-metadata`), and works without one, though nothing is named then.
+    ///
+    /// Function calls, `if`s and operators are shown as Rue code, and values from the environment by
+    /// the names of the parameters they're in (or as `env@PATH` if they have no name). A hidden part
+    /// of an environment that every call passes the same constant for, such as a captured function,
+    /// is shown by its value. `select(c, a, b)` is CLVM's `i`, which evaluates both values; `if`
+    /// only evaluates the branch it takes, and tests whether the condition isn't nil. A closure is
+    /// shown as `function{capture: value}`, and calling a value runs it with the arguments as its
+    /// environment. Code that isn't recognized is shown as CLVM, in `clvm!(...)`.
     Explain(ExplainArgs),
     /// Format source files, or check that they're formatted
     Fmt(FmtArgs),
@@ -1732,11 +1743,11 @@ mod tests {
             "explain",
             "fn main(amount: Int, skip: Bool) -> Int {\n    let doubled = amount + amount;\n    if skip { 0 } else { doubled }\n}\n",
         );
-        run_build(&project.0, &["--all", "--debug-metadata"]);
-        let program = project.0.join("main.rue.hex");
+        run_build(&project.path, &["--all", "--debug-metadata"]);
+        let program = project.path.join("main.rue.hex");
         let program = program.to_str().unwrap();
         let hex = fs::read_to_string(program).unwrap();
-        let sidecar = project.0.join("main.rue.debug.clvm.bin");
+        let sidecar = project.path.join("main.rue.debug.clvm.bin");
 
         // A program file is explained with the sidecar next to it
         let named = run_explain(&[program]).unwrap();
@@ -1765,7 +1776,7 @@ mod tests {
 
         // A program file that isn't hex is CLVM, and without a sidecar next to it, nothing is
         // named, unless one is given
-        let text = project.0.join("program.clvm");
+        let text = project.path.join("program.clvm");
         fs::write(&text, "(a (i 5 () (q 16 2 2)) 1)\n").unwrap();
         let text = text.to_str().unwrap();
         assert_eq!(run_explain(&[text]), Ok(unnamed.clone()));

@@ -14,21 +14,12 @@ use rue_explain::Explanation;
 
 use crate::debug_metadata_path;
 
-/// Show what a compiled program does, as Rue-like pseudocode with the source location of each
-/// line, from its debug metadata sidecar (`rue build --debug-metadata`).
-///
-/// Function calls, `if`s and operators are shown as Rue code, and values from the environment by
-/// the names of the parameters they're in (or as `env@PATH` if they have no name). A hidden part
-/// of an environment that every call passes the same constant for, such as a captured function,
-/// is shown by its value. `select(c, a, b)` is CLVM's `i`, which evaluates both values; `if`
-/// only evaluates the branch it takes, and tests whether the condition isn't nil. A closure is
-/// shown as `function{capture: value}`, and calling a value runs it with the arguments as its
-/// environment. Code that isn't recognized is shown as CLVM, in `clvm!(...)`.
 #[derive(Debug, Parser)]
 pub struct ExplainArgs {
     /// The program, as CLVM or hex (with `--hex`), or a file that contains it (such as one from
     /// `rue build --all`, which is read as hex if its name ends in `.hex`)
     program: String,
+    /// Read the program as hex, even if it isn't a `.hex` file
     #[clap(short = 'x', long)]
     hex: bool,
     /// The debug metadata sidecar of the program. For a program file, it defaults to the sidecar
