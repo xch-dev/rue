@@ -24,7 +24,7 @@ impl LiteralValue {
         Self::decode_text(token.kind(), token.text())
     }
 
-    fn decode_text(kind: SyntaxKind, text: &str) -> Self {
+    pub(crate) fn decode_text(kind: SyntaxKind, text: &str) -> Self {
         match kind {
             SyntaxKind::String => Self::String(string_value(text)),
             SyntaxKind::Hex => {

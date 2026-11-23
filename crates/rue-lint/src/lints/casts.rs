@@ -59,6 +59,28 @@ impl HirLintPass for UnnecessaryCast {
     }
 }
 
+/// How bytes read as an `Int`, which is signed and compared by its bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BytesAsInt {
+    /// The first byte's high bit is set, so the `Int` is negative: `0xff` is `-1`.
+    Negative,
+    /// The bytes start with a zero byte that the number doesn't need, so they aren't equal to the
+    /// same number written as an `Int`: `0x007f` isn't equal to `127`, which is `0x7f`.
+    LeadingZero,
+    /// The bytes are the same as the number they're read as, such as `0x7f` and `127`, or `0x00ff`
+    /// and `255`, whose zero byte keeps it positive. Empty bytes are `0`.
+    Same,
+}
+
+pub fn bytes_as_int(bytes: &[u8]) -> BytesAsInt {
+    match bytes {
+        [first, ..] if first & 0x80 != 0 => BytesAsInt::Negative,
+        [0] => BytesAsInt::LeadingZero,
+        [0, second, ..] if second & 0x80 == 0 => BytesAsInt::LeadingZero,
+        _ => BytesAsInt::Same,
+    }
+}
+
 /// Integers are signed and compared by their bytes, so casting a byte literal to `Int` can give a
 /// negative number, or one that isn't equal to the same number written as an `Int`.
 #[derive(Debug, Default)]
@@ -104,16 +126,14 @@ impl HirLintPass for BytesIntConfusion {
         let value = BigInt::from_signed_bytes_be(&bytes);
         let unsigned = BigInt::from_bytes_be(Sign::Plus, &bytes);
 
-        let message = if bytes.first().is_some_and(|byte| byte & 0x80 != 0) {
-            format!(
+        let message = match bytes_as_int(&bytes) {
+            BytesAsInt::Negative => format!(
                 "`{literal}` is the negative number `{value}` as an `Int`, since integers are signed"
-            )
-        } else if bytes.first() == Some(&0) && bytes.get(1).is_none_or(|byte| byte & 0x80 == 0) {
-            format!(
+            ),
+            BytesAsInt::LeadingZero => format!(
                 "`{literal}` has a leading zero byte, so it isn't equal to the `Int` `{value}`, since integers are compared by their bytes"
-            )
-        } else {
-            return;
+            ),
+            BytesAsInt::Same => return,
         };
 
         if let Some(diagnostic) = cx.report(Lint::BytesIntConfusion, srcloc.clone(), message) {

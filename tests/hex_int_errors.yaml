@@ -1,0 +1,96 @@
+diagnostics:
+- |-
+  Cannot assign `0xff` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:2:25
+    note: Hex literals are bytes rather than integers; `0xff as Int` is the negative number `-1`, since integers are signed
+    help: Write the number `255` instead
+- |-
+  Cannot assign `0x7f` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:3:25
+    note: Hex literals are bytes rather than integers; `0x7f as Int` is the `Int` `127`
+    help: Write the number `127` instead
+- |-
+  Cannot assign `0x00ff` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:4:23
+    note: Hex literals are bytes rather than integers; `0x00ff as Int` is the `Int` `255`
+    help: Write the number `255` instead
+- |-
+  Cannot assign `0x007f` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:5:29
+    note: Hex literals are bytes rather than integers; `0x007f as Int` has a leading zero byte, so it isn't equal to the `Int` `127`
+    help: Write the number `127` instead
+- |-
+  Cannot assign `0x00` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:6:21
+    note: Hex literals are bytes rather than integers; `0x00 as Int` has a leading zero byte, so it isn't equal to the `Int` `0`
+    help: Write the number `0` instead
+- |-
+  Cannot assign `0x0100` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:7:28
+    note: Hex literals are bytes rather than integers; `0x01_00 as Int` is the `Int` `256`
+    help: Write the number `256` instead
+- |-
+  Cannot assign `0x01` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:8:20
+    note: Hex literals are bytes rather than integers; `0x1 as Int` is the `Int` `1`
+    help: Write the number `1` instead
+- |-
+  Cannot assign `0xffff` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:9:30
+    note: Hex literals are bytes rather than integers; `0xffff as Int` is the negative number `-1`, since integers are signed
+    help: Write the number `65535` instead
+- |-
+  Cannot assign `0xff80` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:10:25
+    note: Hex literals are bytes rather than integers; `0xff80 as Int` is the negative number `-128`, since integers are signed
+    help: Write the number `65408` instead
+- |-
+  Cannot assign `0xff` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:11:26
+    note: Hex literals are bytes rather than integers; `0xff as Int` is the negative number `-1`, since integers are signed
+    help: Write the number `255` instead
+- |-
+  Unnecessary parentheses at hex_int_errors.rue:11:26
+    help: Remove the parentheses
+- Unused binding `optional` at hex_int_errors.rue:12:9
+- |-
+  Union member `nil` overlaps with `Int` at runtime, since every `nil` is also a valid `Int`, so a type guard or `match` for `nil` also takes the `Int` values that are the same as one at hex_int_errors.rue:12:25
+    note: `Int` is in the union here at hex_int_errors.rue:12:19
+- |-
+  Cannot assign `0xff` to `Int | nil` without a cast, since they are semantically different at hex_int_errors.rue:12:31
+    note: Hex literals are bytes rather than integers; `0xff as Int` is the negative number `-1`, since integers are signed
+    help: Write the number `255` instead
+- |-
+  Cannot assign `0xff` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:13:30
+    note: Hex literals are bytes rather than integers; `0xff as Int` is the negative number `-1`, since integers are signed
+    help: Write the number `255` instead
+- |-
+  Unnecessary parentheses at hex_int_errors.rue:13:30
+    help: Remove the parentheses
+- Unused binding `bytes` at hex_int_errors.rue:14:9
+- Unused binding `string` at hex_int_errors.rue:15:9
+- Cannot assign `"hello"` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:15:23
+- Unused binding `flag` at hex_int_errors.rue:16:9
+- Cannot assign `0x01` to `Bool` without a cast, since they are semantically different at hex_int_errors.rue:16:22
+- Unused binding `flag_or_int` at hex_int_errors.rue:17:9
+- |-
+  Union member `Bool` overlaps with `Int` at runtime, since every `Bool` is also a valid `Int`, so a type guard or `match` for `Bool` also takes the `Int` values that are the same as one at hex_int_errors.rue:17:22
+    note: `Int` is in the union here at hex_int_errors.rue:17:29
+- |-
+  Cannot assign `0x01` to `Bool | Int` without a cast, since they are semantically different at hex_int_errors.rue:17:35
+    note: Hex literals are bytes rather than integers; `0x01 as Int` is the `Int` `1`
+    help: Write the number `1` instead
+- Unused binding `cast_back` at hex_int_errors.rue:18:9
+- Cannot assign `Bytes` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:18:26
+- Unused binding `block` at hex_int_errors.rue:19:9
+- Cannot assign `0xff` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:19:22
+- Unused binding `inner` at hex_int_errors.rue:20:13
+- Unused binding `hash` at hex_int_errors.rue:23:9
+- Cannot assign `0xabababababababababababababababababababababababababababababababab` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:23:21
+- Unused binding `long` at hex_int_errors.rue:24:9
+- |-
+  Cannot assign `0xababababababababababababababababababababababababababababababab` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:24:21
+    note: Hex literals are bytes rather than integers; `0xababababababababababababababababababababababababababababababab as Int` is the negative number `-148997173650958339699447958650885175546487112621228666962537332363123512405`, since integers are signed
+    help: Write the number `303315674932308048673876201539301964505348764978929786316593855167787150251` instead
+- Cannot assign `0xff` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:26:25
+- Unused function `returns` at hex_int_errors.rue:41:4
+- |-
+  Cannot assign `0x80` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:41:21
+    note: Hex literals are bytes rather than integers; `0x80 as Int` is the negative number `-128`, since integers are signed
+    help: Write the number `128` instead
+- Unused function `takes` at hex_int_errors.rue:45:4
+- Unused function `calls` at hex_int_errors.rue:49:4
+- |-
+  Cannot assign `0xff` to `Int` without a cast, since they are semantically different at hex_int_errors.rue:50:11
+    note: Hex literals are bytes rather than integers; `0xff as Int` is the negative number `-1`, since integers are signed
+    help: Write the number `255` instead

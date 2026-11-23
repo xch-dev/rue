@@ -15,6 +15,7 @@ mod visit;
 
 pub use context::*;
 pub use levels::*;
+pub use lints::{BytesAsInt, bytes_as_int};
 pub use sites::*;
 pub use visit::*;
 

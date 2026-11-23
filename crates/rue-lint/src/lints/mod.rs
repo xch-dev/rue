@@ -28,6 +28,7 @@ mod unreachable;
 mod unused;
 mod unused_fields;
 
+pub use casts::{BytesAsInt, bytes_as_int};
 pub(crate) use unused::live_declarations;
 
 /// A lint pass that runs once over the [`LintInput`], such as the syntax trees or the declaration

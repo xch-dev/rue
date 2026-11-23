@@ -1,0 +1,51 @@
+fn main() -> Int {
+    let high_bit: Int = 0xff;
+    let positive: Int = 0x7f;
+    let padded: Int = 0x00ff;
+    let leading_zero: Int = 0x007f;
+    let zero: Int = 0x00;
+    let underscores: Int = 0x01_00;
+    let odd: Int = 0x1;
+    let sign_extended: Int = 0xffff;
+    let negative: Int = 0xff80;
+    let commented: Int = (/* comment */ 0xff);
+    let optional: Int | nil = 0xff;
+    let parenthesized: Int = ((0xff));
+    let bytes: Bytes = 0xff;
+    let string: Int = "hello";
+    let flag: Bool = 0x01;
+    let flag_or_int: Bool | Int = 0x01;
+    let cast_back: Int = 0xff as Bytes;
+    let block: Int = {
+        let inner = 1;
+        0xff
+    };
+    let hash: Int = 0xabababababababababababababababababababababababababababababababab;
+    let long: Int = 0xababababababababababababababababababababababababababababababab;
+    let named = 0xff;
+    let variable: Int = named;
+    high_bit
+        + positive
+        + padded
+        + leading_zero
+        + zero
+        + underscores
+        + odd
+        + sign_extended
+        + negative
+        + commented
+        + parenthesized
+        + variable
+}
+
+fn returns() -> Int {
+    0x80
+}
+
+fn takes(value: Int) -> Int {
+    value
+}
+
+fn calls() -> Int {
+    takes(0xff)
+}
