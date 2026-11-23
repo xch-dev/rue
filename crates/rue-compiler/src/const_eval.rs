@@ -217,20 +217,11 @@ fn const_root(ctx: &mut Compiler, value: HirId) -> SymbolId {
 
 /// Const expressions are always optimized, regardless of the options they're compiled with.
 fn const_options(ctx: &Compiler) -> CompilerOptions {
-    let outer_options = *ctx.options();
-
     CompilerOptions {
-        std: outer_options.std,
-        auto_inline: true,
-        optimize_lir: true,
-        debug_symbols: false,
-        optimize_static_pairs: true,
-        const_eval_max_cost: outer_options.const_eval_max_cost,
         // Const expressions are run without `LIMITS`, since they're never run on chain, but with
         // the cost model of the target, which `const_eval_max_cost` is measured in
         operand_limits: false,
-        hard_fork_2: outer_options.hard_fork_2,
-        lints: outer_options.lints,
+        ..ctx.options().release()
     }
 }
 

@@ -1804,13 +1804,15 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             }
         }
         Hir::Reference(symbol) => {
-            // A function whose value is its own program is a constant, so it isn't a dependency
+            // A function whose value is its own program is the constant with that program as its
+            // value, so the function itself isn't a dependency
             if !is_call
+                && let Some(constant) = db.program_constant(*symbol)
                 && graph
                     .program_value_decisions
                     .is_program_value(db, graph.main, *symbol)
             {
-                graph.program_values.insert(*symbol);
+                visit_symbol_reference(graph, constant, usage(graph, hir, is_call));
                 return;
             }
 
@@ -1868,6 +1870,9 @@ fn visit_hir(db: &Database, graph: &mut DependencyGraph, hir: HirId, is_call: bo
             if let Some(body) = block.reachable_body() {
                 visit_hir(db, graph, body, false);
             }
+        }
+        Hir::Program(function) => {
+            graph.program_values.insert(*function);
         }
         Hir::Lambda(lambda) => {
             if let Some(current) = graph.current {

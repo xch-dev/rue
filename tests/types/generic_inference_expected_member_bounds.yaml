@@ -50,7 +50,7 @@ tests:
   total_cost: 36020
 - name: member_that_the_arguments_allow
   program: (f (a (q 4 (a 2 (q 5)) (a 2 (q 5))) (c (q . 2) 1)))
-  debug_program: (a (q 2 (q 5 2) (c (a 2 (c (q . 2) (q . 5))) 1)) (c (q 4 (a 2 (c 3 ())) (a 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 (q 5 2) (c (a 6 (c 4 (q . 5))) 1)) (c (c (q . 2) (q 4 (a 2 (c 3 ())) (a 2 (c 3 ())))) ()))
   output: "5"
   runtime_cost: 722
   byte_cost: 564000

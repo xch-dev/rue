@@ -123,7 +123,7 @@ tests:
   total_cost: 2467132
 - name: used_as_a_value
   program: (+ (a (a (i 5 (q 1 16 2 (q . 1)) (q 1 16 2 2)) 1) (c (+ 2 (q . 1)) ())) 2 (q . 1))
-  debug_program: (a (q 2 (q 16 (a 2 (c (a 5 11) ())) (a 5 11)) (c (a (i 11 (q 1 16 2 (q . 1)) (q 1 16 2 2)) 1) 1)) (c (q 16 1 (q . 1)) 1))
+  debug_program: (a (q 2 (q 16 (a 2 (c (a 9 11) ())) (a 9 11)) (c (a (i 11 (q . 14) (q . 10)) 1) 1)) (c (c (q 16 1 (q . 1)) (c (q 16 2 2) (q 16 2 (q . 1)))) 1))
   solution: (3 1)
   output: "9"
   runtime_cost: 3262

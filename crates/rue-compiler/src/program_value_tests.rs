@@ -4,8 +4,9 @@
 use std::path::Path;
 
 use clvm_utils::tree_hash;
-use clvmr::{Allocator, NodePtr, SExp};
+use clvmr::{Allocator, ChiaDialect, NodePtr, run_program};
 use rue_diagnostic::{DiagnosticKind, SourceKind};
+use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
 
 use crate::test_utils::{Compiled, compile_with_options, run_with_solution};
@@ -102,7 +103,7 @@ fn const_and_runtime_hashes_are_the_hash_of_the_release_build() {
 }
 
 #[test]
-fn function_value_is_the_release_build_as_a_constant() {
+fn function_value_is_the_release_build() {
     let source = format!("{TREE_HASH}{HELPER_CALLED_TWICE}");
     let expected = build_hash(&source, CompilerOptions::default(), "puzzle");
 
@@ -110,15 +111,14 @@ fn function_value_is_the_release_build_as_a_constant() {
         let mut compiled = compile_with_options(&source, options);
         compiled.assert_no_errors();
         let mut allocator = Allocator::new();
-        let value = export(&mut compiled, &mut allocator, "value");
+        let program = export(&mut compiled, &mut allocator, "value");
+        let dialect = ChiaDialect::new(ClvmTarget::default().flags());
+        let value = run_program(&mut allocator, &dialect, program, NodePtr::NIL, u64::MAX)
+            .unwrap()
+            .1;
 
-        // `(q . PROGRAM)`
-        let SExp::Pair(quote, program) = allocator.sexp(value) else {
-            panic!("the value is quoted ({options:?})");
-        };
-        assert_eq!(allocator.atom(quote).as_ref(), [1], "{options:?}");
         assert_eq!(
-            format!("0x{}", tree_hash(&allocator, program)),
+            format!("0x{}", tree_hash(&allocator, value)),
             expected,
             "{options:?}"
         );
@@ -158,24 +158,52 @@ fn runtime_hash_ignores_what_the_other_program_inlines() {
 
 #[test]
 fn const_hash_uses_the_target() {
-    let source = format!("{TREE_HASH}{HELPER_CALLED_TWICE}");
+    // `LIMITS` keeps the products from being folded into one, and hard fork 2 changes the opcode
+    // of `secp256k1_verify`, so each target compiles the puzzles to a different program
+    let source = format!(
+        "{TREE_HASH}
+export fn product(x: Int) -> Int {{
+    2 * x * 3
+}}
 
-    for options in [
-        CompilerOptions {
-            operand_limits: true,
-            ..CompilerOptions::default()
-        },
-        CompilerOptions {
-            hard_fork_2: true,
-            ..CompilerOptions::default()
-        },
-    ] {
-        let expected = build_hash(&source, options, "puzzle");
-        assert_eq!(
-            output(&source, options, "const_hash", "()"),
-            expected,
-            "{options:?}"
+export fn verify(public_key: K1PublicKey, message: Bytes32, signature: K1Signature) {{
+    secp256k1_verify(public_key, message, signature);
+}}
+
+export fn product_hash() -> Bytes32 {{
+    const {{ hash(product) }}
+}}
+
+export fn verify_hash() -> Bytes32 {{
+    const {{ hash(verify) }}
+}}
+"
+    );
+
+    let today = CompilerOptions::default();
+    let operand_limits = CompilerOptions {
+        operand_limits: true,
+        ..today
+    };
+    let hard_fork_2 = CompilerOptions {
+        hard_fork_2: true,
+        ..today
+    };
+
+    for (puzzle, other) in [("product", operand_limits), ("verify", hard_fork_2)] {
+        assert_ne!(
+            build_hash(&source, today, puzzle),
+            build_hash(&source, other, puzzle),
+            "{puzzle} is the same program for both targets"
         );
+
+        for options in [today, other, CompilerOptions::debug(), other.release()] {
+            assert_eq!(
+                output(&source, options, &format!("{puzzle}_hash"), "()"),
+                build_hash(&source, options.release(), puzzle),
+                "{puzzle} ({options:?})"
+            );
+        }
     }
 }
 
@@ -215,34 +243,131 @@ fn functions_that_use_each_other_as_values_are_closures() {
     // Neither program could contain the other, so they're built at runtime as before
     let source = format!(
         "{TREE_HASH}
-fn ping(n: Int) -> Bytes32 {{
-    if n > 0 {{ pong(n - 1) }} else {{ hash(pong) }}
+fn ping(n: Int) -> Int {{
+    if n > 0 {{ pong(n - 1) + 1 }} else {{ hash(pong).length }}
 }}
 
-fn pong(n: Int) -> Bytes32 {{
-    if n > 0 {{ ping(n - 1) }} else {{ hash(ping) }}
+fn pong(n: Int) -> Int {{
+    if n > 0 {{ ping(n - 1) + 1 }} else {{ hash(ping).length }}
 }}
 
-fn call(f: fn(n: Int) -> Bytes32, n: Int) -> Bytes32 {{
+fn call(f: fn(n: Int) -> Int, n: Int) -> Int {{
     f(n)
 }}
 
-export fn main(n: Int) -> (Bytes32, Bytes32) {{
+export fn main(n: Int) -> (Int, Int) {{
     (call(ping, n), call(pong, n))
 }}
 "
     );
 
     for options in [CompilerOptions::default(), CompilerOptions::debug()] {
-        let mut compiled = compile_with_options(&source, options);
-        compiled.assert_no_errors();
-        let mut allocator = Allocator::new();
-        let program = export(&mut compiled, &mut allocator, "main");
-        assert!(
-            run_with_solution(&mut allocator, program, "(3)").is_ok(),
+        assert_eq!(
+            output(&source, options, "main", "(3)"),
+            "(35 . 35)",
             "{options:?}"
         );
     }
+}
+
+/// A `debug` statement is only lowered in a debug build, and the programs of functions used as
+/// values are release builds, so a reference in one doesn't make the functions refer to each
+/// other's programs.
+#[test]
+fn reference_in_a_debug_statement_is_not_a_cycle() {
+    let source = format!(
+        "{TREE_HASH}{INLINED_DIFFERENTLY}
+export fn first() -> Bytes32 {{
+    hash(second)
+}}
+
+export fn second() -> Int {{
+    debug hash(first);
+    1
+}}
+
+export fn first_hash() -> Bytes32 {{
+    const {{ hash(first) }}
+}}
+
+export fn runtime_hash() -> Bytes32 {{
+    hash(first)
+}}
+"
+    );
+
+    let expected = build_hash(&source, CompilerOptions::default(), "first");
+
+    for options in [CompilerOptions::default(), CompilerOptions::debug()] {
+        for name in ["first_hash", "runtime_hash"] {
+            assert_eq!(
+                output(&source, options, name, "()"),
+                expected,
+                "{name} ({options:?})"
+            );
+        }
+    }
+}
+
+/// A function that's used as a value more than once is in the program once, like a constant
+/// that's referenced more than once.
+#[test]
+fn function_used_as_a_value_more_than_once_is_bound_once() {
+    let source = "
+fn big(x: Int) -> Int {
+    x * x * x + x * 3 + x * 7 + 11 + x * 13 + x * 17 + x * 19 + x * 23 + x * 29
+}
+
+fn apply(f: fn(x: Int) -> Int, x: Int) -> Int {
+    f(x)
+}
+
+export fn main(x: Int) -> Int {
+    apply(big, x) + apply(big, x + 1) + apply(big, x + 2) + apply(big, x * 5)
+}
+";
+
+    for options in [CompilerOptions::default(), CompilerOptions::debug()] {
+        let mut compiled = compile_with_options(source, options);
+        compiled.assert_no_errors();
+        let mut allocator = Allocator::new();
+        let program = export(&mut compiled, &mut allocator, "main");
+        let disassembled = rue_clvm::disassemble_program(&allocator, program);
+
+        assert_eq!(
+            disassembled.matches("(q . 29)").count(),
+            1,
+            "{disassembled}"
+        );
+        assert_eq!(
+            run_with_solution(&mut allocator, program, "(1)").unwrap(),
+            "1426",
+            "{options:?}"
+        );
+    }
+}
+
+/// The const expressions in a function that's used as a value in another const expression are
+/// evaluated first, wherever they're declared, since the function's program is compiled with
+/// their values.
+#[test]
+fn const_expressions_in_a_function_value_are_evaluated_first() {
+    let source = format!(
+        "{TREE_HASH}
+export fn const_hash() -> Bytes32 {{
+    const {{ hash(puzzle) }}
+}}
+
+export fn puzzle(x: Int) -> Int {{
+    x + const {{ hash(42) }}.length
+}}
+"
+    );
+
+    assert_eq!(
+        output(&source, CompilerOptions::default(), "const_hash", "()"),
+        build_hash(&source, CompilerOptions::default(), "puzzle")
+    );
 }
 
 #[test]

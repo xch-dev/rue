@@ -43,28 +43,28 @@ tests:
   total_cost: 60020
 - name: closure_auto_extern
   program: (a (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 23 (q . 40))) (q 1 2 3 4))
-  debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (c (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 23 (q . 40))) 1))
+  debug_program: (a (q 2 (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (c 2 1)) (c (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 23 (q . 40))) ()))
   output: "300"
   runtime_cost: 5852
   byte_cost: 732000
   total_cost: 737852
 - name: closure_spread_auto_extern
   program: (a (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 15 (q . 40))) (q 1 2 3 . 4))
-  debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (q . 4))))) (c (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 15 (q . 40))) 1))
+  debug_program: (a (q 2 (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (q . 4))))) (c 2 1)) (c (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 15 (q . 40))) ()))
   output: "300"
   runtime_cost: 5848
   byte_cost: 708000
   total_cost: 713848
 - name: closure_manual_extern
   program: (a (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 23 (q . 40))) (q 1 2 3 4))
-  debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (c (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 23 (q . 40))) 1))
+  debug_program: (a (q 2 (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (c (q . 4) ()))))) (c 2 1)) (c (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 23 (q . 40))) ()))
   output: "300"
   runtime_cost: 5852
   byte_cost: 732000
   total_cost: 737852
 - name: closure_spread_manual_extern
   program: (a (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 15 (q . 40))) (q 1 2 3 . 4))
-  debug_program: (a (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (q . 4))))) (c (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 15 (q . 40))) 1))
+  debug_program: (a (q 2 (q 2 2 (c (q . 1) (c (q . 2) (c (q . 3) (q . 4))))) (c 2 1)) (c (q 16 (* 2 (q . 10)) (* 5 (q . 20)) (* 11 (q . 30)) (* 15 (q . 40))) ()))
   output: "300"
   runtime_cost: 5848
   byte_cost: 708000

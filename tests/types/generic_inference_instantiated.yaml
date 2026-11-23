@@ -1,77 +1,77 @@
 tests:
 - name: map_duplicate
   program: (a (q 4 2 2) (q 42))
-  debug_program: (a (q 2 2 (c (q 4 2 2) (q . 42))) (c (q 2 2 (c 3 ())) ()))
+  debug_program: (a (q 2 6 (c 4 (q . 42))) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
   output: (42 . 42)
   runtime_cost: 278
   byte_cost: 228000
   total_cost: 228278
 - name: map_duplicate_reversed
   program: (a (q 16 4 6) (c (a (q 4 2 2) (q 42)) 1))
-  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 2 (c (q . 42) (q 4 2 2))) 1)) (c (q 2 3 (c 2 ())) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 6 (c (q . 42) 4)) 1)) (c (c (q 4 2 2) (q 2 3 (c 2 ()))) ()))
   output: "84"
   runtime_cost: 1344
   byte_cost: 468000
   total_cost: 469344
 - name: nested_calls
-  program: (a (q 16 8 12 10 14) (c (a (q 4 2 2) (c (a (q 4 2 2) (q 1)) ())) 1))
-  debug_program: (a (q 2 (q 16 (+ (+ (f (f 2)) (r (f 2))) (f (r 2))) (r (r 2))) (c (a 2 (c (q 4 2 2) (a 2 (c (q 4 2 2) (q . 1))))) 1)) (c (q 2 2 (c 3 ())) ()))
+  program: (a (q 2 (q 16 8 12 10 14) (c (a 2 (c (a 2 (q 1)) ())) 1)) (c (q 4 2 2) ()))
+  debug_program: (a (q 2 (q 16 (+ (+ (f (f 2)) (r (f 2))) (f (r 2))) (r (r 2))) (c (a 6 (c 4 (a 6 (c 4 (q . 1))))) 1)) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
   output: "4"
-  runtime_cost: 2463
-  byte_cost: 756000
-  total_cost: 758463
+  runtime_cost: 2745
+  byte_cost: 828000
+  total_cost: 830745
 - name: through_several_layers
   program: (a (q 16 4 6) (c (a (q 4 2 2) (q 21)) 1))
-  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 4 (c 6 (c (q 4 2 2) (q . 21)))) 1)) (c (c (q 2 2 (c 5 7)) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 10 (c 14 (c 4 (q . 21)))) 1)) (c (c (q 4 2 2) (c (q 2 2 (c 5 7)) (q 2 2 (c 3 ())))) ()))
   output: "42"
   runtime_cost: 1344
   byte_cost: 468000
   total_cost: 469344
 - name: chained_instantiations
-  program: (a (q 16 (* 8 12) (* 10 14)) (c (a (q 4 2 2) (c (a (q 4 2 2) (q 3)) ())) 1))
-  debug_program: (a (q 2 (q 16 (* (f (f 2)) (r (f 2))) (* (f (r 2)) (r (r 2)))) (c (a 2 (c (q 4 2 2) (c (q 4 2 2) (q . 3)))) 1)) (c (q 2 5 (c (a 2 (c 7 ())) ())) ()))
+  program: (a (q 2 (q 16 (* 8 12) (* 10 14)) (c (a 2 (c (a 2 (q 3)) ())) 1)) (c (q 4 2 2) ()))
+  debug_program: (a (q 2 (q 16 (* (f (f 2)) (r (f 2))) (* (f (r 2)) (r (r 2)))) (c (a 6 (c 4 (c 4 (q . 3)))) 1)) (c (c (q 4 2 2) (q 2 5 (c (a 2 (c 7 ())) ()))) ()))
   output: "18"
-  runtime_cost: 3817
-  byte_cost: 852000
-  total_cost: 855817
+  runtime_cost: 4099
+  byte_cost: 924000
+  total_cost: 928099
 - name: union_return_type
   program: (a (q 2 (i 2 (q 16 2 (q . 1)) ()) 1) (c (a (q . 2) (q 42)) 1))
-  debug_program: (a (q 2 (q 2 (i (= 2 ()) () (q 16 2 (q . 1))) 1) (c (a 2 (c (q . 2) (q . 42))) 1)) (c (q 2 2 (c 3 ())) ()))
+  debug_program: (a (q 2 (q 2 (i (= 2 ()) () (q 16 2 (q . 1))) 1) (c (a 6 (c 4 (q . 42))) 1)) (c (c (q . 2) (q 2 2 (c 3 ()))) ()))
   output: "43"
   runtime_cost: 1490
   byte_cost: 612000
   total_cost: 613490
 - name: union_argument
   program: (a (q 2 (i 4 (q 2 (i 6 (q 16 4 6) ()) 1) ()) 1) (c (a (q 4 2 2) (q 5)) 1))
-  debug_program: (a (q 2 (q 2 (i (a (i (= (f 2) ()) (q 1 . 1) (q 9 (r 2) ())) 1) () (q 16 (f 2) (r 2))) 1) (c (a 6 (c (q 4 2 2) (a 4 (q . 5)))) 1)) (c (c (q 2 (i (> 1 ()) (q . 1) ()) 1) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 (q 2 (i (a (i (= (f 2) ()) (q 1 . 1) (q 9 (r 2) ())) 1) () (q 16 (f 2) (r 2))) 1) (c (a 14 (c 10 (a 4 (q . 5)))) 1)) (c (c (q 2 (i (> 1 ()) (q . 1) ()) 1) (c (q 4 2 2) (q 2 2 (c 3 ())))) ()))
   output: "10"
   runtime_cost: 1914
   byte_cost: 852000
   total_cost: 853914
 - name: literal_argument
   program: (a (q 2 (i 4 (q . 6) ()) 1) (c (a (q 4 2 2) (q 1)) 1))
-  debug_program: (a (q 2 (q 2 (i (f 2) (q 6 2) ()) 1) (c (a 2 (c (q 4 2 2) (q . 1))) 1)) (c (q 2 2 (c 3 ())) ()))
+  debug_program: (a (q 2 (q 2 (i (f 2) (q 6 2) ()) 1) (c (a 6 (c 4 (q . 1))) 1)) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
   output: "1"
   runtime_cost: 821
   byte_cost: 588000
   total_cost: 588821
 - name: annotated_result
   program: (a (q 16 4 6) (c (a (q 4 2 2) (q 7)) 1))
-  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 2 (c (q 4 2 2) (q . 7))) 1)) (c (q 2 2 (c 3 ())) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 6 (c 4 (q . 7))) 1)) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
   output: "14"
   runtime_cost: 1344
   byte_cost: 468000
   total_cost: 469344
 - name: generic_struct
   program: (+ (f (a (q 4 2 ()) (q 42))) (q . 1))
-  debug_program: (a (q 2 (q 16 (f 2) (q . 1)) (c (a 2 (c (q 4 2 ()) (q . 42))) 1)) (c (q 2 2 (c 3 ())) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (q . 1)) (c (a 6 (c 4 (q . 42))) 1)) (c (c (q 4 2 ()) (q 2 2 (c 3 ()))) ()))
   output: "43"
   runtime_cost: 1081
   byte_cost: 372000
   total_cost: 373081
 - name: instantiated_from_upper_bound
   program: (a (q 16 4 6) (c (q 1 . 2) 1))
-  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 2 (q . 4)) 1)) (c (q 4 (q . 1) (q . 2)) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 6 4) 1)) (c (c (q . 4) (q 4 (q . 1) (q . 2))) ()))
   output: "3"
   runtime_cost: 1086
   byte_cost: 300000

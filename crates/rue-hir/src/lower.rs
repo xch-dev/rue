@@ -156,9 +156,6 @@ pub struct Lowerer<'d, 'a, 'g> {
     /// lowered to that program (see [`crate::program_value`]), which are the release options for
     /// the target.
     program_options: CompilerOptions,
-    /// The programs that functions used as values have been compiled to, which are shared with
-    /// the lowerers that compile them, since a program can use the same function as a value.
-    programs: program::Programs,
 }
 
 /// What a block's statements are followed by.
@@ -254,7 +251,6 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             nesting: None,
             reordered: Cell::default(),
             program_options: options.release(),
-            programs: program::Programs::default(),
         }
     }
 
@@ -812,6 +808,7 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             Hir::Reference(symbol) => self.lower_symbol(env, symbol, false),
             Hir::Block(block) => self.lower_block(env, block.statements, Tail::Body(block.body)),
             Hir::Lambda(lambda) => self.lower_symbol(env, lambda, true),
+            Hir::Program(function) => self.lower_program_value(function),
             Hir::If(condition, then, else_, inline) => {
                 let condition = self.lower_hir(env, condition);
                 let then = self.lower_hir(env, then);
@@ -1413,8 +1410,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
     }
 
     fn lower_symbol(&mut self, env: &Environment, symbol: SymbolId, is_lambda: bool) -> LirId {
-        if self.graph.is_program_value(symbol) {
-            return self.lower_program_value(symbol);
+        // A function whose value is its own program is the constant with that program as its
+        // value (see `DependencyGraph::is_program_value`)
+        if self.graph.is_program_value(symbol)
+            && let Some(constant) = self.db.program_constant(symbol)
+        {
+            return self.lower_symbol(env, constant, false);
         }
 
         let mut reference = if self.should_inline(symbol) || is_lambda {

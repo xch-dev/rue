@@ -31,6 +31,10 @@ pub enum Hir {
     Reference(SymbolId),
     Block(Block),
     Lambda(SymbolId),
+    /// The program that the function is compiled to on its own, which is a constant. The
+    /// compiler generates it as the value of the function's program constant, which a reference
+    /// to the function as a value is lowered as (see [`crate::program_value`]).
+    Program(SymbolId),
     If(HirId, HirId, HirId, bool),
     FunctionCall(FunctionCall),
     Unary(UnaryOp, HirId),
@@ -66,6 +70,7 @@ impl Hir {
             | Self::Bool(_)
             | Self::Reference(_)
             | Self::Lambda(_)
+            | Self::Program(_)
             | Self::InfinityG1
             | Self::InfinityG2 => Children::default(),
             // The result of a const expression is generated, so only the expression is included

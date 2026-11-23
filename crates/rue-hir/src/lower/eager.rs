@@ -186,6 +186,7 @@ impl Lowerer<'_, '_, '_> {
             | Hir::InfinityG2
             | Hir::Block(_)
             | Hir::Lambda(_)
+            | Hir::Program(_)
             | Hir::FunctionCall(_) => {}
         }
     }
@@ -214,7 +215,8 @@ impl Lowerer<'_, '_, '_> {
             | Hir::Bytes(_)
             | Hir::Bool(_)
             | Hir::InfinityG1
-            | Hir::InfinityG2 => true,
+            | Hir::InfinityG2
+            | Hir::Program(_) => true,
             Hir::Reference(symbol) => self
                 .substituted_value(*symbol)
                 .is_some_and(|value| self.reads(value, reads)),
@@ -283,6 +285,8 @@ impl Lowerer<'_, '_, '_> {
             | Hir::Bool(_)
             | Hir::InfinityG1
             | Hir::InfinityG2 => true,
+            // A program is as large as its function
+            Hir::Program(_) => false,
             Hir::Const(expr) => expr
                 .result
                 .is_some_and(|result| self.is_cheap(result, budget)),

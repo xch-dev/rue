@@ -1,14 +1,14 @@
 tests:
 - name: issue_case
   program: (a (q 4 2 2) (q 42))
-  debug_program: (a (q 2 2 (c (q 4 2 2) (q . 42))) (c (q 2 2 (c 3 ())) ()))
+  debug_program: (a (q 2 6 (c 4 (q . 42))) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
   output: (42 . 42)
   runtime_cost: 278
   byte_cost: 228000
   total_cost: 228278
 - name: nested_recursive_calls
   program: (a (q 4 2 2) (q 7))
-  debug_program: (a (q 2 2 (c (q 4 2 2) (q . 7))) (c (q 2 2 (c 3 ())) ()))
+  debug_program: (a (q 2 6 (c 4 (q . 7))) (c (c (q 4 2 2) (q 2 2 (c 3 ()))) ()))
   output: (7 . 7)
   runtime_cost: 278
   byte_cost: 228000
@@ -29,7 +29,7 @@ tests:
   total_cost: 36020
 - name: through_several_layers
   program: (a (q 4 2 2) (q 6))
-  debug_program: (a (q 2 4 (c 6 (c (q 4 2 2) (q . 6)))) (c (c (q 2 2 (c 5 7)) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 10 (c 14 (c 4 (q . 6)))) (c (c (q 4 2 2) (c (q 2 2 (c 5 7)) (q 2 2 (c 3 ())))) ()))
   output: (6 . 6)
   runtime_cost: 278
   byte_cost: 228000
@@ -84,12 +84,12 @@ tests:
   byte_cost: 36000
   total_cost: 36020
 - name: guard_uninferred_inside_another_mapping
-  program: (a (q 2 (q 16 4 6) (c (a 2 (c 2 (c (q . 1) (q 4 2 2)))) 1)) (c (q 2 (i 5 (q 2 2 (c 2 (c (- 5 (q . 1)) (q 4 2 2)))) (q 1 1 . 1)) 1) ()))
-  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 2 (c 2 (c (q . 1) (q 4 2 2)))) 1)) (c (q 2 (i (= 5 ()) (q 4 (q . 1) (q . 1)) (q 2 (q . 2) (c (a 2 (c 2 (c (- 5 (q . 1)) (q 4 2 2)))) 1))) 1) ()))
+  program: (a (q 2 (q 16 4 6) (c (a 6 (c 2 (c (q . 1) 4))) 1)) (c (c (q 4 2 2) (q 2 (i 5 (q 2 6 (c 2 (c (- 5 (q . 1)) 4))) (q 1 1 . 1)) 1)) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 6 (c (c 4 6) (c (q . 1) 4))) 1)) (c (c (q 4 2 2) (q 2 (i (= 5 ()) (q 4 (q . 1) (q . 1)) (q 2 (q . 2) (c (a 6 (c (c 4 6) (c (- 5 (q . 1)) 4))) 1))) 1)) ()))
   output: "2"
-  runtime_cost: 3290
-  byte_cost: 1452000
-  total_cost: 1455290
+  runtime_cost: 3433
+  byte_cost: 1428000
+  total_cost: 1431433
 - name: guard_argument_expected_type
   program: (a (q 2 2 (c 2 (c (q 18 2 (q . 3)) (q 5 . 1)))) (c (q 2 (i 15 (q 2 2 (c 2 (c (c (q . 2) (c (q 1 2 2 (c 5 ())) (c (c (q . 4) (c (c (q . 1) 5) (q 1))) ()))) (c 11 (- 15 (q . 1)))))) (q 2 5 (c 11 ()))) 1) ()))
   debug_program: (a (q 2 2 (c 2 (c (c (q . 2) (c (c (q . 1) (q 18 2 (q . 3))) (c (q . 1) ()))) (c (q . 5) (q . 1))))) (c (q 2 (i (= 15 ()) (q 2 5 (c 11 ())) (q 2 2 (c 2 (c (c (q . 2) (c (c (q . 1) (q 2 2 (c 5 ()))) (c (c (q . 4) (c (c (q . 1) 5) (c (q . 1) ()))) ()))) (c 11 (- 15 (q . 1))))))) 1) ()))
@@ -112,19 +112,19 @@ tests:
   byte_cost: 1404000
   total_cost: 1408895
 - name: guard_expected_bound_not_passed_on
-  program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 3) (c (q . 2) (q . 2)))))) (c (q 2 (i (> 11 ()) (q 4 (f (a 2 (c 2 (c 5 (c (- 11 (q . 1)) (c (q . 2) (q . 5))))))) 31) (q 4 5 (a 23 (c 5 ())))) 1) ()))
-  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 3) (c (q . 2) (q . 2)))))) (c (q 2 (i (> 11 ()) (q 2 (q 4 (f 2) 63) (c (a 2 (c 2 (c 5 (c (- 11 (q . 1)) (c (q . 2) (q . 5)))))) 1)) (q 4 5 (a 23 (c 5 ())))) 1) ()))
+  program: (a (q 2 6 (c 2 (c (q . 1) (c (q . 3) (c 4 (q . 2)))))) (c (c (q . 2) (q 2 (i (> 11 ()) (q 4 (f (a 6 (c 2 (c 5 (c (- 11 (q . 1)) (c 4 (q . 5))))))) 31) (q 4 5 (a 23 (c 5 ())))) 1)) ()))
+  debug_program: (a (q 2 6 (c (c 4 6) (c (q . 1) (c (q . 3) (c 4 (q . 2)))))) (c (c (q . 2) (q 2 (i (> 11 ()) (q 2 (q 4 (f 2) 63) (c (a 6 (c (c 4 6) (c 5 (c (- 11 (q . 1)) (c 4 (q . 5)))))) 1)) (q 4 5 (a 23 (c 5 ())))) 1)) ()))
   output: (1 . 2)
-  runtime_cost: 8745
-  byte_cost: 1788000
-  total_cost: 1796745
+  runtime_cost: 8960
+  byte_cost: 1836000
+  total_cost: 1844960
 - name: guard_upper_bound_not_passed_on
-  program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 3) (c (q . 2) (q . 2)))))) (c (q 2 (i (> 11 ()) (q 2 2 (c 2 (c 5 (c (- 11 (q . 1)) (c (q . 2) (q 1 . 1)))))) (q . 5)) 1) ()))
-  debug_program: (a (q 2 2 (c 2 (c (q . 1) (c (q . 3) (c (q . 2) (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (c (q 2 (i (> 11 ()) (q 2 (q 2 (q . 2) (c (a 5 (c 5 (c 11 (c (- 23 (q . 1)) (c (q . 2) 2))))) 1)) (c (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))) 1)) (q . 5)) 1) ()))
+  program: (a (q 2 6 (c 2 (c (q . 1) (c (q . 3) (c 4 (q . 2)))))) (c (c (q . 2) (q 2 (i (> 11 ()) (q 2 6 (c 2 (c 5 (c (- 11 (q . 1)) (c 4 (q 1 . 1)))))) (q . 5)) 1)) ()))
+  debug_program: (a (q 2 6 (c (c 4 6) (c (q . 1) (c (q . 3) (c 4 (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ())))))))) (c (c (q . 2) (q 2 (i (> 11 ()) (q 2 (q 2 (q . 2) (c (a 13 (c (c 9 13) (c 11 (c (- 23 (q . 1)) (c 9 2))))) 1)) (c (c (q . 2) (c (c (q . 1) (q 1 . 1)) (c (q . 1) ()))) 1)) (q . 5)) 1)) ()))
   output: "1"
-  runtime_cost: 7922
-  byte_cost: 1476000
-  total_cost: 1483922
+  runtime_cost: 8137
+  byte_cost: 1524000
+  total_cost: 1532137
 - name: guard_lambda_order
   program: (a (q 2 2 (c 2 (c (q . 2) (c (q . 1) (c (q . 2) (c (q . 2) (q . 1))))))) (c (q 2 (i 11 (q 2 2 (c 2 (c 5 (c (- 11 (q . 1)) (c (q 1 . 5) (c () 5)))))) (q 2 47 (c (a 23 (c 5 ())) ()))) 1) ()))
   debug_program: (a (q 2 2 (c 2 (c (q . 2) (c (q . 1) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (c (c (q . 2) (c (c (q . 1) (q . 2)) (c (q . 1) ()))) (q . 1))))))) (c (q 2 (i (= 11 ()) (q 2 47 (c (a 23 (c 5 ())) ())) (q 2 2 (c 2 (c 5 (c (- 11 (q . 1)) (c (c (q . 2) (c (c (q . 1) (q 1 . 5)) (c (q . 1) ()))) (c (c (q . 2) (c () (c (q . 1) ()))) 5))))))) 1) ()))

@@ -139,7 +139,7 @@ tests:
   total_cost: 493582
 - name: function_value_is_bound
   program: (a (q 2 (i 5 (q 2 2 (c (a 2 (c 11 ())) ())) (q 2 2 (c 11 ()))) 1) (c (q 16 2 (q . 1)) 1))
-  debug_program: (a (q 2 (i 5 (q 2 2 (c (a 2 (c 11 ())) ())) (q 2 2 (c 11 ()))) 1) (c (q 16 2 (q . 1)) 1))
+  debug_program: (a (q 2 (q 2 (i 11 (q 2 2 (c (a 2 (c 23 ())) ())) (q 2 2 (c 23 ()))) 1) (c 2 1)) (c (q 16 2 (q . 1)) 1))
   solution: (1 5)
   output: "7"
   runtime_cost: 2659

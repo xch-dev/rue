@@ -94,6 +94,7 @@ impl<'a, C: AnalysisContext> Evaluation<'a, C> {
             | Hir::Bool(_)
             | Hir::InfinityG1
             | Hir::InfinityG2
+            | Hir::Program(_)
             | Hir::Const(_) => false,
             Hir::Reference(symbol) => self.reference(*symbol),
             Hir::Lambda(lambda) => self.captures_target(*lambda),

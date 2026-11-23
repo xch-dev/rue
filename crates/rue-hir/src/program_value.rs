@@ -78,7 +78,7 @@ impl ProgramValues {
 /// Whether the function can be the entrypoint of a program, and so be lowered to one: it's
 /// named and not defined inside of another function. Only functions that are declared as items
 /// have names, and those only capture other items.
-fn is_candidate(db: &Database, symbol: SymbolId) -> bool {
+pub(crate) fn is_candidate(db: &Database, symbol: SymbolId) -> bool {
     matches!(
         db.symbol(symbol),
         Symbol::Function(function)
@@ -135,14 +135,19 @@ fn find_value_references(db: &Database, root: SymbolId) -> HashSet<SymbolId> {
                 stack.push(expr.value);
                 stack.extend(expr.result);
             }
+            // Programs are compiled for release, so only what a release build lowers is
+            // followed: nothing after a `return` or `raise`, and no `debug` statements, values of
+            // a `raise` or messages of an `assert`
             Hir::Block(block) => {
-                for statement in &block.statements {
+                for statement in block.reachable_statements() {
                     if let Statement::Let(binding, _) = statement {
                         visit(*binding, &mut stack);
                     }
+
+                    stack.extend(statement.lowered_hirs(false));
                 }
 
-                stack.extend(db.hir(hir).children());
+                stack.extend(block.reachable_body());
             }
             node => stack.extend(node.children()),
         }

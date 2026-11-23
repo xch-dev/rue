@@ -120,6 +120,9 @@ impl RepeatCost<'_> {
             }
             // Building a closure doesn't evaluate its body
             Hir::Lambda(_) => self.take(),
+            // A program is a constant, but it's as large as the function, so it's bound rather
+            // than quoted again where it's repeated
+            Hir::Program(_) => false,
             Hir::If(condition, then, else_, _) => {
                 self.take() && self.all([*condition, *then, *else_])
             }

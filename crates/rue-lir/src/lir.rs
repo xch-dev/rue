@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use clvm_traits::{ToClvm, ToClvmError};
 use clvmr::{Allocator, NodePtr};
@@ -14,7 +14,7 @@ pub enum Lir {
     Atom(Vec<u8>),
     /// A constant value of any shape, as serialized CLVM, which is generated quoted whatever the
     /// options are, such as the program of a function that's used as a value.
-    Value(Rc<[u8]>),
+    Value(Arc<[u8]>),
     Path(BigUint),
     Quote(LirId),
     Run(LirId, LirId),

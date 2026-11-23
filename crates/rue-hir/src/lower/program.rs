@@ -1,32 +1,29 @@
-//! Lowers a function that's used as a value to the program it's compiled to on its own (see
-//! [`crate::program_value`]).
+//! Lowers the program that a function is compiled to on its own, which is the value of the
+//! function where it's used as one (see [`crate::program_value`]).
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::sync::Arc;
 
 use clvmr::{Allocator, serde::node_to_bytes};
 use id_arena::Arena;
-use rue_lir::{ClvmTarget, CodegenOptions, Lir, LirId, codegen, optimize};
+use rue_lir::{CodegenOptions, Lir, LirId, codegen, optimize};
 
 use crate::{DependencyGraph, Environment, SymbolId};
 
 use super::{Lowerer, TooDeep};
 
-/// The programs that functions used as values have been compiled to, as serialized CLVM, shared
-/// by the lowerers that compile them (see [`Lowerer::lower_program_value`]).
-pub(super) type Programs = Rc<RefCell<HashMap<SymbolId, Rc<[u8]>>>>;
-
 impl Lowerer<'_, '_, '_> {
-    /// Lowers a function that's used as a value to the program it's compiled to on its own, which
-    /// is a constant. It's compiled the first time, with the program options (see
-    /// [`Self::with_program_options`]), the same way as a program's entrypoint is.
-    pub(super) fn lower_program_value(&mut self, symbol: SymbolId) -> LirId {
-        let cached = self.programs.borrow().get(&symbol).cloned();
+    /// Lowers the program that the function is compiled to on its own, which is a constant. It's
+    /// compiled the first time it's needed for the target, with the program options (see
+    /// [`Self::with_program_options`]).
+    pub(super) fn lower_program_value(&mut self, function: SymbolId) -> LirId {
+        let options = self.program_options;
+        let target = Self::target_of(&options);
 
-        let program = match cached {
+        let program = match self.db.program(function, target) {
             Some(program) => program,
-            None => match self.compile_program(symbol) {
+            None => match self.compile_program(function) {
                 Ok(program) => {
-                    self.programs.borrow_mut().insert(symbol, program.clone());
+                    self.db.set_program(function, target, program.clone());
                     program
                 }
                 Err(too_deep) => {
@@ -39,30 +36,26 @@ impl Lowerer<'_, '_, '_> {
         self.arena.alloc(Lir::Value(program))
     }
 
-    fn compile_program(&mut self, symbol: SymbolId) -> Result<Rc<[u8]>, TooDeep> {
+    /// Compiles the function on its own, as the entrypoint of a program. This must be the same
+    /// program as the one `rue build` compiles the function to as an export (see `codegen` in
+    /// `rue-compiler`'s `file.rs`), since its tree hash is the same as that one's.
+    fn compile_program(&mut self, function: SymbolId) -> Result<Arc<[u8]>, TooDeep> {
         let options = self.program_options;
-        let programs = self.programs.clone();
         let base_path = self.base_path.clone();
 
-        let graph = DependencyGraph::build(self.db, symbol, options);
+        let graph = DependencyGraph::build(self.db, function, options);
         let mut arena = Arena::new();
 
-        let lir = {
-            let mut lowerer = Lowerer::new(self.db, &mut arena, &graph, options, symbol, base_path);
-            lowerer.programs = programs;
-
+        let (lir, target) = {
+            let mut lowerer =
+                Lowerer::new(self.db, &mut arena, &graph, options, function, base_path);
             let lir = lowerer.lower_main(&Environment::default());
 
             if let Some(too_deep) = lowerer.too_deep {
                 return Err(too_deep);
             }
 
-            lir
-        };
-
-        let target = ClvmTarget {
-            operand_limits: options.operand_limits,
-            hard_fork_2: options.hard_fork_2,
+            (lir, lowerer.target())
         };
 
         let lir = optimize(&mut arena, lir, target);
@@ -82,11 +75,11 @@ impl Lowerer<'_, '_, '_> {
         )
         .ok()
         .and_then(|ptr| node_to_bytes(&allocator, ptr).ok())
-        .map(Rc::from)
+        .map(Arc::from)
         .ok_or_else(|| TooDeep {
             srcloc: self
                 .db
-                .symbol(symbol)
+                .symbol(function)
                 .name()
                 .and_then(|name| name.srcloc().cloned()),
         })

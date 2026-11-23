@@ -348,6 +348,9 @@ impl FileTree {
             return;
         }
 
+        // A function that's used as a value is lowered as the constant whose value is its
+        // program, which const expressions can already do
+        ctx.add_program_constants();
         evaluate_const_exprs(ctx);
 
         if ctx.is_cancelled() {
@@ -953,6 +956,9 @@ fn codegen(
         return Err(Error::UnresolvedCodegen);
     }
 
+    // A function that's used as a value is compiled the same way, without debug metadata, to
+    // the program that this compiles it to (see `compile_program` in `rue-hir`'s lowering), so
+    // a change to one must be made to the other
     let root = entrypoint(ctx, symbol);
     let graph = DependencyGraph::build(ctx, root, options);
 

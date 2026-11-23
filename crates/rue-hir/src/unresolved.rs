@@ -59,7 +59,7 @@ impl Visitor<'_> {
             | Hir::Bool(_)
             | Hir::InfinityG1
             | Hir::InfinityG2 => false,
-            Hir::Reference(symbol) | Hir::Lambda(symbol) => {
+            Hir::Reference(symbol) | Hir::Lambda(symbol) | Hir::Program(symbol) => {
                 if self.visited.insert(symbol) {
                     self.pending.push(symbol);
                 }

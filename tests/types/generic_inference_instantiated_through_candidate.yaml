@@ -1,7 +1,7 @@
 tests:
 - name: generic_function_instantiated_through_another
   program: (a (q 16 4 6) (c (a (q 2 2 ()) (c (q 1 1 . 2) ())) 1))
-  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 2 (c (q 2 2 ()) (q 1 1 . 2))) 1)) (c (q 2 2 (c 3 ())) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 14 (c 10 4)) 1)) (c (c (q 1 1 . 2) (c (q 2 2 ()) (q 2 2 (c 3 ())))) ()))
   output: "3"
   runtime_cost: 1495
   byte_cost: 564000
@@ -15,14 +15,14 @@ tests:
   total_cost: 36020
 - name: generic_function_with_a_parameter_instantiated_through_another
   program: (a (q 16 4 6) (c (a (q 2 2 (q 1)) (c (q 4 2 2) ())) 1))
-  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 2 (c (q 2 2 (q 1)) (q 4 2 2))) 1)) (c (q 2 2 (c 3 ())) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 14 (c 10 4)) 1)) (c (c (q 4 2 2) (c (q 2 2 (q 1)) (q 2 2 (c 3 ())))) ()))
   output: "2"
   runtime_cost: 1598
   byte_cost: 636000
   total_cost: 637598
 - name: generic_function_instantiated_through_two_calls
   program: (a (q 16 4 6) (c (a (q 2 2 ()) (c (q 1 1 . 2) ())) 1))
-  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 4 (c 6 (c (q 2 2 ()) (q 1 1 . 2)))) 1)) (c (c (q 2 2 (c 5 7)) (q 2 2 (c 3 ()))) ()))
+  debug_program: (a (q 2 (q 16 (f 2) (r 2)) (c (a 10 (c 14 (c 12 8))) 1)) (c (c (c (q 1 1 . 2) (q 2 2 ())) (c (q 2 2 (c 5 7)) (q 2 2 (c 3 ())))) ()))
   output: "3"
   runtime_cost: 1495
   byte_cost: 564000
@@ -43,21 +43,21 @@ tests:
   total_cost: 36020
 - name: generic_function_instantiated_two_levels_in
   program: (a (q 16 8 14) (c (a (q 2 2 (c (q 4 2 2) ())) (c (q 4 (a 2 (q 1)) (a 2 (q 2))) ())) 1))
-  debug_program: (a (q 2 (q 16 (f (f 2)) (r (r 2))) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 4 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ())))) (c (q . 1) ()))) ())) 1)) (c (q 2 2 (c (q 4 2 2) ())) 1))
+  debug_program: (a (q 2 (q 2 (q 16 (f (f 2)) (r (r 2))) (c (a 2 (c (c (q . 2) (c (c (q . 1) (q 4 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ())))) (c (q . 1) ()))) ())) 1)) (c 2 1)) (c (q 2 2 (c (q 4 2 2) ())) ()))
   output: "3"
   runtime_cost: 2217
   byte_cost: 996000
   total_cost: 998217
 - name: inferred_through_a_generic_function_two_levels_in
   program: (+ (r (r (a (q 2 2 (c (q 4 2 2) ())) (c (q 4 (a 2 (q 1)) (a 2 (q 2))) ())))) (q . 1))
-  debug_program: (a (q 16 (a 2 (q 2 2 (c (q 4 2 2) ()))) (q . 1)) (c (q 2 (q 6 (r 2)) (c (a 1 (c (c (q . 2) (c (c (q . 1) (q 4 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ())))) (c (q . 1) ()))) ())) 1)) ()))
+  debug_program: (a (q 16 (a 6 4) (q . 1)) (c (c (q 2 2 (c (q 4 2 2) ())) (q 2 (q 6 (r 2)) (c (a 1 (c (c (q . 2) (c (c (q . 1) (q 4 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ())))) (c (q . 1) ()))) ())) 1))) ()))
   output: "3"
   runtime_cost: 1981
   byte_cost: 948000
   total_cost: 949981
 - name: generic_function_kept_rigid_where_that_is_enough
   program: (i () (a (q 2 2 (c (q 4 2 2) ())) (c (q 4 (a 2 (q 1)) (a 2 (q 2))) ())) (q . 1))
-  debug_program: (a (q 3 () (a 2 (c (c (q . 2) (c (c (q . 1) (q 4 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ())))) (c (q . 1) ()))) ())) (q . 1)) (c (q 2 2 (c (q 4 2 2) ())) 1))
+  debug_program: (a (q 2 (q 3 () (a 2 (c (c (q . 2) (c (c (q . 1) (q 4 (a 2 (c (q . 1) ())) (a 2 (c (q . 2) ())))) (c (q . 1) ()))) ())) (q . 1)) (c 2 1)) (c (q 2 2 (c (q 4 2 2) ())) ()))
   output: "1"
   runtime_cost: 1241
   byte_cost: 876000
