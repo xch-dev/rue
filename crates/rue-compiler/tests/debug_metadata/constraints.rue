@@ -7,6 +7,8 @@ struct Point {
     y: Int,
 }
 
+// `maybe` is an `Int | nil` to show how its constraint is described, though they overlap at runtime
+#[allow(indistinguishable_union_member)]
 fn main(
     number: Number,
     maybe: Int | nil,

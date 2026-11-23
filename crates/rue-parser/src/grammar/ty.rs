@@ -1,7 +1,7 @@
 use crate::{
     Parser, SyntaxKind, T,
     grammar::{
-        delimited_list,
+        delimited_list, delimited_list_with_stops,
         generics::{generic_arguments, generic_parameters},
         recover, skip_unexpected,
     },
@@ -79,7 +79,9 @@ fn ty_with_inner(p: &mut Parser, allow_union: bool) {
             generic_parameters(p);
         }
         if p.expect(T!['(']) {
-            delimited_list(p, T![')'], |p| {
+            // Like a function's parameters, recovery stops at the return type, in case the closing
+            // parenthesis is missing
+            delimited_list_with_stops(p, T![')'], &[T![->]], |p| {
                 p.start(SyntaxKind::LambdaParameter);
                 p.try_eat(T![...]);
                 p.expect(SyntaxKind::Ident);

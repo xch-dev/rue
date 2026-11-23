@@ -26,7 +26,7 @@ type IndistinguishableThenCovered = Int | Bytes | Any;
 type OrAny<T> = T | Any;
 
 // Members of an alias that's also in the union
-type Either = Int | Bytes32;
+type Either = Bytes32 | PublicKey;
 type WithEither = Bytes32 | Either;
 
 // Unions are checked everywhere they're written

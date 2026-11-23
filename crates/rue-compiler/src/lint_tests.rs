@@ -2111,7 +2111,12 @@ fn main(flag: Bool, value: Int | nil) -> Int {
 "
     );
 
-    let (reports, has_errors) = reports(&fixed, |_| {});
+    let (reports, has_errors) = reports(&fixed, |options| {
+        // `Int | nil` overlaps at runtime, which these tests aren't about
+        options
+            .lints
+            .set(Lint::IndistinguishableUnionMember, LintLevel::Allow);
+    });
 
     assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
@@ -3153,7 +3158,12 @@ fn main(value: Int | nil) -> Int {
 
     assert!(fixed.ends_with("        }\n    }\n}\n"), "{fixed}");
 
-    let (reports, has_errors) = reports(&fixed, |_| {});
+    let (reports, has_errors) = reports(&fixed, |options| {
+        // `Int | nil` overlaps at runtime, which these tests aren't about
+        options
+            .lints
+            .set(Lint::IndistinguishableUnionMember, LintLevel::Allow);
+    });
 
     assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
@@ -3366,7 +3376,12 @@ fn none(value: nil) -> nil {
     );
 
     // They're still reported, and the fixed code compiles and has nothing else to fix
-    let (reports, has_errors) = reports(&fixed, |_| {});
+    let (reports, has_errors) = reports(&fixed, |options| {
+        // `Int | nil` overlaps at runtime, which these tests aren't about
+        options
+            .lints
+            .set(Lint::IndistinguishableUnionMember, LintLevel::Allow);
+    });
 
     assert_eq!(
         reports,

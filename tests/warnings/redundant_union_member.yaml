@@ -68,9 +68,6 @@ diagnostics:
     note: `Any` is in the union here at redundant_union_member.rue:26:21
     help: Remove `T` from the union
 - |-
-  Union member `Bytes32` overlaps with `Int` at runtime, since every `Bytes32` is also a valid `Int`, so a type guard or `match` for `Bytes32` also takes the `Int` values that are the same as one at redundant_union_member.rue:29:21
-    note: `Int` is in the union here at redundant_union_member.rue:29:15
-- |-
   Redundant union member `Bytes32`, since `Either` is already in the union, and it includes every `Bytes32` at redundant_union_member.rue:30:19
     note: `Either` is in the union here at redundant_union_member.rue:30:29
     help: Remove `Bytes32` from the union
