@@ -29,6 +29,10 @@ env:
   CARGO_PROFILE_DEV_DEBUG: 0
   CARGO_TERM_COLOR: always
 
+# The install steps pass cargo-binstall the workflow's read-only token, since without one the GitHub
+# API limits its release lookups by IP address, and on a 403 it waits and then builds the tool from
+# source, which once took over three minutes.
+
 # Each job's Rust cache is saved only from main, which pull requests restore from, so that the
 # caches stay within the repository's limit.
 
@@ -74,6 +78,8 @@ jobs:
 
       # Pinned to an exact version, and bumped by hand
       - name: Install cargo-nextest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: cargo binstall --no-confirm --locked cargo-nextest@0.9.152
 
       - name: Run tests
@@ -100,6 +106,8 @@ jobs:
 
       # Pinned to an exact version, and bumped by hand
       - name: Install cargo-machete
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: cargo binstall --no-confirm --locked cargo-machete@0.10.1
 
       - name: Fmt
@@ -221,6 +229,8 @@ jobs:
           version: ${{ env.BINSTALL_VERSION }}
 
       - name: Install wasm-pack
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: cargo binstall --no-confirm --locked wasm-pack@0.15.1
 
       - name: Clippy (wasm32)
@@ -253,6 +263,8 @@ jobs:
 
       # Pinned to an exact version, and bumped by hand
       - name: Install cargo-deny
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: cargo binstall --no-confirm --locked cargo-deny@0.21.0
 
       # Advisories, licenses, bans and sources, as configured in deny.toml
