@@ -278,9 +278,9 @@ dependencies = [
 
 [[package]]
 name = "chia-sha2"
-version = "0.54.0"
+version = "0.55.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a818dc6fd35e597bd80cbead89667d71f2a559ae3b92bd56b87b07c190812299"
+checksum = "7bb2b35973ad93ba0bef74605f04006f4cec8231cad090eec25dbd85bf1dc01f"
 dependencies = [
  "sha2 0.10.9",
 ]
@@ -387,13 +387,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "clvm-utils"
-version = "0.54.0"
+name = "clvm-traits"
+version = "0.55.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1859273a1e33a029715ee330c7933ca95b809a7009cdcccc5388eb36615d4320"
+checksum = "7de81c9a95c2d310fc162db35d31c25b3c35ee45e5161f5c86205dd9549fe5ca"
 dependencies = [
- "chia-sha2 0.54.0",
- "clvm-traits",
+ "clvmr",
+ "num-bigint",
+ "thiserror",
+]
+
+[[package]]
+name = "clvm-utils"
+version = "0.55.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "315ddd5157358c8949d3b9d15257c07caccc14dacb5b22fb68c40a736782abff"
+dependencies = [
+ "chia-sha2 0.55.0",
+ "clvm-traits 0.55.0",
  "clvmr",
  "hex",
  "hex-literal 0.4.1",
@@ -1867,7 +1878,7 @@ dependencies = [
 name = "rue-lir"
 version = "0.13.0"
 dependencies = [
- "clvm-traits",
+ "clvm-traits 0.54.0",
  "clvmr",
  "colored",
  "expect-test",
