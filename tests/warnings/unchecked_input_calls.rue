@@ -29,6 +29,9 @@ fn main(
     inner_solution: Any,
     other: Inner,
     other_solution: Any,
+    proof: Proof,
+    my_puzzle_hash: Bytes32,
+    unparsed: Proof,
     flag: Bool,
 ) -> List<Any> {
     let hash = hash_pair;
@@ -62,6 +65,13 @@ fn main(
         // The results of function values and `extern fn`s are unchecked
         sha256(inner(...inner_solution) + n),
         sha256(external(nil) + o),
+        // A value returned from a helper is still exactly the value it was passed, so checking it
+        // checks the value
+        checked_through_parse(proof, my_puzzle_hash),
+        hash_parsed(unparsed),
+        // The same call of a function value reached through two calls of a helper gives two
+        // different results, even inside of another helper
+        both(inner),
         // The same call of a function value in a helper called twice gives two different results
         sha256(run(inner, inner_solution) + run(other, other_solution)),
         // A rest parameter takes the rest of the arguments
@@ -69,6 +79,39 @@ fn main(
         // The arguments of an `inline fn` are only evaluated where it uses them
         ignore(coinid(i, j, 1)),
     ]
+}
+
+struct Proof {
+    parent: Bytes32,
+    amount: Int,
+}
+
+struct Info {
+    parent: Bytes32,
+    amount: Int,
+}
+
+fn parse(proof: Proof) -> Info {
+    Info { parent: proof.parent, amount: proof.amount }
+}
+
+fn checked_through_parse(proof: Proof, my_puzzle_hash: Bytes32) -> Bytes32 {
+    let info = parse(proof);
+    assert coinid(info.parent, my_puzzle_hash, info.amount) != nil;
+    sha256(info.parent + info.amount as Bytes)
+}
+
+fn hash_parsed(proof: Proof) -> Bytes32 {
+    let info = parse(proof);
+    sha256(info.parent + info.amount as Bytes)
+}
+
+fn get(puzzle: Inner, n: Int) -> Bytes32 {
+    puzzle(...n)
+}
+
+fn both(puzzle: Inner) -> Bytes32 {
+    sha256(get(puzzle, 1) + get(puzzle, 2))
 }
 
 fn run(puzzle: Inner, solution: Any) -> Bytes32 {

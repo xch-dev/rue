@@ -74,9 +74,14 @@ enum Root {
     /// A parameter of the function being analyzed, by index. For `main`, it's the solution.
     Param(usize),
     /// The result of calling a function value or an `extern fn` (`call`), which is reached
-    /// through the call in the function being analyzed (`site`), so that the results of the same
-    /// call in a function called twice are different values.
-    Call { site: HirId, call: HirId },
+    /// through a call in the function being analyzed (`site`), and through a call in that call's
+    /// function (`via`), so that the results of the same call reached through different calls are
+    /// different values. Calls further in aren't told apart.
+    Call {
+        site: HirId,
+        via: HirId,
+        call: HirId,
+    },
 }
 
 /// Part of an unchecked value: the value itself, or a field inside of it.
@@ -137,50 +142,19 @@ impl Flow {
         }
     }
 
-    /// The unchecked values at the path inside of this value.
-    fn select(&self, path: &[String]) -> BTreeSet<Origin> {
-        let Some((name, rest)) = path.split_first() else {
-            return self.direct.clone();
-        };
-
-        if self.exact {
-            return self
-                .direct
-                .iter()
-                .map(|origin| {
-                    path.iter()
-                        .fold(origin.clone(), |origin, name| origin.with_field(name))
-                })
-                .collect();
-        }
-
-        match self.fields.as_ref().and_then(|fields| fields.get(name)) {
-            Some(field) => field.select(rest),
-            None => self.direct.clone(),
-        }
-    }
-
-    /// The unchecked value at the path inside of this value, if it's exactly one, which is what a
-    /// check of it checks.
-    fn select_exact(&self, path: &[String]) -> BTreeSet<Origin> {
-        if self.exact {
-            return self.select(path);
-        }
-
-        match path.split_first() {
-            Some((name, rest)) => self
-                .fields
-                .as_ref()
-                .and_then(|fields| fields.get(name))
-                .map(|field| field.select_exact(rest))
-                .unwrap_or_default(),
-            None => BTreeSet::new(),
-        }
+    /// The flow of the value at the path inside of this value.
+    fn at(&self, path: &[String]) -> Flow {
+        path.iter()
+            .fold(self.clone(), |flow, name| flow.field(name))
     }
 
     /// The unchecked value that this value is exactly, if any, which is what a check of it checks.
     fn exact_origins(&self) -> BTreeSet<Origin> {
-        self.select_exact(&[])
+        if self.exact {
+            self.direct.clone()
+        } else {
+            BTreeSet::new()
+        }
     }
 
     /// The flow of a field of this value, or of the item or the rest of it if it's a pair
@@ -199,7 +173,8 @@ impl Flow {
             return self;
         }
 
-        // A field of a value that's one of several, or one too deep to name, can be any of them
+        // A field of a value that's one of several, or of a struct with a spread tail, can be any of
+        // them
         self.fields = None;
         self
     }
@@ -522,7 +497,9 @@ enum Part {
 impl Part {
     fn describe(self, path: &str, count: usize) -> String {
         match (self, count) {
-            (Self::Whole, _) => format!("`{path}`"),
+            (Self::Whole, 1) => format!("`{path}`"),
+            // Results of calls in other functions, reached through the same call in `main`
+            (Self::Whole, _) => format!("results of `{path}`"),
             (Self::Item, 1) => format!("an item of `{path}`"),
             (Self::Item, _) => format!("items of `{path}`"),
             (Self::Inside, 1) => format!("a value inside of `{path}`"),
@@ -547,6 +524,8 @@ struct Analysis<'c, 'a, 'i> {
     summary: Summary,
     /// The functions that are called, whose summaries are needed.
     callees: Vec<SymbolId>,
+    /// Whether the function has a `return` statement, so its value is one of several.
+    returns: bool,
     bindings: HashMap<SymbolId, Flow>,
     /// The values checked by the conditions of the branches being analyzed, and by the negated
     /// conditions of the branches that left the blocks being analyzed (`if !(value is Bytes32) {
@@ -580,6 +559,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             body,
             summary: Summary::default(),
             callees: Vec::new(),
+            returns: false,
             bindings: HashMap::new(),
             branch_checks: Vec::new(),
             flows: HashMap::new(),
@@ -587,12 +567,18 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
     }
 
     fn run(&mut self) -> Summary {
-        let returns = self.flow(self.body, true);
-        self.summary.returns.union(&returns);
+        // The value of a function without a `return` statement is its body, which may be exactly an
+        // unchecked value, or a struct of them
+        let body = self.flow(self.body, true);
+        if self.returns {
+            self.summary.returns.union(&body);
+        } else {
+            self.summary.returns = body;
+        }
 
         // A check counts wherever it is in the function, even after the use, since if it fails,
         // the whole spend does
-        let checked = self.summary.checked.clone();
+        let checked = &self.summary.checked;
 
         self.summary
             .concats
@@ -1023,6 +1009,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             Statement::Return(value, _) => {
                 let flow = self.flow(*value, always);
                 self.summary.returns.union(&flow);
+                self.returns = true;
                 None
             }
             Statement::Assert(condition, ..) => {
@@ -1169,6 +1156,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             return Flow::origin(Origin {
                 root: Root::Call {
                     site: hir,
+                    via: hir,
                     call: hir,
                 },
                 path: Vec::new(),
@@ -1212,44 +1200,37 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
 
         // An origin of the callee, in terms of the caller. The result of a call in the callee is
         // reached through this call.
-        let translate_with =
-            |origin: &Origin, select: fn(&Flow, &[String]) -> BTreeSet<Origin>| match origin.root {
-                Root::Param(_) => arguments_for(origin.root)
-                    .into_iter()
-                    .flat_map(|arg| select(arg, &origin.path))
-                    .collect(),
-                Root::Call { call, .. } => BTreeSet::from([Origin {
-                    root: Root::Call { site: hir, call },
-                    path: origin.path.clone(),
-                }]),
-            };
-        let translate = |origin: &Origin| translate_with(origin, Flow::select);
-
-        let mut returns = Flow::default();
-
-        for origin in &summary.returns.direct {
-            returns.direct.extend(translate(origin));
-
-            // Deferred conditions in the arguments are returned with them
-            for arg in arguments_for(origin.root) {
-                for (origin, site) in &arg.deferred {
-                    returns.deferred.entry(origin.clone()).or_insert(*site);
+        let translate = |origin: &Origin| -> Flow {
+            match origin.root {
+                Root::Param(_) => {
+                    let mut args = arguments_for(origin.root)
+                        .into_iter()
+                        .map(|arg| arg.at(&origin.path));
+                    let first = args.next().unwrap_or_default();
+                    args.fold(first, |mut flow, arg| {
+                        flow.union(&arg);
+                        flow
+                    })
                 }
+                Root::Call { site, call, .. } => Flow::origin(Origin {
+                    root: Root::Call {
+                        site: hir,
+                        via: site,
+                        call,
+                    },
+                    path: origin.path.clone(),
+                }),
             }
-        }
+        };
 
-        for (origin, site) in &summary.returns.deferred {
-            for origin in translate(origin) {
-                returns.deferred.entry(origin).or_insert(*site);
-            }
-        }
+        let returns = translate_flow(&summary.returns, &translate, 0);
 
         // A check of a parameter checks the argument, if it's exactly one unchecked value
         if always {
             for origin in &summary.checked {
                 self.summary
                     .checked
-                    .extend(translate_with(origin, Flow::select_exact));
+                    .extend(translate(origin).exact_origins());
             }
         }
 
@@ -1260,7 +1241,12 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                 operands: concat
                     .operands
                     .iter()
-                    .map(|operand| operand.iter().flat_map(&translate).collect())
+                    .map(|operand| {
+                        operand
+                            .iter()
+                            .flat_map(|origin| translate(origin).direct)
+                            .collect()
+                    })
                     .collect(),
                 call: Some(hir),
             };
@@ -1271,7 +1257,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         }
 
         for deferred in summary.deferred.keys() {
-            for origin in translate(&deferred.origin) {
+            for origin in translate(&deferred.origin).direct {
                 if self.checked_in_branch(&origin) {
                     continue;
                 }
@@ -1289,11 +1275,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         // The part of each argument that the callee hashes is hashed
         for origin in &summary.hashed {
             for arg in arguments_for(origin.root) {
-                let part = origin
-                    .path
-                    .iter()
-                    .fold(arg.clone(), |part, name| part.field(name));
-                self.hash(hir, &part);
+                self.hash(hir, &arg.at(&origin.path));
             }
         }
 
@@ -1364,4 +1346,41 @@ fn check_has_length(check: &Check) -> bool {
         Check::Or(checks) => checks.iter().all(check_has_length),
         Check::None | Check::IsAtom { .. } | Check::IsPair { .. } | Check::Pair(..) => false,
     }
+}
+
+/// A flow of a callee, in terms of the caller, given how each of the callee's origins translates.
+/// A value that's exactly one origin is exactly what that origin translates to, and the fields of a
+/// struct are translated one by one, up to the same depth as paths.
+fn translate_flow(flow: &Flow, translate: &impl Fn(&Origin) -> Flow, depth: usize) -> Flow {
+    let mut result = match (&flow.fields, flow.exact) {
+        (_, true) if flow.direct.len() == 1 => translate(flow.direct.first().expect("one origin")),
+        (Some(fields), _) if depth <= MAX_PATH => {
+            let fields: BTreeMap<String, Flow> = fields
+                .iter()
+                .map(|(name, field)| (name.clone(), translate_flow(field, translate, depth + 1)))
+                .collect();
+
+            let mut result = Flow::default();
+            for field in fields.values() {
+                result.union(field);
+            }
+            result.fields = Some(fields);
+            result
+        }
+        _ => {
+            let mut result = Flow::default();
+            for origin in &flow.direct {
+                result.union(&translate(origin));
+            }
+            result
+        }
+    };
+
+    for (origin, &site) in &flow.deferred {
+        for origin in translate(origin).direct {
+            result.deferred.entry(origin).or_insert(site);
+        }
+    }
+
+    result
 }

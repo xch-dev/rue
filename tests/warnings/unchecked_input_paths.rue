@@ -11,7 +11,7 @@ struct Middle {
 }
 
 struct Inner {
-    c: (Bytes32, Bytes32),
+    c: ((Bytes32, Bytes32), Bytes32),
 }
 
 struct Item {
@@ -60,6 +60,18 @@ fn main(
     z7: Bytes32,
     z8: Bytes32,
     z9: Bytes32,
+    e1: Bytes32,
+    e2: Bytes32,
+    e3: Bytes32,
+    e4: Bytes32,
+    e5: Bytes32,
+    e6: Bytes32,
+    e7: Bytes32,
+    e8: Bytes32,
+    e9: Bytes,
+    e10: Bytes,
+    e11: Bytes,
+    e12: Bytes32,
     flag: Bool,
 ) -> List<Any> {
     // Checking an item of a pair or list literal only checks that item
@@ -75,10 +87,35 @@ fn main(
         z6
     };
     assert coinid(either, sha256("x"), 1) != nil;
+    // The same with equality, a guard, or a check in a function that's called
+    let either_equal = if flag {
+        e1
+    } else {
+        e2
+    };
+    assert either_equal == sha256("x");
+    let either_guarded = if flag {
+        e9
+    } else {
+        e10
+    };
+    assert either_guarded is Bytes32;
+    let either_first = if flag {
+        e3
+    } else {
+        e4
+    };
+    assert check_first((either_first, e5));
+    let either_pair = if flag {
+        (e6, e7)
+    } else {
+        (e8, e8)
+    };
+    assert check_first(either_pair);
 
     assert check_items(checked_items);
     assert check_first(pair);
-    assert coinid(deep.a.b.c.first, sha256("x"), 1) != nil;
+    assert coinid(deep.a.b.c.first.first, sha256("x"), 1) != nil;
 
     [
         checked_after_early_return(a, b, flag),
@@ -104,7 +141,7 @@ fn main(
         // Checking one item of a pair doesn't check the other
         sha256(tail + pair.rest),
         // Checking a field deep inside of a value doesn't check the field next to it
-        sha256(tail + deep.a.b.c.rest),
+        sha256(tail + deep.a.b.c.first.rest),
         unused(y),
         sha256(tail + pr.first),
         sha256(tail + pr.rest),
@@ -114,6 +151,12 @@ fn main(
         // A check in a function that's only called on one branch, and a check in an `else` branch
         checked_on_one_branch_by_helper(z7, z8, flag),
         checked_in_else(z9, z8, flag),
+        sha256(tail + e1),
+        sha256(unchecked_cast::<Bytes32>(e9) + e12),
+        sha256(tail + e3),
+        sha256(tail + e6),
+        // A negated guard before an early return doesn't check a use before it
+        negated_after_use(e11, e12),
     ]
 }
 
@@ -267,4 +310,12 @@ fn checked_in_else(z9: Bytes32, z8: Bytes32, flag: Bool) -> Bytes32 {
         coinid(z9, z8, 1)
     };
     sha256(z9 + id)
+}
+
+fn negated_after_use(g: Bytes, h: Bytes32) -> Bytes32 {
+    let early = sha256(unchecked_cast::<Bytes32>(g) + h);
+    if !(g is Bytes32) {
+        return h;
+    }
+    early
 }
