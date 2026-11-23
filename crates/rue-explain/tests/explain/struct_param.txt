@@ -2,9 +2,9 @@
 // The types of parameters are what the debug metadata says about their declared types, which the program doesn't check
 // The program is the body of `main`
 fn main(payment: List, pair: Pair) {  // struct_param.rue:10:5-66
-    payment.rest.first + (            // struct_param.rue:10:5-66
-        if payment.first == sha256("burn") { raise() } else { payment.rest.first },
-    ) + (if pair.rest > pair.first { pair.rest - pair.first } else { raise() })
+    payment.rest.first                // struct_param.rue:10:5-66
+        + (if payment.first == sha256("burn") { raise() } else { payment.rest.first })
+        + (if pair.rest > pair.first { pair.rest - pair.first } else { raise() })
 }
 ===== debug =====
 // The types of parameters are what the debug metadata says about their declared types, which the program doesn't check
@@ -16,9 +16,9 @@ fn main(payment: List, pair: Pair) {                         // struct_param.rue
     // env@4 is always by_tuple
     // env@10 is always by_destructure
     // env@14 is always by_struct
-    by_struct(payment: payment) + by_destructure(            // struct_param.rue:10:5-66
-        { puzzle_hash, amount }: payment,
-    ) + by_tuple((low, high): pair)
+    by_struct(payment: payment)                              // struct_param.rue:10:5-66
+        + by_destructure({ puzzle_hash, amount }: payment)
+        + by_tuple((low, high): pair)
 }
 
 fn by_tuple((low, high): Pair) {                             // struct_param.rue:30:5-23

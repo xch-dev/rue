@@ -1,6 +1,8 @@
 //! Renders the [IR](crate::ir) as Rue-like pseudocode, with the source location of each line.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use chialisp::compiler::debug_metadata::ParameterConstraint;
@@ -47,16 +49,65 @@ struct Line {
     node: Option<NodeId>,
 }
 
+/// How large a constant can be (in bytes, for an atom, or in nodes) before it's given a name and
+/// shown once if it's used more than once.
+const MAX_REPEATED: usize = 64;
+
+/// The names that functions and constants are shown with.
+#[derive(Default)]
+struct Names {
+    functions: HashMap<FunctionId, String>,
+    /// The name of the code of each function (by the version that knows nothing about its
+    /// environment), which is the name of the version that's shown for it.
+    code: HashMap<FunctionId, String>,
+    constants: HashMap<[u8; 32], String>,
+}
+
+/// What a first rendering refers to, which decides what's shown and how it's named.
+#[derive(Default)]
+struct Record {
+    /// The functions that are called, and the functions whose code is used as a value.
+    functions: Vec<FunctionId>,
+    /// The functions whose code is named in comments.
+    comments: HashSet<FunctionId>,
+    /// The large constants, in the order they're first used, with how many times each is.
+    constants: Vec<([u8; 32], NodeId)>,
+    counts: HashMap<[u8; 32], usize>,
+}
+
 pub(crate) fn render(explanation: &Explanation) -> String {
+    let (shown, record) = shown_functions(explanation);
+    let mut names = function_names(explanation, &shown);
+
+    // Large constants that are used more than once are named, and shown once
+    let mut reserved = reserved_names(explanation, &shown);
+    let mut definitions = Vec::new();
+    for (hash, node) in record.constants {
+        if record.counts[&hash] < 2 {
+            continue;
+        }
+        // One of these isn't reserved
+        let name = (1..=reserved.len() + 1)
+            .map(|number| format!("C{number}"))
+            .find(|name| !reserved.contains(name))
+            .expect("there's a free name");
+        reserved.insert(name.clone());
+        definitions.push((name.clone(), node));
+        names.constants.insert(hash, name);
+    }
+
     let mut lines = Vec::new();
 
-    let typed = explanation.functions.iter().any(|function| {
-        function.layout.as_ref().is_some_and(|layout| {
-            layout
-                .named
-                .iter()
-                .any(|slot| constraint(&slot.constraint).is_some())
-        })
+    let typed = shown.iter().any(|&id| {
+        explanation.functions[id]
+            .layout
+            .as_ref()
+            .is_some_and(|layout| {
+                layout
+                    .named
+                    .iter()
+                    .any(|slot| constraint(&slot.constraint).is_some())
+            })
     });
     if typed {
         lines.push(Line {
@@ -69,19 +120,14 @@ pub(crate) fn render(explanation: &Explanation) -> String {
         });
     }
 
-    let mut order = vec![explanation.entry];
-    order.extend((0..explanation.functions.len()).filter(|&id| id != explanation.entry));
-
-    if explanation.gave_up {
-        lines.push(Line {
-            indent: 0,
-            text: "// The values of hidden parts of environments couldn't be worked out, so none are shown".to_string(),
-            node: None,
-        });
+    for (name, node) in &definitions {
+        let mut printer = printer(explanation, explanation.entry, &names, None, &mut lines);
+        let text = format!("const {name} = {}", printer.literal(*node));
+        printer.line(0, &text, None);
     }
 
-    for (index, &id) in order.iter().enumerate() {
-        if index > 0 {
+    for (index, &id) in shown.iter().enumerate() {
+        if index > 0 || !definitions.is_empty() {
             lines.push(Line {
                 indent: 0,
                 text: String::new(),
@@ -92,21 +138,12 @@ pub(crate) fn render(explanation: &Explanation) -> String {
         if id == explanation.entry && explanation.functions[id].kind == FunctionKind::Described {
             lines.push(Line {
                 indent: 0,
-                text: format!(
-                    "// The program is the body of `{}`",
-                    explanation.functions[id].name
-                ),
+                text: format!("// The program is the body of `{}`", names.functions[&id]),
                 node: None,
             });
         }
 
-        Printer {
-            explanation,
-            function: &explanation.functions[id],
-            depth: 0,
-            lines: &mut lines,
-        }
-        .function();
+        printer(explanation, id, &names, None, &mut lines).function();
     }
 
     let width = lines
@@ -137,6 +174,148 @@ pub(crate) fn render(explanation: &Explanation) -> String {
     output
 }
 
+fn printer<'a>(
+    explanation: &'a Explanation,
+    id: FunctionId,
+    names: &'a Names,
+    record: Option<&'a RefCell<Record>>,
+    lines: &'a mut Vec<Line>,
+) -> Printer<'a> {
+    Printer {
+        explanation,
+        id,
+        function: &explanation.functions[id],
+        names,
+        record,
+        in_comment: false,
+        depth: 0,
+        lines,
+    }
+}
+
+/// The functions to show, in order: the program, the functions it calls or uses the code of (and
+/// so on), and the functions the metadata describes that none of the others are versions of.
+/// Along with what they refer to.
+fn shown_functions(explanation: &Explanation) -> (Vec<FunctionId>, Record) {
+    let functions = &explanation.functions;
+    let names = Names::default();
+    let record = RefCell::new(Record::default());
+
+    let mut shown = HashSet::from([explanation.entry]);
+    let mut queue = vec![explanation.entry];
+    let versions_shown = |shown: &HashSet<FunctionId>, generic: FunctionId| {
+        shown
+            .iter()
+            .filter(|&&id| functions[id].generic == generic)
+            .count()
+    };
+
+    loop {
+        while let Some(id) = queue.pop() {
+            printer(explanation, id, &names, Some(&record), &mut Vec::new()).function();
+            for id in record.borrow_mut().functions.drain(..) {
+                if shown.insert(id) {
+                    queue.push(id);
+                }
+            }
+        }
+
+        // A function that's named in a comment is shown as it is unless exactly one version of
+        // it is, which the name is then for
+        let mut added = record
+            .borrow()
+            .comments
+            .iter()
+            .copied()
+            .filter(|&id| !shown.contains(&id) && versions_shown(&shown, id) != 1)
+            .collect::<Vec<_>>();
+
+        if added.is_empty() {
+            added = (0..functions.len())
+                .filter(|&id| {
+                    functions[id].kind == FunctionKind::Described
+                        && functions[id].generic == id
+                        && versions_shown(&shown, id) == 0
+                })
+                .collect();
+        }
+
+        if added.is_empty() {
+            break;
+        }
+
+        added.sort_unstable();
+        for id in added {
+            shown.insert(id);
+            queue.push(id);
+        }
+    }
+
+    // The program first, then each function with its versions
+    let mut shown = shown.into_iter().collect::<Vec<_>>();
+    shown.sort_by_key(|&id| {
+        (
+            id != explanation.entry,
+            functions[id].generic,
+            functions[id].call,
+            id,
+        )
+    });
+    (shown, record.into_inner())
+}
+
+/// Names that functions and constants aren't given, since they're names of parameters or
+/// variables, or are used for parts of environments.
+fn reserved_names(explanation: &Explanation, shown: &[FunctionId]) -> HashSet<String> {
+    let mut reserved =
+        HashSet::from(["env".to_string(), "solution".to_string(), "nil".to_string()]);
+    for &id in shown {
+        let function = &explanation.functions[id];
+        reserved.extend(function.vars.iter().cloned());
+        if let Some(layout) = &function.layout {
+            reserved.extend(layout.named.iter().map(|slot| slot.name.clone()));
+        }
+    }
+    reserved
+}
+
+/// The name of each function that's shown, and of the code of each function: its own name, unless
+/// another function that's shown has it (or it's the name of a value), in which case it's numbered.
+fn function_names(explanation: &Explanation, shown: &[FunctionId]) -> Names {
+    let functions = &explanation.functions;
+    let mut used = reserved_names(explanation, shown);
+    let mut names = Names::default();
+
+    for &id in shown {
+        let base = &functions[id].name;
+        let name = std::iter::once(base.clone())
+            .chain((2..=used.len() + 2).map(|number| format!("{base}#{number}")))
+            .find(|name| !used.contains(name) && !is_generated(name))
+            .expect("there's a free name");
+        used.insert(name.clone());
+        names.functions.insert(id, name);
+    }
+
+    for &id in shown {
+        let generic = functions[id].generic;
+        if generic == id || !shown.contains(&generic) {
+            names
+                .code
+                .entry(generic)
+                .or_insert_with(|| names.functions[&id].clone());
+        }
+    }
+
+    names
+}
+
+/// Whether the name is one that variables or constants are given.
+fn is_generated(name: &str) -> bool {
+    name.strip_prefix(['v', 'C']).is_some_and(|number| {
+        !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
+    })
+}
+
 /// Where the node is in the source, along with its label if it has one.
 fn location(explanation: &Explanation, node: NodeId) -> Option<String> {
     let program = &explanation.program;
@@ -165,7 +344,13 @@ fn location(explanation: &Explanation, node: NodeId) -> Option<String> {
 
 struct Printer<'a> {
     explanation: &'a Explanation,
+    id: FunctionId,
     function: &'a Function,
+    names: &'a Names,
+    /// What the rendering refers to, if it's only to find that out.
+    record: Option<&'a RefCell<Record>>,
+    /// Whether what's being rendered is a comment.
+    in_comment: bool,
     /// How deeply the lines are nested in blocks inside of expressions.
     depth: usize,
     lines: &'a mut Vec<Line>,
@@ -192,9 +377,10 @@ impl Printer<'_> {
     fn function(&mut self) {
         let function = self.function;
 
+        let name = self.function_name(self.id);
         let header = match function.kind {
             FunctionKind::Program => "program(solution) {".to_string(),
-            FunctionKind::Anonymous => format!("fn {}(env) {{", function.name),
+            FunctionKind::Anonymous => format!("fn {name}(env) {{"),
             FunctionKind::Described => {
                 let parameters = match &function.layout {
                     Some(layout) => layout
@@ -208,7 +394,7 @@ impl Printer<'_> {
                         .join(", "),
                     None => "env".to_string(),
                 };
-                format!("fn {}({parameters}) {{", function.name)
+                format!("fn {name}({parameters}) {{")
             }
         };
         self.line(0, &header, Some(function.node));
@@ -220,7 +406,9 @@ impl Printer<'_> {
             .iter()
             .filter(|known| !self.explanation.program.is_nil(known.value))
         {
+            self.in_comment = true;
             let value = self.constant(known.value);
+            self.in_comment = false;
             self.line(
                 1,
                 &format!("// {} is always {value}", self.env_name(&known.path)),
@@ -370,7 +558,11 @@ impl Printer<'_> {
         let mut lines = Vec::new();
         let mut printer = Printer {
             explanation: self.explanation,
+            id: self.id,
             function: self.function,
+            names: self.names,
+            record: self.record,
+            in_comment: self.in_comment,
             depth: self.depth + 1,
             lines: &mut lines,
         };
@@ -457,14 +649,46 @@ impl Printer<'_> {
     }
 
     /// A call, with an argument for each named part of the callee's environment and each hidden
-    /// part whose value isn't known or unused, or with the whole environment if it isn't laid out
-    /// that way.
+    /// part whose value the callee doesn't know, or with the whole environment if it isn't laid
+    /// out that way.
     fn call(&self, id: FunctionId, env: &Value) -> String {
-        let callee = &self.explanation.functions[id];
-        match self.call_args(callee, env) {
-            Some(args) => format!("{}({})", callee.name, args.join(", ")),
-            None => format!("{}(env: {})", callee.name, self.value(env)),
+        if let Some(record) = self.record {
+            record.borrow_mut().functions.push(id);
         }
+
+        let callee = &self.explanation.functions[id];
+        let name = self.function_name(id);
+        match self.call_args(callee, env) {
+            Some(args) => format!("{name}({})", args.join(", ")),
+            None => format!("{name}(env: {})", self.value(env)),
+        }
+    }
+
+    fn function_name(&self, id: FunctionId) -> String {
+        self.names
+            .functions
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| self.explanation.functions[id].name.clone())
+    }
+
+    /// The name of a function's code, which is used as a value.
+    fn code_name(&self, id: FunctionId) -> String {
+        let generic = self.explanation.functions[id].generic;
+        if let Some(record) = self.record {
+            let mut record = record.borrow_mut();
+            if self.in_comment {
+                record.comments.insert(generic);
+            } else {
+                record.functions.push(generic);
+            }
+        }
+
+        self.names
+            .code
+            .get(&generic)
+            .cloned()
+            .unwrap_or_else(|| self.explanation.functions[generic].name.clone())
     }
 
     fn call_args(&self, callee: &Function, env: &Value) -> Option<Vec<String>> {
@@ -479,13 +703,13 @@ impl Printer<'_> {
         for (index, path) in layout.hidden.iter().enumerate() {
             let value = self.resolve(env, path)?;
 
+            // Only calls that pass what the callee knows are to it, but that's checked anyway
             let known = callee.known.iter().any(|known| {
                 &known.path == path
                     && matches!(value, Value::Const(node) if self.explanation.program.same_value(node, known.value))
             });
             let unread =
                 !callee.reads_hidden.get(index).copied().unwrap_or(true) && !value.has_computed();
-
             if known || unread {
                 continue;
             }
@@ -696,15 +920,43 @@ impl Printer<'_> {
             ", without arguments"
         };
 
-        Some(format!("{}{{{}{suffix}}}", callee.name, fields.join(", ")))
+        Some(format!(
+            "{}{{{}{suffix}}}",
+            self.code_name(id),
+            fields.join(", ")
+        ))
     }
 
     fn constant(&self, node: NodeId) -> String {
         let program = &self.explanation.program;
 
         if let Some(&id) = self.explanation.function_of.get(&node) {
-            return self.explanation.functions[id].name.clone();
+            return self.code_name(id);
         }
+
+        let large = program.atom(node).map_or(program.sizes[node], <[u8]>::len) > MAX_REPEATED;
+        if large {
+            let hash = program.hashes[node];
+            if let Some(name) = self.names.constants.get(&hash) {
+                return name.clone();
+            }
+            if let Some(record) = self.record {
+                let mut record = record.borrow_mut();
+                let count = record.counts.entry(hash).or_insert(0);
+                *count += 1;
+                if *count == 1 {
+                    record.constants.push((hash, node));
+                }
+                return "C".to_string();
+            }
+        }
+
+        self.literal(node)
+    }
+
+    /// A constant as it's written, other than a function, which is shown by its name.
+    fn literal(&self, node: NodeId) -> String {
+        let program = &self.explanation.program;
 
         if program.is_nil(node) {
             return "nil".to_string();
@@ -753,6 +1005,22 @@ fn wrap(text: &str, width: usize, depth: usize) -> Vec<String> {
         return vec![text.to_string()];
     }
 
+    // A chain of operators is broken before each of its loosest ones
+    if let Some(parts) = operator_parts(text) {
+        let mut lines = Vec::new();
+        for (index, part) in parts.iter().enumerate() {
+            if index == 0 {
+                lines.extend(wrap(part, width, depth - 1));
+            } else {
+                let inner_width = width.saturating_sub(INDENT.len());
+                for line in wrap(part, inner_width, depth - 1) {
+                    lines.push(format!("{INDENT}{line}"));
+                }
+            }
+        }
+        return lines;
+    }
+
     let Some((open, close, items)) = longest_group(text) else {
         return vec![text.to_string()];
     };
@@ -774,6 +1042,72 @@ fn wrap(text: &str, width: usize, depth: usize) -> Vec<String> {
     }
     lines.push(text[close..].to_string());
     lines
+}
+
+/// The text split before each of the loosest binary operators outside of brackets and strings,
+/// if there are any (and it isn't an `if` or an `assert`).
+fn operator_parts(text: &str) -> Option<Vec<&str>> {
+    const OPERATORS: [(&str, u8); 7] = [
+        (" == ", PREC_COMPARE),
+        (" > ", PREC_COMPARE),
+        (" + ", PREC_ADD),
+        (" - ", PREC_ADD),
+        (" * ", PREC_MUL),
+        (" / ", PREC_MUL),
+        (" % ", PREC_MUL),
+    ];
+
+    let mut found = Vec::new();
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (offset, char) in text.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if char == '\\' {
+                escaped = true;
+            } else if char == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match char {
+            '"' => in_string = true,
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            // The operators of an `if` or an `assert` are in its parts, which are wrapped instead
+            _ if depth == 0
+                && (offset == 0 || text[..offset].ends_with(' '))
+                && ["if ", "else ", "assert "]
+                    .iter()
+                    .any(|keyword| text[offset..].starts_with(keyword)) =>
+            {
+                return None;
+            }
+            ' ' if depth == 0 => {
+                if let Some(&(_, prec)) = OPERATORS
+                    .iter()
+                    .find(|(operator, _)| text[offset..].starts_with(operator))
+                {
+                    found.push((offset, prec));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let loosest = found.iter().map(|&(_, prec)| prec).min()?;
+    let mut parts = Vec::new();
+    let mut start = 0;
+    for (offset, _) in found.into_iter().filter(|&(_, prec)| prec == loosest) {
+        parts.push(&text[start..offset]);
+        start = offset + 1;
+    }
+    parts.push(&text[start..]);
+    Some(parts)
 }
 
 /// The outermost bracketed group with the most text in it, as the byte offsets of its brackets
@@ -885,6 +1219,47 @@ mod tests {
         assert_eq!(
             wrap("raise(\"a, b, c, d\")", 10, MAX_WRAP_DEPTH),
             ["raise(", "    \"a, b, c, d\",", ")"]
+        );
+    }
+
+    #[test]
+    fn wrapping_breaks_chains_of_operators() {
+        // Before the loosest operators outside of brackets and strings
+        assert_eq!(
+            wrap(
+                "alpha * beta + f(gamma + delta) - \"a + b\"",
+                24,
+                MAX_WRAP_DEPTH
+            ),
+            ["alpha * beta", "    + f(gamma + delta)", "    - \"a + b\""]
+        );
+        assert_eq!(
+            wrap("let v1 = alpha == beta * gamma", 20, MAX_WRAP_DEPTH),
+            ["let v1 = alpha", "    == beta * gamma"]
+        );
+
+        // But not in an `if` or an `assert`, whose parts are wrapped instead
+        assert_eq!(
+            wrap(
+                "let v1 = if alpha > beta { gamma } else { delta }",
+                30,
+                MAX_WRAP_DEPTH
+            ),
+            [
+                "let v1 = if alpha > beta {",
+                "    gamma",
+                "} else { delta }"
+            ]
+        );
+        assert_eq!(
+            wrap("assert alpha > beta else raise(gamma)", 30, MAX_WRAP_DEPTH),
+            ["assert alpha > beta else raise(", "    gamma,", ")"]
+        );
+
+        // And each part is wrapped in turn
+        assert_eq!(
+            wrap("x + f(alpha, beta)", 12, MAX_WRAP_DEPTH),
+            ["x", "    + f(", "        alpha,", "        beta,", "    )"]
         );
     }
 }

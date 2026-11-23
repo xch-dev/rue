@@ -35,14 +35,15 @@ fn main(                                                          // cat_v2.rue:
     let v1 = coinid(this_coin_info.first, this_coin_info.rest.first, this_coin_info.rest.rest.first)  // cat_v2.rue:89:17-93:6
     let v2 = sha256(1, mod_hash)                                  // std/tree_hash.rue:10:5-31 (tree_hash_atom (inlined))
     let v3 = if lineage_proof {                                   // cat_v2.rue:119:25-127:6
-        this_coin_info.first == coinid(
-            lineage_proof.first,
-            cat_puzzle_hash(
-                cat_info: [mod_hash, v2, tail_program_hash],
-                inner_puzzle_hash: lineage_proof.rest.first,
-            ),
-            lineage_proof.rest.rest.first,
-        )
+        this_coin_info.first
+            == coinid(
+                lineage_proof.first,
+                cat_puzzle_hash(
+                    cat_info: [mod_hash, v2, tail_program_hash],
+                    inner_puzzle_hash: lineage_proof.rest.first,
+                ),
+                lineage_proof.rest.rest.first,
+            )
     } else { nil }
     let v4 = for(                                                 // cat_v2.rue:162:5-205:6 (morph_conditions (inlined))
         cat_info: [mod_hash, v2, tail_program_hash],
@@ -247,14 +248,15 @@ fn main(                                                                  // cat
     )
     let v4 = tree_hash(value: inner_puzzle)                               // cat_v2.rue:95:51-74
     let v5 = if !lineage_proof { nil } else {                             // cat_v2.rue:119:25-127:6
-        this_coin_info.first == coinid(
-            lineage_proof.first,
-            cat_puzzle_hash(
-                cat_info: [mod_hash, v2, tail_program_hash],
-                inner_puzzle_hash: lineage_proof.rest.first,
-            ),
-            lineage_proof.rest.rest.first,
-        )
+        this_coin_info.first
+            == coinid(
+                lineage_proof.first,
+                cat_puzzle_hash(
+                    cat_info: [mod_hash, v2, tail_program_hash],
+                    inner_puzzle_hash: lineage_proof.rest.first,
+                ),
+                lineage_proof.rest.rest.first,
+            )
     }
     let v6 = morph_conditions(                                            // cat_v2.rue:99:19-85
         conditions: inner_puzzle(...inner_puzzle_solution),

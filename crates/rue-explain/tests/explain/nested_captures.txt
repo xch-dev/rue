@@ -27,12 +27,9 @@ fn for(n: Int, xs: List, list: List) {                       // nested_captures.
     // env@24 is always for
     // env@20 is always scale
     if list {                                                // nested_captures.rue:9:39-11:2
-        for(                                                 // nested_captures.rue:27:36-71
-            n: n,
-            xs: xs,
-            list: list.rest,
-            env@28: env@28,
-        ) + list.first + add_scaled(n: n + env@28, xs: xs, env@14: env@28)
+        for(n: n, xs: xs, list: list.rest, env@28: env@28)   // nested_captures.rue:27:36-71
+            + list.first
+            + add_scaled(n: n + env@28, xs: xs, env@14: env@28)
     } else {
         nil                                                  // nested_captures.rue:9:39-11:2
     }

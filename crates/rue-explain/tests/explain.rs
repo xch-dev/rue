@@ -132,6 +132,23 @@ fn check_solutions(
     succeeded
 }
 
+/// Checks that each line of code (other than its source location) is wrapped to 100 columns,
+/// unless it's a comment or has a word that's too long to wrap.
+fn check_widths(path: &Path, rendered: &str) {
+    for line in rendered.lines() {
+        let code = match line.find("  // ") {
+            Some(index) if line[index..].contains(".rue:") => &line[..index],
+            _ => line,
+        };
+        let unbreakable = code.split(' ').any(|word| word.len() > 40);
+        assert!(
+            code.trim_start().starts_with("//") || unbreakable || code.trim_end().len() <= 100,
+            "{} has a line that isn't wrapped: {line}",
+            path.display()
+        );
+    }
+}
+
 #[test]
 fn explanations() {
     for path in cases() {
@@ -165,8 +182,10 @@ fn explanations() {
                 );
             }
 
+            let rendered = explanation.render();
+            check_widths(&path, &rendered);
             writeln!(snapshot, "===== {build} =====").unwrap();
-            snapshot.push_str(&explanation.render());
+            snapshot.push_str(&rendered);
         }
 
         let name = path.file_stem().unwrap().to_string_lossy().to_string();

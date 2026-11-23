@@ -1785,9 +1785,24 @@ mod tests {
             Ok(named.clone())
         );
 
-        // A sidecar for another program is rejected
+        // A file of hex that isn't named `.hex` is read as hex with `-x`
+        let copy = project.path.join("program.txt");
+        fs::write(&copy, &hex).unwrap();
+        assert_eq!(
+            run_explain(&["-x", copy.to_str().unwrap()]),
+            Ok(unnamed.clone())
+        );
+
+        // A sidecar for another program is rejected, even if there's a valid one next to the
+        // file, since a sidecar that's given is used instead
         let error =
             run_explain(&["(q . 1)", "--debug-metadata", sidecar.to_str().unwrap()]).unwrap_err();
+        assert!(error.contains("isn't valid for the program"), "{error}");
+        let other = TempProject::new("explain-other", "fn main() -> Int {\n    1\n}\n");
+        run_build(&other.path, &["--all", "--debug-metadata"]);
+        let other = other.path.join("main.rue.debug.clvm.bin");
+        let error =
+            run_explain(&[program, "--debug-metadata", other.to_str().unwrap()]).unwrap_err();
         assert!(error.contains("isn't valid for the program"), "{error}");
     }
 

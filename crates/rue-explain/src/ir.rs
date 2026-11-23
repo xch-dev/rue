@@ -39,10 +39,14 @@ pub(crate) enum Value {
     Expr(Deep<Expr>),
 }
 
+/// How long a path can be before a value that's read from it is bound to a variable (like a
+/// computed value) rather than read again at each use, which keeps it from being shown many times.
+pub(crate) const MAX_PATH: usize = 64;
+
 /// What's known about a pair's parts without looking at them.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Shape {
-    /// Whether any part is computed.
+    /// Whether any part is computed (or read from a long path).
     pub computed: bool,
     /// How many values the pair is made of, counting a part each time it's used (saturating).
     pub size: usize,
@@ -105,12 +109,14 @@ impl Value {
         })
     }
 
-    /// Whether any part of the value is computed.
+    /// Whether any part of the value is computed, or read from a path longer than [`MAX_PATH`],
+    /// which are bound to variables before the value is used.
     pub(crate) fn has_computed(&self) -> bool {
         match self {
             Value::Expr(_) => true,
             Value::Cons(_, _, shape) => shape.computed,
-            Value::Const(_) | Value::Nil | Value::Ref(..) => false,
+            Value::Ref(_, path) => path.len() > MAX_PATH,
+            Value::Const(_) | Value::Nil => false,
         }
     }
 }
@@ -175,7 +181,8 @@ pub(crate) enum Statement {
     },
 }
 
-/// A hidden part of a function's environment that every call passes the same constant for.
+/// A hidden part of a function's environment that every call to a version of it passes the same
+/// constant for.
 #[derive(Debug, Clone)]
 pub(crate) struct KnownSlot {
     pub path: Path,
@@ -214,9 +221,17 @@ pub(crate) struct Function {
     pub node: NodeId,
     /// The layout of the environment, if the debug metadata describes it.
     pub layout: Option<Layout>,
-    /// The hidden parts of the environment that are known, which the body uses the values of.
+    /// The hidden parts of the environment that are known, which the body uses the values of
+    /// (and every call to this version passes).
     pub known: Vec<KnownSlot>,
-    /// Which hidden parts of the environment the body reads, which calls show.
+    /// The version of the function that knows nothing about its environment, which is what its
+    /// code is wherever it's used other than in a call.
+    pub generic: FunctionId,
+    /// Where the function is first called from, if it's a version, which orders the versions the
+    /// way they're read.
+    pub call: Option<NodeId>,
+    /// Whether the body reads each hidden part of the environment, which calls only show if it
+    /// does (or if what they pass is computed).
     pub reads_hidden: Vec<bool>,
     pub body: Block,
     /// The names of the variables.

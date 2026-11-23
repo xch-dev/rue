@@ -3,6 +3,11 @@
 //! and to locate each line in the source. It works from the program and the sidecar alone, so it
 //! can explain a program that's only known by its serialization, such as one from the chain.
 //!
+//! A function whose calls pass constants for the parts of its environment that the metadata
+//! doesn't name (such as the functions and constants it captures) has a version for each set of
+//! constants, which uses them, and the version that knows none of them is what its code is when
+//! it's used as a value. A large constant that's used more than once is named and shown once.
+//!
 //! What's shown is meant to mean exactly what the CLVM does, which [`Explanation::check`]
 //! checks by running the decompiled form: code whose structure isn't recognized is shown as CLVM
 //! (`clvm!(...)`) and evaluated as it is. Two things are left out on purpose:
@@ -39,8 +44,6 @@ pub struct Explanation {
     function_of: HashMap<NodeId, FunctionId>,
     /// Whether each node of the program is part of what's shown.
     covered: Vec<bool>,
-    /// Whether the hidden values of environments had to be given up on.
-    gave_up: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -64,7 +67,6 @@ impl Explanation {
             entry: built.entry,
             function_of: built.function_of,
             covered: built.covered,
-            gave_up: built.gave_up,
         })
     }
 

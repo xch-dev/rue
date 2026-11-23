@@ -147,45 +147,58 @@ fn same_constant_is_known() {
 }
 
 #[test]
-fn different_constants_are_shown() {
+fn different_constants_are_different_versions() {
     check(
         "(+ (a (q . (+ 2 5)) (c (q . 10) (c 2 ()))) (a (q . (+ 2 5)) (c (q . 20) (c 2 ()))))",
         add_hidden,
         &["(1)"],
         &expect![[r#"
             program(solution) {
-                add(x: solution@2, env@2: 10) + add(x: solution@2, env@2: 20)
+                add(x: solution@2) + add#2(x: solution@2)
             }
 
             fn add(x) {
-                env@2 + x
+                // env@2 is always 10
+                10 + x
+            }
+
+            fn add#2(x) {
+                // env@2 is always 20
+                20 + x
             }
         "#]],
     );
 }
 
 #[test]
-fn escaping_function_has_unknown_values() {
-    // The function's code is returned as a value, so it could be called from anywhere
+fn function_used_as_a_value_knows_nothing() {
+    // The function's code is returned as a value, so it could be called from anywhere, which is
+    // the version of it that knows nothing about its environment
     check(
         "(c (a (q . (+ 2 5)) (c (q . 10) (c 2 ()))) (q . (+ 2 5)))",
         add_hidden,
         &["(1)"],
         &expect![[r#"
             program(solution) {
-                (add(x: solution@2, env@2: 10), add)
+                (add#2(x: solution@2), add)
             }
 
             fn add(x) {
                 env@2 + x
+            }
+
+            fn add#2(x) {
+                // env@2 is always 10
+                10 + x
             }
         "#]],
     );
 }
 
 #[test]
-fn escaping_through_the_environment() {
-    // `wrap` returns its whole environment, which includes the `add` that it was passed
+fn function_in_a_returned_environment() {
+    // `wrap` returns its whole environment, which includes the `add` that it was passed, and the
+    // call to `add` is still to the version for 10
     check(
         "(+ (a (q . (+ 2 5)) (c (q . 10) (c 2 ()))) (a (a (q . (f 1)) (c (q . (+ 2 5)) ())) (c (q . 20) (c 2 ()))))",
         |builder| {
@@ -202,11 +215,12 @@ fn escaping_through_the_environment() {
         &["(1)"],
         &expect![[r#"
             program(solution) {
-                add(x: solution@2, env@2: 10) + wrap()(20, solution@2)
+                add(x: solution@2) + wrap()(20, solution@2)
             }
 
             fn add(x) {
-                env@2 + x
+                // env@2 is always 10
+                10 + x
             }
 
             fn wrap() {
@@ -291,8 +305,12 @@ fn deeply_nested_programs() {
         lets = format!("ff02ffff0102ffff04ffff02ffff03ff02ffff01{lets}ffff010580ff0180ff018080");
     }
 
+    // A constant that's as deeply nested, which is shown as CLVM
+    let constant = format!("ff01{}80{}", "ff".repeat(depth), "80".repeat(depth));
+
     for (hex, solution, output, nested_too_deeply) in [
         (firsts, nested, Some("1"), false),
+        (constant, "80".to_string(), None, false),
         (list, "80".to_string(), None, false),
         (lets, "ff0180".to_string(), None, true),
     ] {
@@ -331,8 +349,8 @@ fn deeply_nested_programs() {
 
 #[test]
 fn function_passed_as_different_hidden_values() {
-    // `apply` is passed `add` once and `mul` once, so the `add` it runs isn't the `add` that's
-    // called directly with 10
+    // `apply` is passed `add` once and `mul` once, so there's a version of it for each, and the
+    // `add` it runs with 99 isn't the `add` that's called directly with 10
     check(
         "(c (a (q . (a 2 (c (q . 99) (c 5 ())))) (c (q . (+ 2 5)) (c 2 ()))) (c (a (q . (a 2 (c (q . 99) (c 5 ())))) (c (q . (* 2 5)) (c 2 ()))) (a (q . (+ 2 5)) (c (q . 10) (c 2 ())))))",
         |builder| {
@@ -356,23 +374,36 @@ fn function_passed_as_different_hidden_values() {
         &["(1)"],
         &expect![[r#"
             program(solution) {
-                [
-                    apply(y: solution@2, env@2: add),
-                    apply(y: solution@2, env@2: mul),
-                    ...add(x: solution@2, env@2: 10),
-                ]
+                [apply(y: solution@2), apply#2(y: solution@2), ...add#3(x: solution@2)]
             }
 
             fn apply(y) {
-                env@2(99, y)
+                // env@2 is always add
+                add#2(x: y)
+            }
+
+            fn apply#2(y) {
+                // env@2 is always mul
+                mul(x: y)
             }
 
             fn add(x) {
                 env@2 + x
             }
 
+            fn add#2(x) {
+                // env@2 is always 99
+                99 + x
+            }
+
+            fn add#3(x) {
+                // env@2 is always 10
+                10 + x
+            }
+
             fn mul(x) {
-                env@2 * x
+                // env@2 is always 99
+                99 * x
             }
         "#]],
     );
@@ -380,18 +411,24 @@ fn function_passed_as_different_hidden_values() {
 
 #[test]
 fn function_in_the_environment_of_an_unknown_program() {
-    // The solution's program is run with `add` in its environment, and runs it with 3
+    // The solution's program is run with `add` in its environment, and runs it with 3, so the
+    // value is the version of `add` that knows nothing
     check(
         "(c (a 2 (c (q . (+ 2 5)) ())) (a (q . (+ 2 5)) (c (q . 10) (c 5 ()))))",
         add_hidden,
         &["((a 2 (q 7 3)) 1)"],
         &expect![[r#"
             program(solution) {
-                (solution@2(add), add(x: solution@5, env@2: 10))
+                (solution@2(add), add#2(x: solution@5))
             }
 
             fn add(x) {
                 env@2 + x
+            }
+
+            fn add#2(x) {
+                // env@2 is always 10
+                10 + x
             }
         "#]],
     );
@@ -439,27 +476,29 @@ fn statements_in_branches_are_kept() {
 }
 
 #[test]
-fn raw_code_lets_functions_escape() {
-    // The raw code calls `add` with 20, so 10 isn't always its hidden value
+fn raw_code_running_a_function() {
+    // The raw code runs `add`'s code with 20, which is shown as it is, and the call that's shown
+    // passes 10
     check(
         "(c (100 (a (q . (+ 2 5)) (c (q . 20) (c 2 ())))) (a (q . (+ 2 5)) (c (q . 10) (c 2 ()))))",
         add_hidden,
         &["(1)"],
         &expect![[r#"
             program(solution) {
-                (clvm!((100 (a (q 16 2 5) (c (q . 20) (c 2 ()))))), add(x: solution@2, env@2: 10))
+                (clvm!((100 (a (q 16 2 5) (c (q . 20) (c 2 ()))))), add(x: solution@2))
             }
 
             fn add(x) {
-                env@2 + x
+                // env@2 is always 10
+                10 + x
             }
         "#]],
     );
 }
 
 #[test]
-fn reading_inside_a_hidden_value_reads_it() {
-    // The body reads the first of its hidden value, so calls show what they pass for it
+fn reading_inside_a_hidden_value() {
+    // The body reads the first of its hidden value, which is a different constant in each call
     check(
         "(+ (a (q . (+ 4 5)) (c (q . (7)) (c 2 ()))) (a (q . (+ 4 5)) (c (q . (8)) (c 2 ()))))",
         |builder| {
@@ -474,11 +513,17 @@ fn reading_inside_a_hidden_value_reads_it() {
         &["(1)"],
         &expect![[r#"
             program(solution) {
-                first(x: solution@2, env@2: [7]) + first(x: solution@2, env@2: [8])
+                first(x: solution@2) + first#2(x: solution@2)
             }
 
             fn first(x) {
-                env@4 + x
+                // env@2 is always [7]
+                7 + x
+            }
+
+            fn first#2(x) {
+                // env@2 is always [8]
+                8 + x
             }
         "#]],
     );
@@ -561,7 +606,7 @@ fn functions_in_bound_structures() {
     let large = format!("(c (q . (+ 2 5)) {large})");
 
     // `add` is called through the variable that the structure is bound to, which sees through to
-    // it, and the structure is returned, which lets `add` escape
+    // it, and the structure is returned, which has the code of `add` in it
     check(
         &format!("(a (q . (c (a 4 (c (q . 10) (c 3 ()))) 2)) (c {large} 1))"),
         add_hidden,
@@ -641,11 +686,16 @@ fn functions_in_bound_structures() {
                     1,
                     1,
                 ]
-                (add(x: solution, env@2: 10), v1)
+                (add#2(x: solution), v1)
             }
 
             fn add(x) {
                 env@2 + x
+            }
+
+            fn add#2(x) {
+                // env@2 is always 10
+                10 + x
             }
         "#]],
     );
@@ -806,11 +856,16 @@ fn functions_in_bound_structures() {
                     1,
                     1,
                 ]
-                (add(x: v1, env@2: 10), v2)
+                (add#2(x: v1), v2)
             }
 
             fn add(x) {
                 env@2 + x
+            }
+
+            fn add#2(x) {
+                // env@2 is always 10
+                10 + x
             }
         "#]],
     );
@@ -1016,4 +1071,265 @@ fn sidecar_must_be_for_the_program() {
     let metadata = sidecar(&allocator, other, |_| Vec::new());
     let bytes = node_to_bytes(&allocator, ptr).unwrap();
     assert!(Explanation::new(&bytes, Some(&metadata)).is_err());
+}
+
+/// A function `apply(f, x)`, which runs `f` with 20 as its hidden value and `x`.
+fn apply_hidden(builder: &mut DebugMetadataBuilder) -> Vec<(String, Described)> {
+    let mut functions = add_hidden(builder);
+    functions.push((
+        "(a 2 (c (q . 20) (c 5 ())))".to_string(),
+        Described {
+            name: "apply",
+            parameters: pair(
+                name(builder, "f", 2),
+                pair(name(builder, "x", 5), Parameter::Nil),
+            ),
+        },
+    ));
+    functions
+}
+
+#[test]
+fn hidden_values_are_only_known_in_calls_that_pass_them() {
+    // `add` is called with 10, and also passed as an argument to `apply`, which runs it with 20
+    check(
+        "(+ (a (q . (+ 2 5)) (c (q . 10) (c 2 ()))) (a (q . (a 2 (c (q . 20) (c 5 ())))) (c (q . (+ 2 5)) (c 2 ()))))",
+        apply_hidden,
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                add#2(x: solution@2) + apply(f: add, x: solution@2)
+            }
+
+            fn add(x) {
+                env@2 + x
+            }
+
+            fn add#2(x) {
+                // env@2 is always 10
+                10 + x
+            }
+
+            fn apply(f, x) {
+                f(20, x)
+            }
+        "#]],
+    );
+
+    // An anonymous program is passed `add`, and runs it with 20
+    check(
+        "(+ (a (q . (+ 2 5)) (c (q . 10) (c 2 ()))) (a (q . (a 2 (c 5 (c 11 ())))) (c (q . (a 2 (c (q . 20) (c 5 ())))) (c (q . (+ 2 5)) (c 2 ())))))",
+        add_hidden,
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                add#2(x: solution@2) + anonymous#1(env: [add, solution@2])
+            }
+
+            fn add(x) {
+                env@2 + x
+            }
+
+            fn add#2(x) {
+                // env@2 is always 10
+                10 + x
+            }
+
+            fn anonymous#1(env) {
+                env@2(20, env@5)
+            }
+        "#]],
+    );
+
+    // `g` passes its own hidden value to `add`, and is called with 10 and with 20
+    check(
+        "(+ (a (q . (+ 2 5)) (c (q . 10) (c 2 ()))) (+ (a (q . (a (q . (+ 2 5)) (c 2 (c 5 ())))) (c (q . 10) (c 2 ()))) (a (q . (a (q . (+ 2 5)) (c 2 (c 5 ())))) (c (q . 20) (c 2 ())))))",
+        |builder| {
+            let mut functions = add_hidden(builder);
+            functions.push((
+                "(a (q 16 2 5) (c 2 (c 5 ())))".to_string(),
+                Described {
+                    name: "g",
+                    parameters: pair(Parameter::Nil, pair(name(builder, "y", 5), Parameter::Nil)),
+                },
+            ));
+            functions
+        },
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                add(x: solution@2) + (g(y: solution@2) + g#2(y: solution@2))
+            }
+
+            fn add(x) {
+                // env@2 is always 10
+                10 + x
+            }
+
+            fn add#2(x) {
+                // env@2 is always 20
+                20 + x
+            }
+
+            fn g(y) {
+                // env@2 is always 10
+                add(x: y)
+            }
+
+            fn g#2(y) {
+                // env@2 is always 20
+                add#2(x: y)
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn versions_are_limited() {
+    // `add` is called with ten different constants, and there are only versions for eight of them
+    // (the last eight, since operands are decompiled from the last to the first), so the other
+    // calls are to the version that knows nothing
+    let calls = (1..=10)
+        .map(|value| format!("(a (q . (+ 2 5)) (c (q . {value}) (c 2 ())))"))
+        .collect::<Vec<_>>();
+    check(
+        &format!("(+ {})", calls.join(" ")),
+        add_hidden,
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                add(x: solution@2, env@2: 1)
+                    + add(x: solution@2, env@2: 2)
+                    + add#2(x: solution@2)
+                    + add#3(x: solution@2)
+                    + add#4(x: solution@2)
+                    + add#5(x: solution@2)
+                    + add#6(x: solution@2)
+                    + add#7(x: solution@2)
+                    + add#8(x: solution@2)
+                    + add#9(x: solution@2)
+            }
+
+            fn add(x) {
+                env@2 + x
+            }
+
+            fn add#2(x) {
+                // env@2 is always 3
+                3 + x
+            }
+
+            fn add#3(x) {
+                // env@2 is always 4
+                4 + x
+            }
+
+            fn add#4(x) {
+                // env@2 is always 5
+                5 + x
+            }
+
+            fn add#5(x) {
+                // env@2 is always 6
+                6 + x
+            }
+
+            fn add#6(x) {
+                // env@2 is always 7
+                7 + x
+            }
+
+            fn add#7(x) {
+                // env@2 is always 8
+                8 + x
+            }
+
+            fn add#8(x) {
+                // env@2 is always 9
+                9 + x
+            }
+
+            fn add#9(x) {
+                // env@2 is always 10
+                10 + x
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn functions_are_named_apart_from_values() {
+    // A function named like a parameter of another function, and one named like a variable, and a
+    // parameter named like a variable
+    check(
+        "(c (a (q . (+ 2 5)) (c (q . 10) (c 2 ()))) (c (a (q . (a (q . (* 2 2)) (c (+ 2 (q . 1)) ()))) (c 2 ())) (a (q . (* 2 (q . 3))) (c 2 ()))))",
+        |builder| {
+            let mut functions = add_hidden(builder);
+            functions.push((
+                "(a (q 18 2 2) (c (+ 2 (q . 1)) ()))".to_string(),
+                Described {
+                    name: "x",
+                    parameters: pair(name(builder, "v1", 2), Parameter::Nil),
+                },
+            ));
+            functions.push((
+                "(* 2 (q . 3))".to_string(),
+                Described {
+                    name: "v1",
+                    parameters: pair(name(builder, "y", 2), Parameter::Nil),
+                },
+            ));
+            functions
+        },
+        &["(1)"],
+        &expect![[r#"
+            program(solution) {
+                [add(x: solution@2), x#2(v1: solution@2), ...v1#2(y: solution@2)]
+            }
+
+            fn add(x) {
+                // env@2 is always 10
+                10 + x
+            }
+
+            fn x#2(v1) {
+                let v2 = v1 + 1
+                v2 * v2
+            }
+
+            fn v1#2(y) {
+                y * 3
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn large_values_are_shown_once() {
+    // A large constant that's used three times, and a value read from a long path that's used
+    // three times
+    let large = format!("0x{}", "ab".repeat(100));
+    check(
+        &format!("(c (q . {large}) (c (q . {large}) (sha256 (q . {large}))))"),
+        |_| Vec::new(),
+        &["()"],
+        &expect![[r#"
+            const C1 = 0xabababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab
+
+            program(solution) {
+                [C1, C1, ...sha256(C1)]
+            }
+        "#]],
+    );
+    check(
+        "(a (q . (+ 1 1 1)) 0x7fffffffffffffffffff)",
+        |_| Vec::new(),
+        &["()"],
+        &expect![[r#"
+            program(solution) {
+                let v1 = solution@604462909807314587353087
+                v1 + v1 + v1
+            }
+        "#]],
+    );
 }

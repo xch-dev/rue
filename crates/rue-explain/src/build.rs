@@ -3,14 +3,14 @@
 //! as far as the code that builds it shows, so that reading a path from it can be resolved to a
 //! name, a constant, or a value computed earlier.
 //!
-//! Functions that the debug metadata describes are decompiled once each, and each call to one is
-//! shown as a call. The parts of a function's environment that the metadata doesn't name (such as
-//! captured functions and constants) are hidden, and when every call passes the same constant for
-//! one, the body uses that constant. That's only sound if every call is known, so it's found by
-//! iterating to a fixed point, and a function whose code is used in any other way (passed as a
-//! value to code that isn't decompiled, stored in data, or run with an environment that's only
-//! known at runtime) keeps its hidden values unknown.
+//! Each call to a function that the debug metadata describes is shown as a call. The parts of a
+//! function's environment that the metadata doesn't name (such as captured functions and
+//! constants) are hidden, and a call that passes constants for some of them is to a version of the
+//! function whose body uses those constants. That's sound for each call on its own, so nothing
+//! else about how the function is used matters: wherever its code is used as a value, it's the
+//! version that knows nothing about its environment.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
@@ -25,38 +25,27 @@ use crate::program::{
 };
 use crate::stack::{Deep, grow_stack};
 
-/// How many times the analysis is repeated before it gives up on finding hidden values.
-const MAX_PASSES: usize = 32;
+/// How many versions of a function there can be, for different constants in the hidden parts of
+/// its environment, before calls with other constants are to the version that knows none.
+const MAX_VERSIONS: usize = 8;
 
 /// How large a structure that's read from an environment can be before it's bound to a variable,
 /// which keeps a structure that's built from copies of itself from being shown (and walked) in
 /// full, which would take exponential time.
 const MAX_STRUCTURE: usize = 64;
 
-/// What's known about a hidden part of a function's environment, from every call to it.
-#[derive(Debug, Clone, Copy)]
-enum Fact {
-    /// No call has been seen.
-    Unset,
-    Const(NodeId),
-    Unknown,
-}
-
-/// A function that's known before the analysis.
+/// A function to decompile: one that's described or anonymous, or a version of one for the
+/// constants in the hidden parts of its environment.
 #[derive(Debug, Clone)]
 struct FunctionInfo {
     name: String,
     node: NodeId,
     kind: FunctionKind,
     layout: Option<Layout>,
-}
-
-impl FunctionInfo {
-    fn hidden(&self) -> &[Path] {
-        self.layout
-            .as_ref()
-            .map_or(&[], |layout| layout.hidden.as_slice())
-    }
+    known: Vec<KnownSlot>,
+    generic: FunctionId,
+    /// Where the function is first called from, if it's a version.
+    call: Option<NodeId>,
 }
 
 /// The result of decompiling a program.
@@ -64,76 +53,45 @@ impl FunctionInfo {
 pub(crate) struct Built {
     pub functions: Vec<Function>,
     pub entry: FunctionId,
-    /// The function that each body of a function is, including copies of it.
+    /// The function that each body of a function is, including copies of it, which is the version
+    /// that knows nothing about its environment.
     pub function_of: HashMap<NodeId, FunctionId>,
     /// Whether each node of the program is part of the decompiled code.
     pub covered: Vec<bool>,
-    /// Whether the hidden values had to be given up on, since the analysis didn't settle.
-    pub gave_up: bool,
 }
 
 pub(crate) fn build(program: &Program) -> Built {
     let (infos, function_of, entry) = described_functions(program);
 
-    let mut facts = per_hidden(&infos, Fact::Unset);
-    let mut reads = per_hidden(&infos, false);
+    let mut builder = Builder {
+        program,
+        infos,
+        function_of,
+        anonymous_of: HashMap::new(),
+        versions: HashMap::new(),
+        version_counts: HashMap::new(),
+        covered: vec![false; program.nodes.len()],
+        subtree_covered: vec![false; program.nodes.len()],
+        bodies: Vec::new(),
+    };
 
-    for _ in 0..MAX_PASSES {
-        let mut pass = Pass::run(program, &infos, &function_of, &facts, &reads, entry);
-
-        let mut new_facts = mem::take(&mut pass.observed);
-        for (id, escaped) in pass.escaped.iter().enumerate() {
-            if *escaped {
-                new_facts[id].fill(Fact::Unknown);
-            }
-        }
-
-        let mut new_reads = reads.clone();
-        for (all, new) in new_reads.iter_mut().zip(&pass.reads) {
-            for (all, new) in all.iter_mut().zip(new) {
-                *all |= *new;
-            }
-        }
-
-        if same_facts(program, &facts, &new_facts) && new_reads == reads {
-            return pass.finish(entry, false);
-        }
-
-        facts = new_facts;
-        reads = new_reads;
+    // Anonymous functions and versions are added as they're found
+    let mut id = 0;
+    while id < builder.infos.len() {
+        let function = builder.function(id);
+        builder.bodies.push(function);
+        id += 1;
     }
 
-    // Without hidden values, nothing depends on how functions are called
-    let facts = per_hidden(&infos, Fact::Unknown);
-    let reads = per_hidden(&infos, true);
-    Pass::run(program, &infos, &function_of, &facts, &reads, entry).finish(entry, true)
-}
+    let mut function_of = builder.function_of;
+    function_of.extend(builder.anonymous_of);
 
-/// A value for each hidden part of each function's environment.
-fn per_hidden<T: Clone>(infos: &[FunctionInfo], value: T) -> Vec<Vec<T>> {
-    infos
-        .iter()
-        .map(|info| vec![value.clone(); info.hidden().len()])
-        .collect()
-}
-
-fn same_facts(program: &Program, a: &[Vec<Fact>], b: &[Vec<Fact>]) -> bool {
-    a.iter().zip(b).all(|(a, b)| {
-        a.iter().zip(b).all(|(a, b)| match (a, b) {
-            (Fact::Unset, Fact::Unset) | (Fact::Unknown, Fact::Unknown) => true,
-            (Fact::Const(a), Fact::Const(b)) => program.same_value(*a, *b),
-            _ => false,
-        })
-    })
-}
-
-fn join(program: &Program, fact: &mut Fact, value: Option<NodeId>) {
-    *fact = match (*fact, value) {
-        (Fact::Unknown, _) | (_, None) => Fact::Unknown,
-        (Fact::Unset, Some(value)) => Fact::Const(value),
-        (Fact::Const(known), Some(value)) if program.same_value(known, value) => Fact::Const(known),
-        (Fact::Const(_), Some(_)) => Fact::Unknown,
-    };
+    Built {
+        functions: builder.bodies,
+        entry,
+        function_of,
+        covered: builder.covered,
+    }
 }
 
 /// The functions that the debug metadata describes, the function each annotated node is the body
@@ -145,9 +103,8 @@ fn described_functions(
     let mut infos = Vec::<FunctionInfo>::new();
     let mut function_of = HashMap::new();
     let mut canonical = HashMap::<(usize, [u8; 32]), FunctionId>::new();
-    let mut names = HashMap::<String, usize>::new();
 
-    // In order of position, so that names are numbered the way they're read
+    // In order of position, so that copies are numbered the way they're read
     for node in program.subtree(program.root) {
         let Some(index) = program.nodes[node].function else {
             continue;
@@ -161,23 +118,19 @@ fn described_functions(
             .entry((index, program.hashes[node]))
             .or_insert_with(|| {
                 let metadata = program.functions.get(index);
-                let base = metadata
+                let name = metadata
                     .and_then(|function| program.string(function.name))
                     .unwrap_or("<unknown>")
                     .to_string();
-                let count = names.entry(base.clone()).or_insert(0);
-                *count += 1;
-                let name = if *count == 1 {
-                    base
-                } else {
-                    format!("{base}#{count}")
-                };
 
                 infos.push(FunctionInfo {
                     name,
                     node,
                     kind: FunctionKind::Described,
                     layout: metadata.and_then(|function| Layout::new(program, function)),
+                    known: Vec::new(),
+                    generic: infos.len(),
+                    call: None,
                 });
                 infos.len() - 1
             });
@@ -193,6 +146,9 @@ fn described_functions(
             node: program.root,
             kind: FunctionKind::Program,
             layout: None,
+            known: Vec::new(),
+            generic: infos.len(),
+            call: None,
         });
         infos.len() - 1
     };
@@ -200,9 +156,12 @@ fn described_functions(
     (infos, function_of, entry)
 }
 
+/// A function, and the hashes of the constants that a call passes for the hidden parts of its
+/// environment (`None` for a part that isn't a constant).
+type VersionKey = (FunctionId, Vec<Option<[u8; 32]>>);
+
 /// The state of a function whose body is being decompiled.
 struct Frame {
-    id: FunctionId,
     /// The hidden parts of the environment that are known.
     known: Vec<KnownSlot>,
     vars: Vec<String>,
@@ -210,9 +169,38 @@ struct Frame {
     /// that aren't pairs.
     structures: HashMap<VarId, Value>,
     reserved: HashSet<String>,
+    /// The paths of the environment that the body reads, which tells which hidden parts calls
+    /// have to show.
+    reads: RefCell<HashSet<Path>>,
 }
 
 impl Frame {
+    /// Notes the parts of the environment that the value has in it, as it's used in the body.
+    /// Computed parts have noted what they use already. Parts of a value can be shared, so each is
+    /// only looked at once.
+    fn note(&self, value: &Value) {
+        let mut reads = self.reads.borrow_mut();
+        let mut seen = HashSet::new();
+        let mut stack = vec![value];
+
+        while let Some(value) = stack.pop() {
+            match value {
+                Value::Ref(Root::Env, path) => {
+                    reads.insert(path.clone());
+                }
+                Value::Cons(first, rest, _) => {
+                    if seen.insert(first.as_ptr()) {
+                        stack.push(first);
+                    }
+                    if seen.insert(rest.as_ptr()) {
+                        stack.push(rest);
+                    }
+                }
+                Value::Const(_) | Value::Nil | Value::Ref(Root::Var(_), _) | Value::Expr(_) => {}
+            }
+        }
+    }
+
     /// A new variable, named so that it doesn't shadow a parameter.
     fn new_var(&mut self) -> VarId {
         let mut number = self.vars.len() + 1;
@@ -235,119 +223,28 @@ struct Scope {
     statements: Vec<Statement>,
 }
 
-struct Pass<'a> {
+struct Builder<'a> {
     program: &'a Program,
-    /// The functions that the metadata describes, then the program if it's added.
-    described: &'a [FunctionInfo],
-    /// The functions that are found to be run from constants, which never have a layout.
-    anonymous: Vec<FunctionInfo>,
+    /// The functions that the metadata describes, then the program if it's added, then the
+    /// anonymous functions and versions as they're found.
+    infos: Vec<FunctionInfo>,
+    function_of: HashMap<NodeId, FunctionId>,
     anonymous_of: HashMap<NodeId, FunctionId>,
-    function_of: &'a HashMap<NodeId, FunctionId>,
-    facts: &'a [Vec<Fact>],
-    reads_before: &'a [Vec<bool>],
-    observed: Vec<Vec<Fact>>,
-    escaped: Vec<bool>,
-    reads: Vec<Vec<bool>>,
+    /// The version of each function for the constants in its hidden parts.
+    versions: HashMap<VersionKey, FunctionId>,
+    version_counts: HashMap<FunctionId, usize>,
     covered: Vec<bool>,
-    exposed: HashSet<NodeId>,
-    /// The parts of variables bound to structures that have been used as data.
-    touched: HashSet<(FunctionId, VarId, Path)>,
+    /// Whether the whole subtree of each node is covered, so it's only walked once.
+    subtree_covered: Vec<bool>,
     bodies: Vec<Function>,
 }
 
-impl<'a> Pass<'a> {
-    fn run(
-        program: &'a Program,
-        described: &'a [FunctionInfo],
-        function_of: &'a HashMap<NodeId, FunctionId>,
-        facts: &'a [Vec<Fact>],
-        reads_before: &'a [Vec<bool>],
-        entry: FunctionId,
-    ) -> Self {
-        let mut pass = Self {
-            program,
-            described,
-            anonymous: Vec::new(),
-            anonymous_of: HashMap::new(),
-            function_of,
-            facts,
-            reads_before,
-            observed: facts
-                .iter()
-                .map(|facts| vec![Fact::Unset; facts.len()])
-                .collect(),
-            escaped: vec![false; facts.len()],
-            reads: facts.iter().map(|facts| vec![false; facts.len()]).collect(),
-            covered: vec![false; program.nodes.len()],
-            exposed: HashSet::new(),
-            touched: HashSet::new(),
-            bodies: Vec::new(),
-        };
-
-        // The program is run with an environment that's only known at runtime
-        pass.escaped[entry] = true;
-
-        // Anonymous functions are added as they're found
-        let mut id = 0;
-        while id < pass.described.len() + pass.anonymous.len() {
-            let function = pass.function(id);
-            pass.bodies.push(function);
-            id += 1;
-        }
-
-        pass
-    }
-
-    fn finish(self, entry: FunctionId, gave_up: bool) -> Built {
-        let mut function_of = self.function_of.clone();
-        function_of.extend(&self.anonymous_of);
-
-        Built {
-            functions: self.bodies,
-            function_of,
-            entry,
-            covered: self.covered,
-            gave_up,
-        }
-    }
-
-    fn info(&self, id: FunctionId) -> &FunctionInfo {
-        self.described
-            .get(id)
-            .unwrap_or_else(|| &self.anonymous[id - self.described.len()])
-    }
-
-    /// The hidden parts of the function's environment (anonymous functions have none).
-    fn hidden(&self, id: FunctionId) -> &'a [Path] {
-        let described: &'a [FunctionInfo] = self.described;
-        described.get(id).map_or(&[], FunctionInfo::hidden)
-    }
-
-    /// What's known about each hidden part of the function's environment.
-    fn facts(&self, id: FunctionId) -> &'a [Fact] {
-        let facts: &'a [Vec<Fact>] = self.facts;
-        facts.get(id).map_or(&[], Vec::as_slice)
-    }
-
+impl Builder<'_> {
     fn function(&mut self, id: FunctionId) -> Function {
-        let info = self.info(id).clone();
-
-        let known = info
-            .hidden()
-            .iter()
-            .zip(self.facts(id))
-            .filter_map(|(path, fact)| match fact {
-                Fact::Const(value) => Some(KnownSlot {
-                    path: path.clone(),
-                    value: *value,
-                }),
-                _ => None,
-            })
-            .collect();
+        let info = self.infos[id].clone();
 
         let mut frame = Frame {
-            id,
-            known,
+            known: info.known.clone(),
             vars: Vec::new(),
             structures: HashMap::new(),
             reserved: info
@@ -355,6 +252,7 @@ impl<'a> Pass<'a> {
                 .iter()
                 .flat_map(|layout| layout.named.iter().map(|slot| slot.name.clone()))
                 .collect(),
+            reads: RefCell::default(),
         };
         let mut scope = Scope {
             env: Value::Ref(Root::Env, Vec::new()),
@@ -364,13 +262,32 @@ impl<'a> Pass<'a> {
         let value = self.expr(&mut frame, &mut scope, info.node);
         let body = finish_block(self.program, scope.statements, value);
 
+        let reads = frame.reads.into_inner();
+        let reads_hidden = info
+            .layout
+            .as_ref()
+            .map(|layout| {
+                layout
+                    .hidden
+                    .iter()
+                    .map(|hidden| {
+                        reads
+                            .iter()
+                            .any(|read| read.starts_with(hidden) || hidden.starts_with(read))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         Function {
             name: info.name,
             kind: info.kind,
             node: info.node,
             layout: info.layout,
-            known: frame.known,
-            reads_hidden: self.reads_before.get(id).cloned().unwrap_or_default(),
+            known: info.known,
+            generic: info.generic,
+            call: info.call,
+            reads_hidden,
             body,
             vars: frame.vars,
         }
@@ -381,8 +298,16 @@ impl<'a> Pass<'a> {
     }
 
     fn cover_subtree(&mut self, node: NodeId) {
-        for node in self.program.subtree(node) {
+        let mut stack = vec![node];
+        while let Some(node) = stack.pop() {
+            if mem::replace(&mut self.subtree_covered[node], true) {
+                continue;
+            }
             self.covered[node] = true;
+            if let Some((first, rest)) = self.program.pair(node) {
+                stack.push(rest);
+                stack.push(first);
+            }
         }
     }
 
@@ -417,71 +342,8 @@ impl<'a> Pass<'a> {
         Some(value)
     }
 
-    /// Marks the value as used as data, which reads whatever parts of the environment it
-    /// includes, and lets any function whose code it includes be called in unknown ways.
-    fn touch(&mut self, frame: &Frame, value: &Value) {
-        match value {
-            Value::Const(node) => self.expose(*node),
-            Value::Ref(Root::Env, path) => {
-                for (index, (hidden, fact)) in self
-                    .hidden(frame.id)
-                    .iter()
-                    .zip(self.facts(frame.id))
-                    .enumerate()
-                {
-                    if hidden.starts_with(path) || path.starts_with(hidden) {
-                        self.reads[frame.id][index] = true;
-                    }
-
-                    // Reading more than the hidden part includes its value
-                    if let Fact::Const(known) = fact
-                        && hidden.starts_with(path)
-                        && path.len() < hidden.len()
-                    {
-                        self.expose(*known);
-                    }
-                }
-            }
-            // A structure's parts are used where the variable is, each at most once, since using
-            // one again changes nothing
-            Value::Ref(Root::Var(var), path) => {
-                if !frame.structures.contains_key(var)
-                    || !self.touched.insert((frame.id, *var, path.clone()))
-                {
-                    return;
-                }
-                if let Some(part) = frame
-                    .structures
-                    .get(var)
-                    .and_then(|structure| structure.at(self.program, path))
-                {
-                    let part = part.into_owned();
-                    self.touch(frame, &part);
-                }
-            }
-            Value::Nil | Value::Expr(_) => {}
-            Value::Cons(first, rest, _) => grow_stack(|| {
-                self.touch(frame, first);
-                self.touch(frame, rest);
-            }),
-        }
-    }
-
-    /// Marks the functions whose code is in the constant as escaping.
-    fn expose(&mut self, node: NodeId) {
-        if !self.program.contains_function[node] || !self.exposed.insert(node) {
-            return;
-        }
-
-        for node in self.program.subtree(node) {
-            if let Some(&id) = self.function_of.get(&node) {
-                self.escaped[id] = true;
-            }
-        }
-    }
-
-    fn value_expr(&mut self, frame: &Frame, value: Value, node: NodeId) -> Expr {
-        self.touch(frame, &value);
+    fn value_expr(frame: &Frame, value: Value, node: NodeId) -> Expr {
+        frame.note(&value);
         Expr {
             kind: ExprKind::Value(value),
             node,
@@ -490,11 +352,12 @@ impl<'a> Pass<'a> {
 
     fn raw(&mut self, frame: &Frame, scope: &Scope, code: NodeId) -> Expr {
         self.cover_subtree(code);
-        self.expose(code);
-        let env = scope.env.clone();
-        self.touch(frame, &env);
+        frame.note(&scope.env);
         Expr {
-            kind: ExprKind::Raw { code, env },
+            kind: ExprKind::Raw {
+                code,
+                env: scope.env.clone(),
+            },
             node: code,
         }
     }
@@ -510,10 +373,10 @@ impl<'a> Pass<'a> {
             NodeKind::Atom(atom) => {
                 self.cover(code);
                 let Some(path) = atom_path(atom) else {
-                    return self.value_expr(frame, nil_code(atom, code), code);
+                    return Self::value_expr(frame, nil_code(atom, code), code);
                 };
                 return match self.resolve(frame, &scope.env, &path) {
-                    Some(value) => self.value_expr(frame, value, code),
+                    Some(value) => Self::value_expr(frame, value, code),
                     None => self.raw(frame, scope, code),
                 };
             }
@@ -528,7 +391,7 @@ impl<'a> Pass<'a> {
             self.cover(code);
             self.cover(op);
             self.cover_subtree(args);
-            return self.value_expr(frame, Value::Const(args), code);
+            return Self::value_expr(frame, Value::Const(args), code);
         }
 
         let Some(operands) = program.list(args) else {
@@ -544,7 +407,7 @@ impl<'a> Pass<'a> {
             }
             (CONS, &[_, _]) => {
                 let value = self.sym(frame, scope, code);
-                self.value_expr(frame, value, code)
+                Self::value_expr(frame, value, code)
             }
             (APPLY, _) => self.raw(frame, scope, code),
             _ if operator_name(op_atom).is_some() => {
@@ -664,7 +527,7 @@ impl<'a> Pass<'a> {
                 scope.env.clone()
             } else {
                 let env = self.sym(frame, scope, env);
-                bind(frame, scope, env)
+                bind(frame, scope, env, node)
             };
             let condition = self.expr(frame, scope, condition);
 
@@ -693,7 +556,7 @@ impl<'a> Pass<'a> {
         // The environment is evaluated before the program
         let env = self.sym(frame, scope, env);
         let program_expr = self.expr(frame, scope, callee);
-        self.touch(frame, &env);
+        frame.note(&env);
 
         Expr {
             kind: ExprKind::Run {
@@ -716,7 +579,7 @@ impl<'a> Pass<'a> {
             self.known(frame, &mut scope, body, env, true, node)
         } else {
             self.cover(branch);
-            self.value_expr(frame, Value::Const(branch), branch)
+            Self::value_expr(frame, Value::Const(branch), branch)
         };
 
         finish_block(self.program, scope.statements, value)
@@ -738,12 +601,12 @@ impl<'a> Pass<'a> {
         if let Some(atom) = program.atom(body) {
             // An atom reads from the environment it's run with
             self.cover(body);
-            let env = bind(frame, scope, env);
+            let env = bind(frame, scope, env, body);
             let Some(path) = atom_path(atom) else {
-                return self.value_expr(frame, nil_code(atom, body), body);
+                return Self::value_expr(frame, nil_code(atom, body), body);
             };
             if let Some(value) = self.resolve(frame, &env, &path) {
-                return self.value_expr(frame, value, body);
+                return Self::value_expr(frame, value, body);
             }
             let saved = mem::replace(&mut scope.env, env);
             let expr = self.raw(frame, scope, body);
@@ -752,14 +615,14 @@ impl<'a> Pass<'a> {
         }
 
         if let Some(&id) = self.function_of.get(&body) {
-            if self.info(id).node != body {
+            if self.infos[id].node != body {
                 // A copy of the body of a function that's shown elsewhere
                 self.cover_subtree(body);
             }
 
             // A computed value that has more than one part of the environment in it is bound
             // first, so that each part can be shown
-            let crossing = self.info(id).layout.as_ref().is_some_and(|layout| {
+            let crossing = self.infos[id].layout.as_ref().is_some_and(|layout| {
                 let mut leaves = Vec::new();
                 computed_paths(&env, &mut Vec::new(), &mut leaves);
                 leaves.iter().any(|leaf| {
@@ -773,7 +636,7 @@ impl<'a> Pass<'a> {
             });
 
             let env = if crossing {
-                bind(frame, scope, env)
+                bind(frame, scope, env, node)
             } else {
                 env
             };
@@ -782,7 +645,7 @@ impl<'a> Pass<'a> {
         }
 
         if inline {
-            let env = bind(frame, scope, env);
+            let env = bind(frame, scope, env, node);
             let saved = mem::replace(&mut scope.env, env);
             let expr = self.expr(frame, scope, body);
             scope.env = saved;
@@ -792,71 +655,102 @@ impl<'a> Pass<'a> {
         let id = if let Some(&id) = self.anonymous_of.get(&body) {
             id
         } else {
-            self.anonymous.push(FunctionInfo {
-                name: format!("anonymous#{}", self.anonymous.len() + 1),
+            let id = self.infos.len();
+            self.infos.push(FunctionInfo {
+                name: format!("anonymous#{}", self.anonymous_of.len() + 1),
                 node: body,
                 kind: FunctionKind::Anonymous,
                 layout: None,
+                known: Vec::new(),
+                generic: id,
+                call: None,
             });
-            let id = self.described.len() + self.anonymous.len() - 1;
             self.anonymous_of.insert(body, id);
             id
         };
 
-        self.call(frame, id, env, node)
-    }
-
-    fn call(&mut self, frame: &Frame, id: FunctionId, env: Value, node: NodeId) -> Expr {
-        let described: &'a [FunctionInfo] = self.described;
-        let Some(layout) = described.get(id).and_then(|info| info.layout.as_ref()) else {
-            self.touch(frame, &env);
-            return Expr {
-                kind: ExprKind::Call { function: id, env },
-                node,
-            };
-        };
-
-        for slot in &layout.named {
-            match self.resolve(frame, &env, &slot.path) {
-                Some(value) => self.touch(frame, &value),
-                None => self.touch(frame, &env),
-            }
-        }
-
-        for (index, path) in layout.hidden.iter().enumerate() {
-            let value = self.resolve(frame, &env, path);
-
-            // A hidden part of this function's environment that no call has been seen for yet
-            // says nothing yet, and if none ever is, neither function is run
-            if let Some(Value::Ref(Root::Env, passed)) = value.as_ref()
-                && self
-                    .hidden(frame.id)
-                    .iter()
-                    .zip(self.facts(frame.id))
-                    .any(|(hidden, fact)| matches!(fact, Fact::Unset) && passed.starts_with(hidden))
-            {
-                continue;
-            }
-
-            let constant = match value.as_ref() {
-                Some(Value::Const(node)) => Some(*node),
-                _ => None,
-            };
-            join(self.program, &mut self.observed[id][index], constant);
-
-            // Until a slot is known, values passed for it are assumed to be what it'll be
-            let matches = match (self.facts(id)[index], constant) {
-                (Fact::Unset, _) => true,
-                (Fact::Const(known), Some(value)) => self.program.same_value(known, value),
-                _ => false,
-            };
-            if !matches && self.reads_before[id][index] {
-                self.touch(frame, value.as_ref().unwrap_or(&env));
-            }
-        }
-
+        frame.note(&env);
         Expr {
             kind: ExprKind::Call { function: id, env },
+            node,
+        }
+    }
+
+    /// A call to the function, which is to the version of it for the constants that the
+    /// environment has in its hidden parts. Each version's body uses the constants it's for, which
+    /// is sound since only calls that pass them are to it, and the version that knows none of them
+    /// is what the function's code is wherever else it's used (and when there are too many
+    /// versions).
+    fn call(&mut self, frame: &Frame, id: FunctionId, env: Value, node: NodeId) -> Expr {
+        let mut key = Vec::new();
+        let mut known = Vec::new();
+
+        // What a call shows is used: each named part and each hidden part that isn't a known
+        // constant, or the whole environment if a part of it isn't known
+        let mut shown = Vec::new();
+        let mut whole = false;
+
+        match &self.infos[id].layout {
+            Some(layout) => {
+                for slot in &layout.named {
+                    match self.resolve(frame, &env, &slot.path) {
+                        Some(value) => shown.push(value),
+                        None => whole = true,
+                    }
+                }
+
+                for path in &layout.hidden {
+                    match self.resolve(frame, &env, path) {
+                        Some(Value::Const(value)) => {
+                            key.push(Some(self.program.hashes[value]));
+                            known.push(KnownSlot {
+                                path: path.clone(),
+                                value,
+                            });
+                        }
+                        Some(value) => {
+                            key.push(None);
+                            shown.push(value);
+                        }
+                        None => {
+                            key.push(None);
+                            whole = true;
+                        }
+                    }
+                }
+            }
+            None => whole = true,
+        }
+
+        if whole {
+            frame.note(&env);
+        } else {
+            for value in &shown {
+                frame.note(value);
+            }
+        }
+
+        let function = if known.is_empty() {
+            id
+        } else if let Some(&version) = self.versions.get(&(id, key.clone())) {
+            version
+        } else if self.version_counts.get(&id).copied().unwrap_or(0) < MAX_VERSIONS {
+            *self.version_counts.entry(id).or_insert(0) += 1;
+            let version = self.infos.len();
+            let info = FunctionInfo {
+                known,
+                call: Some(node),
+                ..self.infos[id].clone()
+            };
+            self.infos.push(info);
+            self.versions.insert((id, key), version);
+            version
+        } else {
+            id
+        };
+
+        Expr {
+            kind: ExprKind::Call { function, env },
             node,
         }
     }
@@ -869,6 +763,7 @@ fn read(frame: &mut Frame, scope: &mut Scope, value: Value, node: NodeId) -> Val
         return value;
     }
 
+    frame.note(&value);
     let var = frame.new_var();
     frame.structures.insert(var, value.clone());
     scope.statements.push(Statement::Let {
@@ -885,17 +780,30 @@ fn read(frame: &mut Frame, scope: &mut Scope, value: Value, node: NodeId) -> Val
 /// of a pair first), with `let`s before the statement, and returns the value that refers to them
 /// instead. Everything but the branches of an `if` is evaluated strictly, so this only changes
 /// which of several failures is reported when the value is part of a larger expression.
-fn bind(frame: &mut Frame, scope: &mut Scope, value: Value) -> Value {
+fn bind(frame: &mut Frame, scope: &mut Scope, value: Value, node: NodeId) -> Value {
     match value {
         Value::Expr(expr) => {
             let var = frame.new_var();
             scope.statements.push(Statement::Let { var, value: expr });
             Value::Ref(Root::Var(var), Vec::new())
         }
+        // A read from a long path is only shown once
+        Value::Ref(..) if value.has_computed() => {
+            frame.note(&value);
+            let var = frame.new_var();
+            scope.statements.push(Statement::Let {
+                var,
+                value: Deep::new(Expr {
+                    kind: ExprKind::Value(value),
+                    node,
+                }),
+            });
+            Value::Ref(Root::Var(var), Vec::new())
+        }
         // Only the parts with computed values in them are rebuilt
         Value::Cons(first, rest, shape) if shape.computed => grow_stack(|| {
-            let rest = bind(frame, scope, rest.into_inner());
-            let first = bind(frame, scope, first.into_inner());
+            let rest = bind(frame, scope, rest.into_inner(), node);
+            let first = bind(frame, scope, first.into_inner(), node);
             Value::cons(first, rest)
         }),
         value => value,
@@ -915,6 +823,7 @@ fn nil_code(atom: &[u8], code: NodeId) -> Value {
 fn computed_paths(value: &Value, path: &mut Path, paths: &mut Vec<Path>) {
     match value {
         Value::Expr(_) => paths.push(path.clone()),
+        Value::Ref(..) if value.has_computed() => paths.push(path.clone()),
         Value::Cons(first, rest, shape) if shape.computed => grow_stack(|| {
             path.push(false);
             computed_paths(first, path, paths);

@@ -29,6 +29,13 @@ impl<T> Deep<T> {
     }
 }
 
+impl<T> Deep<T> {
+    /// Where the value is, which is the same for each clone of it.
+    pub(crate) fn as_ptr(&self) -> *const T {
+        self.0.as_ref().map_or(std::ptr::null(), Rc::as_ptr)
+    }
+}
+
 impl<T: Clone> Deep<T> {
     /// The value, which is cloned if it's shared.
     pub(crate) fn into_inner(mut self) -> T {
