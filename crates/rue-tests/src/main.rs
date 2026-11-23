@@ -468,10 +468,32 @@ fn collect_test_files(
     Ok(())
 }
 
-/// Runs the snapshot tests on a thread for each core. Each test's output is buffered and printed
-/// in one piece when it finishes, so the reports of tests that run at the same time don't
-/// interleave.
+/// The slowest snapshot tests, slowest first. They're started before the others, since the
+/// slowest takes about as long as all of the others together on four cores, and the run would
+/// otherwise wait for whichever of them started last. A test missing from this list only makes
+/// the run slower.
+const SLOW_TESTS: &[&str] = &[
+    "nested_generic_function_cycles",
+    "imprecise_narrowing",
+    "prefarm_inner",
+    "dao_lockup",
+    "dao_proposal",
+    "dao_spend_p2_singleton_v2",
+];
+
+/// Runs the snapshot tests on a thread for each core, the ones in [`SLOW_TESTS`] first. Each
+/// test's output is buffered and printed in one piece when it finishes, so the reports of tests
+/// that run at the same time don't interleave.
 fn run_test_files(jobs: &[TestJob], update: bool, failed: &mut bool) -> Result<()> {
+    let mut jobs: Vec<&TestJob> = jobs.iter().collect();
+    jobs.sort_by_key(|job| {
+        SLOW_TESTS
+            .iter()
+            .position(|name| *name == job.name)
+            .unwrap_or(SLOW_TESTS.len())
+    });
+    let jobs = jobs.as_slice();
+
     let threads = thread::available_parallelism().map_or(1, NonZeroUsize::get);
     let next = AtomicUsize::new(0);
     let any_failed = AtomicBool::new(false);
