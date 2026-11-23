@@ -101,9 +101,20 @@ test fn already_a_fixpoint() -> ((0, 0), (Int, Stats)) {
     (check, (sum, stats))
 }
 
-// The warnings of a lambda that's compiled again are reported once, as the step gives them
+struct SameShapeA {
+    value: Int,
+}
+
+struct SameShapeB {
+    value: Bytes32,
+}
+
+// The warnings of a lambda that's compiled again are reported once, as the step gives them,
+// including those that lints report from the sites the compile records (#590)
 test fn warning_reported_once() -> (Int, Int) {
     let xs = [1, 2, 3];
+    let point = Stats { sum: 0, count: 0 };
+    let shape: SameShapeA | SameShapeB | nil = nil;
     fold(
         xs,
         (0, 0),
@@ -119,7 +130,13 @@ test fn warning_reported_once() -> (Int, Int) {
             } else {
                 2
             };
-            (acc.first + x + m + n, acc.rest + 1)
+            let _ys = [for y in xs { y + x }];
+            let updated = Stats { ...point, sum: x, count: 1 };
+            let k = match shape {
+                nil => 0,
+                SameShapeA => shape.value,
+            };
+            (acc.first + x + m + n + updated.sum + k, acc.rest + updated.count)
         },
     )
 }
