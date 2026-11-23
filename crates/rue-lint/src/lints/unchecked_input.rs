@@ -444,6 +444,9 @@ fn origin_name(cx: &LintContext<'_>, main: SymbolId, origin: &Origin) -> (String
                     .split_whitespace()
                     .collect::<Vec<_>>()
                     .join(" ")
+                    .replace("( ", "(")
+                    .replace(", )", ")")
+                    .replace(" )", ")")
             },
         ),
     };
