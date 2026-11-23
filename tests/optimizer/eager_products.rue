@@ -1,5 +1,7 @@
-// Without `operand_limits`, a product can't fail, so it's evaluated whether or not the left
-// operand decides the result (see `tests/operand_limits/eager_operands.rue`).
+// A product or quotient can fail under `LIMITS`, which mainnet enforces, for an operand that's too
+// long. So even without `operand_limits` it's only evaluated when the left operand doesn't decide
+// the result, and a check of the operand's length still guards it
+// (see https://github.com/xch-dev/rue/issues/617 and `tests/operand_limits/eager_operands.rue`).
 
 fn any_large(items: List<Int>, factor: Int) -> Bool {
     if items is nil {
@@ -9,6 +11,44 @@ fn any_large(items: List<Int>, factor: Int) -> Bool {
     items.first > 100 || items.first * factor > 100 || any_large(items.rest, factor)
 }
 
-test fn product_is_eager(items: List<Int>, factor: Int) -> Bool {
+test fn product_is_lazy(items: List<Int>, factor: Int) -> Bool {
     any_large(items, factor)
+}
+
+fn guarded_product(x: Int) -> Bool {
+    (x as Bytes).length <= 256 && x * 3 > 5
+}
+
+fn guarded_quotient(x: Int) -> Bool {
+    x < 1000 && x / 3 > 5
+}
+
+fn guarded_product_or(x: Int) -> Bool {
+    x > 1000 || x * 3 > 5
+}
+
+test fn length_check_guards_product() -> Bool {
+    // 300 bytes, too long for `*` under `LIMITS`
+    guarded_product((0x01 as Int) << 2392)
+}
+
+test fn guarded_product_runs() -> Bool {
+    guarded_product(10)
+}
+
+test fn guarded_quotient_is_lazy(x: Int) -> Bool {
+    guarded_quotient(x)
+}
+
+test fn guarded_product_or_is_lazy(x: Int) -> Bool {
+    guarded_product_or(x)
+}
+
+// A product of constants can't fail, so it's still evaluated either way
+fn constant_product(x: Int) -> Bool {
+    x > 1000 || 3 * 7 > x
+}
+
+test fn constant_product_is_eager(x: Int) -> Bool {
+    constant_product(x)
 }

@@ -11,7 +11,12 @@
 //!   values that were already atoms (see
 //!   [`Database::has_independent_operands`](crate::Database)). The checks that a type guard is
 //!   lowered to are never recorded, since each relies on the ones before it.
-//! - It can't fail (see [`may_fail`]), so evaluating it doesn't add a failure.
+//! - It can't fail (see [`may_fail`]), so evaluating it doesn't add a failure. Nor can it fail
+//!   under `LIMITS`, which mainnet enforces until hard fork 2, even if the program isn't compiled
+//!   with `operand_limits` (see [`Lowerer::may_fail_under_limits`]). Without `operand_limits`, a
+//!   release build can skip a product that fails for a long operand, but it must not evaluate one
+//!   that the source guards against, such as the right operand of
+//!   `(x as Bytes).length <= 256 && x * 3 > 5`.
 //! - It only reads what the left operand already read (see [`Lowerer::reads_are_evaluated`]).
 //!   The failure analysis assumes that a value has the shape its type says, which is enough to
 //!   evaluate a read later than it's written, or not at all: the program can only fail less. But
@@ -28,7 +33,8 @@ use rue_types::Check;
 
 use crate::{
     BinaryOp, FieldAccess, FieldKind, Hir, HirId, Symbol, SymbolId, TypePath, UnaryOp,
-    analysis::may_fail, check_value_uses,
+    analysis::{binary_may_fail, clvm_op_may_fail, may_fail},
+    check_value_uses,
 };
 
 use super::Lowerer;
@@ -54,7 +60,42 @@ impl Lowerer<'_, '_, '_> {
             && !self.is_static_hir(left)
             && self.is_cheap(right, &mut budget)
             && !may_fail(self, right)
+            && (self.options.hard_fork_2 || !self.may_fail_under_limits(right))
             && self.reads_are_evaluated(left, right)
+    }
+
+    /// Whether the value has an operator that `LIMITS` can reject for an operand that's too long:
+    /// a product or quotient whose operands aren't all suitable constants, as [`may_fail`] counts
+    /// them with `operand_limits`. The value is cheap (see [`Self::is_cheap`]), so there are no
+    /// calls, lambdas or statements in it.
+    fn may_fail_under_limits(&self, hir: HirId) -> bool {
+        // This follows the values that are substituted, which can go as deep as a chain of them
+        rue_types::grow_stack(|| self.may_fail_under_limits_inner(hir))
+    }
+
+    fn may_fail_under_limits_inner(&self, hir: HirId) -> bool {
+        let node = self.db.hir(hir);
+
+        let fails = match node {
+            Hir::Binary(op, left, right) => binary_may_fail(self.db, *op, *left, *right, true),
+            Hir::ClvmOp(op, _) => clvm_op_may_fail(*op, true),
+            Hir::Reference(symbol) => {
+                return self
+                    .substituted_value(*symbol)
+                    .is_some_and(|value| self.may_fail_under_limits(value));
+            }
+            Hir::Const(expr) => {
+                return expr
+                    .result
+                    .is_some_and(|result| self.may_fail_under_limits(result));
+            }
+            _ => false,
+        };
+
+        fails
+            || node
+                .children()
+                .any(|child| self.may_fail_under_limits(child))
     }
 
     /// Whether everything the right operand reads is there whenever the left operand was

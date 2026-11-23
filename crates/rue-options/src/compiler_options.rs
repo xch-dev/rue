@@ -72,6 +72,11 @@ pub struct CompilerOptions {
     ///   checks: `a * 0 * b * c * d * e` is compiled to `(* a b c d e 0)`, whose running product
     ///   can grow past 1024 bytes before it reaches the zero.
     ///
+    /// It never adds one by evaluating a product or quotient where the source doesn't, though:
+    /// the right operand of `&&` or `||` is only evaluated when the left operand decides the
+    /// result if it can't fail under `LIMITS`, so a check such as
+    /// `(x as Bytes).length <= 256 && x * 3 > 5` still keeps a long `x` away from `*`.
+    ///
     /// For a solution whose values match their declared types, the only failures it removes are
     /// the length checks of `LIMITS` itself, never an `assert` or `raise`, and what the release
     /// build returns is the result the source computes without `LIMITS`. So leaving this off never
