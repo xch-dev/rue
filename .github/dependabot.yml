@@ -1,18 +1,24 @@
 version: 2
 updates:
-  # Rust dependencies, in Cargo.toml and Cargo.lock. Minor and patch updates are grouped into one
-  # pull request a week; major updates get their own. Dependabot counts 0.x to 0.y as minor, so the
-  # Chia crates, whose 0.x bumps usually need code changes, get a group of their own.
+  # Rust dependencies, in Cargo.toml and Cargo.lock. Every update, major ones included, goes into one
+  # pull request a week, so the Chia crates (clvm-traits, clvm-utils, clvmr, chialisp), whose 0.x
+  # bumps Dependabot counts as major, are bumped together instead of in separate pull requests.
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
     groups:
-      chia:
-        patterns: ["chia*", "clvm*"]
-        update-types: [minor, patch]
-      cargo:
-        update-types: [minor, patch]
+      cargo-deps:
+        patterns: ["*"]
+    ignore:
+      # Must match the versions used by clvmr and clvm-traits, so these are bumped alongside them
+      # rather than independently. num-bigint values are passed to and from clvmr, and the wasm
+      # crate depends on getrandom only to turn on the wasm_js feature of the copy its
+      # dependencies use.
+      - dependency-name: num-bigint
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: getrandom
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   # Actions used by the workflows in .github/workflows
   - package-ecosystem: github-actions
@@ -20,5 +26,5 @@ updates:
     schedule:
       interval: weekly
     groups:
-      github-actions:
-        update-types: [minor, patch]
+      actions-deps:
+        patterns: ["*"]
