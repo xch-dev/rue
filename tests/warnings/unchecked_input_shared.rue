@@ -1,8 +1,28 @@
 #![warn(unchecked_input)]
 
-// A value built from the same value many times over stays small enough to follow
+// Values built from the same value many times over stay small enough to follow, whether they're
+// pairs or wide structs
 
-fn main(x: Bytes32) -> Bytes32 {
+struct Wide {
+    f0: Any,
+    f1: Any,
+    f2: Any,
+    f3: Any,
+    f4: Any,
+    f5: Any,
+    f6: Any,
+    f7: Any,
+    f8: Any,
+    f9: Any,
+    f10: Any,
+    f11: Any,
+    f12: Any,
+    f13: Any,
+    f14: Any,
+    f15: Any,
+}
+
+fn main(x: Bytes32) -> (Bytes32, Bytes32) {
     let p0 = x;
     let p1 = (p0, p0);
     let p2 = (p1, p1);
@@ -24,5 +44,190 @@ fn main(x: Bytes32) -> Bytes32 {
     let p18 = (p17, p17);
     let p19 = (p18, p18);
     let p20 = (p19, p19);
-    tree_hash(p20)
+    let p21 = (p20, p20);
+    let p22 = (p21, p21);
+    let p23 = (p22, p22);
+    let p24 = (p23, p23);
+    let w0: Any = x;
+    let w1: Any = Wide {
+        f0: w0,
+        f1: w0,
+        f2: w0,
+        f3: w0,
+        f4: w0,
+        f5: w0,
+        f6: w0,
+        f7: w0,
+        f8: w0,
+        f9: w0,
+        f10: w0,
+        f11: w0,
+        f12: w0,
+        f13: w0,
+        f14: w0,
+        f15: w0,
+    };
+    let w2: Any = Wide {
+        f0: w1,
+        f1: w1,
+        f2: w1,
+        f3: w1,
+        f4: w1,
+        f5: w1,
+        f6: w1,
+        f7: w1,
+        f8: w1,
+        f9: w1,
+        f10: w1,
+        f11: w1,
+        f12: w1,
+        f13: w1,
+        f14: w1,
+        f15: w1,
+    };
+    let w3: Any = Wide {
+        f0: w2,
+        f1: w2,
+        f2: w2,
+        f3: w2,
+        f4: w2,
+        f5: w2,
+        f6: w2,
+        f7: w2,
+        f8: w2,
+        f9: w2,
+        f10: w2,
+        f11: w2,
+        f12: w2,
+        f13: w2,
+        f14: w2,
+        f15: w2,
+    };
+    let w4: Any = Wide {
+        f0: w3,
+        f1: w3,
+        f2: w3,
+        f3: w3,
+        f4: w3,
+        f5: w3,
+        f6: w3,
+        f7: w3,
+        f8: w3,
+        f9: w3,
+        f10: w3,
+        f11: w3,
+        f12: w3,
+        f13: w3,
+        f14: w3,
+        f15: w3,
+    };
+    let w5: Any = Wide {
+        f0: w4,
+        f1: w4,
+        f2: w4,
+        f3: w4,
+        f4: w4,
+        f5: w4,
+        f6: w4,
+        f7: w4,
+        f8: w4,
+        f9: w4,
+        f10: w4,
+        f11: w4,
+        f12: w4,
+        f13: w4,
+        f14: w4,
+        f15: w4,
+    };
+    let w6: Any = Wide {
+        f0: w5,
+        f1: w5,
+        f2: w5,
+        f3: w5,
+        f4: w5,
+        f5: w5,
+        f6: w5,
+        f7: w5,
+        f8: w5,
+        f9: w5,
+        f10: w5,
+        f11: w5,
+        f12: w5,
+        f13: w5,
+        f14: w5,
+        f15: w5,
+    };
+    let w7: Any = Wide {
+        f0: w6,
+        f1: w6,
+        f2: w6,
+        f3: w6,
+        f4: w6,
+        f5: w6,
+        f6: w6,
+        f7: w6,
+        f8: w6,
+        f9: w6,
+        f10: w6,
+        f11: w6,
+        f12: w6,
+        f13: w6,
+        f14: w6,
+        f15: w6,
+    };
+    let w8: Any = Wide {
+        f0: w7,
+        f1: w7,
+        f2: w7,
+        f3: w7,
+        f4: w7,
+        f5: w7,
+        f6: w7,
+        f7: w7,
+        f8: w7,
+        f9: w7,
+        f10: w7,
+        f11: w7,
+        f12: w7,
+        f13: w7,
+        f14: w7,
+        f15: w7,
+    };
+    let w9: Any = Wide {
+        f0: w8,
+        f1: w8,
+        f2: w8,
+        f3: w8,
+        f4: w8,
+        f5: w8,
+        f6: w8,
+        f7: w8,
+        f8: w8,
+        f9: w8,
+        f10: w8,
+        f11: w8,
+        f12: w8,
+        f13: w8,
+        f14: w8,
+        f15: w8,
+    };
+    let w10: Any = Wide {
+        f0: w9,
+        f1: w9,
+        f2: w9,
+        f3: w9,
+        f4: w9,
+        f5: w9,
+        f6: w9,
+        f7: w9,
+        f8: w9,
+        f9: w9,
+        f10: w9,
+        f11: w9,
+        f12: w9,
+        f13: w9,
+        f14: w9,
+        f15: w9,
+    };
+    (tree_hash(p24), tree_hash(w10))
 }

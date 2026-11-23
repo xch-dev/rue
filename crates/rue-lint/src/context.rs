@@ -224,6 +224,19 @@ impl<'a> LintContext<'a> {
         !rue_types::extract_pairs(self.db.types_mut(), ty, false).is_empty()
     }
 
+    /// The names of the fields of a struct, in order, `first` and `rest` for a pair, or nothing if
+    /// the type has no fields.
+    pub fn field_names(&mut self, ty: TypeId) -> Option<Vec<String>> {
+        if let Some((fields, _)) =
+            rue_types::struct_field_types(self.db.types_mut(), self.types.never, ty)
+        {
+            return Some(fields.into_iter().map(|(name, _)| name).collect());
+        }
+
+        self.has_pairs(ty)
+            .then(|| vec!["first".to_string(), "rest".to_string()])
+    }
+
     /// The declared type of a field of a struct, by name.
     pub fn struct_field_type(&mut self, ty: TypeId, name: &str) -> Option<TypeId> {
         let (fields, _) = rue_types::struct_field_types(self.db.types_mut(), self.types.never, ty)?;
