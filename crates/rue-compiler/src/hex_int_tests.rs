@@ -76,3 +76,14 @@ fn suggestion_replaces_a_body() {
         "fn main() -> Int {\n    128\n}\n"
     );
 }
+
+/// Comments around the literal are kept, since only the literal is replaced.
+#[test]
+fn suggestion_keeps_comments() {
+    let source = "fn main() -> Int {\n    let a: Int = (/* one */ 0xff // two\n    );\n    a\n}\n";
+
+    assert_eq!(
+        apply_suggestions(source),
+        "fn main() -> Int {\n    let a: Int = (/* one */ 255 // two\n    );\n    a\n}\n"
+    );
+}

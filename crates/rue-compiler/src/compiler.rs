@@ -21,10 +21,12 @@ use rue_hir::{
     Item, Items, Mappings, Namespace, Scope, ScopeId, Symbol, SymbolId, TypePath, Value,
     merge_mappings, replace_type,
 };
+use rue_lexer::{Lexer, TokenKind};
 use rue_lint::{
-    EnclosedPreludeReference, ImpreciseNarrowing, LintInput, LintSites, LintSitesCheckpoint,
+    BytesAsInt, EnclosedPreludeReference, ImpreciseNarrowing, LintInput, LintSites,
+    LintSitesCheckpoint, bytes_as_int,
 };
-use rue_lir::{ClvmTarget, bigint_atom};
+use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
@@ -1865,45 +1867,41 @@ impl Compiler {
     /// unsigned value of its bytes: `255` for `0xff`, which is `-1` as an `Int`.
     fn hex_literal_int_help(&mut self, srcloc: &SrcLoc, to: TypeId) -> Option<(Note, Suggestion)> {
         // The literal can be in parentheses, or be all that's in a block (such as a function's
-        // body, which is what's checked against its return type), which the suggestion keeps
+        // body, which is what's checked against its return type). The text is tokenized like the
+        // compiler would, so any other token, such as an operator or a `;`, means it's not only
+        // the literal. The suggestion replaces only the literal, keeping everything around it.
         let text = srcloc.text();
-        let mut start = 0;
-        let mut trimmed = text;
+        let mut literal = None;
 
-        loop {
-            let inner = trimmed.trim_start();
-            start += trimmed.len() - inner.len();
-            trimmed = inner.trim_end();
-
-            let inner = [('(', ')'), ('{', '}')]
-                .into_iter()
-                .find_map(|(open, close)| trimmed.strip_prefix(open)?.strip_suffix(close));
-
-            match inner {
-                Some(inner) => {
-                    start += 1;
-                    trimmed = inner;
+        for token in Lexer::new(text) {
+            match token.kind {
+                TokenKind::Whitespace
+                | TokenKind::LineComment
+                | TokenKind::BlockComment { .. }
+                | TokenKind::OpenParen
+                | TokenKind::CloseParen
+                | TokenKind::OpenBrace
+                | TokenKind::CloseBrace => {}
+                TokenKind::Hex {
+                    is_terminated: true,
+                } if literal.is_none() => {
+                    literal = Some(token.span);
                 }
-                None => break,
+                _ => return None,
             }
         }
 
-        let digits = trimmed.strip_prefix("0x")?;
+        let span = literal?;
+        let literal = &text[span.clone()];
 
-        if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_hexdigit() || c == '_') {
+        if !self
+            .try_is_assignable(self.builtins.types.int, to)
+            .unwrap_or(false)
+        {
             return None;
         }
 
-        let int = self.builtins.types.int;
-
-        if !matches!(
-            rue_types::compare_limited(self.db.types_mut(), &self.builtins.types, int, to),
-            Ok(Comparison::Assign)
-        ) {
-            return None;
-        }
-
-        let LiteralValue::Bytes(bytes) = LiteralValue::decode_text(SyntaxKind::Hex, trimmed) else {
+        let LiteralValue::Bytes(bytes) = LiteralValue::decode_text(SyntaxKind::Hex, literal) else {
             return None;
         };
 
@@ -1914,20 +1912,22 @@ impl Compiler {
         let unsigned = BigInt::from_bytes_be(Sign::Plus, &bytes);
         let signed = BigInt::from_signed_bytes_be(&bytes);
 
-        let cast = if bigint_atom(signed.clone()) != bytes {
-            format!("has a leading zero byte, so it isn't equal to the `Int` `{unsigned}`")
-        } else if signed == unsigned {
-            format!("is the `Int` `{signed}`")
-        } else {
-            format!("is the negative number `{signed}`, since integers are signed")
+        let cast = match bytes_as_int(&bytes) {
+            BytesAsInt::Negative => {
+                format!("is the negative number `{signed}`, since integers are signed")
+            }
+            BytesAsInt::LeadingZero => {
+                format!("has a leading zero byte, so it isn't equal to the `Int` `{signed}`")
+            }
+            BytesAsInt::Same => format!("is the `Int` `{signed}`"),
         };
 
         let note = Note::new(format!(
-            "Hex literals are bytes rather than integers; `{trimmed} as Int` {cast}"
+            "Hex literals are bytes rather than integers; `{literal} as Int` {cast}"
         ));
 
-        let start = srcloc.span.start + start;
-        let replaced = SrcLoc::new(srcloc.source.clone(), start..start + trimmed.len());
+        let start = srcloc.span.start + span.start;
+        let replaced = SrcLoc::new(srcloc.source.clone(), start..start + literal.len());
 
         let suggestion = Suggestion::replace(
             format!("Write the number `{unsigned}` instead"),

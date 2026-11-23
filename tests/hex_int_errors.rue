@@ -6,10 +6,20 @@ fn main() -> Int {
     let zero: Int = 0x00;
     let underscores: Int = 0x01_00;
     let odd: Int = 0x1;
+    let sign_extended: Int = 0xffff;
+    let negative: Int = 0xff80;
+    let commented: Int = (/* comment */ 0xff);
     let optional: Int | nil = 0xff;
     let parenthesized: Int = ((0xff));
     let bytes: Bytes = 0xff;
     let string: Int = "hello";
+    let flag: Bool = 0x01;
+    let flag_or_int: Bool | Int = 0x01;
+    let cast_back: Int = 0xff as Bytes;
+    let block: Int = {
+        let inner = 1;
+        0xff
+    };
     let named = 0xff;
     let variable: Int = named;
     high_bit
@@ -19,6 +29,9 @@ fn main() -> Int {
         + zero
         + underscores
         + odd
+        + sign_extended
+        + negative
+        + commented
         + parenthesized
         + variable
 }
