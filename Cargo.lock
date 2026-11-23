@@ -1740,7 +1740,7 @@ dependencies = [
 
 [[package]]
 name = "rue-ast"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "num-traits",
  "paste",
@@ -1749,7 +1749,7 @@ dependencies = [
 
 [[package]]
 name = "rue-cli"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "chialisp",
@@ -1774,7 +1774,7 @@ dependencies = [
 
 [[package]]
 name = "rue-clvm"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "clvmr",
  "hex",
@@ -1784,7 +1784,7 @@ dependencies = [
 
 [[package]]
 name = "rue-compiler"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "clvm-utils",
  "clvmr",
@@ -1814,7 +1814,7 @@ dependencies = [
 
 [[package]]
 name = "rue-diagnostic"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "serde",
  "thiserror",
@@ -1822,7 +1822,7 @@ dependencies = [
 
 [[package]]
 name = "rue-formatter"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "expect-test",
  "proptest",
@@ -1837,7 +1837,7 @@ dependencies = [
 
 [[package]]
 name = "rue-hir"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "clvmr",
  "derive_more",
@@ -1855,14 +1855,14 @@ dependencies = [
 
 [[package]]
 name = "rue-lexer"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "expect-test",
 ]
 
 [[package]]
 name = "rue-lint"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "num-bigint",
  "rowan",
@@ -1877,7 +1877,7 @@ dependencies = [
 
 [[package]]
 name = "rue-lir"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "clvm-traits",
  "clvmr",
@@ -1895,7 +1895,7 @@ dependencies = [
 
 [[package]]
 name = "rue-lsp"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "expect-test",
  "futures",
@@ -1920,7 +1920,7 @@ dependencies = [
 
 [[package]]
 name = "rue-options"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "rue-diagnostic",
  "serde",
@@ -1931,7 +1931,7 @@ dependencies = [
 
 [[package]]
 name = "rue-parser"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "derive_more",
  "expect-test",
@@ -1945,7 +1945,7 @@ dependencies = [
 
 [[package]]
 name = "rue-tests"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "clvm-utils",
@@ -1972,7 +1972,7 @@ dependencies = [
 
 [[package]]
 name = "rue-types"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "clvmr",
  "derive_more",
@@ -1991,7 +1991,7 @@ dependencies = [
 
 [[package]]
 name = "rue-wasm"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "clvm-utils",
  "clvmr",
