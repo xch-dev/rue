@@ -533,3 +533,26 @@ fn test_code_actions_multiple_edits_and_files() {
         &files,
     ));
 }
+
+#[test]
+fn test_code_actions_for_a_spread_list_builtin() {
+    let project = TestProject::new(&[("main.rue", "fn main() -> Int {\n    42\n}\n")]);
+
+    // Errors that the compiler reports, not only lints, can carry a quick fix
+    expect![[r#"
+        Remove the `...` (preferred: true):
+        fn main(first: Int, rest: List<Int>) -> Int {
+            sum(rest) + sum(first, ...rest)
+        }
+
+        Put the arguments in a list (preferred: true):
+        fn main(first: Int, rest: List<Int>) -> Int {
+            sum(...rest) + sum([first, ...rest])
+        }
+
+    "#]]
+    .assert_eq(&project.code_actions(
+        "main.rue",
+        "fn main(first: Int, rest: List<Int>) -> Int {\n    sum(...rest) + sum(first, ...rest)\n}\n",
+    ));
+}

@@ -79,6 +79,62 @@ tests:
   debug_program: (a (q 2 (i (= (g2_map (c (q . 1) (q . 2)) (q . "dst")) 2) () (q 8 (q . "assertion failed at builtins.rue:191:5"))) 1) (c (g2_add) ()))
   byte_cost: 504000
   clvm_error: "InvalidOperatorArg: g2_map used on list"
+- name: sha256_of_spread_list
+  program: (a (c (c (q . 11) ()) 2) ())
+  debug_program: (a (c (c (q . 11) ()) 2) ())
+  solution: (("hel" "lo"))
+  output: "0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+  runtime_cost: 1124
+  byte_cost: 252000
+  total_cost: 253124
+- name: concat_of_list
+  program: (a (c (c (q . 14) ()) 2) ())
+  debug_program: (a (c (c (q . 14) ()) 2) ())
+  solution: (("hel" "lo"))
+  output: "\"hello\""
+  runtime_cost: 916
+  byte_cost: 252000
+  total_cost: 252916
+- name: sum_of_list
+  program: (a (c (c (q . 16) ()) 2) ())
+  debug_program: (a (c (c (q . 16) ()) 2) ())
+  solution: ((1 2 3))
+  output: "6"
+  runtime_cost: 1517
+  byte_cost: 252000
+  total_cost: 253517
+- name: g1_sum_of_list
+  program: (a (c (c (q . 29) ()) 2) ())
+  debug_program: (a (c (c (q . 29) ()) 2) ())
+  solution: ((0x8b202593319bce41b090f3309986de59861ab1e2ff32aef871d83f9aac232c7253c01f1f649c6f69879c441286319de4 0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000))
+  output: "0x8b202593319bce41b090f3309986de59861ab1e2ff32aef871d83f9aac232c7253c01f1f649c6f69879c441286319de4"
+  runtime_cost: 2789973
+  byte_cost: 252000
+  total_cost: 3041973
+- name: g2_sum_of_list
+  program: (a (c (c (q . 52) ()) 2) ())
+  debug_program: (a (c (c (q . 52) ()) 2) ())
+  solution: ((0x80c37921e62092ef55f85f9eccb21bd80cfaafc0bce9cbdd6999b1a8cabadc8f23720f0261efafaf53cbcc74580b9432007b66d824668900a94934f184bc41bf9ccf9ec141c6f7da610aa7296cd0a181ae8fe176b607aa4c367f15ee0cb985d7 0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000))
+  output: "0x80c37921e62092ef55f85f9eccb21bd80cfaafc0bce9cbdd6999b1a8cabadc8f23720f0261efafaf53cbcc74580b9432007b66d824668900a94934f184bc41bf9ccf9ec141c6f7da610aa7296cd0a181ae8fe176b607aa4c367f15ee0cb985d7"
+  runtime_cost: 3981399
+  byte_cost: 252000
+  total_cost: 4233399
+- name: sha256_of_spread_items
+  program: (a (c (c (q . 11) ()) (c 2 (c 5 ()))) ())
+  debug_program: (a (c (c (q . 11) ()) (c 2 (c 5 ()))) ())
+  solution: ("hel" "lo")
+  output: "0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+  runtime_cost: 1322
+  byte_cost: 396000
+  total_cost: 397322
+- name: sum_of_items
+  program: (a (c (c (q . 16) ()) (c 2 (c 5 ()))) ())
+  debug_program: (a (c (c (q . 16) ()) (c 2 (c 5 ()))) ())
+  solution: (1 2)
+  output: "3"
+  runtime_cost: 1392
+  byte_cost: 396000
+  total_cost: 397392
 diagnostics:
 - |-
   Unnecessary comparison with `false` at builtins.rue:61:12

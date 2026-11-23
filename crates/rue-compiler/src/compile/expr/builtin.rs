@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
 use log::debug;
-use rue_ast::{AstExpr, AstFunctionCallExpr, AstNode};
-use rue_diagnostic::{DiagnosticKind, SpreadTarget};
+use rowan::TextRange;
+use rue_ast::{AstExpr, AstFunctionCallExpr, AstListItem, AstNode};
+use rue_diagnostic::{Applicability, DiagnosticKind, Edit, SpreadTarget, Suggestion};
 use rue_hir::{BinaryOp, Builtin, Hir, HirId, UnaryOp, Value};
 use rue_lir::ClvmOp;
-use rue_parser::SyntaxToken;
+use rue_parser::{SyntaxKind, SyntaxToken};
 use rue_types::{Pair, Type, TypeId, Union, substitute_with_mappings};
 
 use super::call_inference::list_of;
-use crate::{Compiler, compile_expr};
+use crate::{Compiler, compile_expr, trimmed_range};
 
 /// Builtins don't have a function type, since some of them accept more than one shape of
 /// arguments, so each one checks its own arguments here.
@@ -18,7 +19,7 @@ pub(crate) fn compile_builtin(
     call: &AstFunctionCallExpr,
     builtin: Builtin,
 ) -> Value {
-    let call = BuiltinCall::new(ctx, call);
+    let call = BuiltinCall::new(ctx, call, builtin);
     let types = ctx.builtins().types;
 
     // Mainnet disables `modpow` and doesn't know `keccak256` outside of the softfork guard until
@@ -51,20 +52,16 @@ pub(crate) fn compile_builtin(
             [UnaryOp::Keccak256, UnaryOp::Keccak256Inline],
             ClvmOp::Keccak256,
         ),
-        Builtin::Concat => call.list_op(ctx, ClvmOp::Concat, types.bytes, types.bytes),
-        Builtin::Sum => call.list_op(ctx, ClvmOp::Add, types.int, types.int),
-        Builtin::Difference => call.list_op(ctx, ClvmOp::Sub, types.int, types.int),
-        Builtin::Product => call.list_op(ctx, ClvmOp::Mul, types.int, types.int),
-        Builtin::Any => call.list_op(ctx, ClvmOp::Any, types.bool, types.bool),
-        Builtin::All => call.list_op(ctx, ClvmOp::All, types.bool, types.bool),
-        Builtin::G1Sum => call.list_op(ctx, ClvmOp::G1Add, types.public_key, types.public_key),
-        Builtin::G1Difference => {
-            call.list_op(ctx, ClvmOp::G1Subtract, types.public_key, types.public_key)
-        }
-        Builtin::G2Sum => call.list_op(ctx, ClvmOp::G2Add, types.signature, types.signature),
-        Builtin::G2Difference => {
-            call.list_op(ctx, ClvmOp::G2Subtract, types.signature, types.signature)
-        }
+        Builtin::Concat => call.list_op(ctx, ClvmOp::Concat, types.bytes),
+        Builtin::Sum => call.list_op(ctx, ClvmOp::Add, types.int),
+        Builtin::Difference => call.list_op(ctx, ClvmOp::Sub, types.int),
+        Builtin::Product => call.list_op(ctx, ClvmOp::Mul, types.int),
+        Builtin::Any => call.list_op(ctx, ClvmOp::Any, types.bool),
+        Builtin::All => call.list_op(ctx, ClvmOp::All, types.bool),
+        Builtin::G1Sum => call.list_op(ctx, ClvmOp::G1Add, types.public_key),
+        Builtin::G1Difference => call.list_op(ctx, ClvmOp::G1Subtract, types.public_key),
+        Builtin::G2Sum => call.list_op(ctx, ClvmOp::G2Add, types.signature),
+        Builtin::G2Difference => call.list_op(ctx, ClvmOp::G2Subtract, types.signature),
         Builtin::CoinId => call.fixed(
             ctx,
             [types.bytes, types.bytes, types.int],
@@ -181,13 +178,14 @@ pub(crate) fn compile_builtin(
 /// parameters.
 struct BuiltinCall<'a> {
     ast: &'a AstFunctionCallExpr,
+    builtin: Builtin,
     args: Vec<(Value, AstExpr)>,
     /// The spread operator on the last argument, if there is one.
     spread: Option<SyntaxToken>,
 }
 
 impl<'a> BuiltinCall<'a> {
-    fn new(ctx: &mut Compiler, call: &'a AstFunctionCallExpr) -> Self {
+    fn new(ctx: &mut Compiler, call: &'a AstFunctionCallExpr, builtin: Builtin) -> Self {
         let mut args = Vec::new();
         let mut spread = None;
 
@@ -214,6 +212,7 @@ impl<'a> BuiltinCall<'a> {
 
         Self {
             ast: call,
+            builtin,
             args,
             spread,
         }
@@ -322,15 +321,80 @@ impl<'a> BuiltinCall<'a> {
         Value::new(ctx.alloc_hir(hir), types.bytes32)
     }
 
-    /// A builtin that applies `op` to a single list of `item` values.
-    fn list_op(&self, ctx: &mut Compiler, op: ClvmOp, item: TypeId, ret: TypeId) -> Value {
-        self.expect_count(ctx, 1);
-        self.reject_spread(ctx);
-
+    /// A builtin that applies `op` to a single list of `item` values. Its argument is the list
+    /// itself, so spreading it would only be a second way to write the same call.
+    fn list_op(&self, ctx: &mut Compiler, op: ClvmOp, item: TypeId) -> Value {
         let list = list_of(ctx, item);
-        let value = self.arg_or_unresolved(ctx, 0, list);
 
-        Value::new(ctx.alloc_hir(Hir::ClvmOp(op, value)), ret)
+        let value = if let Some(spread) = &self.spread {
+            self.spread_list_error(ctx, spread);
+
+            // The arguments are checked as they would be in the list that the suggestion puts
+            // them in, so that their errors are reported along with this one
+            for (value, expr) in &self.args {
+                let spread = expr
+                    .syntax()
+                    .parent()
+                    .and_then(AstListItem::cast)
+                    .is_some_and(|arg| arg.spread().is_some());
+                let ty = if spread { list } else { item };
+                ctx.assign_type(expr.syntax(), value.ty, ty);
+            }
+
+            match self.args.as_slice() {
+                [(value, _)] => value.hir,
+                _ => ctx.unresolved().hir,
+            }
+        } else {
+            self.expect_count(ctx, 1);
+            self.arg_or_unresolved(ctx, 0, list)
+        };
+
+        Value::new(ctx.alloc_hir(Hir::ClvmOp(op, value)), item)
+    }
+
+    /// Reports a spread argument of a builtin that takes a list, with a suggestion that passes
+    /// the list instead: `sum(...values)` becomes `sum(values)`, and `sum(first, ...rest)`
+    /// becomes `sum([first, ...rest])`.
+    fn spread_list_error(&self, ctx: &mut Compiler, spread: &SyntaxToken) {
+        let args: Vec<_> = self.ast.args().collect();
+
+        let suggestion = match args.as_slice() {
+            [_] => {
+                // The whitespace after the `...` goes with it, but not a comment
+                let end = spread
+                    .next_token()
+                    .filter(|token| token.kind() == SyntaxKind::Whitespace)
+                    .map_or(spread.text_range().end(), |token| token.text_range().end());
+                let srcloc = ctx.srcloc(&TextRange::new(spread.text_range().start(), end));
+                Some(Suggestion::replace(
+                    "Remove the `...`",
+                    srcloc,
+                    "",
+                    Applicability::MachineApplicable,
+                ))
+            }
+            // Only the last item of a list can be spread too, so there's no fix if another
+            // argument is
+            [first, init @ .., last]
+                if [first]
+                    .into_iter()
+                    .chain(init)
+                    .all(|arg| arg.spread().is_none() && arg.expr().is_some()) =>
+            {
+                let open = ctx.srcloc(&TextRange::empty(trimmed_range(first.syntax()).start()));
+                let close = ctx.srcloc(&TextRange::empty(trimmed_range(last.syntax()).end()));
+                Some(Suggestion::new(
+                    "Put the arguments in a list",
+                    vec![Edit::new(open, "["), Edit::new(close, "]")],
+                    Applicability::MachineApplicable,
+                ))
+            }
+            _ => None,
+        };
+
+        let kind = DiagnosticKind::SpreadListBuiltin(self.builtin.to_string());
+        ctx.diagnostic(spread, kind).suggestions.extend(suggestion);
     }
 
     /// `g1_map` and `g2_map` hash a value onto a curve, with an optional domain separation tag.

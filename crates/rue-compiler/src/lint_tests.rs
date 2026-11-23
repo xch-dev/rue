@@ -3670,3 +3670,63 @@ fn main(xs: List<Int>, ys: List<Int>, last: Int) -> List<Int> {
     assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
 }
+
+#[test]
+fn suggestions_fix_spread_list_builtins() {
+    let source = "\
+fn main(first: Int, rest: List<Int>, keys: List<PublicKey>, parts: List<Bytes>) -> Int {
+    let _ = g1_sum(... keys);
+    let _ = g2_sum(... /* a comment */ []);
+    let _ = concat(\"prefix\", /* the rest */ ...parts);
+    sum(...rest) + sum(first, ...[2, 3], ...rest,)
+}
+";
+
+    let fixed = fix(source);
+
+    assert_eq!(
+        fixed,
+        "\
+fn main(first: Int, rest: List<Int>, keys: List<PublicKey>, parts: List<Bytes>) -> Int {
+    let _ = g1_sum(keys);
+    let _ = g2_sum(/* a comment */ []);
+    let _ = concat([\"prefix\", /* the rest */ ...parts]);
+    sum(rest) + sum(first, ...[2, 3], ...rest,)
+}
+"
+    );
+
+    // The last call has no fix, since only the last item of a list can be spread either, and
+    // the others compile once they're fixed
+    let (diagnostics, _) = compile_source(&fixed, |_| {});
+    let messages: Vec<_> = diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.kind.to_string())
+        .collect();
+    assert_eq!(
+        messages,
+        vec![
+            "Can only spread the last argument",
+            "`sum` takes the list itself, so its arguments can't be spread",
+        ]
+    );
+}
+
+#[test]
+fn spread_list_builtins_have_no_fix_for_a_missing_argument() {
+    let source = "fn main(first: Int, rest: List<Int>) -> Int {\n    sum(first, , ...rest)\n}\n";
+
+    let (diagnostics, _) = compile_source(source, |_| {});
+    let spread = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic
+                .kind
+                .to_string()
+                .starts_with("`sum` takes the list")
+        })
+        .expect("the spread is reported");
+
+    // Putting the arguments in a list would keep the missing one, so nothing is suggested
+    assert!(spread.suggestions.is_empty());
+}

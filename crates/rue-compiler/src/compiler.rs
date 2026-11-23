@@ -793,9 +793,14 @@ impl Compiler {
         &self.builtins
     }
 
-    pub fn diagnostic(&mut self, node: &impl GetTextRange, kind: DiagnosticKind) {
+    /// Reports an error, which is returned so that notes and suggestions can be added to it.
+    pub fn diagnostic(
+        &mut self,
+        node: &impl GetTextRange,
+        kind: DiagnosticKind,
+    ) -> &mut Diagnostic {
         let srcloc = self.srcloc(node);
-        self.diagnostic_at(srcloc, kind);
+        self.diagnostic_at(srcloc, kind)
     }
 
     pub(crate) fn push_unchecked_type_item(&mut self, ty: TypeId) {
@@ -812,8 +817,9 @@ impl Compiler {
         }
     }
 
-    /// Reports an error. Lints are reported separately, by the passes in [`rue_lint`].
-    pub fn diagnostic_at(&mut self, srcloc: SrcLoc, kind: DiagnosticKind) {
+    /// Reports an error, which is returned so that notes and suggestions can be added to it. Lints
+    /// are reported separately, by the passes in [`rue_lint`].
+    pub fn diagnostic_at(&mut self, srcloc: SrcLoc, kind: DiagnosticKind) -> &mut Diagnostic {
         debug_assert!(
             kind.lint().is_none(),
             "lints must be reported by a lint pass, so that their level is respected"
@@ -844,6 +850,9 @@ impl Compiler {
         }
 
         self.diagnostics.push(diagnostic);
+        self.diagnostics
+            .last_mut()
+            .expect("the diagnostic was just pushed")
     }
 
     /// How many parameters there are whose types weren't inferred, which is what

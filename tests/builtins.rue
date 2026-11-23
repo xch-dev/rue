@@ -190,3 +190,36 @@ test fn g1_map_rejects_pair_message() {
 test fn g2_map_rejects_pair_message() {
     assert g2_map(unchecked_cast::<Bytes>((1, 2)), "dst") == INFINITY_G2;
 }
+
+// `sha256` hashes one value, so spreading a list is how it hashes the concatenation of several. The
+// builtins below take the list itself as their one argument, and compile to the same operator
+// applied to the list, so `sum(values)` is the form that `sha256(...values)` is spelled as for them
+// (spreading their argument is an error, in `builtin_errors.rue`).
+test fn sha256_of_spread_list(parts: List<Bytes>) -> Bytes32 {
+    sha256(...parts)
+}
+
+test fn concat_of_list(parts: List<Bytes>) -> Bytes {
+    concat(parts)
+}
+
+test fn sum_of_list(values: List<Int>) -> Int {
+    sum(values)
+}
+
+test fn g1_sum_of_list(keys: List<PublicKey>) -> PublicKey {
+    g1_sum(keys)
+}
+
+test fn g2_sum_of_list(signatures: List<Signature>) -> Signature {
+    g2_sum(signatures)
+}
+
+// A list written out is passed as it is, as the values of a spread list are
+test fn sha256_of_spread_items(first: Bytes, second: Bytes) -> Bytes32 {
+    sha256(...[first, second])
+}
+
+test fn sum_of_items(first: Int, second: Int) -> Int {
+    sum([first, second])
+}

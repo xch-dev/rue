@@ -569,7 +569,9 @@ pub(crate) fn compile_lambda(
 
                     too_many_parameters = true;
                 }
-                None => ctx.diagnostic(param.syntax(), DiagnosticKind::CannotInferParameterType),
+                None => {
+                    ctx.diagnostic(param.syntax(), DiagnosticKind::CannotInferParameterType);
+                }
             }
 
             ctx.unresolved().ty
