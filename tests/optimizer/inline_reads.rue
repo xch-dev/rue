@@ -366,6 +366,25 @@ test fn static_bool(r: Bool) -> Bool {
     both(FLAG) && r
 }
 
+// A guard that's decided at compile time is lowered to a boolean
+const GUARDED: Bool = 5 is Int;
+
+test fn static_guard_constant(r: Bool) -> Bool {
+    both(GUARDED) && r
+}
+
+test fn static_guard_binding(r: Bool) -> Bool {
+    let guarded = nil is nil;
+    both(guarded) && r
+}
+
+// A guard whose value is evaluated for its effect isn't static, since the value may fail
+test fn guard_effect_is_not_static(r: Int) -> Bool {
+    let (a, _) = pair(r);
+    let guarded = check(a) is Any;
+    both(guarded)
+}
+
 test fn static_cast(r: Int) -> Int {
     double(CAST) + r
 }

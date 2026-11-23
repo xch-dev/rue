@@ -1587,6 +1587,12 @@ impl StaticContext for ReadCounter<'_> {
             Hir::Reference(symbol) => self
                 .static_size(*symbol)
                 .is_some_and(|size| take(budget, size)),
+            // A guard that doesn't use its value at runtime is lowered to a boolean, unless its
+            // value is evaluated for its effect. The lowerer still treats such a guard as static
+            // if its value can't fail, which can depend on what's inlined, so it isn't here
+            Hir::Guard(guard) => {
+                guard.value_uses() == 0 && !self.graph.is_guard_effect(hir) && take(budget, 1)
+            }
             _ => false,
         }
     }
