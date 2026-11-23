@@ -42,3 +42,4 @@ rue-types = { workspace = true, features = ["step-counter"] }
 rue-lexer = { workspace = true }
 expect-test = { workspace = true }
 rue-clvm = { workspace = true }
+tempfile = { workspace = true }

@@ -4,25 +4,22 @@
 
 use std::path::PathBuf;
 
-use clvmr::{Allocator, ChiaDialect, NodePtr, error::EvalErr, run_program};
-use rue_clvm::{assemble, disassemble_program, disassemble_value};
+use clvmr::{Allocator, NodePtr};
+use rue_clvm::disassemble_program;
 use rue_diagnostic::SourceKind;
-use rue_lir::ClvmTarget;
 use rue_options::CompilerOptions;
 
-use crate::test_utils::{Compiled, compile, compile_with};
+use crate::test_utils::{Compiled, compile, compile_with, compile_with_options, run_with_solution};
 
 fn compile_build(source: &str, debug: bool) -> Compiled {
-    let compiled = compile_with(source, |options| {
-        *options = CompilerOptions {
-            std: false,
-            ..if debug {
-                CompilerOptions::debug()
-            } else {
-                CompilerOptions::default()
-            }
-        };
-    });
+    let compiled = compile_with_options(
+        source,
+        if debug {
+            CompilerOptions::debug()
+        } else {
+            CompilerOptions::default()
+        },
+    );
     compiled.assert_no_errors();
     compiled
 }
@@ -50,14 +47,7 @@ fn program(source: &str, debug: bool) -> String {
 /// What `main` returns for the solution, or what it raises.
 fn run(source: &str, debug: bool, solution: &str) -> Result<String, String> {
     with_main(source, debug, |allocator, ptr| {
-        let solution = assemble(allocator, solution).unwrap();
-        let dialect = ChiaDialect::new(ClvmTarget::default().flags());
-
-        match run_program(allocator, &dialect, ptr, solution, u64::MAX) {
-            Ok(output) => Ok(disassemble_value(allocator, output.1)),
-            Err(EvalErr::Raise(value)) => Err(disassemble_value(allocator, value)),
-            Err(error) => Err(error.to_string()),
-        }
+        run_with_solution(allocator, ptr, solution)
     })
 }
 

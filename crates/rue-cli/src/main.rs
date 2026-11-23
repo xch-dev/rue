@@ -1423,21 +1423,22 @@ mod tests {
     }
 
     /// A directory with a `main.rue` that has the source, which is removed when it's dropped.
-    struct TempProject(std::path::PathBuf);
+    struct TempProject {
+        /// The directory, without symbolic links in its path (such as macOS's `/var`), since
+        /// it's compared with paths the compiler resolved.
+        path: std::path::PathBuf,
+        _dir: tempfile::TempDir,
+    }
 
     impl TempProject {
         fn new(name: &str, source: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!("rue-cli-{name}-{}", std::process::id()));
-            fs::create_dir_all(&dir).unwrap();
-            let dir = dir.canonicalize().unwrap();
-            fs::write(dir.join("main.rue"), source).unwrap();
-            Self(dir)
-        }
-    }
-
-    impl Drop for TempProject {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
+            let dir = tempfile::Builder::new()
+                .prefix(&format!("rue-cli-{name}-"))
+                .tempdir()
+                .unwrap();
+            let path = dir.path().canonicalize().unwrap();
+            fs::write(path.join("main.rue"), source).unwrap();
+            Self { path, _dir: dir }
         }
     }
 
@@ -1473,7 +1474,7 @@ mod tests {
             "build",
             "fn main(value: Int) -> Int {\n    double(value) + 1\n}\n\nexport fn double(value: Int) -> Int {\n    value * 2\n}\n",
         );
-        let dir = &project.0;
+        let dir = &project.path;
 
         // Without the flag, no sidecars are written
         run_build(dir, &["--all"]);
@@ -1529,20 +1530,21 @@ mod tests {
             "assert-message-test",
             "test fn fails() {\n    check(3);\n}\n\nfn check(value: Int) -> Int {\n    assert value > 10, [\"too small\", value];\n    value\n}\n",
         );
-        let path = project.0.join("main.rue");
+        let path = project.path.join("main.rue");
 
         let mut ctx = Compiler::new(CompilerOptions::debug());
         let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
         let mut allocator = Allocator::new();
         let tests = tree
-            .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+            .tests(&mut ctx, &mut allocator, None, None, &project.path, false)
             .unwrap();
         let cost = CostArgs {
             max_cost: DEFAULT_MAX_COST,
         };
 
         let (failure, trace) =
-            run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost).unwrap_err();
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.path, cost)
+                .unwrap_err();
         assert_eq!(
             failure.message,
             "raise: (\"assertion failed at main.rue:6:5\" (\"too small\" 3))"
@@ -1561,13 +1563,13 @@ mod tests {
     #[test]
     fn failing_tests_are_traced() {
         let project = TempProject::new("trace-test", FAILING_SOURCE);
-        let path = project.0.join("main.rue");
+        let path = project.path.join("main.rue");
 
         let mut ctx = Compiler::new(CompilerOptions::debug());
         let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
         let mut allocator = Allocator::new();
         let tests = tree
-            .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+            .tests(&mut ctx, &mut allocator, None, None, &project.path, false)
             .unwrap();
         let cost = CostArgs {
             max_cost: DEFAULT_MAX_COST,
@@ -1581,7 +1583,7 @@ mod tests {
         assert!(failure.raised);
 
         // The trace shows the test at its call to `check`, and the assertion with its argument
-        let trace = trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap();
+        let trace = trace_test(&mut ctx, &mut allocator, &tests[1], &project.path, cost).unwrap();
         assert_eq!(
             trace,
             "  main.rue:10:5, in fails_too\n    check(3);\n  main.rue:14:5, in check\n    assert value > 10;\n    value = 3"
@@ -1590,16 +1592,20 @@ mod tests {
         // When a failure is traced, what tracing allocates is freed, along with what the test did
         let pairs = allocator.pair_count();
         let (failure, traced) =
-            run_and_trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap_err();
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[1], &project.path, cost)
+                .unwrap_err();
         assert!(failure.raised);
         assert_eq!(traced, Some(Ok(trace.clone())));
         assert_eq!(allocator.pair_count(), pairs);
-        assert!(run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost).is_ok());
+        assert!(
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.path, cost).is_ok()
+        );
 
         // A failure that isn't a raise is traced too
         assert_eq!(tests[2].name.as_deref(), Some("divides"));
         let (failure, traced) =
-            run_and_trace_test(&mut ctx, &mut allocator, &tests[2], &project.0, cost).unwrap_err();
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[2], &project.path, cost)
+                .unwrap_err();
         assert!(failure.raised);
         let traced = traced.unwrap().unwrap();
         assert!(traced.contains("main.rue:23:5, in divide"), "{traced}");
@@ -1607,7 +1613,7 @@ mod tests {
 
         // The test that passes doesn't fail when it's run again
         assert_eq!(
-            trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost),
+            trace_test(&mut ctx, &mut allocator, &tests[0], &project.path, cost),
             Err("it didn't fail when it was run again".to_string())
         );
 
@@ -1623,7 +1629,7 @@ mod tests {
             ..tests[0].clone()
         };
         let (_, traced) =
-            run_and_trace_test(&mut ctx, &mut allocator, &returns_one, &project.0, cost)
+            run_and_trace_test(&mut ctx, &mut allocator, &returns_one, &project.path, cost)
                 .unwrap_err();
         assert_eq!(traced, None);
     }
@@ -1631,13 +1637,13 @@ mod tests {
     #[test]
     fn debug_shows_where_a_program_failed() {
         let project = TempProject::new("trace-debug", FAILING_SOURCE);
-        let path = project.0.join("main.rue");
-        let sidecar = project.0.join("main.bin");
+        let path = project.path.join("main.rue");
+        let sidecar = project.path.join("main.bin");
 
-        run_build(&project.0, &["--all", "--debug-metadata"]);
-        fs::rename(project.0.join("main.rue.debug.clvm.bin"), &sidecar).unwrap();
+        run_build(&project.path, &["--all", "--debug-metadata"]);
+        fs::rename(project.path.join("main.rue.debug.clvm.bin"), &sidecar).unwrap();
 
-        let hex = fs::read_to_string(project.0.join("main.rue.hex")).unwrap();
+        let hex = fs::read_to_string(project.path.join("main.rue.hex")).unwrap();
         let hex = hex.trim();
         let sidecar = sidecar.to_str().unwrap();
 
@@ -1659,7 +1665,7 @@ mod tests {
             "ff0380",
             "--debug-metadata",
             project
-                .0
+                .path
                 .join("main.rue_double.rue.debug.clvm.bin")
                 .to_str()
                 .unwrap(),
@@ -1756,7 +1762,7 @@ mod tests {
             args
         };
 
-        let sub = project.0.join("sub");
+        let sub = project.path.join("sub");
         fs::create_dir_all(&sub).unwrap();
 
         // The project is found from any directory inside it, and the flag still turns `LIMITS` on
@@ -1766,14 +1772,14 @@ mod tests {
             ("[compiler]\noperand_limits = false\n", true, true),
             ("[compiler]\noperand_limits = true\n", false, true),
         ] {
-            fs::write(project.0.join("Rue.toml"), manifest).unwrap();
+            fs::write(project.path.join("Rue.toml"), manifest).unwrap();
             let mut args = vec!["(% 2 (q . 2))", solution.as_str()];
 
             if flag {
                 args.push("--operand-limits");
             }
 
-            for dir in [&project.0, &sub] {
+            for dir in [&project.path, &sub] {
                 let result = debug_in(parse(&args), dir);
                 assert_eq!(
                     result.is_err(),
@@ -1784,7 +1790,7 @@ mod tests {
         }
 
         // A manifest that can't be parsed is reported, along with where it is
-        fs::write(project.0.join("Rue.toml"), "[compiler\n").unwrap();
+        fs::write(project.path.join("Rue.toml"), "[compiler\n").unwrap();
         let error = debug_in(parse(&["(q . 1)"]), &sub).unwrap_err().to_string();
         assert!(error.contains("Rue.toml"), "{error}");
     }
@@ -1811,13 +1817,13 @@ mod tests {
         };
 
         fs::write(
-            project.0.join("Rue.toml"),
+            project.path.join("Rue.toml"),
             "[compiler]\nhard_fork_2 = true\n",
         )
         .unwrap();
-        assert_eq!(debug_in(parse(&[program]), &project.0).unwrap(), hash);
+        assert_eq!(debug_in(parse(&[program]), &project.path).unwrap(), hash);
 
-        let error = debug_in(parse(&[program, "()", "--operand-limits"]), &project.0)
+        let error = debug_in(parse(&[program, "()", "--operand-limits"]), &project.path)
             .unwrap_err()
             .to_string();
         assert!(error.contains("hard_fork_2"), "{error}");
@@ -1828,7 +1834,7 @@ mod tests {
         // The recursion keeps `keccak256` from being folded, so the tests run it
         let source = "fn chain(value: Bytes, times: Int) -> Bytes {\n    if times == 0 {\n        value\n    } else {\n        chain(keccak256(value), times - 1)\n    }\n}\n\ntest fn hashes() {\n    assert chain(\"hello\", 1) == 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8;\n}\n\ntest fn fails_after_hashing() {\n    assert chain(\"hello\", 1) == 0x00;\n}\n";
         let project = TempProject::new("hard-fork-2-test", source);
-        let path = project.0.join("main.rue");
+        let path = project.path.join("main.rue");
         let cost = CostArgs {
             max_cost: DEFAULT_MAX_COST,
         };
@@ -1840,15 +1846,18 @@ mod tests {
         let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
         let mut allocator = Allocator::new();
         let tests = tree
-            .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+            .tests(&mut ctx, &mut allocator, None, None, &project.path, false)
             .unwrap();
 
-        assert!(run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost).is_ok());
+        assert!(
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.path, cost).is_ok()
+        );
 
         // The trace runs it again with the same flags, so it fails at the assertion rather than at
         // `keccak256`
         let (failure, trace) =
-            run_and_trace_test(&mut ctx, &mut allocator, &tests[1], &project.0, cost).unwrap_err();
+            run_and_trace_test(&mut ctx, &mut allocator, &tests[1], &project.path, cost)
+                .unwrap_err();
         assert!(
             failure.message.contains("assertion failed"),
             "{}",
@@ -1898,7 +1907,7 @@ mod tests {
             "00".repeat(299)
         );
         let project = TempProject::new("operand-limits-test", &source);
-        let path = project.0.join("main.rue");
+        let path = project.path.join("main.rue");
         let cost = CostArgs {
             max_cost: DEFAULT_MAX_COST,
         };
@@ -1911,9 +1920,10 @@ mod tests {
             let tree = FileTree::compile_file(&mut ctx, &path).unwrap();
             let mut allocator = Allocator::new();
             let tests = tree
-                .tests(&mut ctx, &mut allocator, None, None, &project.0, false)
+                .tests(&mut ctx, &mut allocator, None, None, &project.path, false)
                 .unwrap();
-            let result = run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.0, cost);
+            let result =
+                run_and_trace_test(&mut ctx, &mut allocator, &tests[0], &project.path, cost);
 
             if operand_limits {
                 // The trace runs it again with `LIMITS`, so it fails in the same place
@@ -1927,7 +1937,7 @@ mod tests {
         }
 
         // The flag turns the option on for `rue build` and `rue test`
-        let mut project = rue_options::find_project(&project.0, true)
+        let mut project = rue_options::find_project(&project.path, true)
             .unwrap()
             .unwrap();
         assert!(!project.options.operand_limits);

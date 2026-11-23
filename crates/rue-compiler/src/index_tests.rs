@@ -6,7 +6,7 @@ use std::fmt::Write;
 
 use rue_options::CompilerOptions;
 
-use crate::test_utils::{compile, compile_with};
+use crate::test_utils::{compile, compile_with, compile_with_options};
 
 const ITEMS: &str = "
 struct Cursor { data: Bytes, offset: Int }
@@ -20,12 +20,7 @@ fn double(value: Int) -> Int { value * 2 }
 /// The program of `main` with the given parameters and body, after the shared items.
 fn program(parameters: &str, body: &str, options: CompilerOptions) -> String {
     let source = format!("{ITEMS}\nfn main({parameters}) -> Bytes {{ {body} }}");
-    let mut compiled = compile_with(&source, |o| {
-        *o = CompilerOptions {
-            std: false,
-            ..options
-        };
-    });
+    let mut compiled = compile_with_options(&source, options);
     compiled.main_program()
 }
 

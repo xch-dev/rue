@@ -149,8 +149,8 @@ fn main_capture_wrapper_is_located_at_the_body() {
 /// Exports and tests have sidecars of their own, and are the same with and without them.
 #[test]
 fn exports() {
-    let dir = std::env::temp_dir().join(format!("rue-debug-metadata-{}", std::process::id()));
-    fs::create_dir_all(&dir).unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path();
     let path = dir.join("exports.rue");
     fs::write(
         &path,
@@ -166,10 +166,10 @@ fn exports() {
         let kind = normalize_path(&path).unwrap();
         let mut allocator = Allocator::new();
         let without = tree
-            .exports(&mut ctx, &mut allocator, Some(&kind), None, &dir)
+            .exports(&mut ctx, &mut allocator, Some(&kind), None, dir)
             .unwrap();
         let with = tree
-            .exports_with_debug_metadata(&mut ctx, &mut allocator, Some(&kind), None, &dir)
+            .exports_with_debug_metadata(&mut ctx, &mut allocator, Some(&kind), None, dir)
             .unwrap();
 
         assert_eq!(with.len(), 2);
@@ -197,12 +197,12 @@ fn exports() {
 
         // So do tests, which `rue test` compiles again with sidecars when they fail
         let tests = tree
-            .tests(&mut ctx, &mut allocator, Some(&kind), None, &dir, false)
+            .tests(&mut ctx, &mut allocator, Some(&kind), None, dir, false)
             .unwrap();
         assert_eq!(tests.len(), 1);
 
         let (ptr, metadata) = tests[0]
-            .with_debug_metadata(&mut ctx, &mut allocator, &dir)
+            .with_debug_metadata(&mut ctx, &mut allocator, dir)
             .unwrap();
         let program = node_to_bytes(&allocator, ptr).unwrap();
         assert_eq!(node_to_bytes(&allocator, tests[0].ptr).unwrap(), program);
@@ -211,8 +211,6 @@ fn exports() {
             Sha256::digest(&program).to_vec()
         );
     }
-
-    fs::remove_dir_all(dir).unwrap();
 }
 
 /// The decoded sidecar, with each record as a list of CLVM values.

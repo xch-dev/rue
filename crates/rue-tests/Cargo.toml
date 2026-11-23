@@ -37,6 +37,7 @@ serde-saphyr = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 env_logger = { workspace = true }
 indexmap = { workspace = true }
+tempfile = { workspace = true }
 
 [dev-dependencies]
 expect-test = { workspace = true }
