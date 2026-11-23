@@ -1,0 +1,36 @@
+fn main() -> Int {
+    let high_bit: Int = 0xff;
+    let positive: Int = 0x7f;
+    let padded: Int = 0x00ff;
+    let leading_zero: Int = 0x007f;
+    let zero: Int = 0x00;
+    let underscores: Int = 0x01_00;
+    let odd: Int = 0x1;
+    let optional: Int | nil = 0xff;
+    let parenthesized: Int = ((0xff));
+    let bytes: Bytes = 0xff;
+    let string: Int = "hello";
+    let named = 0xff;
+    let variable: Int = named;
+    high_bit
+        + positive
+        + padded
+        + leading_zero
+        + zero
+        + underscores
+        + odd
+        + parenthesized
+        + variable
+}
+
+fn returns() -> Int {
+    0x80
+}
+
+fn takes(value: Int) -> Int {
+    value
+}
+
+fn calls() -> Int {
+    takes(0xff)
+}

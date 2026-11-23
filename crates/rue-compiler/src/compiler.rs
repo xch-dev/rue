@@ -9,10 +9,12 @@ use std::{
     sync::Arc,
 };
 
+use num_bigint::{BigInt, Sign};
 use rowan::{TextRange, TextSize};
 use rue_ast::{AstDocument, AstNode};
 use rue_diagnostic::{
-    Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Note, Source, SourceKind, SrcLoc,
+    Applicability, Diagnostic, DiagnosticKind, DiagnosticSeverity, Name, Note, Source, SourceKind,
+    SrcLoc, Suggestion,
 };
 use rue_hir::{
     Builtins, Constraint, Database, DatabaseCheckpoint, Declaration, HirId, ImportId, ImportUser,
@@ -22,14 +24,14 @@ use rue_hir::{
 use rue_lint::{
     EnclosedPreludeReference, ImpreciseNarrowing, LintInput, LintSites, LintSitesCheckpoint,
 };
-use rue_lir::ClvmTarget;
+use rue_lir::{ClvmTarget, bigint_atom};
 use rue_options::CompilerOptions;
 use rue_parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 use rue_types::{CallSolver, Check, CheckError, Comparison, Inference, TooComplex, Type, TypeId};
 
 use crate::{
-    DeferredLambda, ElementLambda, FileTree, LambdaParameter, SyntaxItem, SyntaxItemKind,
-    SyntaxMap, narrowed_with_references,
+    DeferredLambda, ElementLambda, FileTree, LambdaParameter, LiteralValue, SyntaxItem,
+    SyntaxItemKind, SyntaxMap, narrowed_with_references,
 };
 
 /// How the type expected of the expression being compiled is used, which the expressions it's
@@ -1858,6 +1860,85 @@ impl Compiler {
         }
     }
 
+    /// A hex literal is bytes rather than an integer, so when one is assigned where an `Int` is
+    /// expected, this explains why and suggests the number that was probably meant, which is the
+    /// unsigned value of its bytes: `255` for `0xff`, which is `-1` as an `Int`.
+    fn hex_literal_int_help(&mut self, srcloc: &SrcLoc, to: TypeId) -> Option<(Note, Suggestion)> {
+        // The literal can be in parentheses, or be all that's in a block (such as a function's
+        // body, which is what's checked against its return type), which the suggestion keeps
+        let text = srcloc.text();
+        let mut start = 0;
+        let mut trimmed = text;
+
+        loop {
+            let inner = trimmed.trim_start();
+            start += trimmed.len() - inner.len();
+            trimmed = inner.trim_end();
+
+            let inner = [('(', ')'), ('{', '}')]
+                .into_iter()
+                .find_map(|(open, close)| trimmed.strip_prefix(open)?.strip_suffix(close));
+
+            match inner {
+                Some(inner) => {
+                    start += 1;
+                    trimmed = inner;
+                }
+                None => break,
+            }
+        }
+
+        let digits = trimmed.strip_prefix("0x")?;
+
+        if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_hexdigit() || c == '_') {
+            return None;
+        }
+
+        let int = self.builtins.types.int;
+
+        if !matches!(
+            rue_types::compare_limited(self.db.types_mut(), &self.builtins.types, int, to),
+            Ok(Comparison::Assign)
+        ) {
+            return None;
+        }
+
+        let LiteralValue::Bytes(bytes) = LiteralValue::decode_text(SyntaxKind::Hex, trimmed) else {
+            return None;
+        };
+
+        if bytes.is_empty() {
+            return None;
+        }
+
+        let unsigned = BigInt::from_bytes_be(Sign::Plus, &bytes);
+        let signed = BigInt::from_signed_bytes_be(&bytes);
+
+        let cast = if bigint_atom(signed.clone()) != bytes {
+            format!("has a leading zero byte, so it isn't equal to the `Int` `{unsigned}`")
+        } else if signed == unsigned {
+            format!("is the `Int` `{signed}`")
+        } else {
+            format!("is the negative number `{signed}`, since integers are signed")
+        };
+
+        let note = Note::new(format!(
+            "Hex literals are bytes rather than integers; `{trimmed} as Int` {cast}"
+        ));
+
+        let start = srcloc.span.start + start;
+        let replaced = SrcLoc::new(srcloc.source.clone(), start..start + trimmed.len());
+
+        let suggestion = Suggestion::replace(
+            format!("Write the number `{unsigned}` instead"),
+            replaced,
+            unsigned.to_string(),
+            Applicability::MaybeIncorrect,
+        );
+
+        Some((note, suggestion))
+    }
+
     fn compare_type(
         &mut self,
         node: &impl GetTextRange,
@@ -1878,8 +1959,16 @@ impl Compiler {
             Comparison::Cast => {
                 if !cast {
                     let from = self.type_name(from);
-                    let to = self.shown_type_name(to, shown);
-                    self.diagnostic(node, DiagnosticKind::UnassignableType(from, to));
+                    let to_name = self.shown_type_name(to, shown);
+                    let srcloc = self.srcloc(node);
+                    let help = self.hex_literal_int_help(&srcloc, to);
+                    let diagnostic =
+                        self.diagnostic_at(srcloc, DiagnosticKind::UnassignableType(from, to_name));
+
+                    if let Some((note, suggestion)) = help {
+                        diagnostic.notes.push(note);
+                        diagnostic.suggestions.push(suggestion);
+                    }
                 }
             }
             Comparison::Invalid => {
