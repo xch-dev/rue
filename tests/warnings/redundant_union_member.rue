@@ -19,6 +19,9 @@ type ThroughAlias = Int | Number;
 type Literals = 5 | 6 | Int;
 type AroundInt = 5 | Int | 6;
 
+// A member covered by a later one is redundant, even if it's the same at runtime as an earlier one
+type IndistinguishableThenCovered = Int | Bytes | Any;
+
 // A generic member covered by `Any`
 type OrAny<T> = T | Any;
 

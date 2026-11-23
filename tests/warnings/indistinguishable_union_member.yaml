@@ -32,6 +32,10 @@ diagnostics:
   Union member `Bytes` can't be told apart from `Int`, since they're the same at runtime, so a type guard or `match` can't narrow the union to either of them at indistinguishable_union_member.rue:27:27
     note: `Int` is in the union here at indistinguishable_union_member.rue:27:21
 - |-
-  Redundant union member `Bytes32`, since `Bytes` is already in the union, and it includes every `Bytes32` at indistinguishable_union_member.rue:38:26
-    note: `Bytes` is in the union here at indistinguishable_union_member.rue:38:18
+  Redundant union member `Bytes32`, since `Bytes` is already in the union, and it includes every `Bytes32` at indistinguishable_union_member.rue:39:26
+    note: `Bytes` is in the union here at indistinguishable_union_member.rue:39:18
     help: Remove `Bytes32` from the union
+- |-
+  Redundant union member `false`, since `Bool` is already in the union, and it includes every `false` at indistinguishable_union_member.rue:40:23
+    note: `Bool` is in the union here at indistinguishable_union_member.rue:40:31
+    help: Remove `false` from the union

@@ -56,58 +56,66 @@ diagnostics:
     note: `Int` is in the union here at redundant_union_member.rue:20:22
     help: Remove `6` from the union
 - |-
-  Redundant union member `T`, since `Any` is already in the union, and it includes every `T` at redundant_union_member.rue:23:17
-    note: `Any` is in the union here at redundant_union_member.rue:23:21
+  Redundant union member `Int`, since `Any` is already in the union, and it includes every `Int` at redundant_union_member.rue:23:37
+    note: `Any` is in the union here at redundant_union_member.rue:23:51
+    help: Remove `Int` from the union
+- |-
+  Redundant union member `Bytes`, since `Any` is already in the union, and it includes every `Bytes` at redundant_union_member.rue:23:43
+    note: `Any` is in the union here at redundant_union_member.rue:23:51
+    help: Remove `Bytes` from the union
+- |-
+  Redundant union member `T`, since `Any` is already in the union, and it includes every `T` at redundant_union_member.rue:26:17
+    note: `Any` is in the union here at redundant_union_member.rue:26:21
     help: Remove `T` from the union
 - |-
-  Redundant union member `Bytes32`, since `Either` is already in the union, and it includes every `Bytes32` at redundant_union_member.rue:27:19
-    note: `Either` is in the union here at redundant_union_member.rue:27:29
+  Redundant union member `Bytes32`, since `Either` is already in the union, and it includes every `Bytes32` at redundant_union_member.rue:30:19
+    note: `Either` is in the union here at redundant_union_member.rue:30:29
     help: Remove `Bytes32` from the union
 - |-
-  Redundant union member `5`, since `Int` is already in the union, and it includes every `5` at redundant_union_member.rue:31:18
-    note: `Int` is in the union here at redundant_union_member.rue:31:12
+  Redundant union member `5`, since `Int` is already in the union, and it includes every `5` at redundant_union_member.rue:34:18
+    note: `Int` is in the union here at redundant_union_member.rue:34:12
     help: Remove `5` from the union
 - |-
-  Redundant union member `Bytes32`, since `Bytes` is already in the union, and it includes every `Bytes32` at redundant_union_member.rue:35:28
-    note: `Bytes` is in the union here at redundant_union_member.rue:35:20
+  Redundant union member `Bytes32`, since `Bytes` is already in the union, and it includes every `Bytes32` at redundant_union_member.rue:38:28
+    note: `Bytes` is in the union here at redundant_union_member.rue:38:20
     help: Remove `Bytes32` from the union
 - |-
-  Redundant union member `1`, since `Int` is already in the union, and it includes every `1` at redundant_union_member.rue:38:27
-    note: `Int` is in the union here at redundant_union_member.rue:38:21
+  Redundant union member `1`, since `Int` is already in the union, and it includes every `1` at redundant_union_member.rue:41:27
+    note: `Int` is in the union here at redundant_union_member.rue:41:21
     help: Remove `1` from the union
 - |-
-  Redundant union member `2`, since `Int` is already in the union, and it includes every `2` at redundant_union_member.rue:42:37
-    note: `Int` is in the union here at redundant_union_member.rue:42:31
+  Redundant union member `2`, since `Int` is already in the union, and it includes every `2` at redundant_union_member.rue:45:37
+    note: `Int` is in the union here at redundant_union_member.rue:45:31
     help: Remove `2` from the union
 - |-
-  Redundant union member `3`, since `Int` is already in the union, and it includes every `3` at redundant_union_member.rue:47:22
-    note: `Int` is in the union here at redundant_union_member.rue:47:16
+  Redundant union member `3`, since `Int` is already in the union, and it includes every `3` at redundant_union_member.rue:50:22
+    note: `Int` is in the union here at redundant_union_member.rue:50:16
     help: Remove `3` from the union
 - |-
-  Redundant union member `5`, since `Int` is already in the union, and it includes every `5` at redundant_union_member.rue:52:20
-    note: `Int` is in the union here at redundant_union_member.rue:52:14
+  Redundant union member `5`, since `Int` is already in the union, and it includes every `5` at redundant_union_member.rue:55:20
+    note: `Int` is in the union here at redundant_union_member.rue:55:14
     help: Remove `5` from the union
 - |-
-  Redundant union member `(Int, 1)`, since `(Int, Int)` is already in the union, and it includes every `(Int, 1)` at redundant_union_member.rue:56:27
-    note: `(Int, Int)` is in the union here at redundant_union_member.rue:56:14
+  Redundant union member `(Int, 1)`, since `(Int, Int)` is already in the union, and it includes every `(Int, 1)` at redundant_union_member.rue:59:27
+    note: `(Int, Int)` is in the union here at redundant_union_member.rue:59:14
     help: Remove `(Int, 1)` from the union
 - |-
-  Redundant union member `4`, since `Int` is already in the union, and it includes every `4` at redundant_union_member.rue:59:39
-    note: `Int` is in the union here at redundant_union_member.rue:59:33
+  Redundant union member `4`, since `Int` is already in the union, and it includes every `4` at redundant_union_member.rue:62:39
+    note: `Int` is in the union here at redundant_union_member.rue:62:33
     help: Remove `4` from the union
 - |-
-  Redundant union member `6`, since `Int` is already in the union, and it includes every `6` at redundant_union_member.rue:63:35
-    note: `Int` is in the union here at redundant_union_member.rue:63:29
+  Redundant union member `6`, since `Int` is already in the union, and it includes every `6` at redundant_union_member.rue:66:35
+    note: `Int` is in the union here at redundant_union_member.rue:66:29
     help: Remove `6` from the union
 - |-
-  Redundant union member `7`, since `Int` is already in the union, and it includes every `7` at redundant_union_member.rue:67:26
-    note: `Int` is in the union here at redundant_union_member.rue:67:20
+  Redundant union member `7`, since `Int` is already in the union, and it includes every `7` at redundant_union_member.rue:70:26
+    note: `Int` is in the union here at redundant_union_member.rue:70:20
     help: Remove `7` from the union
 - |-
-  Redundant union member `8`, since `Int` is already in the union, and it includes every `8` at redundant_union_member.rue:72:30
-    note: `Int` is in the union here at redundant_union_member.rue:72:24
+  Redundant union member `8`, since `Int` is already in the union, and it includes every `8` at redundant_union_member.rue:75:30
+    note: `Int` is in the union here at redundant_union_member.rue:75:24
     help: Remove `8` from the union
 - |-
-  Redundant union member `T`, since `Any` is already in the union, and it includes every `T` at redundant_union_member.rue:88:29
-    note: `Any` is in the union here at redundant_union_member.rue:88:33
+  Redundant union member `T`, since `Any` is already in the union, and it includes every `T` at redundant_union_member.rue:91:29
+    note: `Any` is in the union here at redundant_union_member.rue:91:33
     help: Remove `T` from the union

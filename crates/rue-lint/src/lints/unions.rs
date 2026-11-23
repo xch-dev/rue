@@ -65,9 +65,15 @@ fn check_union(cx: &mut LintContext<'_>, members: &[UnionMember]) {
         .map(|member| !cx.contains_unresolved(member.ty))
         .collect();
 
-    let overlaps: Vec<Option<Overlap>> = (0..members.len())
-        .map(|index| overlap(cx, members, &resolved, index))
+    let mut overlaps: Vec<Option<Overlap>> = (0..members.len())
+        .map(|index| redundancy(cx, members, &resolved, index))
         .collect();
+
+    for index in 0..members.len() {
+        if overlaps[index].is_none() {
+            overlaps[index] = indistinguishability(cx, members, &resolved, &overlaps, index);
+        }
+    }
 
     for (index, overlap) in overlaps.iter().enumerate() {
         let Some(Overlap { other, kind }) = *overlap else {
@@ -101,12 +107,14 @@ fn check_union(cx: &mut LintContext<'_>, members: &[UnionMember]) {
 
         let suggestion = kind.is_redundant().then(|| {
             // A generic can be inferred from the member, even though its values are already in
-            // the union, so the call sites might not compile without it
-            let applicability = if cx.references_generics(member.ty) {
-                Applicability::MaybeIncorrect
-            } else {
-                Applicability::MachineApplicable
-            };
+            // the union, so the call sites might not compile without it. A copy of a member that's
+            // kept references the same generics.
+            let applicability =
+                if kind == OverlapKind::Redundant && cx.references_generics(member.ty) {
+                    Applicability::MaybeIncorrect
+                } else {
+                    Applicability::MachineApplicable
+                };
 
             Suggestion::replace(
                 format!("Remove `{name}` from the union"),
@@ -129,8 +137,8 @@ fn check_union(cx: &mut LintContext<'_>, members: &[UnionMember]) {
     }
 }
 
-/// How the member at the index overlaps with the other members of the union, if it does.
-fn overlap(
+/// The member that the member at the index is redundant with, if there is one.
+fn redundancy(
     cx: &mut LintContext<'_>,
     members: &[UnionMember],
     resolved: &[bool],
@@ -141,47 +149,59 @@ fn overlap(
     }
 
     let ty = members[index].ty;
-    let mut indistinguishable = None;
 
     for (other, member) in members.iter().enumerate() {
-        if other == index || !resolved[other] {
+        if other == index || !resolved[other] || !cx.is_assignable(ty, member.ty) {
             continue;
         }
 
-        match cx.compare(ty, member.ty) {
-            Comparison::Assign => {
-                if !cx.is_assignable(member.ty, ty) {
-                    return Some(Overlap {
-                        other,
-                        kind: OverlapKind::Redundant,
-                    });
-                }
+        if !cx.is_assignable(member.ty, ty) {
+            return Some(Overlap {
+                other,
+                kind: OverlapKind::Redundant,
+            });
+        }
 
-                // Of two members that are the same type, the later one is redundant
-                if other < index {
-                    return Some(Overlap {
-                        other,
-                        kind: OverlapKind::Same,
-                    });
-                }
-            }
-            // Of two members that are the same at runtime, the later one is reported. If the
-            // other member is assignable to this one, it's the redundant one instead.
-            Comparison::Cast
-                if other < index
-                    && indistinguishable.is_none()
-                    && cx.compare(member.ty, ty) == Comparison::Cast =>
-            {
-                indistinguishable = Some(Overlap {
-                    other,
-                    kind: OverlapKind::Indistinguishable,
-                });
-            }
-            Comparison::Cast | Comparison::Invalid => {}
+        // Of two members that are the same type, the later one is redundant
+        if other < index {
+            return Some(Overlap {
+                other,
+                kind: OverlapKind::Same,
+            });
         }
     }
 
-    indistinguishable
+    None
+}
+
+/// The earlier member that the member at the index is the same as at runtime, if there is one.
+/// Members that are redundant aren't compared, since they're removed from the union, so a member
+/// that's only partly the same at runtime as what's left isn't reported (such as `nil` in
+/// `false | Bool | nil`).
+fn indistinguishability(
+    cx: &mut LintContext<'_>,
+    members: &[UnionMember],
+    resolved: &[bool],
+    overlaps: &[Option<Overlap>],
+    index: usize,
+) -> Option<Overlap> {
+    if !resolved[index] {
+        return None;
+    }
+
+    let ty = members[index].ty;
+
+    (0..index)
+        .find(|&other| {
+            resolved[other]
+                && !overlaps[other].is_some_and(|overlap| overlap.kind.is_redundant())
+                && cx.compare(ty, members[other].ty) == Comparison::Cast
+                && cx.compare(members[other].ty, ty) == Comparison::Cast
+        })
+        .map(|other| Overlap {
+            other,
+            kind: OverlapKind::Indistinguishable,
+        })
 }
 
 /// The code to remove to take the member at the index out of the union, along with one of the

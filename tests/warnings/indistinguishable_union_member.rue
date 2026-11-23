@@ -34,8 +34,10 @@ type IntOrNil = Int | nil;
 type Bytes32OrInt = Bytes32 | Int;
 type BoolOrInt = Bool | Int;
 
-// A redundant member is reported as redundant instead
+// A redundant member is reported as redundant instead, and isn't compared with the others, so
+// `nil` isn't reported against `false`, since `Bool | nil` is only partly the same at runtime
 type Redundant = Bytes | Bytes32;
+type RedundantFalse = false | Bool | nil;
 
 // Structs with a constant field can be told apart
 struct Tagged {
