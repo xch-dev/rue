@@ -1,18 +1,11 @@
-use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
+use clvmr::{Allocator, NodePtr};
 use expect_test::{Expect, expect};
 use id_arena::Arena;
 use num_bigint::BigUint;
 use rue_clvm::{disassemble_program, disassemble_value};
 
-use crate::{ClvmTarget, CodegenOptions, Lir, LirId, codegen, optimize};
-
-fn atom(arena: &mut Arena<Lir>, bytes: &[u8]) -> LirId {
-    arena.alloc(Lir::Atom(bytes.to_vec()))
-}
-
-fn path(arena: &mut Arena<Lir>, path: u32) -> LirId {
-    arena.alloc(Lir::Path(BigUint::from(path)))
-}
+use super::test_helpers::{atom, compile, path, run};
+use crate::{ClvmTarget, Lir, LirId, optimize};
 
 fn raise(arena: &mut Arena<Lir>) -> LirId {
     arena.alloc(Lir::Raise(vec![]))
@@ -20,36 +13,6 @@ fn raise(arena: &mut Arena<Lir>) -> LirId {
 
 fn not(arena: &mut Arena<Lir>, value: LirId) -> LirId {
     arena.alloc(Lir::Not(value))
-}
-
-fn compile(
-    arena: &Arena<Lir>,
-    allocator: &mut Allocator,
-    lir: LirId,
-    target: ClvmTarget,
-    optimized: bool,
-) -> NodePtr {
-    codegen(
-        arena,
-        allocator,
-        lir,
-        CodegenOptions {
-            optimize_static_pairs: optimized,
-            target,
-        },
-    )
-    .unwrap()
-}
-
-fn run(
-    allocator: &mut Allocator,
-    target: ClvmTarget,
-    program: NodePtr,
-    env: NodePtr,
-) -> Option<Vec<u8>> {
-    let dialect = ChiaDialect::new(target.flags());
-    let output = run_program(allocator, &dialect, program, env, crate::MAX_BLOCK_COST).ok()?;
-    Some(node_to_bytes(allocator, output.1).unwrap())
 }
 
 // Optimizes the LIR, checks the code generated for the default target, and checks that the

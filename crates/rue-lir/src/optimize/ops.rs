@@ -1305,61 +1305,17 @@ pub fn opt_debug_print(arena: &mut Arena<Lir>, srcloc: String, value: LirId) -> 
 
 #[cfg(test)]
 mod tests {
-    use clvmr::{Allocator, ChiaDialect, NodePtr, run_program, serde::node_to_bytes};
-
-    use rue_clvm::disassemble_program;
-
-    use crate::{CodegenOptions, codegen, optimize};
+    use clvmr::{Allocator, NodePtr, serde::node_to_bytes};
 
     use super::*;
+    use crate::optimize::{
+        optimize,
+        test_helpers::{compile, disassemble, int, path, run},
+    };
 
     const UNLIMITED: ClvmTarget = ClvmTarget::TODAY;
     const LIMITED: ClvmTarget = ClvmTarget::TODAY_WITH_LIMITS;
     const HARD_FORK_2: ClvmTarget = ClvmTarget::HARD_FORK_2;
-
-    fn atom(arena: &mut Arena<Lir>, value: i64) -> LirId {
-        arena.alloc(Lir::Atom(bigint_atom(BigInt::from(value))))
-    }
-
-    fn path(arena: &mut Arena<Lir>, value: u32) -> LirId {
-        arena.alloc(Lir::Path(BigUint::from(value)))
-    }
-
-    fn run(
-        allocator: &mut Allocator,
-        target: ClvmTarget,
-        program: NodePtr,
-        env: NodePtr,
-    ) -> Option<Vec<u8>> {
-        let dialect = ChiaDialect::new(target.flags());
-        let result = run_program(allocator, &dialect, program, env, crate::MAX_BLOCK_COST).ok()?;
-        Some(node_to_bytes(allocator, result.1).unwrap())
-    }
-
-    fn compile(
-        arena: &Arena<Lir>,
-        allocator: &mut Allocator,
-        lir: LirId,
-        target: ClvmTarget,
-        optimize: bool,
-    ) -> NodePtr {
-        codegen(
-            arena,
-            allocator,
-            lir,
-            CodegenOptions {
-                optimize_static_pairs: optimize,
-                target,
-            },
-        )
-        .unwrap()
-    }
-
-    fn disassemble(arena: &Arena<Lir>, lir: LirId) -> String {
-        let mut allocator = Allocator::new();
-        let program = compile(arena, &mut allocator, lir, UNLIMITED, true);
-        disassemble_program(&allocator, program)
-    }
 
     /// Checks that the LIR behaves the same after it's optimized, for each target, and returns
     /// what it's optimized to for the default one.
@@ -1413,7 +1369,7 @@ mod tests {
         let a = path(&mut arena, 2);
         let b = path(&mut arena, 5);
         let c = path(&mut arena, 11);
-        let one = atom(&mut arena, 1);
+        let one = int(&mut arena, 1);
         let a_minus_b = arena.alloc(Lir::Sub(vec![a, b]));
         let plus_c = arena.alloc(Lir::Add(vec![a_minus_b, c]));
         let lir = arena.alloc(Lir::Sub(vec![plus_c, one]));
@@ -1456,10 +1412,10 @@ mod tests {
     #[test]
     fn test_sub_constants_fold() {
         let mut arena = Arena::new();
-        let ten = atom(&mut arena, 10);
-        let twenty = atom(&mut arena, 20);
-        let thirty = atom(&mut arena, 30);
-        let one = atom(&mut arena, 1);
+        let ten = int(&mut arena, 10);
+        let twenty = int(&mut arena, 20);
+        let thirty = int(&mut arena, 30);
+        let one = int(&mut arena, 1);
         let inner = arena.alloc(Lir::Sub(vec![ten, twenty]));
         let add = arena.alloc(Lir::Add(vec![inner, thirty]));
         let lir = arena.alloc(Lir::Sub(vec![add, one]));
@@ -1471,9 +1427,9 @@ mod tests {
     #[test]
     fn test_sub_negative_constant_is_minuend() {
         let mut arena = Arena::new();
-        let hundred = atom(&mut arena, 100);
+        let hundred = int(&mut arena, 100);
         let value = path(&mut arena, 2);
-        let three_hundred = atom(&mut arena, 300);
+        let three_hundred = int(&mut arena, 300);
         let lir = arena.alloc(Lir::Sub(vec![hundred, value, three_hundred]));
 
         let optimized = assert_equivalent(&mut arena, lir, &[int_env(&[200])]);
@@ -1487,7 +1443,7 @@ mod tests {
         let a = path(&mut arena, 2);
         let b = path(&mut arena, 5);
         let c = path(&mut arena, 11);
-        let one = atom(&mut arena, 1);
+        let one = int(&mut arena, 1);
         let a_minus_b = arena.alloc(Lir::Sub(vec![a, b]));
         let c_minus_one = arena.alloc(Lir::Sub(vec![c, one]));
         let lir = arena.alloc(Lir::Add(vec![a_minus_b, c_minus_one]));
@@ -1512,7 +1468,7 @@ mod tests {
         let other = path(&mut arena, 5);
 
         for constant in [-1, 1] {
-            let constant = atom(&mut arena, constant);
+            let constant = int(&mut arena, constant);
             for args in [vec![value, constant], vec![value, other, constant]] {
                 let lir = arena.alloc(Lir::Sub(args));
                 let once = optimize(&mut arena, lir, UNLIMITED);
@@ -1533,8 +1489,8 @@ mod tests {
     fn test_odd_check_requires_canonical_one() {
         let mut arena = Arena::new();
         let value = path(&mut arena, 2);
-        let two = atom(&mut arena, 2);
-        let one = atom(&mut arena, 1);
+        let two = int(&mut arena, 2);
+        let one = int(&mut arena, 1);
         let non_canonical_one = arena.alloc(Lir::Atom(vec![0, 1]));
 
         let modulo = arena.alloc(Lir::Mod(value, two));
@@ -1560,8 +1516,8 @@ mod tests {
     fn test_odd_check_with_operand_limits_requires_short_dividend() {
         let mut arena = Arena::new();
         let value = path(&mut arena, 2);
-        let two = atom(&mut arena, 2);
-        let one = atom(&mut arena, 1);
+        let two = int(&mut arena, 2);
+        let one = int(&mut arena, 1);
 
         let modulo = arena.alloc(Lir::Mod(value, two));
         let result = opt_eq(&mut arena, LIMITED, modulo, one);
@@ -1602,8 +1558,8 @@ mod tests {
     fn test_limited_operators_only_fold_without_operand_limits() {
         let mut arena = Arena::new();
         let long_base = arena.alloc(Lir::Atom(vec![1; 257]));
-        let two = atom(&mut arena, 2);
-        let seven = atom(&mut arena, 7);
+        let two = int(&mut arena, 2);
+        let seven = int(&mut arena, 7);
         // The generator of G1
         let generator = "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb";
         let point = arena.alloc(Lir::Atom(
@@ -1717,7 +1673,7 @@ mod tests {
             }
             _ => {
                 let value = random_arith(arena, rng, depth - 1);
-                let two = atom(arena, 2);
+                let two = int(arena, 2);
                 let one = arena.alloc(Lir::Atom(ATOMS[rng.below(ATOMS.len())].to_vec()));
                 let modulo = arena.alloc(Lir::Mod(value, two));
                 if rng.below(2) == 0 {

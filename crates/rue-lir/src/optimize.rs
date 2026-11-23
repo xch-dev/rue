@@ -5,6 +5,8 @@ mod ops;
 mod truthy;
 
 #[cfg(test)]
+mod test_helpers;
+#[cfg(test)]
 mod tests;
 
 use arg_list::*;

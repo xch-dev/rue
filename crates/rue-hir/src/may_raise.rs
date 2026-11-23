@@ -167,28 +167,16 @@ impl<'a> Visitor<'a> {
 mod tests {
     use rue_types::{BuiltinTypes, Check};
 
-    use crate::{BindingSymbol, Block, ConstantSymbol, Guard, Value};
-
-    use rue_diagnostic::{Source, SourceKind, SrcLoc};
+    use crate::{
+        Block, ConstantSymbol, Guard, Value,
+        test_helpers::{binding, srcloc},
+    };
 
     use super::*;
-
-    fn srcloc() -> SrcLoc {
-        SrcLoc::new(Source::new("".into(), SourceKind::Std(String::new())), 0..0)
-    }
 
     fn raise(db: &mut Database) -> HirId {
         let nil = db.alloc_hir(Hir::Nil);
         db.alloc_hir(Hir::ClvmOp(ClvmOp::Raise, nil))
-    }
-
-    fn binding(db: &mut Database, value: HirId, inline: bool) -> SymbolId {
-        let ty = BuiltinTypes::new(db.types_mut()).int;
-        db.alloc_symbol(Symbol::Binding(BindingSymbol {
-            name: None,
-            value: Value::new(value, ty),
-            inline,
-        }))
     }
 
     fn constant(db: &mut Database, value: HirId, inline: bool) -> SymbolId {

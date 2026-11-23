@@ -132,25 +132,14 @@ impl Visitor<'_> {
 
 #[cfg(test)]
 mod tests {
-    use rue_diagnostic::{Source, SourceKind, SrcLoc};
     use rue_types::{BuiltinTypes, Check};
 
-    use crate::{BindingSymbol, Block, Builtin, ExprStatement, Guard, Value};
+    use crate::{
+        Block, Builtin, ExprStatement, Guard,
+        test_helpers::{binding, srcloc},
+    };
 
     use super::*;
-
-    fn binding(db: &mut Database, hir: HirId) -> SymbolId {
-        let ty = BuiltinTypes::new(db.types_mut()).int;
-        db.alloc_symbol(Symbol::Binding(BindingSymbol {
-            name: None,
-            value: Value::new(hir, ty),
-            inline: false,
-        }))
-    }
-
-    fn srcloc() -> SrcLoc {
-        SrcLoc::new(Source::new("".into(), SourceKind::Std(String::new())), 0..0)
-    }
 
     #[test]
     fn test_resolved() {
@@ -158,7 +147,7 @@ mod tests {
         let one = db.alloc_hir(Hir::Int(1.into()));
         let two = db.alloc_hir(Hir::Int(2.into()));
         let pair = db.alloc_hir(Hir::Pair(one, two));
-        let symbol = binding(&mut db, pair);
+        let symbol = binding(&mut db, pair, false);
         assert!(!has_reachable_unresolved(&db, symbol));
     }
 
@@ -168,7 +157,7 @@ mod tests {
         let one = db.alloc_hir(Hir::Int(1.into()));
         let unresolved = db.alloc_hir(Hir::Unresolved);
         let pair = db.alloc_hir(Hir::Pair(one, unresolved));
-        let symbol = binding(&mut db, pair);
+        let symbol = binding(&mut db, pair, false);
         assert!(has_reachable_unresolved(&db, symbol));
     }
 
@@ -179,7 +168,7 @@ mod tests {
             let ty = BuiltinTypes::new(db.types_mut()).int;
             let value = db.alloc_hir(Hir::Unresolved);
             let guard = db.alloc_hir(Hir::Guard(Guard { value, ty, check }));
-            let symbol = binding(&mut db, guard);
+            let symbol = binding(&mut db, guard, false);
             assert!(has_reachable_unresolved(&db, symbol));
         }
     }
@@ -194,7 +183,7 @@ mod tests {
         ] {
             let target = db.alloc_symbol(target);
             let reference = db.alloc_hir(Hir::Reference(target));
-            let symbol = binding(&mut db, reference);
+            let symbol = binding(&mut db, reference, false);
             assert!(has_reachable_unresolved(&db, symbol));
         }
     }
@@ -203,9 +192,9 @@ mod tests {
     fn test_unresolved_through_reference() {
         let mut db = Database::new();
         let unresolved = db.alloc_hir(Hir::Unresolved);
-        let inner = binding(&mut db, unresolved);
+        let inner = binding(&mut db, unresolved, false);
         let reference = db.alloc_hir(Hir::Reference(inner));
-        let symbol = binding(&mut db, reference);
+        let symbol = binding(&mut db, reference, false);
         assert!(has_reachable_unresolved(&db, symbol));
     }
 
@@ -220,14 +209,14 @@ mod tests {
             statements: vec![Statement::Assert(one, Some(unresolved), srcloc())],
             body: Some(one),
         }));
-        let symbol = binding(&mut db, block);
+        let symbol = binding(&mut db, block, false);
         assert!(has_reachable_unresolved(&db, symbol));
 
         let block = db.alloc_hir(Hir::Block(Block {
             statements: vec![Statement::Assert(one, None, srcloc())],
             body: Some(one),
         }));
-        let symbol = binding(&mut db, block);
+        let symbol = binding(&mut db, block, false);
         assert!(!has_reachable_unresolved(&db, symbol));
     }
 
@@ -254,7 +243,7 @@ mod tests {
             ],
             body: Some(unresolved),
         }));
-        let symbol = binding(&mut db, block);
+        let symbol = binding(&mut db, block, false);
         assert!(!has_reachable_unresolved(&db, symbol));
 
         // But the value being raised is still lowered
@@ -262,7 +251,7 @@ mod tests {
             statements: vec![Statement::Raise(Some(unresolved), srcloc())],
             body: None,
         }));
-        let symbol = binding(&mut db, block);
+        let symbol = binding(&mut db, block, false);
         assert!(has_reachable_unresolved(&db, symbol));
     }
 
@@ -276,7 +265,7 @@ mod tests {
             statements: vec![Statement::Return(one, srcloc())],
             body: Some(unresolved),
         }));
-        let symbol = binding(&mut db, block);
+        let symbol = binding(&mut db, block, false);
         assert!(!has_reachable_unresolved(&db, symbol));
     }
 }
