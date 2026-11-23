@@ -214,6 +214,23 @@ struct Frame {
     reserved: HashSet<String>,
 }
 
+impl Frame {
+    /// A new variable, named so that it doesn't shadow a parameter.
+    fn new_var(&mut self) -> VarId {
+        let mut number = self.vars.len() + 1;
+        let name = loop {
+            let name = format!("v{number}");
+            if !self.reserved.contains(&name) {
+                break name;
+            }
+            number += 1;
+        };
+        self.reserved.insert(name.clone());
+        self.vars.push(name);
+        self.vars.len() - 1
+    }
+}
+
 /// Where statements are added as the code of a block is decompiled.
 struct Scope {
     env: Value,
@@ -367,20 +384,6 @@ impl<'a> Pass<'a> {
                 None => break,
             }
         }
-    }
-
-    fn new_var(&mut self, frame: &mut Frame) -> VarId {
-        let mut number = frame.vars.len() + 1;
-        let name = loop {
-            let name = format!("v{number}");
-            if !frame.reserved.contains(&name) {
-                break name;
-            }
-            number += 1;
-        };
-        frame.reserved.insert(name.clone());
-        frame.vars.push(name);
-        frame.vars.len() - 1
     }
 
     /// The hidden parts of the function's environment, and what's known about them.
@@ -694,7 +697,7 @@ impl<'a> Pass<'a> {
             scope.env.clone()
         } else {
             let env = self.sym(frame, scope, env);
-            self.bind(frame, scope, env)
+            bind(frame, scope, env)
         };
 
         self.if_expr(frame, condition, then, otherwise, env, node)
@@ -759,19 +762,17 @@ impl<'a> Pass<'a> {
         if let Some(atom) = program.atom(body) {
             // An atom reads from the environment it's run with
             self.cover(body);
-            let env = self.bind(frame, scope, env);
+            let env = bind(frame, scope, env);
             let Some(path) = atom_path(atom) else {
                 return self.value_expr(frame, Value::Const(body), body);
             };
-            return match self.resolve(frame, &env, &path) {
-                Some(value) => self.value_expr(frame, value, body),
-                None => {
-                    let saved = mem::replace(&mut scope.env, env);
-                    let expr = self.raw(frame, scope, body);
-                    scope.env = saved;
-                    expr
-                }
-            };
+            if let Some(value) = self.resolve(frame, &env, &path) {
+                return self.value_expr(frame, value, body);
+            }
+            let saved = mem::replace(&mut scope.env, env);
+            let expr = self.raw(frame, scope, body);
+            scope.env = saved;
+            return expr;
         }
 
         if let Some(&id) = self.function_of.get(&body) {
@@ -796,7 +797,7 @@ impl<'a> Pass<'a> {
             });
 
             let env = if crossing {
-                self.bind(frame, scope, env)
+                bind(frame, scope, env)
             } else {
                 env
             };
@@ -805,16 +806,17 @@ impl<'a> Pass<'a> {
         }
 
         if inline {
-            let env = self.bind(frame, scope, env);
+            let env = bind(frame, scope, env);
             let saved = mem::replace(&mut scope.env, env);
             let expr = self.expr(frame, scope, body);
             scope.env = saved;
             return expr;
         }
 
-        let id = match self.anonymous.get(&body) {
-            Some(&id) => id,
-            None => {
+        let id = if let Some(&id) = self.anonymous.get(&body) {
+            id
+        } else {
+            {
                 let number = self
                     .infos
                     .iter()
@@ -900,25 +902,25 @@ impl<'a> Pass<'a> {
             _ => self.resolve(frame, value, path),
         }
     }
+}
 
-    /// Binds the computed parts of the value to variables in order, with `let`s before the
-    /// statement, and returns the value that refers to them instead. Everything but the branches
-    /// of an `if` is evaluated strictly (by `clvmr`, from the last operand to the first), so this
-    /// only changes which of several failures is reported.
-    fn bind(&mut self, frame: &mut Frame, scope: &mut Scope, value: Value) -> Value {
-        match value {
-            Value::Expr(expr) => {
-                let var = self.new_var(frame);
-                scope.statements.push(Statement::Let { var, value: *expr });
-                Value::Ref(Root::Var(var), Vec::new())
-            }
-            Value::Cons(first, rest) => {
-                let first = self.bind(frame, scope, *first);
-                let rest = self.bind(frame, scope, *rest);
-                Value::Cons(Box::new(first), Box::new(rest))
-            }
-            value => value,
+/// Binds the computed parts of the value to variables in order, with `let`s before the
+/// statement, and returns the value that refers to them instead. Everything but the branches
+/// of an `if` is evaluated strictly (by `clvmr`, from the last operand to the first), so this
+/// only changes which of several failures is reported.
+fn bind(frame: &mut Frame, scope: &mut Scope, value: Value) -> Value {
+    match value {
+        Value::Expr(expr) => {
+            let var = frame.new_var();
+            scope.statements.push(Statement::Let { var, value: *expr });
+            Value::Ref(Root::Var(var), Vec::new())
         }
+        Value::Cons(first, rest) => {
+            let first = bind(frame, scope, *first);
+            let rest = bind(frame, scope, *rest);
+            Value::Cons(Box::new(first), Box::new(rest))
+        }
+        value => value,
     }
 }
 

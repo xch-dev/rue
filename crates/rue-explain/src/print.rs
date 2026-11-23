@@ -141,7 +141,7 @@ struct Printer<'a> {
 }
 
 impl Printer<'_> {
-    fn line(&mut self, indent: usize, text: String, node: Option<NodeId>) {
+    fn line(&mut self, indent: usize, text: &str, node: Option<NodeId>) {
         // A multi-line expression is indented along with its first line, and long lines are
         // wrapped
         let mut node = node;
@@ -180,19 +180,25 @@ impl Printer<'_> {
                 format!("fn {}({parameters}) {{", function.name)
             }
         };
-        self.line(0, header, Some(function.node));
+        self.line(0, &header, Some(function.node));
 
-        for known in &function.known {
+        // A nil that every call passes is the end of the parameter list, which isn't worth
+        // pointing out
+        for known in function
+            .known
+            .iter()
+            .filter(|known| !self.explanation.program.is_nil(known.value))
+        {
             let value = self.constant(known.value);
             self.line(
                 1,
-                format!("// {} is always {value}", self.env_name(&known.path)),
+                &format!("// {} is always {value}", self.env_name(&known.path)),
                 None,
             );
         }
 
         self.block(1, &function.body);
-        self.line(0, "}".to_string(), None);
+        self.line(0, "}", None);
     }
 
     /// The statements of the block, then its value, each on lines of its own.
@@ -205,7 +211,7 @@ impl Printer<'_> {
                         self.function.vars[*var],
                         self.expr(value, PREC_IF)
                     );
-                    self.line(indent, text, Some(value.node));
+                    self.line(indent, &text, Some(value.node));
                 }
                 Statement::Assert {
                     condition,
@@ -218,7 +224,7 @@ impl Printer<'_> {
                     } else {
                         format!("assert {condition} else raise({})", self.args(raise))
                     };
-                    self.line(indent, text, Some(*node));
+                    self.line(indent, &text, Some(*node));
                 }
             }
         }
@@ -234,7 +240,7 @@ impl Printer<'_> {
         } = &value.kind
         {
             let condition = self.expr(condition, PREC_IF + 1);
-            self.line(indent, format!("if {condition} {{"), Some(value.node));
+            self.line(indent, &format!("if {condition} {{"), Some(value.node));
             self.block(indent + 1, then);
 
             // `else if` for an `if` that's all of the other branch
@@ -250,7 +256,7 @@ impl Printer<'_> {
                     let condition = self.expr(condition, PREC_IF + 1);
                     self.line(
                         indent,
-                        format!("}} else if {condition} {{"),
+                        &format!("}} else if {condition} {{"),
                         Some(otherwise.value.node),
                     );
                     self.block(indent + 1, then);
@@ -258,17 +264,17 @@ impl Printer<'_> {
                     continue;
                 }
 
-                self.line(indent, "} else {".to_string(), None);
+                self.line(indent, "} else {", None);
                 self.block(indent + 1, otherwise);
                 break;
             }
 
-            self.line(indent, "}".to_string(), None);
+            self.line(indent, "}", None);
             return;
         }
 
         let text = self.expr(value, PREC_IF);
-        self.line(indent, text, Some(value.node));
+        self.line(indent, &text, Some(value.node));
     }
 
     /// An expression as text, which can span several lines (for a block inside of it). It's in

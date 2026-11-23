@@ -10,7 +10,6 @@ program(solution) {  // const_main_value.rue:11:19-27
 
 fn main() {          // const_main_value.rue:11:19-27
     // env@2 is always check
-    // env@3 is always nil
     check(x: 1)      // const_main_value.rue:11:19-27
 }
 

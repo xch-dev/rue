@@ -1716,6 +1716,58 @@ mod tests {
         assert_eq!(traced, None);
     }
 
+    /// Runs `rue explain` with the arguments, and returns its output or error message.
+    fn run_explain(args: &[&str]) -> Result<String, String> {
+        let Ok(Command::Explain(args)) =
+            Command::try_parse_from(["rue", "explain"].iter().chain(args))
+        else {
+            panic!("expected explain command");
+        };
+        crate::explain(&args).map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn explain_shows_a_program() {
+        let project = TempProject::new(
+            "explain",
+            "fn main(amount: Int, skip: Bool) -> Int {\n    let doubled = amount + amount;\n    if skip { 0 } else { doubled }\n}\n",
+        );
+        run_build(&project.0, &["--all", "--debug-metadata"]);
+        let program = project.0.join("main.rue.hex");
+        let program = program.to_str().unwrap();
+        let hex = fs::read_to_string(program).unwrap();
+        let sidecar = project.0.join("main.rue.debug.clvm.bin");
+
+        // A program file is explained with the sidecar next to it
+        let named = run_explain(&[program]).unwrap();
+        assert!(
+            named.contains("fn main(amount: Int, skip: Atom) {"),
+            "{named}"
+        );
+        assert!(named.contains("amount + amount"), "{named}");
+        assert!(named.contains("main.rue:3:5-35"), "{named}");
+
+        // As is the hex of the program, with the sidecar given
+        assert_eq!(
+            run_explain(&[
+                "-x",
+                hex.trim(),
+                "--debug-metadata",
+                sidecar.to_str().unwrap()
+            ]),
+            Ok(named)
+        );
+
+        // Without a sidecar, nothing is named
+        let unnamed = run_explain(&["-x", hex.trim()]).unwrap();
+        assert!(unnamed.contains("solution@2 + solution@2"), "{unnamed}");
+
+        // A sidecar for another program is rejected
+        let error =
+            run_explain(&["(q . 1)", "--debug-metadata", sidecar.to_str().unwrap()]).unwrap_err();
+        assert!(error.contains("isn't valid for the program"), "{error}");
+    }
+
     #[test]
     fn debug_shows_where_a_program_failed() {
         let project = TempProject::new("trace-debug", FAILING_SOURCE);
