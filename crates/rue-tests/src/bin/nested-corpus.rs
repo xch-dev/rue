@@ -37,6 +37,8 @@
 //!   (`compiled`, `rejected`, `too_complex`, `timeout` or `crashed`), the time taken in
 //!   milliseconds, a hash of everything the compiler printed, and its first error (or for a
 //!   compile that failed without reporting one, the first line it printed).
+//! - `--check`: exit with status 1 if any program crashed the compiler, for CI. Programs that time
+//!   out don't count, since that depends on the machine.
 //! - `--compare BEFORE AFTER`: compare two result files, and print each seed whose status or
 //!   output changed.
 
@@ -536,6 +538,7 @@ fn main() -> Result<()> {
     let mut timeout = Duration::from_secs(300);
     let mut rue = None;
     let mut out = None;
+    let mut check = false;
 
     let mut iter = std::env::args().skip(1);
 
@@ -560,6 +563,7 @@ fn main() -> Result<()> {
             "--timeout" => timeout = Duration::from_secs(value()?.parse()?),
             "--rue" => rue = Some(PathBuf::from(value()?)),
             "--out" => out = Some(PathBuf::from(value()?)),
+            "--check" => check = true,
             _ => bail!("unknown argument `{arg}`; see the doc comment in nested-corpus.rs"),
         }
     }
@@ -580,6 +584,27 @@ fn main() -> Result<()> {
         }
 
         fs::write(&out, text)?;
+    }
+
+    if check {
+        let crashed: Vec<_> = records
+            .iter()
+            .filter(|record| record.status == Status::Crashed)
+            .collect();
+        if !crashed.is_empty() {
+            for record in &crashed {
+                eprintln!(
+                    "p{:04} crashed: {}",
+                    record.seed,
+                    record.error.as_deref().unwrap_or("no output")
+                );
+            }
+            eprintln!(
+                "{} programs crashed; print one with `--print SEED`",
+                crashed.len()
+            );
+            std::process::exit(1);
+        }
     }
 
     Ok(())

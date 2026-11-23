@@ -3,7 +3,7 @@ on:
   push:
     branches:
       - main
-    # Only version tags (like 0.12.0) trigger a release, and the test job checks that the tag
+    # Only version tags (like 0.12.0) trigger a release, and the package job checks that the tag
     # matches the version of the published crates.
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
@@ -15,13 +15,113 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels the run for the push before it
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   # The cargo-binstall binary's version. Keep it in step with the tag on the pinned action, since
   # Dependabot bumps only the action's commit.
   BINSTALL_VERSION: 1.27.0
+  # Without debug info the workspace builds about a third faster. Panics still name the functions
+  # in their backtraces, without line numbers.
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_TERM_COLOR: always
+
+# The install steps pass cargo-binstall the workflow's read-only token, since without one the GitHub
+# API limits its release lookups by IP address, and on a 403 it waits and then builds the tool from
+# source, which once took over three minutes.
+
+# Each job's Rust cache is saved only from main, which pull requests restore from, so that the
+# caches stay within the repository's limit.
 
 jobs:
+  # The tests are split into three groups, each built and run on its own runner, since building
+  # takes as long as running them. The snapshot test and the two sweeps each use every core, so
+  # they get runners of their own. A group that matches no tests fails, so renaming one of them
+  # needs a change here, and the `rest` group must leave out the same tests.
   test:
+    name: Test (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: snapshots
+            filter: binary(rue-tests) & test(=tests::tests)
+          - group: sweeps
+            filter: >-
+              test(=tests::sweep::crash_sweep_sampled)
+              | test(=tests::leak_oracle_flags_nothing_in_the_snapshot_tests)
+          - group: rest
+            filter: >-
+              not ((binary(rue-tests) & test(=tests::tests))
+              | test(=tests::sweep::crash_sweep_sampled)
+              | test(=tests::leak_oracle_flags_nothing_in_the_snapshot_tests))
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The groups build the same thing, so they share a cache, and only one of them saves it
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.group == 'rest' }}
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
+        with:
+          version: ${{ env.BINSTALL_VERSION }}
+
+      # Pinned to an exact version, and bumped by hand
+      - name: Install cargo-nextest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall --no-confirm --locked cargo-nextest@0.9.152
+
+      - name: Run tests
+        run: >-
+          cargo nextest run --all-features --workspace --profile ci
+          -E '${{ matrix.filter }}'
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
+        with:
+          version: ${{ env.BINSTALL_VERSION }}
+
+      # Pinned to an exact version, and bumped by hand
+      - name: Install cargo-machete
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall --no-confirm --locked cargo-machete@0.10.1
+
+      - name: Fmt
+        run: cargo fmt --all -- --files-with-diff --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-features --all-targets
+
+      - name: Unused dependencies
+        run: cargo machete
+
+      # The formatting of the .rue files is checked by the `tests` test in rue-tests
+
+  package:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -44,35 +144,65 @@ jobs:
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
-
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
         with:
-          version: ${{ env.BINSTALL_VERSION }}
-
-      # Pinned to exact versions, and bumped by hand
-      - name: Install tools
-        run: cargo binstall --no-confirm --locked cargo-nextest@0.9.152 cargo-machete@0.10.1
-
-      - name: Run tests
-        run: cargo nextest run --all-features --workspace --profile ci
-
-      - name: Clippy
-        run: cargo clippy --workspace --all-features --all-targets
-
-      - name: Unused dependencies
-        run: cargo machete
-
-      - name: Fmt
-        run: cargo fmt --all -- --files-with-diff --check
-
-      - name: Rue fmt
-        run: cargo run --quiet --package rue-cli -- fmt 'examples/**/*.rue' 'tests/**/*.rue' 'crates/rue-compiler/src/std/**/*.rue' --check
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # Packages and builds every published crate, resolving the workspace crates locally, and fails
       # on any error, including uncommitted changes.
       - name: Publish (dry run)
         run: cargo publish --workspace --dry-run --locked
+
+  # A short run of each fuzzer on fixed seeds, so a failure reproduces locally with the same
+  # command. It fails on bugs (unsound, leaked or crashed variants, and crashes in nested-corpus),
+  # not on inference giving up or a compile running past its time limit. See the doc comments in
+  # `crates/rue-tests/src/bin/infer-fuzz/main.rs` and `nested-corpus.rs` for longer runs. The
+  # generator versions are split over two runners, which take about a minute each.
+  fuzz:
+    name: Fuzz (generators ${{ matrix.generators }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Each run is `version:seeds`. The later versions make larger programs, so they get
+          # fewer seeds.
+          - generators: 1-3
+            runs: 1:0..1000 2:0..1000 3:0..400
+            nested: true
+          - generators: 4-5
+            runs: 4:0..400 5:0..300
+            nested: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fuzz
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.nested }}
+
+      - name: Build
+        run: cargo build --locked --package rue-tests --package rue-cli --bins
+
+      - name: Inference fuzzer
+        env:
+          RUNS: ${{ matrix.runs }}
+        run: |
+          set -eo pipefail
+          for run in $RUNS; do
+            echo "::group::Generator ${run%%:*}, seeds ${run#*:}"
+            target/debug/infer-fuzz --generator "${run%%:*}" --seeds "${run#*:}" \
+              --threads "$(nproc)" --check
+            echo "::endgroup::"
+          done
+
+      - name: Nested type corpus
+        if: matrix.nested
+        run: >-
+          target/debug/nested-corpus --rue target/debug/rue --seeds 0..300 --threads "$(nproc)"
+          --timeout 10 --check
 
   wasm:
     runs-on: ubuntu-latest
@@ -90,6 +220,8 @@ jobs:
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
@@ -97,6 +229,8 @@ jobs:
           version: ${{ env.BINSTALL_VERSION }}
 
       - name: Install wasm-pack
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: cargo binstall --no-confirm --locked wasm-pack@0.15.1
 
       - name: Clippy (wasm32)
@@ -129,6 +263,8 @@ jobs:
 
       # Pinned to an exact version, and bumped by hand
       - name: Install cargo-deny
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: cargo binstall --no-confirm --locked cargo-deny@0.21.0
 
       # Advisories, licenses, bans and sources, as configured in deny.toml
@@ -150,13 +286,15 @@ jobs:
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check
         run: cargo check --workspace --all-features --all-targets --locked
 
   publish:
     if: github.ref_type == 'tag'
-    needs: [test, wasm, deny, msrv]
+    needs: [test, lint, package, fuzz, wasm, deny, msrv]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -166,7 +304,7 @@ jobs:
           persist-credentials: false
 
       # Publishes the crates in dependency order, waiting for each to be available. The dry run in
-      # the test job already built this commit, so this skips building it again with the token in the
+      # the package job already built this commit, so this skips building it again with the token in the
       # environment. If it fails partway, rerun it locally with `--exclude` for the crates that were
       # already published.
       - name: Publish
@@ -179,7 +317,7 @@ jobs:
   required:
     name: Required checks
     if: ${{ always() }}
-    needs: [test, wasm, deny, msrv]
+    needs: [test, lint, package, fuzz, wasm, deny, msrv]
     runs-on: ubuntu-latest
     steps:
       - name: Check results

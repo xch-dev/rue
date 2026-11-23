@@ -7,3 +7,16 @@ slow-timeout = { period = "60s", terminate-after = 10 }
 [profile.ci]
 # Report every failure rather than stopping at the first
 fail-fast = false
+
+# The slowest tests start first, so that they don't run on their own at the end of the run. Each
+# takes tens of seconds, and some of them use every core.
+[[profile.default.overrides]]
+filter = """
+test(=tests::tests) & binary(rue-tests)
+| test(=tests::leak_oracle_flags_nothing_in_the_snapshot_tests)
+| test(=tests::sweep::crash_sweep_sampled)
+| test(/^nesting_tests::(long_chains_of_calls_compile|deep_types_are_checked)$/)
+| test(=grammar::recovery::test_corpus_mutations_recover)
+| test(=test_union_member_differential)
+"""
+priority = 100

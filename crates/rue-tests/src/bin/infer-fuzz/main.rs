@@ -60,6 +60,9 @@
 //!   generics, and pass themselves pair and list literals with untyped lambdas in them, beside
 //!   their own values, literals, `nil` and spread items. The versions are listed in
 //!   `generate.rs`.
+//! - `--check`: exit with status 1 if any variant is unsound, leaked or crashed, or an explicit
+//!   program panicked or crashed its worker, for CI. Rejected and slow variants don't count, since
+//!   inference is allowed to give up, and a time limit depends on the machine.
 //! - `--print SEED`: print the explicit program and the variants for one seed, and exit.
 //! - `--compare BASELINE NEW`: compare two runs of the same seeds, each a `results.jsonl` or the
 //!   `--out` directory that holds it. It prints how many variants went from each status to each
@@ -95,6 +98,7 @@ struct Args {
     timeout: Duration,
     shrink: usize,
     out: Option<PathBuf>,
+    check: bool,
 }
 
 fn parse_range(text: &str) -> Result<std::ops::Range<u64>> {
@@ -112,6 +116,7 @@ fn main() -> Result<()> {
         timeout: Duration::from_secs(10),
         shrink: 3,
         out: None,
+        check: false,
     };
 
     let mut print = None;
@@ -142,6 +147,7 @@ fn main() -> Result<()> {
             "--timeout" => args.timeout = Duration::from_secs(value()?.parse()?),
             "--shrink" => args.shrink = value()?.parse()?,
             "--out" => args.out = Some(PathBuf::from(value()?)),
+            "--check" => args.check = true,
             _ => bail!("unknown argument `{arg}`; see the doc comment in infer-fuzz/main.rs"),
         }
     }
@@ -224,7 +230,38 @@ fn drive(args: &Args) -> Result<()> {
         eprintln!("Wrote the results to {}", out.display());
     }
 
+    if args.check {
+        let failures = check_failures(&records);
+        if failures > 0 {
+            eprintln!(
+                "{failures} programs have an unsound, leaked or crashed variant, or an explicit \
+                 program that crashed; see the report above"
+            );
+            std::process::exit(1);
+        }
+    }
+
     Ok(())
+}
+
+/// How many programs fail `--check`.
+fn check_failures(records: &[report::SeedRecord]) -> usize {
+    records
+        .iter()
+        .filter(|record| {
+            matches!(
+                record.explicit,
+                worker::Explicit::Panicked(_) | worker::Explicit::Died(_)
+            ) || record.variants.iter().any(|variant| {
+                matches!(
+                    variant.outcome.category,
+                    oracle::Category::Unsound
+                        | oracle::Category::Leaked
+                        | oracle::Category::Crashed
+                )
+            })
+        })
+        .count()
 }
 
 #[cfg(test)]

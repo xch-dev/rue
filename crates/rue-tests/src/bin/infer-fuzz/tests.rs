@@ -2800,20 +2800,9 @@ fn wrapped_calls_with_a_generic_nothing_infers_keep_all_their_arguments() {
 /// compiler means them to be, so it doesn't flag a generic that's in scope.
 #[test]
 fn leak_oracle_flags_nothing_in_the_snapshot_tests() {
-    // Some of them are deep, as the stress tests are, so they're compiled with a larger stack
-    std::thread::Builder::new()
-        .stack_size(256 * 1024 * 1024)
-        .spawn(check_snapshot_tests_for_leaks)
-        .unwrap()
-        .join()
-        .unwrap();
-}
-
-fn check_snapshot_tests_for_leaks() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests");
     let mut stack = vec![root];
-    let mut leaks = Vec::new();
-    let mut checked = 0;
+    let mut files = Vec::new();
 
     while let Some(dir) = stack.pop() {
         for entry in std::fs::read_dir(&dir).unwrap() {
@@ -2821,18 +2810,44 @@ fn check_snapshot_tests_for_leaks() {
             if path.is_dir() {
                 stack.push(path);
             } else if path.extension().is_some_and(|ext| ext == "rue") {
-                let source = std::fs::read_to_string(&path).unwrap();
-                if let Compiled::Ok {
-                    leak: Some(leak), ..
-                } = oracle::compile_with(&source, true)
-                {
-                    leaks.push(format!("{}: {leak}", path.display()));
-                }
-                checked += 1;
+                files.push(path);
             }
         }
     }
 
-    assert!(checked > 100);
+    assert!(files.len() > 100);
+
+    // The files are checked on a thread for each core. Some of them are deep, as the stress tests
+    // are, so they're compiled with a larger stack.
+    let threads = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let leaks = std::sync::Mutex::new(Vec::new());
+
+    std::thread::scope(|scope| {
+        for _ in 0..threads.min(files.len()) {
+            std::thread::Builder::new()
+                .stack_size(256 * 1024 * 1024)
+                .spawn_scoped(scope, || {
+                    while let Some(path) =
+                        files.get(next.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+                    {
+                        let source = std::fs::read_to_string(path).unwrap();
+                        if let Compiled::Ok {
+                            leak: Some(leak), ..
+                        } = oracle::compile_with(&source, true)
+                        {
+                            leaks
+                                .lock()
+                                .unwrap()
+                                .push(format!("{}: {leak}", path.display()));
+                        }
+                    }
+                })
+                .unwrap();
+        }
+    });
+
+    let mut leaks = leaks.into_inner().unwrap();
+    leaks.sort();
     assert_eq!(leaks, Vec::<String>::new());
 }
