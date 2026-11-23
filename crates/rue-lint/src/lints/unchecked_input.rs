@@ -398,14 +398,14 @@ fn report(cx: &mut LintContext<'_>, main: SymbolId, summary: &Summary) {
         );
     }
 
-    let mut deferred: BTreeMap<(HirId, HirId, String), ()> = BTreeMap::new();
+    let mut deferred: BTreeSet<(HirId, HirId, String)> = BTreeSet::new();
 
     for (value, &call) in &summary.deferred {
         let (path, part) = origin_name(cx, main, &value.origin);
-        deferred.insert((value.site, call, part.describe(&path, 1)), ());
+        deferred.insert((value.site, call, part.describe(&path, 1)));
     }
 
-    for (site, call, name) in deferred.into_keys() {
+    for (site, call, name) in deferred {
         let message = format!(
             "{name} is from the solution, but nothing checks its length, and it's put in a condition that's hashed rather than output, so the condition is only checked when a later spend outputs it, which then fails"
         );
