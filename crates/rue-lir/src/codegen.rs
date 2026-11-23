@@ -479,7 +479,7 @@ mod tests {
                             &ChiaDialect::new(flags),
                             program,
                             env,
-                            11_000_000_000,
+                            crate::MAX_BLOCK_COST,
                         );
                         assert_eq!(
                             result.is_ok(),

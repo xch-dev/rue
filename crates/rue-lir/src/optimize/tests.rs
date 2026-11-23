@@ -48,7 +48,7 @@ fn run(
     env: NodePtr,
 ) -> Option<Vec<u8>> {
     let dialect = ChiaDialect::new(target.flags());
-    let output = run_program(allocator, &dialect, program, env, 11_000_000_000).ok()?;
+    let output = run_program(allocator, &dialect, program, env, crate::MAX_BLOCK_COST).ok()?;
     Some(node_to_bytes(allocator, output.1).unwrap())
 }
 

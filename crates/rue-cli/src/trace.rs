@@ -150,7 +150,7 @@ mod tests {
                         &DebugDialect::new(rue_compiler::clvm_target(&options).flags(), false),
                         program,
                         env,
-                        11_000_000_000,
+                        rue_lir::MAX_BLOCK_COST,
                         &sidecars,
                     ) {
                         Ok(output) => {

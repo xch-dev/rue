@@ -1332,7 +1332,7 @@ mod tests {
         env: NodePtr,
     ) -> Option<Vec<u8>> {
         let dialect = ChiaDialect::new(target.flags());
-        let result = run_program(allocator, &dialect, program, env, 11_000_000_000).ok()?;
+        let result = run_program(allocator, &dialect, program, env, crate::MAX_BLOCK_COST).ok()?;
         Some(node_to_bytes(allocator, result.1).unwrap())
     }
 

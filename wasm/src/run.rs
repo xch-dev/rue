@@ -6,14 +6,11 @@ use clvmr::{
 };
 use rue_clvm::{assemble, disassemble_value};
 use rue_compiler::clvm_target;
-use rue_lir::{COST_PER_BYTE, DebugDialect};
+use rue_lir::{COST_PER_BYTE, DebugDialect, MAX_BLOCK_COST};
 use rue_options::CompilerOptions;
 use wasm_bindgen::prelude::*;
 
 use crate::check;
-
-/// The cost limit for running a program, which is the same as Chia's block cost limit.
-const MAX_COST: u64 = 11_000_000_000;
 
 /// The result of running a program.
 #[derive(Debug, Clone)]
@@ -156,7 +153,7 @@ fn execute(
 ) -> (Result<Reduction, EvalErr>, Vec<Print>) {
     // The playground compiles with the default options, so it runs programs the same way
     let dialect = DebugDialect::new(clvm_target(&CompilerOptions::default()).flags(), false);
-    let result = run_program(allocator, &dialect, program, env, MAX_COST);
+    let result = run_program(allocator, &dialect, program, env, MAX_BLOCK_COST);
 
     let prints = dialect
         .log()
@@ -173,7 +170,7 @@ fn execute(
 fn describe_error(allocator: &Allocator, error: &EvalErr) -> String {
     match error {
         EvalErr::Raise(value) => format!("raise {}", disassemble_value(allocator, *value)),
-        EvalErr::CostExceeded => format!("{error} (the cost limit is {MAX_COST})"),
+        EvalErr::CostExceeded => format!("{error} (the cost limit is {MAX_BLOCK_COST})"),
         _ => error.to_string(),
     }
 }

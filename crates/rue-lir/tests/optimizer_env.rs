@@ -135,7 +135,7 @@ fn gen_value(allocator: &mut Allocator, rng: &mut Rng, depth: u32) -> NodePtr {
 
 fn run(allocator: &mut Allocator, program: NodePtr, env: NodePtr) -> Result<Vec<u8>, String> {
     let dialect = ChiaDialect::new(ClvmTarget::default().flags());
-    let output = run_program(allocator, &dialect, program, env, 11_000_000_000)
+    let output = run_program(allocator, &dialect, program, env, rue_lir::MAX_BLOCK_COST)
         .map_err(|error| error.to_string())?;
     Ok(node_to_bytes(allocator, output.1).unwrap())
 }

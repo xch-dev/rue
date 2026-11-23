@@ -132,6 +132,10 @@ pub struct CompilerOptions {
     pub lints: LintLevels,
 }
 
+/// The default for [`CompilerOptions::const_eval_max_cost`], which is Chia's block cost limit
+/// (`rue_lir::MAX_BLOCK_COST`, which this crate doesn't depend on), the most a program can cost.
+const DEFAULT_CONST_EVAL_MAX_COST: u64 = 11_000_000_000;
+
 impl Default for CompilerOptions {
     fn default() -> Self {
         Self {
@@ -140,7 +144,7 @@ impl Default for CompilerOptions {
             optimize_lir: true,
             debug_symbols: false,
             optimize_static_pairs: true,
-            const_eval_max_cost: 11_000_000_000,
+            const_eval_max_cost: DEFAULT_CONST_EVAL_MAX_COST,
             operand_limits: false,
             hard_fork_2: false,
             lints: LintLevels::default(),
@@ -167,15 +171,11 @@ impl CompilerOptions {
 
     pub fn debug() -> Self {
         Self {
-            std: true,
             auto_inline: false,
             optimize_lir: false,
             debug_symbols: true,
             optimize_static_pairs: false,
-            const_eval_max_cost: 11_000_000_000,
-            operand_limits: false,
-            hard_fork_2: false,
-            lints: LintLevels::default(),
+            ..Self::default()
         }
     }
 }

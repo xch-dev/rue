@@ -117,7 +117,7 @@ impl TargetArgs {
 }
 
 /// The default cost limit for running a program, which is the same as Chia's block cost limit.
-const DEFAULT_MAX_COST: u64 = 11_000_000_000;
+const DEFAULT_MAX_COST: u64 = rue_lir::MAX_BLOCK_COST;
 
 #[derive(Debug, Clone, Copy, Args)]
 pub struct CostArgs {
