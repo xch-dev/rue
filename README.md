@@ -39,7 +39,7 @@ Rue is used to write real puzzles on Chia, including:
 - [Auctions](https://github.com/xch-dev/auctions) of NFTs for XCH and CATs.
 - The [DOG](https://github.com/xch-dev/dog-standard) fungible token standard, which isn't on mainnet yet.
 
-A deployed puzzle is identified by its hash, and a newer compiler can produce different bytecode for the same source. So build a puzzle you deploy with a fixed compiler version (`cargo install rue-cli --version <version> --locked`), and commit its compiled hex and hash (`rue build --all --hash`) rather than recompiling it later.
+A deployed puzzle is identified by its hash, and a newer compiler can produce different bytecode for the same source. So keep the compiler version in `Rue.toml` (`rue build` and `rue test` refuse to run with any other version), and commit the compiled hex and hash of a puzzle you deploy (`rue build --all --hash`) rather than recompiling it later.
 
 ## Installation
 
