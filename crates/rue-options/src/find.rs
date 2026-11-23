@@ -117,30 +117,23 @@ pub fn find_project(path: &Path, debug: bool) -> Result<Option<Project>, Error> 
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
     use rue_diagnostic::{Lint, LintLevel};
 
     use super::*;
 
     /// A directory under the system's temporary directory, which is removed when it's dropped.
-    struct TempDir(PathBuf);
+    struct TempDir(tempfile::TempDir);
 
     impl TempDir {
         fn new() -> Self {
-            static COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-            let path = std::env::temp_dir().join(format!(
-                "rue-options-{}-{}",
-                std::process::id(),
-                COUNTER.fetch_add(1, Ordering::SeqCst)
-            ));
-            fs::remove_dir_all(&path).ok();
-            fs::create_dir_all(&path).unwrap();
+            let dir = tempfile::Builder::new()
+                .prefix("rue-options-")
+                .tempdir()
+                .unwrap();
 
             // `find_project` searches the parent directories, so a project above the temporary
             // directory would be found instead of the one a test sets up
-            for ancestor in path.ancestors().skip(1) {
+            for ancestor in dir.path().ancestors().skip(1) {
                 for name in ["Rue.toml", "main.rue"] {
                     assert!(
                         !ancestor.join(name).exists(),
@@ -150,21 +143,19 @@ mod tests {
                 }
             }
 
-            Self(path)
+            Self(dir)
+        }
+
+        fn path(&self) -> &Path {
+            self.0.path()
         }
 
         /// Writes a file at a path relative to the directory, creating its parents.
         fn write(&self, path: &str, contents: &str) -> PathBuf {
-            let path = self.0.join(path);
+            let path = self.path().join(path);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(&path, contents).unwrap();
             path
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            fs::remove_dir_all(&self.0).ok();
         }
     }
 
@@ -182,7 +173,7 @@ mod tests {
             "[compiler]\nentrypoint = \"puzzles\"\n\n[lints]\nunused_binding = \"deny\"\nunused_import = \"forbid\"\ntypo_lint = \"allow\"\n",
         );
 
-        let project = find(&dir.0, false);
+        let project = find(dir.path(), false);
 
         assert_eq!(
             project.options.lints.get(Lint::UnusedBinding),
@@ -210,10 +201,10 @@ mod tests {
             "[compiler]\nentrypoint = \"src\"\n\n[formatter]\nmax_width = 80\n",
         );
 
-        for path in [dir.0.clone(), manifest.clone()] {
+        for path in [dir.path().to_path_buf(), manifest.clone()] {
             let project = find(&path, false);
 
-            assert_eq!(project.entrypoint, dir.0.join("src"));
+            assert_eq!(project.entrypoint, dir.path().join("src"));
             assert_eq!(project.manifest_path.as_deref(), Some(manifest.as_path()));
             assert_eq!(project.options, CompilerOptions::default());
             assert_eq!(
@@ -238,7 +229,7 @@ mod tests {
         let project = find(&file, false);
 
         assert_eq!(project.manifest_path.as_deref(), Some(manifest.as_path()));
-        assert_eq!(project.entrypoint, dir.0.join("puzzles"));
+        assert_eq!(project.entrypoint, dir.path().join("puzzles"));
     }
 
     #[test]
@@ -247,10 +238,10 @@ mod tests {
         dir.write("Rue.toml", "[compiler]\n");
         dir.write("puzzles/main.rue", "");
 
-        let project = find(&dir.0.join("puzzles"), false);
+        let project = find(&dir.path().join("puzzles"), false);
 
         assert!(project.manifest.is_some());
-        assert_eq!(project.entrypoint, dir.0.join("puzzles"));
+        assert_eq!(project.entrypoint, dir.path().join("puzzles"));
     }
 
     #[test]
@@ -259,14 +250,14 @@ mod tests {
         dir.write("Rue.toml", "[compiler]\nstd = false\n");
 
         assert_eq!(
-            find(&dir.0, false).options,
+            find(dir.path(), false).options,
             CompilerOptions {
                 std: false,
                 ..CompilerOptions::default()
             }
         );
         assert_eq!(
-            find(&dir.0, true).options,
+            find(dir.path(), true).options,
             CompilerOptions {
                 std: false,
                 ..CompilerOptions::debug()
@@ -275,7 +266,7 @@ mod tests {
 
         // Enabling it explicitly is the same as leaving it out
         dir.write("Rue.toml", "[compiler]\nstd = true\n");
-        assert!(find(&dir.0, false).options.std);
+        assert!(find(dir.path(), false).options.std);
     }
 
     #[test]
@@ -284,13 +275,13 @@ mod tests {
         dir.write("Rue.toml", "[compiler]\n");
 
         for debug in [false, true] {
-            assert!(!find(&dir.0, debug).options.hard_fork_2);
+            assert!(!find(dir.path(), debug).options.hard_fork_2);
         }
 
         dir.write("Rue.toml", "[compiler]\nhard_fork_2 = true\n");
 
         for debug in [false, true] {
-            assert!(find(&dir.0, debug).options.hard_fork_2);
+            assert!(find(dir.path(), debug).options.hard_fork_2);
         }
     }
 
@@ -300,17 +291,17 @@ mod tests {
         dir.write("Rue.toml", "[compiler]\n");
 
         for debug in [false, true] {
-            assert!(!find(&dir.0, debug).options.operand_limits);
+            assert!(!find(dir.path(), debug).options.operand_limits);
         }
 
         dir.write("Rue.toml", "[compiler]\noperand_limits = true\n");
 
         for debug in [false, true] {
-            assert!(find(&dir.0, debug).options.operand_limits);
+            assert!(find(dir.path(), debug).options.operand_limits);
         }
 
         dir.write("Rue.toml", "[compiler]\noperand_limits = false\n");
-        assert!(!find(&dir.0, false).options.operand_limits);
+        assert!(!find(dir.path(), false).options.operand_limits);
     }
 
     #[test]
@@ -321,7 +312,7 @@ mod tests {
             "[compiler]\n\n[lints]\nunused_binding = \"deny\"\n",
         );
 
-        let project = find(&dir.0, true);
+        let project = find(dir.path(), true);
 
         assert!(project.options.debug_symbols);
         assert_eq!(
@@ -335,7 +326,7 @@ mod tests {
         let dir = TempDir::new();
         let manifest = dir.write("Rue.toml", "[compiler\n");
 
-        let Err(Error::Toml { path, .. }) = find_project(&dir.0, false) else {
+        let Err(Error::Toml { path, .. }) = find_project(dir.path(), false) else {
             panic!("expected a TOML error");
         };
 
@@ -351,11 +342,11 @@ mod tests {
             (false, CompilerOptions::default()),
             (true, CompilerOptions::debug()),
         ] {
-            let project = find(&dir.0, debug);
+            let project = find(dir.path(), debug);
 
             assert!(project.manifest.is_none());
             assert!(project.manifest_path.is_none());
-            assert_eq!(project.entrypoint, dir.0);
+            assert_eq!(project.entrypoint, dir.path());
             assert_eq!(project.options, options);
             assert_eq!(project.format_options, FormatOptions::default());
         }
@@ -388,7 +379,7 @@ mod tests {
         let project = find(&file, false);
 
         assert_eq!(project.manifest_path.as_deref(), Some(inner.as_path()));
-        assert_eq!(project.entrypoint, dir.0.join("inner/src"));
+        assert_eq!(project.entrypoint, dir.path().join("inner/src"));
     }
 
     #[test]
@@ -399,11 +390,11 @@ mod tests {
         let file = dir.write("inner/deeper/other.rue", "");
 
         assert_eq!(
-            find(&dir.0.join("inner"), false).entrypoint,
-            dir.0.join("inner")
+            find(&dir.path().join("inner"), false).entrypoint,
+            dir.path().join("inner")
         );
-        assert_eq!(find(&file, false).entrypoint, dir.0.join("inner"));
-        assert_eq!(find(&dir.0, false).entrypoint, dir.0);
+        assert_eq!(find(&file, false).entrypoint, dir.path().join("inner"));
+        assert_eq!(find(dir.path(), false).entrypoint, dir.path());
     }
 
     #[test]
@@ -413,10 +404,10 @@ mod tests {
         dir.write("src/main.rue", "");
         dir.write("src/inner/main.rue", "");
 
-        let project = find(&dir.0.join("src/inner"), false);
+        let project = find(&dir.path().join("src/inner"), false);
 
         assert_eq!(project.manifest_path.as_deref(), Some(manifest.as_path()));
-        assert_eq!(project.entrypoint, dir.0.join("src"));
+        assert_eq!(project.entrypoint, dir.path().join("src"));
     }
 
     #[test]
@@ -425,7 +416,7 @@ mod tests {
         dir.write("main.rue", "");
         let file = dir.write("other.rue", "");
 
-        assert_eq!(find(&file, false).entrypoint, dir.0);
+        assert_eq!(find(&file, false).entrypoint, dir.path());
     }
 
     #[test]
@@ -433,10 +424,10 @@ mod tests {
         let dir = TempDir::new();
         let file = dir.write("notes.txt", "");
 
-        assert!(find_project(&dir.0, false).unwrap().is_none());
+        assert!(find_project(dir.path(), false).unwrap().is_none());
         assert!(find_project(&file, false).unwrap().is_none());
         assert!(
-            find_project(&dir.0.join("missing.rue"), false)
+            find_project(&dir.path().join("missing.rue"), false)
                 .unwrap()
                 .is_none()
         );
