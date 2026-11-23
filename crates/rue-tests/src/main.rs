@@ -4,8 +4,12 @@ use std::collections::HashSet;
 use std::env;
 use std::fmt::Write;
 use std::fs;
+use std::io::Write as _;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::thread;
 
 use anyhow::{Context, Result};
 use clvm_utils::tree_hash;
@@ -175,8 +179,10 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
     let mut failed = false;
 
     let unparsed = check_formatting_corpus(base_path, filter_arg, update, &mut failed)?;
-    walk_dir(&base_path.join("tests"), filter_arg, update, &mut failed)?;
-    walk_dir(&base_path.join("examples"), filter_arg, update, &mut failed)?;
+    let mut jobs = Vec::new();
+    collect_test_files(&base_path.join("tests"), filter_arg, &mut jobs)?;
+    collect_test_files(&base_path.join("examples"), filter_arg, &mut jobs)?;
+    run_test_files(&jobs, update, &mut failed)?;
     check_expected_parse_errors(&unparsed, filter_arg, &mut failed)?;
 
     println!("Running std tests");
@@ -226,7 +232,9 @@ fn run_tests(filter_arg: Option<&str>, base_path: &Path, update: bool) -> Result
         &debug_tests,
     )?;
 
-    compare_snapshot(&yaml_file, &file, update, &mut failed)?;
+    let mut log = String::new();
+    compare_snapshot(&yaml_file, &file, update, &mut failed, &mut log)?;
+    eprint!("{log}");
 
     Ok(failed)
 }
@@ -342,7 +350,7 @@ fn check_expected_parse_errors(
     Ok(())
 }
 
-/// The name `walk_dir` filters the test that compiles a `.rue` file by: the name of the nearest
+/// The name `collect_test_files` filters the test that compiles a `.rue` file by: the name of the nearest
 /// directory test (a `<name>/` directory next to `<name>.yaml` and no `<name>.rue`) that contains
 /// the file, or else the file's own name.
 fn test_name(path: &Path) -> Result<String> {
@@ -374,7 +382,28 @@ fn collect_rue_files(path: &Path, files: &mut Vec<std::path::PathBuf>) -> Result
     Ok(())
 }
 
+/// A snapshot test that `collect_test_files` found: its name, its `.rue` file or `.yaml`
+/// snapshot, and whether it's a directory test.
+#[derive(Debug, Clone)]
+struct TestJob {
+    name: String,
+    path: PathBuf,
+    is_dir: bool,
+}
+
+/// Checks the snapshot tests under `path`.
+#[cfg(test)]
 fn walk_dir(path: &Path, filter_arg: Option<&str>, update: bool, failed: &mut bool) -> Result<()> {
+    let mut jobs = Vec::new();
+    collect_test_files(path, filter_arg, &mut jobs)?;
+    run_test_files(&jobs, update, failed)
+}
+
+fn collect_test_files(
+    path: &Path,
+    filter_arg: Option<&str>,
+    jobs: &mut Vec<TestJob>,
+) -> Result<()> {
     let mut directories = IndexMap::new();
     let mut directories_to_exclude = HashSet::new();
 
@@ -392,7 +421,11 @@ fn walk_dir(path: &Path, filter_arg: Option<&str>, update: bool, failed: &mut bo
 
         if let Some(name) = file_name.strip_suffix(".rue") {
             if matches_filter(filter_arg, name) && !path.with_extension("yaml").try_exists()? {
-                handle_test_file(name, &path, failed, update, false)?;
+                jobs.push(TestJob {
+                    name: name.to_string(),
+                    path,
+                    is_dir: false,
+                });
             }
             continue;
         }
@@ -418,17 +451,92 @@ fn walk_dir(path: &Path, filter_arg: Option<&str>, update: bool, failed: &mut bo
             continue;
         }
 
-        handle_test_file(name, &entry.path(), failed, update, is_dir)?;
+        jobs.push(TestJob {
+            name: name.to_string(),
+            path: entry.path(),
+            is_dir,
+        });
     }
 
     for (name, path) in directories {
         if directories_to_exclude.contains(&name) {
             continue;
         }
-        walk_dir(&path, filter_arg, update, failed)?;
+        collect_test_files(&path, filter_arg, jobs)?;
     }
 
     Ok(())
+}
+
+/// Runs the snapshot tests on a thread for each core. Each test's output is buffered and printed
+/// in one piece when it finishes, so the reports of tests that run at the same time don't
+/// interleave.
+fn run_test_files(jobs: &[TestJob], update: bool, failed: &mut bool) -> Result<()> {
+    let threads = thread::available_parallelism().map_or(1, NonZeroUsize::get);
+    let next = AtomicUsize::new(0);
+    let any_failed = AtomicBool::new(false);
+
+    thread::scope(|scope| {
+        let handles: Vec<_> = (0..threads.min(jobs.len()))
+            .map(|_| {
+                thread::Builder::new()
+                    // Some of the stress tests nest deeply
+                    .stack_size(64 * 1024 * 1024)
+                    .spawn_scoped(scope, || -> Result<()> {
+                        loop {
+                            let index = next.fetch_add(1, Ordering::Relaxed);
+                            let Some(job) = jobs.get(index) else {
+                                return Ok(());
+                            };
+                            let mut log = String::new();
+                            let mut job_failed = false;
+                            let result = handle_test_file(
+                                &job.name,
+                                &job.path,
+                                &mut job_failed,
+                                update,
+                                job.is_dir,
+                                &mut log,
+                            );
+                            print_log(&log);
+                            if job_failed {
+                                any_failed.store(true, Ordering::Relaxed);
+                            }
+                            if let Err(error) = result {
+                                // The other threads stop after the test they're on
+                                next.store(jobs.len(), Ordering::Relaxed);
+                                return Err(
+                                    error.context(format!("couldn't run {}", job.path.display()))
+                                );
+                            }
+                        }
+                    })
+                    .expect("couldn't spawn a test thread")
+            })
+            .collect();
+
+        handles.into_iter().try_for_each(|handle| {
+            handle
+                .join()
+                .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+        })
+    })?;
+
+    if any_failed.load(Ordering::Relaxed) {
+        *failed = true;
+    }
+
+    Ok(())
+}
+
+/// Prints a test's buffered output: its progress line to stdout and its failures to stderr.
+fn print_log(log: &str) {
+    let (progress, failures) = log.split_once('\n').unwrap_or((log, ""));
+    println!("{progress}");
+    if !failures.is_empty() {
+        let mut stderr = std::io::stderr().lock();
+        let _ = stderr.write_all(failures.as_bytes());
+    }
 }
 
 fn handle_test_file(
@@ -437,11 +545,12 @@ fn handle_test_file(
     failed: &mut bool,
     update: bool,
     is_dir: bool,
+    log: &mut String,
 ) -> Result<()> {
     let parent = entry.parent().unwrap();
     let yaml_file = parent.join(format!("{name}.yaml"));
 
-    println!("Running {name}");
+    writeln!(log, "Running {name}")?;
 
     let mut file: TestFile = if yaml_file.try_exists()? {
         read_snapshot(&yaml_file)?
@@ -578,7 +687,7 @@ fn handle_test_file(
         &debug_tests,
     )?;
 
-    compare_snapshot(&yaml_file, &file, update, failed)?;
+    compare_snapshot(&yaml_file, &file, update, failed, log)?;
 
     Ok(())
 }
@@ -724,6 +833,7 @@ fn compare_snapshot(
     actual: &TestFile,
     update: bool,
     failed: &mut bool,
+    log: &mut String,
 ) -> Result<()> {
     let display = short_path(yaml_file).display();
     let text = to_yaml(actual)?;
@@ -751,18 +861,18 @@ fn compare_snapshot(
     );
 
     match (existing.is_some(), update) {
-        (true, true) => eprintln!("Updated {display}:"),
-        (true, false) => eprintln!("Snapshot differs for {display}:"),
-        (false, true) => eprintln!("Created {display}:"),
-        (false, false) => eprintln!("Snapshot {display} is missing:"),
+        (true, true) => writeln!(log, "Updated {display}:")?,
+        (true, false) => writeln!(log, "Snapshot differs for {display}:")?,
+        (false, true) => writeln!(log, "Created {display}:")?,
+        (false, false) => writeln!(log, "Snapshot {display} is missing:")?,
     }
 
     if differences.is_empty() {
-        eprintln!("  (only the YAML formatting differs)");
+        writeln!(log, "  (only the YAML formatting differs)")?;
     }
 
     for difference in differences {
-        eprintln!("{difference}");
+        writeln!(log, "{difference}")?;
     }
 
     if update {
