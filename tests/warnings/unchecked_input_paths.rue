@@ -1,5 +1,3 @@
-#![warn(unchecked_input)]
-
 // A check only counts on the paths that evaluate it
 
 struct Outer {

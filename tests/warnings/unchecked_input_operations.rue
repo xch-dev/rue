@@ -1,5 +1,3 @@
-#![warn(unchecked_input)]
-
 // Operations that fail unless their operands have the right length check them
 
 fn main(

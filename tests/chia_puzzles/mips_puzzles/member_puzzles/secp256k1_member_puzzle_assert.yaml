@@ -30,3 +30,7 @@ tests:
   debug_program: (a (q 2 6 (c 4 (c (c (q . 0x03f01d6b9018ab421dd410404cb869072065522bf85734008f105cf385a023a80f) (c (sha256 (q . "other_puzzle")) (c (sha256 (q . "my_puzzle")) (c (q . 0xe079fe5dd03876e12ad9961fad274b163ced57a647212d077b57c4471070347c53881633fbcab6b9d689c0255b8bc543ac5fc06b773d9821f6037c262aa58649) ())))) ()))) (c (c (c (q . 2) (c (c (q . 1) (c (q . 4) (c (c (q . 4) (c (q . 2) (c (c (q . 4) (c (q . 23) (c () ()))) ()))) (c (c (q . 332799744) (c (q . 5) (c (c (q . 11) (c (q . 11) (c (q . 23) ()))) (c (q . 47) ())))) ())))) (c (c (q . 4) (c (c (q . 1) (q . 72)) (c (q . 1) ()))) ()))) (c (q . 2) (c (q . 2) (c (q . 5) ())))) ()))
   byte_cost: 2952000
   clvm_error: "Secp256 Verify Error: failed"
+diagnostics:
+- |-
+  `delegated_puzzle_hash` and `my_puzzle_hash` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at secp256k1_member_puzzle_assert.rue:14:41
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments

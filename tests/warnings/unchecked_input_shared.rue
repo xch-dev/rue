@@ -1,5 +1,3 @@
-#![warn(unchecked_input)]
-
 // Values built from the same value many times over stay small enough to follow, whether they're
 // pairs or wide structs
 

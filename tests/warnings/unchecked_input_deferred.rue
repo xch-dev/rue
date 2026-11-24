@@ -1,5 +1,3 @@
-#![warn(unchecked_input)]
-
 // Conditions that are hashed into a puzzle that a later spend runs, rather than output now, are
 // only checked by consensus when that spend outputs them
 

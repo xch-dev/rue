@@ -251,7 +251,7 @@ lints! {
     NeedlessKeccak256Verify("needless_keccak256_verify", Allow, "`keccak256_verify` calls, which can be written as `assert keccak256(value) == hash` after hard fork 2 (warns by default with `hard_fork_2`)"),
     BracketedFor("bracketed_for", Warn, "Lists whose only item is a `for` expression, which is a list already, so the brackets make a list with one list in it"),
     BytesIntConfusion("bytes_int_confusion", Warn, "Casts of byte literals to `Int` whose value is negative or not in canonical form"),
-    UncheckedInput("unchecked_input", Allow, "Values from the solution whose declared length is relied on without being checked, by concatenating them ambiguously or by putting them in a condition that's hashed rather than output"),
+    UncheckedInput("unchecked_input", Warn, "Values from the solution whose declared length is relied on without being checked, by concatenating them ambiguously or by putting them in a condition that's hashed rather than output"),
     UnknownLint("unknown_lint", Warn, "Lint names in attributes or `Rue.toml` that don't refer to a known lint or group"),
     UnfulfilledLintExpectation("unfulfilled_lint_expectation", Warn, "`expect` attributes whose lint is never reported inside of them"),
 }

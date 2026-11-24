@@ -1,5 +1,3 @@
-#![warn(unchecked_input)]
-
 // Each case takes its own values from the solution, so that one case's checks don't affect another
 
 struct Coin {
