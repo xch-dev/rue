@@ -934,6 +934,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
                 Flow::default()
             }
             Hir::Lambda(_)
+            | Hir::Program(_)
             | Hir::Const(_)
             | Hir::Unresolved
             | Hir::Nil

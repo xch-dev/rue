@@ -51,3 +51,8 @@ tests:
   runtime_cost: 41460
   byte_cost: 24276000
   total_cost: 24317460
+diagnostics:
+- |-
+  Items of `proofs_of_inclusion` and items of `values_to_prove` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at graftroot_dl_offers.rue:35:5
+    note: The concatenation is here at std/tree_hash.rue:14:12
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments

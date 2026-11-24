@@ -10,3 +10,7 @@ tests:
   runtime_cost: 370694
   byte_cost: 21672000
   total_cost: 22042694
+diagnostics:
+- |-
+  `parent_parent` is from the solution, but nothing checks its length, so the concatenation can be split into different values that give the same bytes at dao_proposal_timer.rue:40:31
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
