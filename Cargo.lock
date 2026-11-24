@@ -1870,6 +1870,7 @@ dependencies = [
  "rue-diagnostic",
  "rue-hir",
  "rue-lexer",
+ "rue-lir",
  "rue-options",
  "rue-parser",
  "rue-types",

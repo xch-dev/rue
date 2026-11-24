@@ -6,7 +6,7 @@ use rue_diagnostic::{
     SrcLoc,
 };
 use rue_hir::{Database, Declaration, HirId, ScopeId, SymbolId};
-use rue_types::{BuiltinTypes, Comparison, Type, TypeId};
+use rue_types::{AtomRestriction, Atoms, BuiltinTypes, Comparison, Type, TypeId, extract_atoms};
 
 use crate::{
     ScopedLintLevels, WalkState,
@@ -202,6 +202,54 @@ impl<'a> LintContext<'a> {
         !rue_types::referenced_generics(self.db.types_mut(), ty).is_empty()
     }
 
+    /// The length of every atom of the type, if they all have the same known length, such as 32
+    /// for `Bytes32` or 1 for the literal `0x01`.
+    pub fn known_atom_length(&mut self, ty: TypeId) -> Option<usize> {
+        let Atoms::Restricted(restrictions) = extract_atoms(self.db.types_mut(), ty, true)? else {
+            return None;
+        };
+
+        let mut lengths = restrictions.iter().map(restriction_length);
+        let first = lengths.next()?;
+        lengths.all(|length| length == first).then_some(first)
+    }
+
+    /// The type that the type refers to, without aliases or references.
+    pub fn unwrap_semantic(&mut self, ty: TypeId) -> TypeId {
+        rue_types::unwrap_semantic(self.db.types_mut(), ty, true)
+    }
+
+    /// Whether a value of the type can be a pair, such as a struct, so it has fields.
+    pub fn has_pairs(&mut self, ty: TypeId) -> bool {
+        !rue_types::extract_pairs(self.db.types_mut(), ty, false).is_empty()
+    }
+
+    /// The layout of a value of the type, as the names of its fields in order (including an enum
+    /// variant's discriminant), and whether they end in nil, or `first` and `rest` for a pair, or
+    /// nothing if the type has no fields. Two types with the same layout read the same parts of a
+    /// value by the same names.
+    pub fn field_layout(&mut self, ty: TypeId) -> Option<(Vec<String>, bool)> {
+        let semantic = rue_types::unwrap_semantic(self.db.types_mut(), ty, true);
+
+        if let Type::Struct(structure) = self.db.ty(semantic) {
+            return Some((
+                structure.fields.iter().cloned().collect(),
+                structure.nil_terminated,
+            ));
+        }
+
+        self.has_pairs(ty)
+            .then(|| (vec!["first".to_string(), "rest".to_string()], false))
+    }
+
+    /// The declared type of a field of a struct, by name.
+    pub fn struct_field_type(&mut self, ty: TypeId, name: &str) -> Option<TypeId> {
+        let (fields, _) = rue_types::struct_field_types(self.db.types_mut(), self.types.never, ty)?;
+        fields
+            .into_iter()
+            .find_map(|(field, ty)| (field == name).then_some(ty))
+    }
+
     /// The name of a type as it would be written in the given scope.
     pub fn type_name(&mut self, scope: ScopeId, ty: TypeId) -> String {
         self.db.type_name_in(scope, ty)
@@ -228,4 +276,11 @@ pub(crate) fn srcloc_key(srcloc: &SrcLoc) -> NameKey {
 /// The key of a name, from the token it's written as in the syntax tree.
 pub(crate) fn token_key(source: &Source, token: &rue_parser::SyntaxToken) -> NameKey {
     (source.kind.clone(), token.text_range().start().into())
+}
+
+fn restriction_length(restriction: &AtomRestriction) -> usize {
+    match restriction {
+        AtomRestriction::Length(length) => *length,
+        AtomRestriction::Value(value) => value.len(),
+    }
 }

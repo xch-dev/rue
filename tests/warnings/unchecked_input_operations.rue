@@ -1,0 +1,57 @@
+// Operations that fail unless their operands have the right length check them
+
+fn main(
+    a: PublicKey,
+    b: PublicKey,
+    c: Signature,
+    d: Signature,
+    e: PublicKey,
+    f: PublicKey,
+    g: PublicKey,
+    h: PublicKey,
+    i: PublicKey,
+    j: Signature,
+    k: PublicKey,
+    l: Signature,
+    m: Bytes32,
+    n: K1PublicKey,
+    o: Bytes32,
+    p: K1Signature,
+    q: Bytes32,
+    r: Bytes32,
+    s: Bytes32,
+    t: Signature,
+    u: PublicKey,
+) -> List<Any> {
+    assert a + b != a;
+    assert c + d != c;
+    assert g1_sum([e, f]) != e;
+    assert -g != g;
+    assert h * 2 != h;
+    bls_pairing_identity(i, j);
+    bls_verify(l, k, m);
+    secp256k1_verify(n, o, p);
+    keccak256_verify(r, q);
+    bls_verify(t, ...[u, "message"]);
+
+    [
+        sha256(a as Bytes + b as Bytes),
+        sha256(c as Bytes + d as Bytes),
+        sha256(e as Bytes + f as Bytes),
+        sha256(g as Bytes + s),
+        sha256(h as Bytes + s),
+        sha256(i as Bytes + j as Bytes),
+        sha256(k as Bytes + l as Bytes),
+        // The message of `bls_verify` doesn't have a fixed length
+        sha256(m + s),
+        // The message hash and signature of `secp256k1_verify` have fixed lengths, but the key
+        // can be uncompressed
+        sha256(o + p as Bytes),
+        sha256(n as Bytes + s),
+        // The hash of `keccak256_verify` has a fixed length, but the value doesn't
+        sha256(q + s),
+        sha256(r + s),
+        // The spread form of `bls_verify` checks the signature
+        sha256(t as Bytes + s),
+    ]
+}

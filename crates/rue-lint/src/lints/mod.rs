@@ -23,6 +23,7 @@ mod shadowing;
 mod statements;
 mod struct_spreads;
 mod syntax;
+mod unchecked_input;
 mod unions;
 mod unreachable;
 mod unused;
@@ -84,6 +85,10 @@ pub(crate) const INPUT_PASSES: &[InputPass] = &[
         lints: unions::LINTS,
         run: unions::check,
     },
+    InputPass {
+        lints: unchecked_input::LINTS,
+        run: unchecked_input::check,
+    },
 ];
 
 /// Every [`HirLintPass`], which all run during the same walk over the HIR.
@@ -134,10 +139,12 @@ mod tests {
         }
 
         let entrypoints = std::collections::HashSet::new();
+        let programs = std::collections::HashSet::new();
         let input = LintInput::new(
             crate::LintSites::default(),
             Vec::new(),
             &entrypoints,
+            &programs,
             false,
             &rue_options::CompilerOptions::default(),
         );

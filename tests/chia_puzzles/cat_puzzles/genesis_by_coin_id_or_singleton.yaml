@@ -37,3 +37,7 @@ tests:
   debug_program: (a (q 2 30 (c 22 (c (a 8 (c (c 12 10) ())) ()))) (c (c (c (q 4 (sha256 (q . "genesis")) (c (sha256 (q . "mint_launcher")) (c (a 6 (a 4 ())) (c () (c () (c () (c () (c (c (sha256 (q . "parent_parent")) (c (q . 3) ())) ())))))))) (q 11 (concat (concat (sha256 (q . "parent_parent")) (sha256 (q . "mint_launcher"))) (q . 1)))) (c (q 4 (c (sha256 (q . "inner_puzzle")) (c (sha256 (q . "cat_mod")) (c (sha256 (concat (q . 1) (sha256 (q . "cat_mod")))) (c (sha256 (q . "tail")) ())))) (c (sha256 (q . "my_id")) (c 1 (c (sha256 (q . "cat_puzzle")) (c (q . 100) ()))))) (c (c (q . 2) (c (c (q . 3) (c (q . 95) (c (c (q . 1) (c (q . 8) ())) (c (c (q . 1) (c (q . 2) (c (c (q . 3) (c (c (q . 9) (c (q . 91) (c (q . 2) ()))) (c () (c (c (q . 1) (c (q . 2) (c (c (q . 3) (c (c (q . 9) (c (q . 91) (c (c (q . 11) (c (q . 639) (c (q . 5) (c (q . 1407) ())))) ()))) (c () (c (c (q . 1) (c (q . 8) ())) ())))) (c (q . 1) ())))) ())))) (c (q . 1) ())))) ())))) (c (q . 1) ()))) (c (q . 2) (c (q . 2) (c (q . 5) ())))))) ()))
   byte_cost: 4980000
   clvm_error: clvm raise ()
+diagnostics:
+- |-
+  `mint_launcher_puzzle_hash` and `solution.parent_parent_id` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at genesis_by_coin_id_or_singleton.rue:57:13
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments

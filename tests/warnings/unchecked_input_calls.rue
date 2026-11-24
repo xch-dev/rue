@@ -1,0 +1,209 @@
+// Values are followed into the functions they're passed to, and out of the ones they're returned
+// from
+
+type Inner = fn(...solution: Any) -> Bytes32;
+
+extern fn external(value: Any) -> Bytes32 from "../chia_puzzles/notification.clsp.hex";
+
+fn main(
+    a: Bytes32,
+    b: Bytes32,
+    c: Bytes32,
+    d: Bytes32,
+    e: Bytes,
+    f: Bytes32,
+    g: Bytes,
+    h: Bytes32,
+    i: Bytes32,
+    j: Bytes32,
+    k: Bytes32,
+    l: Bytes32,
+    m: Bytes32,
+    n: Bytes32,
+    o: Bytes32,
+    p: Bytes32,
+    rest: List<Bytes32>,
+    inner: Inner,
+    inner_solution: Any,
+    other: Inner,
+    other_solution: Any,
+    proof: Proof,
+    my_puzzle_hash: Bytes32,
+    unparsed: Proof,
+    early: Bytes32,
+    tail: Bytes,
+    merged_a: Proof,
+    merged_b: Proof,
+    shallow: Bytes32,
+    deep: Bytes32,
+    flag: Bool,
+) -> List<Any> {
+    let one = wrap_one(shallow);
+    assert coinid(one.a.d, sha256("x"), 1) != nil;
+    let nested = wrap_deep(deep);
+    assert coinid(nested.a.b.c.d, sha256("x"), 1) != nil;
+
+    let hash = hash_pair;
+
+    // Allowed at the call
+    #[expect(unchecked_input)]
+    let allowed = hash_pair(c, d);
+
+    [
+        // A concatenation inside of a function that's called, reported at the call
+        hash_pair(a, b),
+        hash_pair(sha256("x"), b),
+        allowed,
+        // Checked inside of a function that's called on every path
+        checked_by_helper(e, f),
+        // Checked by a guard around the call, but only on one branch for the second call
+        if g is Bytes32 {
+            hash_pair(g, h)
+        } else {
+            h
+        },
+        if flag {
+            hash_pair(i, j)
+        } else {
+            i
+        },
+        // The value is returned unchanged from a function
+        sha256(identity(k) + l),
+        // A known function called through a binding is still known
+        sha256(hash(sha256("x"), sha256("y")) + m),
+        // The results of function values and `extern fn`s are unchecked
+        sha256(inner(...inner_solution) + n),
+        sha256(external(nil) + o),
+        // A value returned from a helper is still exactly the value it was passed, so checking it
+        // checks the value
+        checked_through_parse(proof, my_puzzle_hash),
+        hash_parsed(unparsed),
+        // A value returned early is returned too
+        sha256(tail + pick(early, flag)),
+        // A field of a returned struct that's one of two
+        sha256(
+            tail
+                + (
+                    if flag {
+                        parse(merged_a)
+                    } else {
+                        parse(merged_b)
+                    }
+                ).parent,
+        ),
+        // Checking a field of a nested struct returned from a helper checks the value in it
+        sha256(tail + one.a.d),
+        sha256(tail + nested.a.b.c.d),
+        // The same call of a function value reached through two calls of a helper gives two
+        // different results, even inside of another helper
+        both(inner),
+        // The same call of a function value in a helper called twice gives two different results
+        sha256(run(inner, inner_solution) + run(other, other_solution)),
+        // A rest parameter takes the rest of the arguments
+        hash_all(p, ...rest),
+        // The arguments of an `inline fn` are only evaluated where it uses them
+        ignore(coinid(i, j, 1)),
+    ]
+}
+
+struct Proof {
+    parent: Bytes32,
+    amount: Int,
+}
+
+struct Info {
+    parent: Bytes32,
+    amount: Int,
+}
+
+struct L1 {
+    a: L2,
+}
+
+struct L2 {
+    b: L3,
+}
+
+struct L3 {
+    c: L4,
+}
+
+struct L4 {
+    d: Bytes32,
+    e: Int,
+}
+
+struct W1 {
+    a: L4,
+}
+
+fn wrap_one(value: Bytes32) -> W1 {
+    W1 { a: L4 { d: value, e: 1 } }
+}
+
+fn wrap_deep(value: Bytes32) -> L1 {
+    L1 { a: L2 { b: L3 { c: L4 { d: value, e: 1 } } } }
+}
+
+fn pick(value: Bytes32, flag: Bool) -> Bytes32 {
+    if flag {
+        return value;
+    }
+    sha256("y")
+}
+
+fn parse(proof: Proof) -> Info {
+    Info { parent: proof.parent, amount: proof.amount }
+}
+
+fn checked_through_parse(proof: Proof, my_puzzle_hash: Bytes32) -> Bytes32 {
+    let info = parse(proof);
+    assert coinid(info.parent, my_puzzle_hash, info.amount) != nil;
+    sha256(info.parent + info.amount as Bytes)
+}
+
+fn hash_parsed(proof: Proof) -> Bytes32 {
+    let info = parse(proof);
+    sha256(info.parent + info.amount as Bytes)
+}
+
+fn get(puzzle: Inner, n: Int) -> Bytes32 {
+    puzzle(...n)
+}
+
+fn both(puzzle: Inner) -> Bytes32 {
+    sha256(get(puzzle, 1) + get(puzzle, 2))
+}
+
+fn run(puzzle: Inner, solution: Any) -> Bytes32 {
+    puzzle(...solution)
+}
+
+fn hash_pair(left: Bytes32, right: Bytes32) -> Bytes32 {
+    sha256(left + right)
+}
+
+fn checked_by_helper(e: Bytes, f: Bytes32) -> Bytes32 {
+    check(e, f);
+    sha256(e + f)
+}
+
+fn check(parent: Bytes, puzzle_hash: Bytes32) {
+    assert parent is Bytes32;
+    assert coinid(parent, puzzle_hash, 0) != nil;
+}
+
+fn identity(value: Bytes32) -> Bytes32 {
+    value
+}
+
+fn hash_all(first: Bytes32, ...rest: List<Bytes32>) -> Bytes32 {
+    if rest is nil {
+        return first;
+    }
+    sha256(first + rest.first)
+}
+
+inline fn ignore(_value: Any) -> Int {
+    1
+}

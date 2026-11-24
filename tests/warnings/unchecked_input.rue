@@ -1,0 +1,106 @@
+// Each case takes its own values from the solution, so that one case's checks don't affect another
+
+struct Coin {
+    parent_coin_id: Bytes32,
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+struct Proof {
+    hash: Bytes,
+    other: Bytes32,
+}
+
+fn main(
+    coin: Coin,
+    checked_coin: Coin,
+    a: Bytes32,
+    b: Bytes32,
+    c: Bytes32,
+    d: Bytes,
+    e: Bytes32,
+    f: Bytes32,
+    g: Bytes32,
+    h: Bytes,
+    i: Bytes,
+    j: Bytes32,
+    k: Bytes32,
+    l: Bytes32,
+    m: Bytes32,
+    n: Bytes32,
+    pk: PublicKey,
+    pk2: PublicKey,
+    pk3: PublicKey,
+    pk4: PublicKey,
+    sig: Signature,
+    q: Any,
+    r: Bytes32,
+    pair: (Bytes32, Bytes32),
+    proof: Proof,
+    checked_proof: Proof,
+    s: Bytes32,
+    t: Bytes32,
+    (u, v): (Bytes32, Bytes32),
+    (w, x): (Bytes32, Bytes32),
+) -> List<Any> {
+    // Checks that are always evaluated count, wherever they are in the function
+    assert coinid(f, g, 1) != nil;
+    assert j == sha256("j");
+    assert checked_proof.hash is Bytes32;
+    bls_verify(sig, pk3, "message", pk4, "message");
+
+    [
+        // A coin id hashed by hand can move bytes between its parts
+        sha256(coin.parent_coin_id + coin.puzzle_hash + coin.amount as Bytes),
+        // `coinid` checks the lengths of its arguments
+        coinid(checked_coin.parent_coin_id, checked_coin.puzzle_hash, checked_coin.amount),
+        // Two values whose lengths aren't checked
+        sha256(a + b),
+        concat([a, b]),
+        // Only one value of unknown length can't be split more than one way
+        sha256(c + 0x01),
+        sha256(d + sha256("x")),
+        // Two values that don't have a known length by their type aren't for this lint
+        sha256(h + i + c),
+        // The same value twice has the same length both times
+        sha256(e + e),
+        // Checked by `coinid`, after the use
+        sha256(f + g),
+        // Checked by equality with a value of known length, but not with another unchecked value
+        sha256(j + sha256("x") + n),
+        equal_to_unchecked(k, l, m),
+        // Checked by point operations and `bls_verify`
+        point_sum(pk, pk2),
+        sha256(pk3 as Bytes + pk4 as Bytes + sig as Bytes),
+        // `unchecked_cast` doesn't check anything
+        sha256(unchecked_cast::<Bytes32>(q) + r),
+        // Items of a pair, whose name is cut at the pair
+        sha256(pair.first + pair.rest),
+        // A field checked by a guard, inside of the branch, and in an `assert`
+        if proof.hash is Bytes32 {
+            sha256(proof.hash + proof.other)
+        } else {
+            proof.other
+        },
+        if proof.hash is Bytes32 {
+            proof.other
+        } else {
+            sha256(proof.other + s)
+        },
+        sha256(checked_proof.hash + checked_proof.other),
+        sha256(t + t + 0x01),
+        // Values from parameters that are destructured
+        sha256(u + w),
+    ]
+}
+
+fn equal_to_unchecked(k: Bytes32, l: Bytes32, m: Bytes32) -> Bytes32 {
+    assert k == l;
+    sha256(k + m)
+}
+
+fn point_sum(pk: PublicKey, pk2: PublicKey) -> Bytes32 {
+    let sum = pk + pk2;
+    assert sum != pk;
+    sha256(pk as Bytes + pk2 as Bytes)
+}

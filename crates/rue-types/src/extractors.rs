@@ -4,7 +4,8 @@ use id_arena::Arena;
 use indexmap::{IndexSet, indexset};
 
 use crate::{
-    AtomRestriction, FunctionType, Pair, Struct, Type, TypeId, Walk, substitute, walk_leaves,
+    AtomRestriction, DISCRIMINANT_FIELD, FunctionType, Pair, Struct, Type, TypeId, Union, Walk,
+    substitute, unwrap_semantic, walk_leaves,
 };
 
 #[derive(Debug, Clone)]
@@ -160,4 +161,56 @@ pub fn extract_structs(arena: &mut Arena<Type>, id: TypeId) -> Option<Vec<Struct
     }
 
     Some(structs)
+}
+
+/// The names and types of a struct's fields, in order, and whether it's nil terminated. A field
+/// that differs between the pairs of a union of layouts gets the union of its types, and `never`
+/// if there's no pair there. The discriminant of an enum variant isn't included, since it can't be
+/// named.
+pub fn struct_field_types(
+    arena: &mut Arena<Type>,
+    never: TypeId,
+    ty: TypeId,
+) -> Option<(Vec<(String, TypeId)>, bool)> {
+    let semantic = unwrap_semantic(arena, ty, true);
+
+    let Type::Struct(ty) = arena[semantic].clone() else {
+        return None;
+    };
+
+    let mut fields = Vec::new();
+    let mut inner = ty.inner;
+
+    for (i, name) in ty.fields.iter().enumerate() {
+        let next = if i == ty.fields.len() - 1 && !ty.nil_terminated {
+            inner
+        } else {
+            let pairs = extract_pairs(arena, inner, false);
+
+            let (firsts, rests) = match pairs.as_slice() {
+                [] => (never, never),
+                [pair] => (pair.first, pair.rest),
+                _ => (
+                    arena.alloc(Type::Union(Union::new(
+                        pairs.iter().map(|pair| pair.first).collect(),
+                    ))),
+                    arena.alloc(Type::Union(Union::new(
+                        pairs.iter().map(|pair| pair.rest).collect(),
+                    ))),
+                ),
+            };
+
+            inner = rests;
+
+            firsts
+        };
+
+        if name == DISCRIMINANT_FIELD {
+            continue;
+        }
+
+        fields.push((name.clone(), next));
+    }
+
+    Some((fields, ty.nil_terminated))
 }

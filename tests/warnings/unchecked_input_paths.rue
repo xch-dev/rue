@@ -1,0 +1,417 @@
+// A check only counts on the paths that evaluate it
+
+struct Outer {
+    a: Middle,
+}
+
+struct Middle {
+    b: Inner,
+}
+
+struct Inner {
+    c: ((Bytes32, Bytes32), Bytes32),
+}
+
+struct Proof {
+    parent: Bytes32,
+    puzzle_hash: Bytes32,
+    amount: Int,
+}
+
+struct Other {
+    _puzzle_hash: Bytes32,
+    parent: Bytes32,
+    _amount: Int,
+}
+
+type ProofAlias = Proof;
+
+struct Spread {
+    _a: Bytes32,
+    ...b: Bytes32,
+}
+
+struct Plain {
+    _a: Bytes32,
+    b: Bytes32,
+}
+
+struct Two {
+    a: Bytes32,
+    b: Bytes32,
+}
+
+struct One {
+    a: Bytes32,
+}
+
+struct Item {
+    parent: Bytes32,
+    amount: Int,
+}
+
+fn main(
+    a: Bytes32,
+    b: Bytes32,
+    c: Bytes32,
+    d: Bytes32,
+    e: Bytes32 | nil,
+    f: Bytes32,
+    g: Bytes,
+    h: Bytes32,
+    i: Bytes32,
+    j: Bytes32,
+    k: Bytes32,
+    l: Bytes32,
+    m: Bytes32,
+    n: Bytes32,
+    o: Bytes32 | (Bytes32, Bytes32),
+    p: Bytes32,
+    checked_items: List<Item>,
+    items: List<Item>,
+    q: Bytes32,
+    r: Bytes32,
+    s: Bytes32,
+    t: Bytes32,
+    u: Bytes32,
+    v: Bytes32,
+    w: Bytes32,
+    x: Bytes32,
+    y: Bytes32,
+    pair: (Bytes32, Bytes32),
+    tail: Bytes,
+    deep: Outer,
+    choice: Int,
+    z1: Bytes32,
+    z2: Bytes32,
+    z3: Bytes32,
+    z4: Bytes32,
+    z5: Bytes32,
+    z6: Bytes32,
+    z7: Bytes32,
+    z8: Bytes32,
+    z9: Bytes32,
+    e1: Bytes32,
+    e2: Bytes32,
+    e3: Bytes32,
+    e4: Bytes32,
+    e5: Bytes32,
+    e6: Bytes32,
+    e7: Bytes32,
+    e8: Bytes32,
+    e9: Bytes,
+    e10: Bytes,
+    e11: Bytes,
+    e12: Bytes32,
+    cast_proof: Proof,
+    f1: Bytes32,
+    f2: Bytes32,
+    f3: Bytes32,
+    same_cast: Proof,
+    alias_cast: Proof,
+    raw: Any,
+    h1: Bytes32,
+    h2: Bytes32,
+    lit_a: Bytes32,
+    lit_b: Bytes32,
+    coin: Proof,
+    new_parent: Bytes32,
+    plain: Plain,
+    flag: Bool,
+) -> List<Any> {
+    // Fields with the same names, but which end differently, are read from other places
+    assert unchecked_cast::<Spread>(plain).b == sha256("x");
+
+    // A cast to the same struct, or to an alias of it, keeps its fields
+    assert (same_cast as Proof).parent == sha256("x");
+    assert (alias_cast as ProofAlias).parent == sha256("x");
+
+    // A value cast from `Any` to two different structs is two different values
+    assert unchecked_cast::<Other>(raw).parent == sha256("y");
+
+    // A cast between atoms keeps the value exactly
+    let k = h1 as Bytes;
+    assert k is Bytes32;
+
+    // A struct literal cast to another layout
+    assert lit_a == sha256("z");
+    let cast_literal = Proof { parent: lit_a, puzzle_hash: lit_b, amount: 1 } as Other;
+
+    // A value that's either updated or kept as it is
+    assert coinid(coin.parent, coin.puzzle_hash, coin.amount) != nil;
+    assert coinid(new_parent, coin.puzzle_hash, 1) != nil;
+    let current = if flag {
+        Proof { parent: new_parent, puzzle_hash: coin.puzzle_hash, amount: 1 }
+    } else {
+        coin
+    };
+
+    // A field read through a struct with another layout is another value
+    let other = cast_proof as Other;
+    assert other.parent == sha256("x");
+
+    // Structs with different fields are merged as a whole
+    let either_shape: Two | One = if flag {
+        Two { a: f1, b: f2 }
+    } else {
+        One { a: f3 }
+    };
+
+    // Checking an item of a pair or list literal only checks that item
+    let pr = (z1, z2);
+    let ls = [z3, z4];
+    assert coinid(pr.first, sha256("x"), 1) != nil;
+    assert coinid(ls.first, sha256("x"), 1) != nil;
+
+    // Checking a value that's one of several doesn't check any of them
+    let either = if flag {
+        z5
+    } else {
+        z6
+    };
+    assert coinid(either, sha256("x"), 1) != nil;
+    // The same with equality, a guard, or a check in a function that's called
+    let either_equal = if flag {
+        e1
+    } else {
+        e2
+    };
+    assert either_equal == sha256("x");
+    let either_guarded = if flag {
+        e9
+    } else {
+        e10
+    };
+    assert either_guarded is Bytes32;
+    let either_first = if flag {
+        e3
+    } else {
+        e4
+    };
+    assert check_first((either_first, e5));
+    let either_pair = if flag {
+        (e6, e7)
+    } else {
+        (e8, e8)
+    };
+    assert check_first(either_pair);
+
+    assert check_items(checked_items);
+    assert check_first(pair);
+    assert coinid(deep.a.b.c.first.first, sha256("x"), 1) != nil;
+
+    [
+        checked_after_early_return(a, b, flag),
+        checked_on_one_branch(c, d, flag),
+        narrowed_by_ruling_out_nil(e, f),
+        checked_by_negated_guard(g, h),
+        checked_by_right_operand(i, j, flag),
+        checked_by_unused_binding(k, l, flag),
+        checked_by_inline_binding(m, n, flag),
+        narrowed_from_pair(o, p),
+        // Recursion over a list checks each item, after returning early for an empty list
+        hash_items(checked_items),
+        hash_items(items),
+        // Checks after an early return cover the uses after it
+        checked_after_return(q, r, flag),
+        // The same with an `if` and `else if` chain whose branches return
+        checked_after_chain(s, t, choice),
+        // Raising unless both values are checked, inside of a function that's called
+        sha256(u + v),
+        check_either(u, v),
+        // A negated guard only holds for the rest of its own block
+        guarded_in_nested_block(w, x, flag),
+        // Checking one item of a pair doesn't check the other
+        sha256(tail + pair.rest),
+        // Checking a field deep inside of a value doesn't check the field next to it
+        sha256(tail + deep.a.b.c.first.rest),
+        unused(y),
+        sha256(tail + pr.first),
+        sha256(tail + pr.rest),
+        sha256(tail + ls.first),
+        sha256(tail + ls.rest.first),
+        sha256(tail + z5),
+        // A check in a function that's only called on one branch, and a check in an `else` branch
+        checked_on_one_branch_by_helper(z7, z8, flag),
+        checked_in_else(z9, z8, flag),
+        sha256(tail + e1),
+        sha256(unchecked_cast::<Bytes32>(e9) + e12),
+        sha256(tail + e3),
+        sha256(tail + e6),
+        // A negated guard before an early return doesn't check a use before it
+        negated_after_use(e11, e12),
+        sha256(cast_proof.parent + cast_proof.amount as Bytes),
+        if either_shape is Two {
+            sha256(tail + either_shape.b)
+        } else {
+            tail
+        },
+        sha256(tail + same_cast.parent),
+        sha256(tail + alias_cast.parent),
+        sha256(tail + unchecked_cast::<Proof>(raw).parent),
+        sha256(tail + h1 + h2),
+        sha256(tail + cast_literal.parent),
+        sha256(tail + current.parent),
+        sha256(tail + plain.b),
+    ]
+}
+
+// The check only runs when the function doesn't return early
+fn checked_after_early_return(a: Bytes32, b: Bytes32, flag: Bool) -> Bytes32 {
+    if flag {
+        return sha256(a + b);
+    }
+    assert coinid(a, b, 1) != nil;
+    a
+}
+
+fn checked_on_one_branch(c: Bytes32, d: Bytes32, flag: Bool) -> Bytes32 {
+    let hash = sha256(c + d);
+    if flag {
+        assert c == sha256("c");
+        assert d == sha256("d");
+    }
+    hash
+}
+
+// Ruling out nil only checks that the value isn't nil, not its length
+fn narrowed_by_ruling_out_nil(e: Bytes32 | nil, f: Bytes32) -> Bytes32 {
+    if e is nil {
+        return f;
+    }
+    sha256(e + f)
+}
+
+// Leaving the block unless the value has the right length checks it for the rest of the block
+fn checked_by_negated_guard(g: Bytes, h: Bytes32) -> Bytes32 {
+    if !(g is Bytes32) {
+        return h;
+    }
+    sha256(g + h)
+}
+
+// The right operand of `&&` isn't always evaluated
+fn checked_by_right_operand(i: Bytes32, j: Bytes32, flag: Bool) -> Bytes32 {
+    assert flag || coinid(i, j, 1) != nil;
+    sha256(i + j)
+}
+
+// A binding that can fail is evaluated where it's declared, even though it's only referenced in
+// one branch
+fn checked_by_unused_binding(k: Bytes32, l: Bytes32, flag: Bool) -> Bytes32 {
+    let id = coinid(k, l, 1);
+    let hash = sha256(k + l);
+    if flag {
+        hash
+    } else {
+        id
+    }
+}
+
+// An `inline let` used in a branch that checks it and in one that doesn't
+fn checked_by_inline_binding(m: Bytes32, n: Bytes32, flag: Bool) -> (Bytes32, Bytes32) {
+    inline let hash = sha256(m + n);
+    (
+        if m == sha256("m") && n == sha256("n") {
+            hash
+        } else {
+            m
+        },
+        if flag {
+            hash
+        } else {
+            n
+        },
+    )
+}
+
+// Narrowing away a pair only checks that the value is an atom, not its length
+fn narrowed_from_pair(o: Bytes32 | (Bytes32, Bytes32), p: Bytes32) -> Bytes32 {
+    if o is Bytes32 {
+        return sha256(o + p);
+    }
+    p
+}
+
+fn hash_items(items: List<Item>) -> List<Bytes32> {
+    if items is nil {
+        return nil;
+    }
+    [sha256(items.first.parent + items.first.amount as Bytes), ...hash_items(items.rest)]
+}
+
+fn check_items(items: List<Item>) -> Bool {
+    if items is nil {
+        return true;
+    }
+    assert coinid(items.first.parent, sha256("puzzle"), items.first.amount) != nil;
+    check_items(items.rest)
+}
+
+fn check_first(pair: (Bytes32, Bytes32)) -> Bool {
+    assert coinid(pair.first, sha256("x"), 1) != nil;
+    true
+}
+
+fn checked_after_return(q: Bytes32, r: Bytes32, flag: Bool) -> Bytes32 {
+    if flag {
+        return q;
+    }
+    assert coinid(q, r, 1) != nil;
+    sha256(q + r)
+}
+
+fn checked_after_chain(s: Bytes32, t: Bytes32, choice: Int) -> Bytes32 {
+    if choice == 1 {
+        return sha256(s + t);
+    } else if choice == 2 {
+        return t;
+    }
+    assert coinid(s, t, 1) != nil;
+    s
+}
+
+fn check_either(u: Bytes32, v: Bytes32) -> Bool {
+    #[allow(manual_assert)]
+    if !(u == sha256("u")) || !(v == sha256("v")) {
+        raise "not a hash";
+    }
+    true
+}
+
+fn guarded_in_nested_block(w: Bytes32, x: Bytes32, flag: Bool) -> Bytes32 {
+    if x == sha256("x") {
+        if !flag {
+            return w;
+        }
+    }
+    sha256(w + x)
+}
+
+fn unused(y: Bytes32) -> Bytes32 {
+    y
+}
+
+fn checked_on_one_branch_by_helper(z7: Bytes32, z8: Bytes32, flag: Bool) -> Bytes32 {
+    if flag {
+        assert check_first((z7, z8));
+    }
+    sha256(z7 + z8)
+}
+
+fn checked_in_else(z9: Bytes32, z8: Bytes32, flag: Bool) -> Bytes32 {
+    let id = if flag {
+        z8
+    } else {
+        coinid(z9, z8, 1)
+    };
+    sha256(z9 + id)
+}
+
+fn negated_after_use(g: Bytes, h: Bytes32) -> Bytes32 {
+    let early = sha256(unchecked_cast::<Bytes32>(g) + h);
+    if !(g is Bytes32) {
+        return h;
+    }
+    early
+}
