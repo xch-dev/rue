@@ -149,6 +149,45 @@ test fn narrowing() {
     assert narrowed(Maybe { a: (1, 0), b: 2, c: nil, d: 4 }) == 2;
 }
 
+tree struct Eight {
+    a: (Int, Int) | nil,
+    b: Int,
+    c: (Int, Int) | nil,
+    d: Int,
+    e: Int,
+    f: Int,
+    g: Int,
+    h: Int,
+}
+
+// Fields three levels deep are read after the struct is narrowed by a guard on its shape
+fn deep(value: Eight) -> Int {
+    if value is (((nil, Any), Any), Any) | (((Any, Any), (nil, Any)), Any) {
+        return value.b + value.h;
+    }
+
+    value.a.first + value.c.rest
+}
+
+test fn deep_narrowing() {
+    assert deep(Eight { a: (1, 2), b: 0, c: (3, 4), d: 0, e: 0, f: 0, g: 0, h: 0 }) == 5;
+    assert deep(Eight { a: nil, b: 6, c: (3, 4), d: 0, e: 0, f: 0, g: 0, h: 7 }) == 13;
+    assert deep(Eight { a: (1, 2), b: 6, c: nil, d: 0, e: 0, f: 0, g: 0, h: 8 }) == 14;
+}
+
+// A type guard checks the value has the tree's shape, not the list's
+test fn guard() {
+    let tree: Any = (1, (2, 3));
+    let list: Any = [1, 2, 3];
+    assert tree is Three;
+    assert !(list is Three);
+
+    let rect: Any = (10, (2, 4));
+    let listed: Any = [10, 2, 4];
+    assert rect is Shape::Rect;
+    assert !(listed is Shape::Rect);
+}
+
 test fn tree_as_name() {
     let tree = tree { tree: 1 };
     assert tree.tree == 1;

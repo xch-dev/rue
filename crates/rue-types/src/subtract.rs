@@ -5,7 +5,7 @@ use crate::{
     Alias, BuiltinTypes, Comparison, ComparisonContext, FieldShape, FxHashMap, FxHashSet,
     IntersectContext, Pair, Type, TypeId, Union, Walk, compare_impl, extract_pairs_substituted,
     for_each_leaf, grow_stack, intersect_substituted, reachable, reaches_non_contractive_cycle,
-    step, stringify_substituted, substitute,
+    step, stringify_substituted, substitute, union_of_parts,
 };
 
 pub fn subtract(
@@ -596,19 +596,11 @@ fn merge_spine(arena: &mut Arena<Type>, id: TypeId, shape: &FieldShape) -> TypeI
         return id;
     }
 
-    let first = union_of(arena, pairs.iter().map(|pair| pair.first).collect());
+    let first = union_of_parts(arena, pairs.iter().map(|pair| pair.first).collect());
     let first = merge_spine(arena, first, first_shape);
-    let rest = union_of(arena, pairs.iter().map(|pair| pair.rest).collect());
+    let rest = union_of_parts(arena, pairs.iter().map(|pair| pair.rest).collect());
     let rest = merge_spine(arena, rest, rest_shape);
     arena.alloc(Type::Pair(Pair::new(first, rest)))
-}
-
-fn union_of(arena: &mut Arena<Type>, types: Vec<TypeId>) -> TypeId {
-    if types.len() == 1 {
-        types[0]
-    } else {
-        arena.alloc(Type::Union(Union::new(types)))
-    }
 }
 
 struct Variant {

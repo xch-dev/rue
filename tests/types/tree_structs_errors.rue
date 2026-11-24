@@ -22,6 +22,32 @@ fn narrowed(value: Maybe) {
     }
 }
 
+tree struct Four {
+    a: (Int, Int) | nil,
+    b: (Int, Int) | nil,
+    c: Int,
+    d: Int,
+}
+
+// Correlated fields in a nested part of the tree are shown in each variant
+fn correlated(value: Four) {
+    if value is ((nil, Any), Any) | ((Any, nil), Any) {
+        let shown: Int = value;
+    }
+}
+
+tree enum Shape {
+    Empty,
+    Box { a: (Int, Int) | nil, b: Int, c: (Int, Int) | nil, d: Int, e: Int },
+}
+
+// A narrowed variant is shown with its fields, but not its discriminant
+fn variant(shape: Shape) {
+    if shape is Shape::Box && shape.c is nil {
+        let shown: Int = shape;
+    }
+}
+
 fn spread(value: Spread, condition: Condition) -> (List<Int>, Any) {
     (value.rest, condition.rest)
 }

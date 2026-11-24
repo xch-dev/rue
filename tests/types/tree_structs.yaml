@@ -41,9 +41,23 @@ tests:
   runtime_cost: 2073
   byte_cost: 1404000
   total_cost: 1406073
+- name: deep_narrowing
+  program: (a (q 2 (i (= (a 2 (q (((q . 2)) (i . 4)) (()) ())) (q . 5)) (q 2 (i (= (a 2 (q ((() . 6) (i . 4)) (()) () . 7)) (q . 13)) (q 2 (i (= (a 2 (q (((q . 2) . 6) ()) (()) () . 8)) (q . 14)) () (q 8)) 1) (q 8)) 1) (q 8)) 1) (c (q 2 (i (a (i 8 (q 32 10) (q 1 . 1)) 1) (q 16 12 15) (q 16 16 26)) 1) ()))
+  debug_program: (a (q 2 (i (= (a 2 (c (c (c (c (q . 1) (q . 2)) ()) (c (c (q . 3) (q . 4)) ())) (c (c () ()) (c () ())))) (q . 5)) (q 2 (i (= (a 2 (c (c (c () (q . 6)) (c (c (q . 3) (q . 4)) ())) (c (c () ()) (c () (q . 7))))) (q . 13)) (q 2 (i (= (a 2 (c (c (c (c (q . 1) (q . 2)) (q . 6)) (c () ())) (c (c () ()) (c () (q . 8))))) (q . 14)) () (q 8 (q . "assertion failed at tree_structs.rue:175:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:174:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:173:5"))) 1) (c (q 2 (i (a (i (not (f (f (f 1)))) (q 1 . 1) (q 32 (f (r (f 1))))) 1) (q 16 (r (f (f 1))) (r (r (r 1)))) (q 16 (f (f (f (f 1)))) (r (f (r (f 1)))))) 1) ()))
+  output: ()
+  runtime_cost: 6386
+  byte_cost: 2724000
+  total_cost: 2730386
+- name: guard
+  program: (a (q 2 (i (all (a (i (l 4) (q 2 (i (l 8) () (q 2 (i (l 12) (q 2 (i (l 20) () (q 32 (l 28))) 1) ()) 1)) 1) ()) 1) (not (a (i (l 6) (q 2 (i (l 10) () (q 2 (i (l 14) (q 2 (i (l 22) () (q 32 (l 30))) 1) ()) 1)) 1) ()) 1))) (q 2 (q 2 (i (a (i (l 4) (q 2 (i (l 8) () (q 2 (i (= 8 (q . 10)) (q 2 (i (l 12) (q 2 (i (l 20) () (q 32 (l 28))) 1) ()) 1) ()) 1)) 1) ()) 1) (q 2 (i (l 6) (q 2 (i (l 10) () (q 2 (i (= 10 (q . 10)) (q 2 (i (l 14) (q 2 (i (l 22) () (q 2 (i (l 30) () (q 8)) 1)) 1) ()) 1) ()) 1)) 1) ()) 1) (q 8)) 1) (c (q (>s 2 . 4) 10 2 4) 1)) (q 8)) 1) (c (q (q 2 . 3) 1 2 3) 1))
+  debug_program: (a (q 2 (i (a (i (l 4) (q 2 (i (not (l (f 4))) (q 2 (i (l (r 4)) (q 2 (i (not (l (f (r 4)))) (q 32 (l (r (r 4)))) ()) 1) ()) 1) ()) 1) ()) 1) (q 2 (i (not (a (i (l 6) (q 2 (i (not (l (f 6))) (q 2 (i (l (r 6)) (q 2 (i (not (l (f (r 6)))) (q 32 (l (r (r 6)))) ()) 1) ()) 1) ()) 1) ()) 1)) (q 2 (q 2 (i (a (i (l 4) (q 2 (i (a (i (not (l (f 4))) (q 9 (f 4) (q . 10)) ()) 1) (q 2 (i (l (r 4)) (q 2 (i (not (l (f (r 4)))) (q 32 (l (r (r 4)))) ()) 1) ()) 1) ()) 1) ()) 1) (q 2 (i (not (a (i (l 6) (q 2 (i (a (i (not (l (f 6))) (q 9 (f 6) (q . 10)) ()) 1) (q 2 (i (l (r 6)) (q 2 (i (not (l (f (r 6)))) (q 32 (l (r (r 6)))) ()) 1) ()) 1) ()) 1) ()) 1)) () (q 8 (q . "assertion failed at tree_structs.rue:188:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:187:5"))) 1) (c (c (c (q . 10) (c (q . 2) (q . 4))) (c (q . 10) (c (q . 2) (c (q . 4) ())))) 1)) (q 8 (q . "assertion failed at tree_structs.rue:183:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:182:5"))) 1) (c (c (c (q . 1) (c (q . 2) (q . 3))) (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1))
+  output: ()
+  runtime_cost: 8874
+  byte_cost: 6252000
+  total_cost: 6260874
 - name: tree_as_name
   program: ()
-  debug_program: (a (q 2 (i (= (f 2) (q . 1)) () (q 8 (q . "assertion failed at tree_structs.rue:154:5"))) 1) (c (c (q . 1) ()) 1))
+  debug_program: (a (q 2 (i (= (f 2) (q . 1)) () (q 8 (q . "assertion failed at tree_structs.rue:193:5"))) 1) (c (c (q . 1) ()) 1))
   output: ()
   runtime_cost: 44
   byte_cost: 12000

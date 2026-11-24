@@ -38,7 +38,7 @@ fn item_with_inner(p: &mut Parser, top_level: bool) {
 
     // The `tree` before a `struct` or `enum` is part of the item, and nothing else can come
     // between them
-    if at_tree_modifier(p, 0) {
+    if at_tree_modifier(p) {
         p.expect_word("tree");
     }
 

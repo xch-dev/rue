@@ -56,16 +56,21 @@ pub enum TypePath {
 }
 
 /// How the fields of a struct are arranged in its value.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StructLayout {
     /// A list of the fields, which ends in nil unless the last field is spread into it.
-    #[default]
     List,
     /// A binary tree of the fields, as balanced as it can be, in the order they're declared
     /// (`tree struct`). The first `prefix` fields come before it as a list that ends in the tree,
     /// which is where an enum variant's discriminant is, so that it's in the same place in every
     /// variant.
     Tree { prefix: usize },
+}
+
+impl StructLayout {
+    pub fn is_tree(self) -> bool {
+        matches!(self, Self::Tree { .. })
+    }
 }
 
 /// Where each field of a struct is in its value (see [`StructLayout`]).

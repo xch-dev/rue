@@ -8,7 +8,7 @@ use rue_hir::{
     SymbolPath, TypePath, Value,
 };
 use rue_lint::{UnusedSpreadReason, UnusedStructSpread};
-use rue_types::{Atom, AtomRestriction, Struct, StructLayout, Type, TypeId};
+use rue_types::{Atom, AtomRestriction, Struct, Type, TypeId};
 
 use crate::{
     BoundValue, Compiler, CompletionContext, Field, FieldResult, PathKind, PathResult,
@@ -258,7 +258,7 @@ pub fn compile_struct_initializer_expr(
         .count();
 
     // Only a list has a rest after each of its fields
-    let is_list = struct_type.layout == StructLayout::List;
+    let is_list = !struct_type.layout.is_tree();
 
     let tail = base
         .as_ref()

@@ -95,7 +95,7 @@ pub(crate) fn declare_fields(
 
     for (i, field) in fields.iter().enumerate() {
         if let Some(spread) = field.spread() {
-            if matches!(layout, StructLayout::Tree { .. }) {
+            if layout.is_tree() {
                 ctx.diagnostic(&spread, DiagnosticKind::TreeFieldSpread);
             } else if i == fields.len() - 1 {
                 nil_terminated = false;
@@ -132,7 +132,7 @@ pub fn compile_struct_item(
 
     ctx.pop_scope(range.end());
 
-    resolve_struct_inner(ctx, struct_type, types);
+    resolve_struct_inner(ctx, struct_type, &types);
 
     ctx.pop_declaration();
 }
@@ -200,13 +200,19 @@ pub(crate) fn compile_fields(
 /// Resolves the type that a struct (or enum variant) with fields of the given types is made of,
 /// which has the fields where its layout puts them: a list of them by default, whose last field
 /// is the rest of the list if it isn't nil terminated.
-pub(crate) fn resolve_struct_inner(ctx: &mut Compiler, struct_type: TypeId, types: Vec<TypeId>) {
-    let Type::Struct(ty) = ctx.ty(struct_type).clone() else {
+pub(crate) fn resolve_struct_inner(ctx: &mut Compiler, struct_type: TypeId, types: &[TypeId]) {
+    let Type::Struct(Struct {
+        inner,
+        nil_terminated,
+        layout,
+        ..
+    }) = *ctx.ty(struct_type)
+    else {
         unreachable!()
     };
 
     // A field with a duplicate name isn't one of the struct's fields, so it has no type here
-    let shape = FieldShape::new(types.len(), ty.nil_terminated, ty.layout);
+    let shape = FieldShape::new(types.len(), nil_terminated, layout);
     let nil = ctx.builtins().nil.ty;
 
     let resolved_inner = shape.fold(
@@ -214,7 +220,7 @@ pub(crate) fn resolve_struct_inner(ctx: &mut Compiler, struct_type: TypeId, type
         |first, rest| ctx.alloc_type(Type::Pair(Pair::new(first, rest))),
     );
 
-    *ctx.ty_mut(ty.inner) = Type::Ref(resolved_inner);
+    *ctx.ty_mut(inner) = Type::Ref(resolved_inner);
 }
 
 /// Compiles the default values of a struct's fields. This happens after all types have been

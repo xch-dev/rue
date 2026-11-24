@@ -66,6 +66,15 @@ pub fn extract_pairs(arena: &mut Arena<Type>, id: TypeId, strict: bool) -> Vec<P
     extract_pairs_impl(arena, id, strict)
 }
 
+/// The parts as one type: the part itself if there's only one, and otherwise a union of them.
+pub(crate) fn union_of_parts(arena: &mut Arena<Type>, parts: Vec<TypeId>) -> TypeId {
+    if parts.len() == 1 {
+        parts[0]
+    } else {
+        arena.alloc(Type::Union(Union::new(parts)))
+    }
+}
+
 /// The type of each field of a struct, which is the part of its inner type where its shape puts
 /// the field, or the union of those parts if the inner type has a union of pairs on the way there.
 /// A field is `None` if the inner type isn't a pair on the way to it, which it always is unless
@@ -87,16 +96,8 @@ pub fn extract_field_types(arena: &mut Arena<Type>, ty: &Struct) -> Vec<Option<T
                     continue;
                 }
 
-                let mut union = |parts: Vec<TypeId>| {
-                    if parts.len() == 1 {
-                        parts[0]
-                    } else {
-                        arena.alloc(Type::Union(Union::new(parts)))
-                    }
-                };
-
-                let first = union(pairs.iter().map(|pair| pair.first).collect());
-                let rest = union(pairs.iter().map(|pair| pair.rest).collect());
+                let first = union_of_parts(arena, pairs.iter().map(|pair| pair.first).collect());
+                let rest = union_of_parts(arena, pairs.iter().map(|pair| pair.rest).collect());
 
                 parts.push((rest_part, rest));
                 parts.push((first_part, first));

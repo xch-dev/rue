@@ -45,18 +45,20 @@ pub fn declare_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem) -> (TypeId
     let enum_name = enum_item.name().map(|name| name.text().to_string());
 
     // Without any fields, each variant is only its discriminant, which is also what makes it a
-    // struct that isn't nil terminated (since it's only made of the last field)
+    // struct that isn't nil terminated (since it's only made of the last field). Otherwise, the
+    // fields come after the discriminant: in a list, or in a tree in a `tree` enum, so that the
+    // discriminant is in the same place in every variant.
     let has_fields = enum_item
         .variants()
         .any(|variant| variant.fields().is_some());
 
-    // In a `tree` enum, each variant's fields are in a tree after its discriminant, which stays
-    // first so that it's in the same place in every variant. Without any fields, there's no tree.
-    let layout = if enum_item.tree().is_some() && has_fields {
-        StructLayout::Tree { prefix: 1 }
-    } else {
-        StructLayout::List
-    };
+    let fields_layout = has_fields.then(|| {
+        if enum_item.tree().is_some() {
+            StructLayout::Tree { prefix: 1 }
+        } else {
+            StructLayout::List
+        }
+    });
 
     let mut variants = Vec::new();
 
@@ -68,8 +70,7 @@ pub fn declare_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem) -> (TypeId
             enum_name.as_deref(),
             &generics,
             namespace,
-            has_fields,
-            layout,
+            fields_layout,
         ));
     }
 
@@ -132,7 +133,8 @@ pub fn declare_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem) -> (TypeId
 }
 
 /// Declares the struct type of a variant, and the constant for it if it has no fields, in the
-/// enum's namespace. Returns `None` if the variant has no name, or the name is already taken.
+/// enum's namespace. The variants have their fields in the layout, unless none of them have
+/// fields. Returns `None` if the variant has no name, or the name is already taken.
 fn declare_variant(
     ctx: &mut Compiler,
     variant: &AstEnumVariant,
@@ -140,8 +142,7 @@ fn declare_variant(
     enum_name: Option<&str>,
     generics: &[TypeId],
     namespace: ScopeId,
-    has_fields: bool,
-    layout: StructLayout,
+    fields_layout: Option<StructLayout>,
 ) -> Option<EnumVariant> {
     let name = variant.name()?;
 
@@ -155,7 +156,9 @@ fn declare_variant(
 
     let names = IndexSet::from([DISCRIMINANT_FIELD.to_string()]);
 
-    let (fields, nil_terminated) = if has_fields {
+    let layout = fields_layout.unwrap_or(StructLayout::List);
+
+    let (fields, nil_terminated) = if fields_layout.is_some() {
         declare_fields(
             ctx,
             names,
@@ -267,7 +270,7 @@ pub fn compile_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem, ty: TypeId
         field_types.extend(compile_fields(ctx, info.ty, variant.struct_fields()));
         ctx.pop_declaration();
 
-        resolve_struct_inner(ctx, info.ty, field_types);
+        resolve_struct_inner(ctx, info.ty, &field_types);
 
         if let Some(constant) = info.constant {
             let Type::Struct(Struct {

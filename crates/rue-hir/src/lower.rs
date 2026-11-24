@@ -779,21 +779,12 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                     .map(|value| self.lower_hir(env, value))
                     .collect::<Vec<_>>();
 
-                // Nil is only allocated where the struct has it
-                let nil = |lir: Option<LirId>, arena: &mut Arena<Lir>| {
-                    lir.unwrap_or_else(|| arena.alloc(Lir::Atom(vec![])))
-                };
+                let nil = self.arena.alloc(Lir::Atom(vec![]));
 
-                let lir = initializer.shape().fold(
-                    |index| index.map(|index| values[index]),
-                    |first, rest| {
-                        let first = nil(first, self.arena);
-                        let rest = nil(rest, self.arena);
-                        Some(self.arena.alloc(Lir::Cons(first, rest)))
-                    },
-                );
-
-                nil(lir, self.arena)
+                initializer.shape().fold(
+                    |index| index.map_or(nil, |index| values[index]),
+                    |first, rest| self.arena.alloc(Lir::Cons(first, rest)),
+                )
             }
             Hir::FieldAccess(access) => {
                 let mut lir = self.lower_hir(env, access.value);

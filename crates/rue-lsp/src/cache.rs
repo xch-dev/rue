@@ -12,7 +12,7 @@ use rue_diagnostic::{Source, SourceKind};
 use rue_hir::{Declaration, FunctionKind, Item, Namespace, ScopeId, Symbol, SymbolId};
 use rue_lexer::{Lexer, TokenKind};
 use rue_parser::{SyntaxKind, SyntaxToken, T};
-use rue_types::{DISCRIMINANT_FIELD, Struct, StructLayout, Type, TypeId, Union};
+use rue_types::{DISCRIMINANT_FIELD, Type, TypeId, Union};
 use tower_lsp_server::ls_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Location, Position,
 };
@@ -1222,13 +1222,7 @@ impl Cache {
     fn is_tree(&mut self, ty: TypeId) -> bool {
         let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
 
-        matches!(
-            self.ctx.ty(semantic),
-            Type::Struct(Struct {
-                layout: StructLayout::Tree { .. },
-                ..
-            })
-        )
+        matches!(self.ctx.ty(semantic), Type::Struct(ty) if ty.layout.is_tree())
     }
 
     fn variant_hover(&mut self, scopes: &Scopes, ty: TypeId) -> Option<VariantHoverInfo> {
