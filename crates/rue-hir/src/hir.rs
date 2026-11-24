@@ -2,7 +2,7 @@ use id_arena::Id;
 use num_bigint::BigInt;
 use rue_diagnostic::SrcLoc;
 use rue_lir::ClvmOp;
-use rue_types::{Check, TypeId};
+use rue_types::{Check, CheckPlan, TypeId};
 
 use crate::{BinaryOp, Database, SymbolId, TypePath, UnaryOp, check_value_uses};
 
@@ -252,8 +252,8 @@ pub struct Guard {
 
 impl Guard {
     /// The check that's performed at runtime, which is what the guard is lowered to.
-    pub fn runtime_check(&self) -> Check {
-        self.check.clone().simplify()
+    pub fn runtime_check(&self) -> CheckPlan {
+        self.check.clone().simplify().plan()
     }
 
     /// The number of times the value is used by the runtime check, which may be none if there's

@@ -1,22 +1,33 @@
-use rue_types::{AtomRestriction, Check};
+use rue_types::{AtomRestriction, Check, CheckPlan};
 
-use crate::{BinaryOp, Database, Hir, HirId, UnaryOp};
+use crate::{
+    BinaryOp, Database, FieldAccess, FieldKind, FunctionCall, Hir, HirId, TypePath, UnaryOp,
+};
 
 /// Generates the HIR that checks whether the value matches a type at runtime. This is done when
 /// a [`Hir::Guard`] is lowered. A check that doesn't use the value is a constant, so the guard's
 /// value is evaluated separately for its effect if it may fail.
-pub fn generate_check_hir(db: &mut Database, check: Check, hir: HirId) -> HirId {
+///
+/// A check that calls helpers (see [`CheckPlan`]) is given the tree of their programs, and the
+/// path to each in it. The tree is passed on to each helper along with the part of the value it
+/// checks.
+pub fn generate_check_hir(
+    db: &mut Database,
+    check: Check,
+    hir: HirId,
+    helpers: Option<&CheckHelpers>,
+) -> HirId {
     match check {
         Check::None => db.alloc_hir(Hir::Bool(true)),
         Check::Impossible => db.alloc_hir(Hir::Bool(false)),
         Check::Pair(first, rest) => {
             let first_hir = db.alloc_hir(Hir::Unary(UnaryOp::First, hir));
             let first = (first.as_ref() != &Check::None)
-                .then_some(generate_check_hir(db, *first, first_hir));
+                .then_some(generate_check_hir(db, *first, first_hir, helpers));
 
             let rest_hir = db.alloc_hir(Hir::Unary(UnaryOp::Rest, hir));
-            let rest =
-                (rest.as_ref() != &Check::None).then_some(generate_check_hir(db, *rest, rest_hir));
+            let rest = (rest.as_ref() != &Check::None)
+                .then_some(generate_check_hir(db, *rest, rest_hir, helpers));
 
             match (first, rest) {
                 (Some(first), Some(rest)) => db.alloc_hir(Hir::Binary(BinaryOp::And, first, rest)),
@@ -59,7 +70,7 @@ pub fn generate_check_hir(db: &mut Database, check: Check, hir: HirId) -> HirId 
         Check::And(checks) => {
             let mut checks = checks
                 .into_iter()
-                .map(|check| generate_check_hir(db, check, hir))
+                .map(|check| generate_check_hir(db, check, hir, helpers))
                 .collect::<Vec<_>>();
 
             // Fold from the right so that the checks are evaluated in order, since later checks
@@ -77,7 +88,7 @@ pub fn generate_check_hir(db: &mut Database, check: Check, hir: HirId) -> HirId 
         Check::Or(checks) => {
             let mut checks = checks
                 .into_iter()
-                .map(|check| generate_check_hir(db, check, hir))
+                .map(|check| generate_check_hir(db, check, hir, helpers))
                 .collect::<Vec<_>>();
 
             // Fold from the right so that the checks are evaluated in order, since later checks
@@ -92,6 +103,52 @@ pub fn generate_check_hir(db: &mut Database, check: Check, hir: HirId) -> HirId 
 
             result
         }
+        // Runs `(a helper (c helpers value))`, so the helper can call the others
+        Check::Helper(index) => {
+            let helpers = helpers.expect("a check that calls helpers is given them");
+            let helper = db.alloc_hir(Hir::FieldAccess(FieldAccess {
+                value: helpers.tree,
+                name: format!("helper {index}"),
+                kind: FieldKind::Path(helpers.paths[index].clone()),
+            }));
+            db.alloc_hir(Hir::FunctionCall(FunctionCall {
+                function: helper,
+                args: vec![helpers.tree, hir],
+                nil_terminated: false,
+            }))
+        }
+        Check::Shared(_) => unreachable!("a planned check has no shared parts"),
+    }
+}
+
+/// The helpers that a check calls (see [`generate_check_hir`]).
+#[derive(Debug, Clone)]
+pub struct CheckHelpers {
+    /// The tree of the helpers' programs.
+    pub tree: HirId,
+    /// The path to each helper in the tree.
+    pub paths: Vec<Vec<TypePath>>,
+}
+
+/// The number of times each helper is called by the check, added to the counts.
+pub fn count_helper_calls(check: &Check, counts: &mut [usize]) {
+    match check {
+        Check::None
+        | Check::Impossible
+        | Check::IsAtom { .. }
+        | Check::IsPair { .. }
+        | Check::Atom(_) => {}
+        Check::Helper(index) => counts[*index] += 1,
+        Check::Pair(first, rest) => {
+            count_helper_calls(first, counts);
+            count_helper_calls(rest, counts);
+        }
+        Check::And(checks) | Check::Or(checks) => {
+            for check in checks {
+                count_helper_calls(check, counts);
+            }
+        }
+        Check::Shared(_) => unreachable!("a planned check has no shared parts"),
     }
 }
 
@@ -99,13 +156,23 @@ pub fn generate_check_hir(db: &mut Database, check: Check, hir: HirId) -> HirId 
 /// Analyses that run before lowering (such as the dependency graph) use this to treat a
 /// [`Hir::Guard`] exactly like the check it's lowered to, without generating it. A value that's
 /// used no times is evaluated for its effect if it may fail (see
-/// [`crate::DependencyGraph::is_guard_effect`]).
-pub fn check_value_uses(check: &Check) -> usize {
+/// [`crate::DependencyGraph::is_guard_effect`]). A check with helpers is run as a program of its
+/// own, which the value is passed to once.
+pub fn check_value_uses(plan: &CheckPlan) -> usize {
+    if plan.helpers.is_empty() {
+        check_tree_value_uses(&plan.check)
+    } else {
+        1
+    }
+}
+
+fn check_tree_value_uses(check: &Check) -> usize {
     match check {
         Check::None | Check::Impossible => 0,
-        Check::Pair(first, rest) => check_value_uses(first) + check_value_uses(rest),
-        Check::IsAtom { .. } | Check::IsPair { .. } | Check::Atom(_) => 1,
-        Check::And(checks) | Check::Or(checks) => checks.iter().map(check_value_uses).sum(),
+        Check::Pair(first, rest) => check_tree_value_uses(first) + check_tree_value_uses(rest),
+        Check::IsAtom { .. } | Check::IsPair { .. } | Check::Atom(_) | Check::Helper(_) => 1,
+        Check::And(checks) | Check::Or(checks) => checks.iter().map(check_tree_value_uses).sum(),
+        Check::Shared(_) => unreachable!("a planned check has no shared parts"),
     }
 }
 
@@ -162,9 +229,9 @@ mod tests {
         for check in checks {
             let mut db = Database::new();
             let value = db.alloc_hir(Hir::Unresolved);
-            let hir = generate_check_hir(&mut db, check.clone(), value);
+            let hir = generate_check_hir(&mut db, check.clone(), value, None);
             assert_eq!(
-                check_value_uses(&check),
+                check_value_uses(&check.plan()),
                 count_uses(&db, hir, value),
                 "{check:?}"
             );

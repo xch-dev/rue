@@ -3,7 +3,7 @@ use std::{cmp::Reverse, mem};
 use indexmap::IndexMap;
 use num_bigint::BigUint;
 
-use crate::SymbolId;
+use crate::{SymbolId, TypePath};
 
 /// A sequential group is a chain of pairs, with one level for each symbol, and a tree is as deep as
 /// it has unreferenced symbols, so an environment can be thousands of levels deep. Building it,
@@ -143,6 +143,21 @@ impl Environment {
         }
 
         Ok(path)
+    }
+
+    /// The fields that lead from the root to the symbol, which [`Self::path`] is made of.
+    pub fn type_path(&self, symbol_id: SymbolId) -> Result<Vec<TypePath>, PathError> {
+        let ops = self
+            .get_pair_ops(symbol_id)
+            .ok_or(PathError::SymbolNotFound)?;
+
+        Ok(ops
+            .into_iter()
+            .map(|op| match op {
+                PairOp::First => TypePath::First,
+                PairOp::Rest => TypePath::Rest,
+            })
+            .collect())
     }
 
     /// The operations that lead from the root to the symbol, searching the first of each pair before
