@@ -51,12 +51,13 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use rowan::{TextRange, TextSize};
 use rue_ast::{AstFunctionItem, AstNode, TRUSTED_ATTRIBUTE};
-use rue_diagnostic::{Applicability, Lint, Note, SourceKind, SrcLoc, Suggestion};
+use rue_diagnostic::{Applicability, Lint, Note, Source, SourceKind, SrcLoc, Suggestion};
 use rue_hir::{
     BinaryOp, FieldKind, FunctionCall, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
     UnaryOp,
 };
 use rue_lir::ClvmOp;
+use rue_parser::SyntaxKind;
 use rue_types::{Check, Type};
 
 use crate::{LintContext, LintInput, srcloc};
@@ -402,10 +403,11 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
             unreachable!("`main` is a function");
         };
 
-        if function
-            .parameters
-            .iter()
-            .any(|&parameter| cx.db().is_trusted_parameter(parameter))
+        if main_item(cx, input, main).is_some()
+            && function
+                .parameters
+                .iter()
+                .any(|&parameter| cx.db().is_trusted_parameter(parameter))
         {
             let summary = Analysis::new(cx, input, &summaries, main, true).run();
             report(cx, input, main, &summary);
@@ -635,14 +637,14 @@ fn parameter_name(cx: &LintContext<'_>, main: SymbolId, index: usize) -> String 
         .unwrap_or_else(|| format!("parameter {}", index + 1))
 }
 
-/// Where to insert an attribute before a parameter of `main`, which is found in the syntax tree
-/// from where `main` is named.
-fn parameter_start(
+/// The function item that `main` is declared by, if it's at the top level of its file, which is
+/// the only `main` whose parameters can be marked `#[trusted]`, rather than one imported from a
+/// module.
+fn main_item<'i>(
     cx: &LintContext<'_>,
-    input: &LintInput<'_>,
+    input: &LintInput<'i>,
     main: SymbolId,
-    index: usize,
-) -> Option<SrcLoc> {
+) -> Option<(&'i Source, AstFunctionItem)> {
     let Symbol::Function(function) = cx.db().symbol(main) else {
         return None;
     };
@@ -654,15 +656,30 @@ fn parameter_start(
         .iter()
         .find(|(source, _)| source.kind == name.source.kind)?;
 
-    let parameter = document
+    let item = document
         .syntax()
         .token_at_offset(TextSize::try_from(name.span.start).ok()?)
         .right_biased()?
         .parent_ancestors()
-        .find_map(AstFunctionItem::cast)?
-        .parameters()
-        .nth(index)?;
+        .find_map(AstFunctionItem::cast)?;
 
+    let top_level = item
+        .syntax()
+        .parent()
+        .is_some_and(|parent| parent.kind() == SyntaxKind::Document);
+
+    top_level.then_some((source, item))
+}
+
+/// Where to insert an attribute before a parameter of `main`.
+fn parameter_start(
+    cx: &LintContext<'_>,
+    input: &LintInput<'_>,
+    main: SymbolId,
+    index: usize,
+) -> Option<SrcLoc> {
+    let (source, item) = main_item(cx, input, main)?;
+    let parameter = item.parameters().nth(index)?;
     let start = parameter.syntax().text_range().start();
     Some(srcloc(source, TextRange::empty(start)))
 }
