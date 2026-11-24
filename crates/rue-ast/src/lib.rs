@@ -267,6 +267,13 @@ impl AstAttribute {
             .is_some_and(|token| token.kind() == T![!])
     }
 
+    /// Whether this is a `#[trusted]` attribute (or a misplaced `#![trusted]`), which marks a
+    /// parameter of `main` as trusted.
+    pub fn is_trusted(&self) -> bool {
+        self.name()
+            .is_some_and(|name| name.text() == TRUSTED_ATTRIBUTE)
+    }
+
     /// The name of the attribute, such as `allow` in `#[allow(unused_binding)]`.
     pub fn name(&self) -> Option<SyntaxToken> {
         self.syntax()
@@ -614,12 +621,8 @@ impl AstFunctionParameter {
 
     /// Whether the parameter has a `#[trusted]` attribute.
     pub fn is_trusted(&self) -> bool {
-        self.attributes().any(|attribute| {
-            !attribute.is_inner()
-                && attribute
-                    .name()
-                    .is_some_and(|name| name.text() == TRUSTED_ATTRIBUTE)
-        })
+        self.attributes()
+            .any(|attribute| !attribute.is_inner() && attribute.is_trusted())
     }
 
     pub fn spread(&self) -> Option<SyntaxToken> {

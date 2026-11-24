@@ -1,18 +1,30 @@
 // `#[trusted]` can only be used on a parameter of `main` at the top level of a file, and doesn't
-// take arguments
+// take arguments. Where it's misplaced, the lint doesn't trust the value.
 
 #[trusted]
 fn helper(#[trusted] value: Bytes32, #[allow(unused_parameter)] other: Bytes32) -> Bytes32 {
-    value
+    sha256(value + other)
 }
 
 mod inner {
-    export fn main(#[trusted] value: Bytes32) -> Bytes32 {
-        value
+    fn main(#[trusted] value: Bytes32, other: Bytes32) -> Bytes32 {
+        sha256(value + other)
+    }
+
+    export fn call(value: Bytes32, other: Bytes32) -> Bytes32 {
+        main(value, other)
     }
 }
 
-fn main(#[trusted(value)] value: Bytes32, #[trusted] #[trusted] twice: Bytes32) -> Bytes32 {
+fn main(
+    #[trusted(value)] value: Bytes32,
+    #[trusted] #[trusted] twice: Bytes32,
+    #![trusted] inner_attribute: Bytes32,
+    a: Bytes32,
+    b: Bytes32,
+    c: Bytes32,
+    d: Bytes32,
+) -> List<Bytes32> {
     #![trusted]
-    helper(value, twice)
+    [helper(value, twice), sha256(inner_attribute + a), helper(a, b), inner::call(c, d)]
 }

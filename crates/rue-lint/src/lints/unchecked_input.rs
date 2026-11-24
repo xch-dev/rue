@@ -371,8 +371,8 @@ struct Summary {
     checked: BTreeSet<Origin>,
     concats: Vec<Concat>,
     /// Values in deferred conditions that are hashed, with the outermost call they were hashed
-    /// through.
-    deferred: BTreeMap<Deferred, HirId>,
+    /// through, and whether that's in this function rather than reached through a call.
+    deferred: BTreeMap<Deferred, (HirId, bool)>,
     /// The values that are hashed as a whole, so the deferred conditions inside of them are too.
     hashed: BTreeSet<Origin>,
 }
@@ -382,7 +382,12 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
 
     for main in entrypoints(cx, input) {
         summarize(cx, input, main, &mut summaries);
-        report(cx, input, main, &summaries[&main]);
+
+        // The summary of `main` is also what it does when it's called, by itself or by another
+        // file's `main`, where its parameters aren't trusted, so it's analyzed again with them
+        // trusted for what's reported
+        let summary = Analysis::new(cx, input, &summaries, main, true).run();
+        report(cx, input, main, &summary);
     }
 }
 
@@ -433,7 +438,7 @@ fn summarize(
         while let Some(&function) = functions.get(index) {
             index += 1;
 
-            let mut analysis = Analysis::new(cx, input, summaries, function);
+            let mut analysis = Analysis::new(cx, input, summaries, function, false);
             let summary = analysis.run();
 
             for callee in analysis.callees {
@@ -471,9 +476,7 @@ fn report(cx: &mut LintContext<'_>, input: &LintInput<'_>, main: SymbolId, summa
         // Several items of the same list have the same name, so they're counted by name
         let mut counts: BTreeMap<(String, Part), usize> = BTreeMap::new();
         for origin in &origins {
-            *counts
-                .entry(origin_name(cx, input, main, origin))
-                .or_default() += 1;
+            *counts.entry(origin_name(cx, main, origin)).or_default() += 1;
         }
 
         let names = counts
@@ -515,8 +518,8 @@ fn report(cx: &mut LintContext<'_>, input: &LintInput<'_>, main: SymbolId, summa
 
     let mut deferred: BTreeSet<(HirId, HirId, String, Option<usize>)> = BTreeSet::new();
 
-    for (value, &call) in &summary.deferred {
-        let (path, part) = origin_name(cx, input, main, &value.origin);
+    for (value, &(call, _)) in &summary.deferred {
+        let (path, part) = origin_name(cx, main, &value.origin);
         deferred.insert((
             value.site,
             call,
@@ -546,8 +549,6 @@ fn report(cx: &mut LintContext<'_>, input: &LintInput<'_>, main: SymbolId, summa
     }
 }
 
-/// Reports the diagnostic at the outermost call in `main` that reaches the site, or at the site
-/// itself if it's in `main`, so that it can be allowed there.
 /// What a diagnostic is reported for: the parameters of `main` whose values it's about, which can
 /// be marked `#[trusted]` instead of checking them.
 struct Report<'r, 'i> {
@@ -556,6 +557,8 @@ struct Report<'r, 'i> {
     parameters: BTreeSet<usize>,
 }
 
+/// Reports the diagnostic at the outermost call in `main` that reaches the site, or at the site
+/// itself if it's in `main`, so that it can be allowed there.
 fn report_at(
     cx: &mut LintContext<'_>,
     report: &Report<'_, '_>,
@@ -581,7 +584,7 @@ fn report_at(
         .iter()
         .filter_map(|&index| {
             let start = parameter_start(cx, report.input, report.main, index)?;
-            let name = parameter_name(cx, report.input, report.main, index);
+            let name = parameter_name(cx, report.main, index);
             Some(Suggestion::replace(
                 format!(
                     "If `{name}` is curried, or supplied by an outer puzzle that checks it, mark it as trusted"
@@ -635,19 +638,21 @@ fn main_parameter<'i>(
 }
 
 /// How a parameter of `main` is written in a diagnostic: its name, or its pattern if it's
-/// destructured.
-fn parameter_name(
-    cx: &LintContext<'_>,
-    input: &LintInput<'_>,
-    main: SymbolId,
-    index: usize,
-) -> String {
-    main_parameter(cx, input, main, index)
-        .and_then(|(_, parameter)| parameter.binding())
-        .map_or_else(
-            || format!("parameter {}", index + 1),
-            |binding| rue_hir::one_line(&binding.syntax().text().to_string()),
-        )
+/// destructured, as the function's type records it.
+fn parameter_name(cx: &LintContext<'_>, main: SymbolId, index: usize) -> String {
+    let Symbol::Function(function) = cx.db().symbol(main) else {
+        unreachable!("`main` is a function");
+    };
+
+    let Type::Function(ty) = cx.db().ty(function.ty) else {
+        return format!("parameter {}", index + 1);
+    };
+
+    ty.params
+        .get(index)
+        .map(|parameter| rue_hir::one_line(&parameter.name))
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| format!("parameter {}", index + 1))
 }
 
 /// Where to insert an attribute before a parameter of `main`.
@@ -682,14 +687,9 @@ fn join_names(names: &[String]) -> String {
 /// from it, or the call it's the result of. The path stops at an item of a list or pair, since it
 /// can be any of them, or at a field that's too deep to name, and which part of it the value is
 /// is returned along with it.
-fn origin_name(
-    cx: &LintContext<'_>,
-    input: &LintInput<'_>,
-    main: SymbolId,
-    origin: &Origin,
-) -> (String, Part) {
+fn origin_name(cx: &LintContext<'_>, main: SymbolId, origin: &Origin) -> (String, Part) {
     let root = match origin.root {
-        Root::Param(index) => parameter_name(cx, input, main, index),
+        Root::Param(index) => parameter_name(cx, main, index),
         // The result of a call in another function is named after the call in `main` that it's
         // reached through, since the same call can be reached more than once
         Root::Call { site, .. } => cx.db().hir_srcloc(site).map_or_else(
@@ -753,7 +753,8 @@ struct Analysis<'c, 'a, 'i> {
     input: &'c LintInput<'i>,
     summaries: &'c HashMap<SymbolId, Summary>,
     parameters: Vec<SymbolId>,
-    /// Whether the function is `main`, whose parameters can be marked `#[trusted]`.
+    /// Whether the parameters marked `#[trusted]` are trusted, which is only the case for the
+    /// `main` being reported, not where it's called.
     trusts_parameters: bool,
     body: HirId,
     summary: Summary,
@@ -778,6 +779,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         input: &'c LintInput<'i>,
         summaries: &'c HashMap<SymbolId, Summary>,
         function: SymbolId,
+        trusts_parameters: bool,
     ) -> Self {
         let Symbol::Function(symbol) = cx.db().symbol(function) else {
             unreachable!("only functions are analyzed");
@@ -785,7 +787,6 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
 
         let parameters = symbol.parameters.clone();
         let body = symbol.body;
-        let trusts_parameters = is_main(cx, input, function);
 
         Self {
             cx,
@@ -822,7 +823,11 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
             .retain_mut(|concat| concat.retain_unchecked(|origin| origin.checked_by(checked)));
 
         // The same concatenation reached through different calls (or around a recursive call
-        // again) is kept once, with the first calls it was reached through
+        // again) is kept once, where it's written in this function if it is, or else with the
+        // first call it was reached through
+        self.summary
+            .concats
+            .sort_by_key(|concat| concat.call.is_some());
         let mut seen = HashSet::new();
         self.summary
             .concats
@@ -1188,9 +1193,9 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         self.summary.concats.extend(region_concats);
 
         let region_deferred = std::mem::replace(&mut self.summary.deferred, deferred);
-        for (value, call) in region_deferred {
+        for (value, (call, here)) in region_deferred {
             if !value.origin.checked_by(&region_checked) {
-                self.summary.deferred.entry(value).or_insert(call);
+                self.record_deferred(value, call, here);
             }
         }
 
@@ -1533,7 +1538,7 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
 
         for deferred in summary.deferred.keys() {
             for origin in translate(&deferred.origin).direct {
-                self.defer(origin, deferred.site, hir);
+                self.defer(origin, deferred.site, hir, false);
             }
         }
 
@@ -1552,18 +1557,33 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         self.summary.hashed.extend(value.direct.iter().cloned());
 
         for (origin, &site) in &value.deferred {
-            self.defer(origin.clone(), site, call);
+            self.defer(origin.clone(), site, call, true);
         }
     }
 
     /// Records an unchecked value in a deferred condition that's hashed, reached through the
-    /// call, unless the branch being analyzed checks it.
-    fn defer(&mut self, origin: Origin, site: HirId, call: HirId) {
-        if !self.checked_in_branch(&origin) {
-            self.summary
-                .deferred
-                .entry(Deferred { origin, site })
-                .or_insert(call);
+    /// call, unless the branch being analyzed checks it. A condition that this function hashes
+    /// (`here`) is reported where it does, rather than where a call reaches it again, such as a
+    /// recursive call.
+    fn defer(&mut self, origin: Origin, site: HirId, call: HirId, here: bool) {
+        if self.checked_in_branch(&origin) {
+            return;
+        }
+
+        self.record_deferred(Deferred { origin, site }, call, here);
+    }
+
+    /// Records a deferred value, keeping where it's first hashed in this function if it is, and
+    /// otherwise the first call it's reached through.
+    fn record_deferred(&mut self, deferred: Deferred, call: HirId, here: bool) {
+        let entry = self
+            .summary
+            .deferred
+            .entry(deferred)
+            .or_insert((call, here));
+
+        if here && !entry.1 {
+            *entry = (call, here);
         }
     }
 

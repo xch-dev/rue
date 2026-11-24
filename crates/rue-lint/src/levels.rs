@@ -1,9 +1,7 @@
 use std::{collections::HashMap, ops::Range};
 
 use rowan::Direction;
-use rue_ast::{
-    AstAttribute, AstDocument, AstFunctionItem, AstModuleItem, AstNode, TRUSTED_ATTRIBUTE,
-};
+use rue_ast::{AstAttribute, AstDocument, AstFunctionItem, AstModuleItem, AstNode};
 use rue_diagnostic::{
     AttributeLevel, Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, Lint, LintLevel,
     LintLevels, LintName, Source, SourceKind, SrcLoc,
@@ -81,11 +79,11 @@ impl ScopedLintLevels {
 
                 // `#[trusted]` isn't a lint level, but marks a parameter of `main` as trusted, which
                 // the compiler reads from the parameter itself
-                if attribute
-                    .name()
-                    .is_some_and(|name| name.text() == TRUSTED_ATTRIBUTE)
-                {
-                    if inner || !is_main_parameter(&attribute) {
+                if attribute.is_trusted() {
+                    // After an item that failed to parse, the parser has already reported it
+                    if (inner || !is_main_parameter(&attribute))
+                        && !is_after_failed_item(&attribute)
+                    {
                         error(
                             DiagnosticKind::MisplacedTrustedAttribute,
                             attribute.syntax().text_range(),

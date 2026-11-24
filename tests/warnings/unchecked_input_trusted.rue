@@ -15,8 +15,24 @@ fn main(
     other_hash: Bytes32,
     new_owner: Bytes32,
     (left, right): (Bytes32, Bytes32),
+    depth: Int,
     #[trusted] ...rest: (Bytes32, nil),
 ) -> List<Any> {
+    // Calling `main` itself, the values passed to its trusted parameters aren't trusted
+    if depth > 0 {
+        return main(
+            inner_puzzle_hash,
+            singleton,
+            (first, second),
+            inner_puzzle_hash,
+            other_hash,
+            new_owner,
+            (left, right),
+            depth - 1,
+            ...(other_hash, nil),
+        );
+    }
+
     [
         // Trusted values have known lengths
         sha256(mod_hash + inner_puzzle_hash),
