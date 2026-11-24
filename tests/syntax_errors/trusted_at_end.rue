@@ -1,0 +1,5 @@
+fn main(a: Bytes32) -> Bytes32 {
+    a
+}
+
+#[trusted]

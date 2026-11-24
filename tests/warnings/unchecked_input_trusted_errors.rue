@@ -1,3 +1,5 @@
+#![trusted]
+
 // `#[trusted]` can only be used on a parameter of `main` at the top level of a file, and doesn't
 // take arguments. Where it's misplaced, the lint doesn't trust the value.
 
@@ -7,6 +9,8 @@ fn helper(#[trusted] value: Bytes32, #[allow(unused_parameter)] other: Bytes32) 
 }
 
 mod inner {
+    #![trusted]
+
     fn main(#[trusted] value: Bytes32, other: Bytes32) -> Bytes32 {
         sha256(value + other)
     }

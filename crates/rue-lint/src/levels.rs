@@ -80,9 +80,16 @@ impl ScopedLintLevels {
                 // `#[trusted]` isn't a lint level, but marks a parameter of `main` as trusted, which
                 // the compiler reads from the parameter itself
                 if attribute.is_trusted() {
-                    // After an item that failed to parse, the parser has already reported it
+                    // An attribute with nothing to apply to after an item that failed to parse has
+                    // already been reported by the parser
+                    let has_target = if inner {
+                        inner_target(&attribute).is_some()
+                    } else {
+                        target(&attribute).is_some()
+                    };
+
                     if (inner || !is_main_parameter(&attribute))
-                        && !is_after_failed_item(&attribute)
+                        && (has_target || !is_after_failed_item(&attribute))
                     {
                         error(
                             DiagnosticKind::MisplacedTrustedAttribute,

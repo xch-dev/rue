@@ -1,25 +1,27 @@
 diagnostics:
-- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:4:1"
-- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:5:11"
-- Attributes can only be used on items and statements at unchecked_input_trusted_errors.rue:5:38
-- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:10:13"
-- "`#[trusted]` doesn't take arguments at unchecked_input_trusted_errors.rue:20:5"
-- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:22:5"
-- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:28:5"
+- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:1:1"
+- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:6:1"
+- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:7:11"
+- Attributes can only be used on items and statements at unchecked_input_trusted_errors.rue:7:38
+- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:12:5"
+- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:14:13"
+- "`#[trusted]` doesn't take arguments at unchecked_input_trusted_errors.rue:24:5"
+- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:26:5"
+- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:32:5"
 - |-
-  `a` and `inner_attribute` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_trusted_errors.rue:29:35
+  `a` and `inner_attribute` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_trusted_errors.rue:33:35
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
     help: If `inner_attribute` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
     help: If `a` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
-  `a` and `b` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_trusted_errors.rue:29:57
-    note: The concatenation is here at unchecked_input_trusted_errors.rue:6:12
+  `a` and `b` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_trusted_errors.rue:33:57
+    note: The concatenation is here at unchecked_input_trusted_errors.rue:8:12
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
     help: If `a` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
     help: If `b` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
-  `c` and `d` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_trusted_errors.rue:29:71
-    note: The concatenation is here at unchecked_input_trusted_errors.rue:11:16
+  `c` and `d` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_trusted_errors.rue:33:71
+    note: The concatenation is here at unchecked_input_trusted_errors.rue:15:16
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
     help: If `c` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
     help: If `d` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
