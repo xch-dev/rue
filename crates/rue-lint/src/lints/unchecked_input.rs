@@ -1,9 +1,9 @@
 //! Reports where a program relies on the length of a value from the solution that its type
 //! declares but nothing checks.
 //!
-//! The parameter types of an entrypoint (`main`, or an exported function, which is compiled as a
-//! program of its own) are assumptions about the solution, so a `Bytes32` parameter can be an atom
-//! of any length. In what follows, `main` stands for any entrypoint. Most code doesn't depend on that, since an operation that needs the
+//! The parameter types of an entrypoint (`main`, or an export of the main file, which is compiled
+//! as a program of its own) are assumptions about the solution, so a `Bytes32` parameter can be
+//! an atom of any length. In what follows, `main` stands for any entrypoint. Most code doesn't depend on that, since an operation that needs the
 //! right length fails if it isn't, and a spend either succeeds as a whole or fails. Two kinds of
 //! code do depend on it, and are reported:
 //!
@@ -48,8 +48,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use rue_diagnostic::{Lint, Note, SourceKind, SrcLoc};
 use rue_hir::{
-    BinaryOp, Declaration, FieldKind, FunctionCall, FunctionKind, Hir, HirId, Statement, Symbol,
-    SymbolId, UnaryOp,
+    BinaryOp, FieldKind, FunctionCall, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
+    UnaryOp,
 };
 use rue_lir::ClvmOp;
 use rue_types::{Check, Type};
@@ -376,20 +376,15 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
     }
 }
 
-/// The entrypoints of the files being compiled, in a fixed order: each file's `main` and its
-/// exported functions, which are each compiled as a program whose parameters are the solution.
-/// Tests aren't entrypoints here, and neither are `extern fn`s, which have no body.
+/// The entrypoints of the files being compiled, in a fixed order: the functions compiled as
+/// programs of their own (each file's `main`, and the main file's exports), whose parameters are
+/// the solution. The exports of other files are library functions that files import from each
+/// other, which are followed from where they're called instead. An `extern fn` has no body.
 fn entrypoints(cx: &LintContext<'_>, input: &LintInput<'_>) -> Vec<SymbolId> {
-    let tests: HashSet<SymbolId> = cx.db().tests().map(|test| test.symbol).collect();
-
     let mut entrypoints: Vec<SymbolId> = input
-        .entrypoints
+        .programs
         .iter()
-        .filter_map(|declaration| match *declaration {
-            Declaration::Symbol(symbol) => Some(symbol),
-            Declaration::Type(_) => None,
-        })
-        .filter(|symbol| !tests.contains(symbol))
+        .copied()
         .filter(|&symbol| {
             matches!(
                 cx.db().symbol(symbol),
@@ -399,7 +394,6 @@ fn entrypoints(cx: &LintContext<'_>, input: &LintInput<'_>) -> Vec<SymbolId> {
         .collect();
 
     entrypoints.sort();
-    entrypoints.dedup();
     entrypoints
 }
 

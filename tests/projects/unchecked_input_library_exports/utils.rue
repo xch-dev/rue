@@ -1,0 +1,4 @@
+// A library function, which isn't reported on its own, only where it's called
+export fn leaf(prefix: Bytes32, value: Bytes32) -> Bytes32 {
+    sha256(prefix + value)
+}

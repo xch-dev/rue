@@ -361,16 +361,51 @@ impl FileTree {
             check_recursion(ctx);
 
             let entrypoints = self.entrypoints(ctx);
+            let programs = self.programs(ctx);
             let documents = self
                 .all_files()
                 .into_iter()
                 .map(|file| (&file.source, &file.document))
                 .collect();
 
-            ctx.run_lints(documents, &entrypoints);
+            ctx.run_lints(documents, &entrypoints, &programs);
         } else {
             ctx.discard_lint_sites();
         }
+    }
+
+    /// The file whose exports are compiled as programs by default: the file itself if the tree is
+    /// one file, or `main.rue` at the top of a project, as `rue build` picks it. The other files'
+    /// exports are what the files import from each other.
+    pub fn main_file(&self) -> Option<&File> {
+        match self {
+            Self::File(file) => Some(file),
+            Self::Directory(directory) => directory.children.iter().find_map(|child| match child {
+                Self::File(file) if file.name == "main" => Some(file),
+                Self::File(_) | Self::Directory(_) => None,
+            }),
+        }
+    }
+
+    /// The symbols that are compiled as programs of their own, whose parameters are the solution:
+    /// each file's `main`, and the main file's exports (see [`Self::main_file`]), as
+    /// `rue build --all` writes them.
+    pub fn programs(&self, ctx: &Compiler) -> HashSet<SymbolId> {
+        let mut programs: HashSet<SymbolId> = self
+            .all_files()
+            .into_iter()
+            .filter_map(|file| ctx.scope(file.module(ctx).scope).symbol("main"))
+            .collect();
+
+        if let Some(file) = self.main_file() {
+            programs.extend(
+                ctx.scope(file.module(ctx).scope)
+                    .exported_symbols()
+                    .map(|(_, symbol)| symbol),
+            );
+        }
+
+        programs
     }
 
     pub fn entrypoints(&self, ctx: &Compiler) -> HashSet<Declaration> {

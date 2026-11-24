@@ -1,0 +1,7 @@
+diagnostics:
+- Undeclared symbol `utils` at main.rue:4:8
+- |-
+  `left` and `right` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at main.rue:7:12
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- Unused parameter `a` at main.rue:10:9
+- Unused parameter `b` at main.rue:10:21

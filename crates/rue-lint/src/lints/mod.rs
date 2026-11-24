@@ -139,10 +139,12 @@ mod tests {
         }
 
         let entrypoints = std::collections::HashSet::new();
+        let programs = std::collections::HashSet::new();
         let input = LintInput::new(
             crate::LintSites::default(),
             Vec::new(),
             &entrypoints,
+            &programs,
             false,
             &rue_options::CompilerOptions::default(),
         );

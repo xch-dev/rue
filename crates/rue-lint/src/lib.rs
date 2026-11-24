@@ -23,7 +23,7 @@ use std::{cell::OnceCell, collections::HashSet};
 
 use rue_ast::AstDocument;
 use rue_diagnostic::{Diagnostic, DiagnosticSeverity, LintLevels, Source};
-use rue_hir::{Database, Declaration, FailureAnalysis};
+use rue_hir::{Database, Declaration, FailureAnalysis, SymbolId};
 use rue_options::CompilerOptions;
 use rue_types::BuiltinTypes;
 
@@ -36,6 +36,9 @@ pub struct LintInput<'a> {
     pub documents: Vec<(&'a Source, &'a AstDocument)>,
     /// The declarations that are used externally, such as `main`, tests and exports.
     pub entrypoints: &'a HashSet<Declaration>,
+    /// The functions that are compiled as programs of their own, whose parameters are the
+    /// solution: each file's `main`, and the main file's exports (see `FileTree::programs`).
+    pub programs: &'a HashSet<SymbolId>,
     /// Whether compilation reported any errors. Code that failed to compile may not have recorded
     /// all of its sites, so `expect` attributes aren't checked, as in Rust.
     pub has_errors: bool,
@@ -52,6 +55,7 @@ impl<'a> LintInput<'a> {
         sites: LintSites,
         documents: Vec<(&'a Source, &'a AstDocument)>,
         entrypoints: &'a HashSet<Declaration>,
+        programs: &'a HashSet<SymbolId>,
         has_errors: bool,
         options: &CompilerOptions,
     ) -> Self {
@@ -59,6 +63,7 @@ impl<'a> LintInput<'a> {
             sites,
             documents,
             entrypoints,
+            programs,
             has_errors,
             hard_fork_2: options.hard_fork_2,
             live: OnceCell::new(),

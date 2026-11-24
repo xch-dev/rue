@@ -1,0 +1,13 @@
+// The exports of `main.rue` are compiled as programs of their own, so their parameters are the
+// solution, but the exports of other files are library functions that this file imports
+
+import utils::leaf;
+
+export fn hash_pair(left: Bytes32, right: Bytes32) -> Bytes32 {
+    sha256(left + right)
+}
+
+fn main(a: Bytes32, b: Bytes32) -> (Bytes32, Bytes32) {
+    // The library function is followed from here, where its arguments are only checked once
+    (leaf(sha256("x"), a), leaf(a, b))
+}
