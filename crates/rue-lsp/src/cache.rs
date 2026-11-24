@@ -83,11 +83,16 @@ pub struct StructHoverInfo {
     pub name: String,
     pub fields: Vec<FieldHoverInfo>,
     pub nil_terminated: bool,
+    /// Whether it's a `tree struct`, whose fields are in a tree rather than a list.
+    pub tree: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumHoverInfo {
     pub name: String,
+    /// Whether it's a `tree enum`, whose variants have their fields in a tree. An enum without
+    /// any fields has no tree, so it isn't one.
+    pub tree: bool,
     /// Each variant, as it would be declared in the enum.
     pub variants: Vec<String>,
 }
@@ -778,6 +783,7 @@ impl Cache {
                             name: self.declared_type_name(scopes, ty),
                             fields,
                             nil_terminated,
+                            tree: self.is_tree(ty),
                         }));
                     } else {
                         infos.push(HoverInfo::Type(TypeHoverInfo {
@@ -1184,11 +1190,10 @@ impl Cache {
     fn enum_hover(&mut self, scopes: &Scopes, ty: TypeId) -> EnumHoverInfo {
         let name = self.declared_type_name(scopes, ty);
 
-        let variants = self
-            .ctx
-            .enum_variants(ty)
-            .unwrap_or_default()
-            .to_vec()
+        let variant_types = self.ctx.enum_variants(ty).unwrap_or_default().to_vec();
+        let tree = variant_types.iter().any(|&variant| self.is_tree(variant));
+
+        let variants = variant_types
             .into_iter()
             .filter_map(|variant| {
                 let Type::Struct(ty) = self.ctx.ty(variant) else {
@@ -1206,7 +1211,18 @@ impl Cache {
             })
             .collect();
 
-        EnumHoverInfo { name, variants }
+        EnumHoverInfo {
+            name,
+            tree,
+            variants,
+        }
+    }
+
+    /// Whether the type is a struct (or enum variant) whose fields are in a tree.
+    fn is_tree(&mut self, ty: TypeId) -> bool {
+        let semantic = rue_types::unwrap_semantic(self.ctx.types_mut(), ty, true);
+
+        matches!(self.ctx.ty(semantic), Type::Struct(ty) if ty.layout.is_tree())
     }
 
     fn variant_hover(&mut self, scopes: &Scopes, ty: TypeId) -> Option<VariantHoverInfo> {
@@ -1284,40 +1300,16 @@ impl Cache {
             return None;
         };
 
-        let mut inner = ty.inner;
+        let types = rue_types::extract_field_types(self.ctx.types_mut(), &ty);
+        let never = self.ctx.builtins().types.never;
 
-        for (i, name) in ty.fields.iter().enumerate() {
-            let next = if i == ty.fields.len() - 1 && !ty.nil_terminated {
-                inner
-            } else {
-                let pairs = rue_types::extract_pairs(self.ctx.types_mut(), inner, false);
-
-                let (firsts, rests) = if pairs.is_empty() {
-                    let never = self.ctx.builtins().types.never;
-                    (never, never)
-                } else if pairs.len() == 1 {
-                    (pairs[0].first, pairs[0].rest)
-                } else {
-                    let firsts = self.ctx.alloc_type(Type::Union(Union::new(
-                        pairs.iter().map(|pair| pair.first).collect(),
-                    )));
-                    let rests = self.ctx.alloc_type(Type::Union(Union::new(
-                        pairs.iter().map(|pair| pair.rest).collect(),
-                    )));
-                    (firsts, rests)
-                };
-
-                inner = rests;
-
-                firsts
-            };
-
+        for (name, field_type) in ty.fields.iter().zip(types) {
             // The discriminant of an enum variant isn't a field that can be named
             if name == DISCRIMINANT_FIELD {
                 continue;
             }
 
-            fields.push((name.clone(), next));
+            fields.push((name.clone(), field_type.unwrap_or(never)));
         }
 
         Some((fields, ty.nil_terminated))

@@ -1,10 +1,6 @@
 use rue_types::{Check, TypeId};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum TypePath {
-    First,
-    Rest,
-}
+pub use rue_types::TypePath;
 
 #[derive(Debug, Clone)]
 #[must_use]

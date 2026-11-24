@@ -240,53 +240,39 @@ fn compile_struct_field(
         return FieldResult::Value(ctx.unresolved());
     }
 
-    let mut path = Vec::new();
+    let path = ty
+        .shape()
+        .path(index)
+        .expect("every field is in the struct's shape");
+
     let mut field_type = ty.inner;
     let mut reference = expr.reference;
 
-    let needs_first = index + 1 < ty.fields.len() || ty.nil_terminated;
-
-    for i in 0..index {
-        path.push(TypePath::Rest);
-
+    for (i, &step) in path.iter().enumerate() {
         let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type, true);
 
-        if pairs.is_empty() || (pairs.len() > 1 && (i + 1 < index || needs_first)) {
+        // The field can be read from a union of pairs, but only at the last step, since the steps
+        // before it can't be read through more than one pair
+        if pairs.is_empty() || (pairs.len() > 1 && i + 1 < path.len()) {
             return FieldResult::Error;
         }
 
-        field_type = if pairs.len() == 1 {
-            pairs[0].rest
+        let mut parts: Vec<TypeId> = pairs
+            .into_iter()
+            .map(|pair| match step {
+                TypePath::First => pair.first,
+                TypePath::Rest => pair.rest,
+            })
+            .collect();
+
+        field_type = if parts.len() == 1 {
+            parts.remove(0)
         } else {
-            ctx.alloc_type(Type::Union(Union::new(
-                pairs.into_iter().map(|pair| pair.rest).collect(),
-            )))
+            ctx.alloc_type(Type::Union(Union::new(parts)))
         };
 
         if let Some(reference) = reference.as_mut() {
-            reference.path.push(TypePath::Rest);
-        }
-    }
-
-    if needs_first {
-        path.push(TypePath::First);
-
-        let pairs = rue_types::extract_pairs(ctx.types_mut(), field_type, true);
-
-        if pairs.is_empty() {
-            return FieldResult::Error;
-        }
-
-        field_type = if pairs.len() == 1 {
-            pairs[0].first
-        } else {
-            ctx.alloc_type(Type::Union(Union::new(
-                pairs.into_iter().map(|pair| pair.first).collect(),
-            )))
-        };
-
-        if let Some(reference) = reference.as_mut() {
-            reference.path.push(TypePath::First);
+            reference.path.push(step);
         }
     }
 

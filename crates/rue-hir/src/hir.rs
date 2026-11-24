@@ -2,7 +2,7 @@ use id_arena::Id;
 use num_bigint::BigInt;
 use rue_diagnostic::SrcLoc;
 use rue_lir::ClvmOp;
-use rue_types::{Check, TypeId};
+use rue_types::{Check, FieldShape, StructLayout, TypeId};
 
 use crate::{BinaryOp, Database, SymbolId, TypePath, UnaryOp, check_value_uses};
 
@@ -167,6 +167,8 @@ pub struct StructInitializer {
     pub tail: Option<StructTail>,
     /// Whether the fields end in nil. A struct with a tail ends however the tail does.
     pub nil_terminated: bool,
+    /// How the fields are arranged, which is the struct's layout. Only a list has a tail.
+    pub layout: StructLayout,
 }
 
 impl StructInitializer {
@@ -198,6 +200,15 @@ impl StructInitializer {
     /// Whether the values end in nil, rather than the last of them being the rest of the struct.
     pub fn values_nil_terminated(&self) -> bool {
         self.nil_terminated && self.tail.is_none()
+    }
+
+    /// Where each of the values is in the struct.
+    pub fn shape(&self) -> FieldShape {
+        FieldShape::new(
+            self.values().count(),
+            self.values_nil_terminated(),
+            self.layout,
+        )
     }
 }
 

@@ -72,6 +72,7 @@ impl Types {
             generics: vec![],
             fields: IndexSet::new(),
             nil_terminated: true,
+            layout: rue_types::StructLayout::List,
             narrowed: false,
         });
         id

@@ -116,6 +116,7 @@ impl Db {
                 generics: generics.to_vec(),
                 fields: IndexSet::new(),
                 nil_terminated: true,
+                layout: crate::StructLayout::List,
                 narrowed: false,
             }),
         );

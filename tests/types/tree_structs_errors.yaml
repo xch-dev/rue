@@ -1,0 +1,22 @@
+diagnostics:
+- Unused struct `Spread` at tree_structs_errors.rue:3:13
+- Cannot spread a field of a `tree` struct or enum, since its fields are in a tree at tree_structs_errors.rue:5:5
+- Unused enum `Condition` at tree_structs_errors.rue:8:11
+- Cannot spread a field of a `tree` struct or enum, since its fields are in a tree at tree_structs_errors.rue:9:18
+- Unused struct `Maybe` at tree_structs_errors.rue:12:13
+- Unused function `narrowed` at tree_structs_errors.rue:19:4
+- Unused binding `shown` at tree_structs_errors.rue:21:13
+- "Cannot assign `Maybe { a: nil, b: Bytes, c: (Int, Int) }` to `Int`, since they are incompatible at tree_structs_errors.rue:21:26"
+- Unused struct `Four` at tree_structs_errors.rue:25:13
+- Unused function `correlated` at tree_structs_errors.rue:33:4
+- Unused binding `shown` at tree_structs_errors.rue:35:13
+- "Cannot assign `Four { a: nil, b: (Int, Int) | nil, c: Int, d: Int } | Four { a: (Int, Int) | nil, b: nil, c: Int, d: Int }` to `Int`, since they are incompatible at tree_structs_errors.rue:35:26"
+- Unused enum `Shape` at tree_structs_errors.rue:39:11
+- Unused function `variant` at tree_structs_errors.rue:45:4
+- Unused binding `shown` at tree_structs_errors.rue:47:13
+- "Cannot assign `Shape::Box { a: (Int, Int) | nil, b: Int, c: nil, d: Int, e: Int }` to `Int`, since they are incompatible at tree_structs_errors.rue:47:26"
+- Unused function `spread` at tree_structs_errors.rue:51:4
+- Unused struct `List3` at tree_structs_errors.rue:56:8
+- Unused struct `Tree3` at tree_structs_errors.rue:62:13
+- Unused function `mismatch` at tree_structs_errors.rue:68:4
+- Cannot assign `List3` to `Tree3`, since they are incompatible at tree_structs_errors.rue:68:36

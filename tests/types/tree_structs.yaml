@@ -1,0 +1,68 @@
+tests:
+- name: layout
+  program: (a (q 2 (i (= (a 2 (c 2 ())) (a 2 (c 2 ()))) (q 2 (i (= (a 2 (c 2 (q . 1))) (a 2 (c 2 (q . 1)))) (q 2 (i (= (a 2 (c 2 (q 1 . 2))) (a 2 (c 2 (q 1 . 2)))) (q 2 (i (= (a 2 (c 2 (q 1 2 . 3))) (a 2 (c 2 (q 1 2 . 3)))) (q 2 (i (= (a 2 (c 2 (q (q . 2) 3 . 4))) (a 2 (c 2 (q (q . 2) 3 . 4)))) (q 2 (i (= (a 2 (c 2 (q (q . 2) 3 4 . 5))) (a 2 (c 2 (q (q . 2) 3 4 . 5)))) (q 2 (i (= (a 2 (c 2 (q 1 120 . 1))) (a 2 (c 2 (q 1 120 . 1)))) () (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) ()))
+  debug_program: (a (q 2 (i (= (a 2 (c 2 ())) (a 2 (c 2 ()))) (q 2 (i (= (a 2 (c 2 (q . 1))) (a 2 (c 2 (q . 1)))) (q 2 (i (= (a 2 (c 2 (c (q . 1) (q . 2)))) (a 2 (c 2 (c (q . 1) (q . 2))))) (q 2 (i (= (a 2 (c 2 (c (q . 1) (c (q . 2) (q . 3))))) (a 2 (c 2 (c (q . 1) (c (q . 2) (q . 3)))))) (q 2 (i (= (a 2 (c 2 (c (c (q . 1) (q . 2)) (c (q . 3) (q . 4))))) (a 2 (c 2 (c (c (q . 1) (q . 2)) (c (q . 3) (q . 4)))))) (q 2 (i (= (a 2 (c 2 (c (c (q . 1) (q . 2)) (c (q . 3) (c (q . 4) (q . 5)))))) (a 2 (c 2 (c (c (q . 1) (q . 2)) (c (q . 3) (c (q . 4) (q . 5))))))) (q 2 (i (= (a 2 (c 2 (c (q . 1) (c (q . 120) (q . 1))))) (a 2 (c 2 (c (q . 1) (c (q . 120) (q . 1)))))) () (q 8 (q . "assertion failed at tree_structs.rue:74:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:73:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:72:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:71:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:70:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:69:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:68:5"))) 1) (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) ()))
+  output: ()
+  runtime_cost: 89245
+  byte_cost: 6012000
+  total_cost: 6101245
+- name: enum_layout
+  program: (a (q 2 (i (= (a 2 (c 2 (q ()))) (a 2 (c 2 (q ())))) (q 2 (i (= (a 2 (c 2 (q 1 . 3))) (a 2 (c 2 (q 1 . 3)))) (q 2 (i (= (a 2 (c 2 (q 10 2 . 4))) (a 2 (c 2 (q 10 2 . 4)))) (q 2 (i (= (a 2 (c 2 (q 11 2 4 . 6))) (a 2 (c 2 (q 11 2 4 . 6)))) (q 2 (i (= (a 2 (c 2 (q . 1))) (a 2 (c 2 (q . 1)))) () (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (q 8)) 1) (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) ()))
+  debug_program: (a (q 2 (i (= (a 2 (c 2 (c () ()))) (a 2 (c 2 (c () ())))) (q 2 (i (= (a 2 (c 2 (c (q . 1) (q . 3)))) (a 2 (c 2 (c (q . 1) (q . 3))))) (q 2 (i (= (a 2 (c 2 (c (q . 10) (c (q . 2) (q . 4))))) (a 2 (c 2 (c (q . 10) (c (q . 2) (q . 4)))))) (q 2 (i (= (a 2 (c 2 (c (q . 11) (c (q . 2) (c (q . 4) (q . 6)))))) (a 2 (c 2 (c (q . 11) (c (q . 2) (c (q . 4) (q . 6))))))) (q 2 (i (= (a 2 (c 2 (q . 1))) (a 2 (c 2 (q . 1)))) () (q 8 (q . "assertion failed at tree_structs.rue:85:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:84:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:83:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:82:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:81:5"))) 1) (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) ()))
+  output: ()
+  runtime_cost: 54859
+  byte_cost: 4524000
+  total_cost: 4578859
+- name: fields
+  program: (a (q 2 (i (all (= (+ 8 12 10 22 30) (q . 15)) (= (+ 8 22 30) (q . 10))) (q 2 (q 2 (i (all (= 42 (q . 3)) (not 14)) () (q 8)) 1) (c (c (q . 7) (c 2 ())) 1)) (q 8)) 1) (c (q (q . 2) 3 4 . 5) 1))
+  debug_program: (a (q 2 (q 2 (i (= (a 5 2) (q . 15)) (q 2 (q 2 (i (= (+ (+ (f (f 2)) (f (r (r 2)))) (r (r (r 2)))) (q . 10)) (q 2 (q 2 (i (= (f (r (f (r 2)))) (q . 3)) (q 2 (i (not (r (r 2))) () (q 8 (q . "assertion failed at tree_structs.rue:101:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:100:5"))) 1) (c (c (q . 7) (c 5 ())) 1)) (q 8 (q . "assertion failed at tree_structs.rue:97:5"))) 1) (c 2 1)) (q 8 (q . "assertion failed at tree_structs.rue:94:5"))) 1) (c (c (c (q . 1) (q . 2)) (c (q . 3) (c (q . 4) (q . 5)))) 1)) (c (q 16 (+ (+ (+ (f (f 1)) (r (f 1))) (f (r 1))) (f (r (r 1)))) (r (r (r 1)))) ()))
+  output: ()
+  runtime_cost: 6743
+  byte_cost: 1812000
+  total_cost: 1818743
+- name: update
+  program: (a (q 2 (q 2 (i (= (a 9 (c 9 (c 4 (c 10 (c (q . 40) 30))))) (a 9 (c 9 (q (q . 2) 3 40 . 5)))) (q 2 (i (= (a 13 (c (c (q . 10) 12) 6)) (q . 24)) () (q 8)) 1) (q 8)) 1) (c (q (q . 2) 3 4 . 5) 1)) (c (c (q 2 (i (l 3) (q 11 (q . 2) (a 2 (c 2 5)) (a 2 (c 2 7))) (q 11 (q . 1) 3)) 1) (q 16 4 6 5 11 15)) ()))
+  debug_program: (a (q 2 (q 2 (q 2 (i (= (a 19 (c 19 2)) (a 19 (c 19 (c (c (q . 1) (q . 2)) (c (q . 3) (c (q . 40) (q . 5))))))) (q 2 (q 2 (i (= (a 55 2) (q . 24)) () (q 8 (q . "assertion failed at tree_structs.rue:110:5"))) 1) (c (c (c (q . 10) (r (f 5))) (c (f (r 5)) (c (f (r (r 5))) (r (r (r 5)))))) 1)) (q 8 (q . "assertion failed at tree_structs.rue:107:5"))) 1) (c (c (c (f (f 2)) (r (f 2))) (c (f (r 2)) (c (q . 40) (r (r (r 2)))))) 1)) (c (c (c (q . 1) (q . 2)) (c (q . 3) (c (q . 4) (q . 5)))) 1)) (c (c (q 2 (i (not (l 3)) (q 11 (concat (q . 1) 3)) (q 11 (concat (concat (q . 2) (a 2 (c 2 (f 3)))) (a 2 (c 2 (r 3)))))) 1) (q 16 (+ (+ (+ (f (f 1)) (r (f 1))) (f (r 1))) (f (r (r 1)))) (r (r (r 1))))) ()))
+  output: ()
+  runtime_cost: 29356
+  byte_cost: 3012000
+  total_cost: 3041356
+- name: variants
+  program: (a (i (= (a (q 2 (i 4 (q 2 (i (= 4 (q . 1)) (q 18 6 6 (q . 3)) (q 2 (i (= 4 (q . 10)) (q 18 10 14) (q 18 10 22 30)) 1)) 1) ()) 1) (c (q 10 5 . 3) 1)) (q . 15)) () (q 8)) 1)
+  debug_program: (a (q 2 (i (= (a 2 (c () ())) ()) (q 2 (i (= (a 2 (c (q . 1) (q . 2))) (q . 12)) (q 2 (i (= (a 2 (c (q . 10) (c (q . 2) (q . 3)))) (q . 6)) (q 2 (i (= (a 2 (c (q . 11) (c (q . 2) (c (q . 3) (q . 4))))) (q . 24)) (q 2 (q 2 (q 2 (i (= (a 11 2) (q . 15)) () (q 8 (q . "assertion failed at tree_structs.rue:130:5"))) 1) (c (c (q . 10) (c (q . 5) (r (r 2)))) 1)) (c (c (q . 10) (c (q . 2) (q . 3))) 1)) (q 8 (q . "assertion failed at tree_structs.rue:126:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:125:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:124:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:123:5"))) 1) (c (q 2 (i (= (f 1) ()) () (q 2 (i (= (f 1) (q . 1)) (q 18 (* (q . 3) (r 1)) (r 1)) (q 2 (i (= (f 1) (q . 10)) (q 18 (f (r 1)) (r (r 1))) (q 18 (* (f (r 1)) (f (r (r 1)))) (r (r (r 1))))) 1)) 1)) 1) ()))
+  output: ()
+  runtime_cost: 2842
+  byte_cost: 1668000
+  total_cost: 1670842
+- name: narrowing
+  program: (a (i (= (a (q 2 (i (a (i 8 (q . 10) ()) 1) (q 16 16 26) (q 2 (i 10 (q 16 18 14) (q . 12)) 1)) 1) (c (q ((q) . 2) (() . 3) . 4) 1)) (q . 4)) () (q 8)) 1)
+  debug_program: (a (q 2 (i (= (a 2 (c (c (c (q . 1) ()) (q . 2)) (c (c () (q . 3)) (q . 4)))) (q . 4)) (q 2 (i (= (a 2 (c (c () (q . 2)) (c (c (q . 3) ()) (q . 4)))) (q . 7)) (q 2 (i (= (a 2 (c (c (c (q . 1) ()) (q . 2)) (c () (q . 4)))) (q . 2)) () (q 8 (q . "assertion failed at tree_structs.rue:149:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:148:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:147:5"))) 1) (c (q 2 (i (a (i (not (not (f (f 1)))) (q 32 (not (f (r 1)))) ()) 1) (q 16 (f (f (f 1))) (r (f (r 1)))) (q 2 (i (not (not (f (r 1)))) (q 16 (f (f (r 1))) (r (r 1))) (q 6 (f 1))) 1)) 1) ()))
+  output: ()
+  runtime_cost: 2073
+  byte_cost: 1404000
+  total_cost: 1406073
+- name: deep_narrowing
+  program: (a (q 2 (i (= (a 2 (q (((q . 2)) (i . 4)) (()) ())) (q . 5)) (q 2 (i (= (a 2 (q ((() . 6) (i . 4)) (()) () . 7)) (q . 13)) (q 2 (i (= (a 2 (q (((q . 2) . 6) ()) (()) () . 8)) (q . 14)) () (q 8)) 1) (q 8)) 1) (q 8)) 1) (c (q 2 (i (a (i 8 (q 32 10) (q 1 . 1)) 1) (q 16 12 15) (q 16 16 26)) 1) ()))
+  debug_program: (a (q 2 (i (= (a 2 (c (c (c (c (q . 1) (q . 2)) ()) (c (c (q . 3) (q . 4)) ())) (c (c () ()) (c () ())))) (q . 5)) (q 2 (i (= (a 2 (c (c (c () (q . 6)) (c (c (q . 3) (q . 4)) ())) (c (c () ()) (c () (q . 7))))) (q . 13)) (q 2 (i (= (a 2 (c (c (c (c (q . 1) (q . 2)) (q . 6)) (c () ())) (c (c () ()) (c () (q . 8))))) (q . 14)) () (q 8 (q . "assertion failed at tree_structs.rue:175:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:174:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:173:5"))) 1) (c (q 2 (i (a (i (not (f (f (f 1)))) (q 1 . 1) (q 32 (f (r (f 1))))) 1) (q 16 (r (f (f 1))) (r (r (r 1)))) (q 16 (f (f (f (f 1)))) (r (f (r (f 1)))))) 1) ()))
+  output: ()
+  runtime_cost: 6386
+  byte_cost: 2724000
+  total_cost: 2730386
+- name: guard
+  program: (a (q 2 (i (all (a (i (l 4) (q 2 (i (l 8) () (q 2 (i (l 12) (q 2 (i (l 20) () (q 32 (l 28))) 1) ()) 1)) 1) ()) 1) (not (a (i (l 6) (q 2 (i (l 10) () (q 2 (i (l 14) (q 2 (i (l 22) () (q 32 (l 30))) 1) ()) 1)) 1) ()) 1))) (q 2 (q 2 (i (a (i (l 4) (q 2 (i (l 8) () (q 2 (i (= 8 (q . 10)) (q 2 (i (l 12) (q 2 (i (l 20) () (q 32 (l 28))) 1) ()) 1) ()) 1)) 1) ()) 1) (q 2 (i (l 6) (q 2 (i (l 10) () (q 2 (i (= 10 (q . 10)) (q 2 (i (l 14) (q 2 (i (l 22) () (q 2 (i (l 30) () (q 8)) 1)) 1) ()) 1) ()) 1)) 1) ()) 1) (q 8)) 1) (c (q (>s 2 . 4) 10 2 4) 1)) (q 8)) 1) (c (q (q 2 . 3) 1 2 3) 1))
+  debug_program: (a (q 2 (i (a (i (l 4) (q 2 (i (not (l (f 4))) (q 2 (i (l (r 4)) (q 2 (i (not (l (f (r 4)))) (q 32 (l (r (r 4)))) ()) 1) ()) 1) ()) 1) ()) 1) (q 2 (i (not (a (i (l 6) (q 2 (i (not (l (f 6))) (q 2 (i (l (r 6)) (q 2 (i (not (l (f (r 6)))) (q 32 (l (r (r 6)))) ()) 1) ()) 1) ()) 1) ()) 1)) (q 2 (q 2 (i (a (i (l 4) (q 2 (i (a (i (not (l (f 4))) (q 9 (f 4) (q . 10)) ()) 1) (q 2 (i (l (r 4)) (q 2 (i (not (l (f (r 4)))) (q 32 (l (r (r 4)))) ()) 1) ()) 1) ()) 1) ()) 1) (q 2 (i (not (a (i (l 6) (q 2 (i (a (i (not (l (f 6))) (q 9 (f 6) (q . 10)) ()) 1) (q 2 (i (l (r 6)) (q 2 (i (not (l (f (r 6)))) (q 32 (l (r (r 6)))) ()) 1) ()) 1) ()) 1) ()) 1)) () (q 8 (q . "assertion failed at tree_structs.rue:188:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:187:5"))) 1) (c (c (c (q . 10) (c (q . 2) (q . 4))) (c (q . 10) (c (q . 2) (c (q . 4) ())))) 1)) (q 8 (q . "assertion failed at tree_structs.rue:183:5"))) 1) (q 8 (q . "assertion failed at tree_structs.rue:182:5"))) 1) (c (c (c (q . 1) (c (q . 2) (q . 3))) (c (q . 1) (c (q . 2) (c (q . 3) ())))) 1))
+  output: ()
+  runtime_cost: 8874
+  byte_cost: 6252000
+  total_cost: 6260874
+- name: tree_as_name
+  program: ()
+  debug_program: (a (q 2 (i (= (f 2) (q . 1)) () (q 8 (q . "assertion failed at tree_structs.rue:193:5"))) 1) (c (c (q . 1) ()) 1))
+  output: ()
+  runtime_cost: 44
+  byte_cost: 12000
+  total_cost: 12044
+diagnostics:
+- |-
+  Struct `tree` should be named in UpperCamelCase at tree_structs.rue:63:8
+    note: Consider renaming it to `Tree`

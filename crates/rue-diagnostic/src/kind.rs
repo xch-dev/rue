@@ -368,6 +368,9 @@ pub enum DiagnosticKind {
     #[error("Can only spread the last {0}")]
     NonFinalSpread(SpreadTarget),
 
+    #[error("Cannot spread a field of a `tree` struct or enum, since its fields are in a tree")]
+    TreeFieldSpread,
+
     #[error("Cannot spread the last argument, since the function has no spread parameter")]
     UnexpectedSpread,
 

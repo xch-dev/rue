@@ -4,7 +4,8 @@ use id_arena::Arena;
 use indexmap::{IndexSet, indexset};
 
 use crate::{
-    AtomRestriction, FunctionType, Pair, Struct, Type, TypeId, Walk, substitute, walk_leaves,
+    AtomRestriction, FieldShape, FunctionType, Pair, Struct, Type, TypeId, Union, Walk, substitute,
+    walk_leaves,
 };
 
 #[derive(Debug, Clone)]
@@ -63,6 +64,48 @@ pub fn extract_atoms(arena: &mut Arena<Type>, id: TypeId, strict: bool) -> Optio
 pub fn extract_pairs(arena: &mut Arena<Type>, id: TypeId, strict: bool) -> Vec<Pair> {
     let id = substitute(arena, id);
     extract_pairs_impl(arena, id, strict)
+}
+
+/// The parts as one type: the part itself if there's only one, and otherwise a union of them.
+pub(crate) fn union_of_parts(arena: &mut Arena<Type>, parts: Vec<TypeId>) -> TypeId {
+    if parts.len() == 1 {
+        parts[0]
+    } else {
+        arena.alloc(Type::Union(Union::new(parts)))
+    }
+}
+
+/// The type of each field of a struct, which is the part of its inner type where its shape puts
+/// the field, or the union of those parts if the inner type has a union of pairs on the way there.
+/// A field is `None` if the inner type isn't a pair on the way to it, which it always is unless
+/// the struct was rejected.
+pub fn extract_field_types(arena: &mut Arena<Type>, ty: &Struct) -> Vec<Option<TypeId>> {
+    let mut types = vec![None; ty.fields.len()];
+
+    let shape = ty.shape();
+    let mut parts = vec![(&shape, ty.inner)];
+
+    while let Some((part, id)) = parts.pop() {
+        match part {
+            FieldShape::Nil => {}
+            FieldShape::Field(index) => types[*index] = Some(id),
+            FieldShape::Pair(first_part, rest_part) => {
+                let pairs = extract_pairs(arena, id, false);
+
+                if pairs.is_empty() {
+                    continue;
+                }
+
+                let first = union_of_parts(arena, pairs.iter().map(|pair| pair.first).collect());
+                let rest = union_of_parts(arena, pairs.iter().map(|pair| pair.rest).collect());
+
+                parts.push((rest_part, rest));
+                parts.push((first_part, first));
+            }
+        }
+    }
+
+    types
 }
 
 /// The pairs that make up an already substituted type, like `extract_pairs` without `strict`.

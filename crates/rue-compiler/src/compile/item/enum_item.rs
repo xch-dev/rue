@@ -8,7 +8,7 @@ use rue_hir::{
     ConstantSymbol, Declaration, Hir, ModuleDeclarations, ModuleSymbol, Scope, ScopeId,
     StructField, StructInitializer, Symbol, Value,
 };
-use rue_types::{Alias, Apply, DISCRIMINANT_FIELD, Struct, Type, TypeId, Union};
+use rue_types::{Alias, Apply, DISCRIMINANT_FIELD, Struct, StructLayout, Type, TypeId, Union};
 
 use super::{
     compile_field_defaults, compile_fields, declare_fields, resolve_alias_inner,
@@ -45,10 +45,20 @@ pub fn declare_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem) -> (TypeId
     let enum_name = enum_item.name().map(|name| name.text().to_string());
 
     // Without any fields, each variant is only its discriminant, which is also what makes it a
-    // struct that isn't nil terminated (since it's only made of the last field)
+    // struct that isn't nil terminated (since it's only made of the last field). Otherwise, the
+    // fields come after the discriminant: in a list, or in a tree in a `tree` enum, so that the
+    // discriminant is in the same place in every variant.
     let has_fields = enum_item
         .variants()
         .any(|variant| variant.fields().is_some());
+
+    let fields_layout = has_fields.then(|| {
+        if enum_item.tree().is_some() {
+            StructLayout::Tree { prefix: 1 }
+        } else {
+            StructLayout::List
+        }
+    });
 
     let mut variants = Vec::new();
 
@@ -60,7 +70,7 @@ pub fn declare_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem) -> (TypeId
             enum_name.as_deref(),
             &generics,
             namespace,
-            has_fields,
+            fields_layout,
         ));
     }
 
@@ -123,7 +133,8 @@ pub fn declare_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem) -> (TypeId
 }
 
 /// Declares the struct type of a variant, and the constant for it if it has no fields, in the
-/// enum's namespace. Returns `None` if the variant has no name, or the name is already taken.
+/// enum's namespace. The variants have their fields in the layout, unless none of them have
+/// fields. Returns `None` if the variant has no name, or the name is already taken.
 fn declare_variant(
     ctx: &mut Compiler,
     variant: &AstEnumVariant,
@@ -131,7 +142,7 @@ fn declare_variant(
     enum_name: Option<&str>,
     generics: &[TypeId],
     namespace: ScopeId,
-    has_fields: bool,
+    fields_layout: Option<StructLayout>,
 ) -> Option<EnumVariant> {
     let name = variant.name()?;
 
@@ -145,8 +156,15 @@ fn declare_variant(
 
     let names = IndexSet::from([DISCRIMINANT_FIELD.to_string()]);
 
-    let (fields, nil_terminated) = if has_fields {
-        declare_fields(ctx, names, &variant.struct_fields().collect::<Vec<_>>())
+    let layout = fields_layout.unwrap_or(StructLayout::List);
+
+    let (fields, nil_terminated) = if fields_layout.is_some() {
+        declare_fields(
+            ctx,
+            names,
+            &variant.struct_fields().collect::<Vec<_>>(),
+            layout,
+        )
     } else {
         (names, false)
     };
@@ -169,6 +187,7 @@ fn declare_variant(
         generics: generics.to_vec(),
         fields,
         nil_terminated,
+        layout,
         narrowed: false,
     });
 
@@ -251,10 +270,15 @@ pub fn compile_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem, ty: TypeId
         field_types.extend(compile_fields(ctx, info.ty, variant.struct_fields()));
         ctx.pop_declaration();
 
-        resolve_struct_inner(ctx, info.ty, field_types);
+        resolve_struct_inner(ctx, info.ty, &field_types);
 
         if let Some(constant) = info.constant {
-            let Type::Struct(Struct { nil_terminated, .. }) = *ctx.ty(info.ty) else {
+            let Type::Struct(Struct {
+                nil_terminated,
+                layout,
+                ..
+            }) = *ctx.ty(info.ty)
+            else {
                 unreachable!()
             };
 
@@ -279,6 +303,7 @@ pub fn compile_enum_item(ctx: &mut Compiler, enum_item: &AstEnumItem, ty: TypeId
                 }],
                 tail: None,
                 nil_terminated,
+                layout,
             }));
 
             *ctx.symbol_mut(constant) = Symbol::Constant(ConstantSymbol {

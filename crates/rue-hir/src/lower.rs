@@ -774,8 +774,17 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
             Hir::List(list) => self.lower_list(env, list.items, list.nil_terminated),
             Hir::Struct(initializer) => {
-                let values = initializer.values().collect();
-                self.lower_list(env, values, initializer.values_nil_terminated())
+                let values = initializer
+                    .values()
+                    .map(|value| self.lower_hir(env, value))
+                    .collect::<Vec<_>>();
+
+                let nil = self.arena.alloc(Lir::Atom(vec![]));
+
+                initializer.shape().fold(
+                    |index| index.map_or(nil, |index| values[index]),
+                    |first, rest| self.arena.alloc(Lir::Cons(first, rest)),
+                )
             }
             Hir::FieldAccess(access) => {
                 let mut lir = self.lower_hir(env, access.value);

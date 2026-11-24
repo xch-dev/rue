@@ -372,6 +372,7 @@ mod tests {
                 generics: vec![],
                 fields: IndexSet::new(),
                 nil_terminated: false,
+                layout: crate::StructLayout::List,
                 narrowed: false,
             });
             id

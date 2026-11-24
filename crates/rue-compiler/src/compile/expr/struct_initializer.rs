@@ -8,7 +8,7 @@ use rue_hir::{
     SymbolPath, TypePath, Value,
 };
 use rue_lint::{UnusedSpreadReason, UnusedStructSpread};
-use rue_types::{Atom, AtomRestriction, Struct, Type, TypeId, Union};
+use rue_types::{Atom, AtomRestriction, Struct, Type, TypeId};
 
 use crate::{
     BoundValue, Compiler, CompletionContext, Field, FieldResult, PathKind, PathResult,
@@ -111,42 +111,24 @@ pub fn compile_struct_initializer_expr(
     };
 
     let mut expected_field_types = HashMap::new();
-    let mut current = struct_type.inner;
     let mut unresolved = false;
 
-    for (i, field) in struct_type.fields.iter().enumerate() {
-        if i == struct_type.fields.len() - 1 && !struct_type.nil_terminated {
-            expected_field_types.insert(field.clone(), current);
-            continue;
-        }
-
-        let pairs = rue_types::extract_pairs(ctx.types_mut(), current, false);
-
+    for (field, ty) in struct_type
+        .fields
+        .iter()
+        .zip(rue_types::extract_field_types(
+            ctx.types_mut(),
+            &struct_type,
+        ))
+    {
         // The struct's type is only unresolved if it was rejected, since every type has been
         // resolved by the time expressions are compiled. The fields can't be checked against it.
-        if pairs.is_empty() {
+        let Some(ty) = ty else {
             unresolved = true;
             break;
-        }
-
-        let first = if pairs.len() == 1 {
-            pairs[0].first
-        } else {
-            ctx.alloc_type(Type::Union(Union::new(
-                pairs.iter().map(|pair| pair.first).collect(),
-            )))
         };
 
-        let rest = if pairs.len() == 1 {
-            pairs[0].rest
-        } else {
-            ctx.alloc_type(Type::Union(Union::new(
-                pairs.iter().map(|pair| pair.rest).collect(),
-            )))
-        };
-
-        expected_field_types.insert(field.clone(), first);
-        current = rest;
+        expected_field_types.insert(field.clone(), ty);
     }
 
     let base = compile_spreads(ctx, expr, &struct_type);
@@ -275,19 +257,25 @@ pub fn compile_struct_initializer_expr(
         .filter(|name| copied.get(*name).is_some_and(|field| !field.constant))
         .count();
 
-    let tail = base.as_ref().filter(|_| rest_reads > 0).map(|base| {
-        let value = if prefix == 0 {
-            base.value.hir
-        } else {
-            let path = FieldKind::Path(vec![TypePath::Rest; prefix]);
-            alloc_field_access(ctx, base.value.hir, "rest", path)
-        };
+    // Only a list has a rest after each of its fields
+    let is_list = !struct_type.layout.is_tree();
 
-        StructTail {
-            value,
-            reads: rest_reads,
-        }
-    });
+    let tail = base
+        .as_ref()
+        .filter(|_| is_list && rest_reads > 0)
+        .map(|base| {
+            let value = if prefix == 0 {
+                base.value.hir
+            } else {
+                let path = FieldKind::Path(vec![TypePath::Rest; prefix]);
+                alloc_field_access(ctx, base.value.hir, "rest", path)
+            };
+
+            StructTail {
+                value,
+                reads: rest_reads,
+            }
+        });
 
     let field_count = if tail.is_some() {
         prefix
@@ -381,6 +369,7 @@ pub fn compile_struct_initializer_expr(
         fields: initializer_fields,
         tail,
         nil_terminated: struct_type.nil_terminated,
+        layout: struct_type.layout,
     }));
 
     for (index, name) in pending {
