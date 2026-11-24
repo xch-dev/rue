@@ -294,11 +294,16 @@ impl Lowerer<'_, '_, '_> {
                 .substituted_value(*symbol)
                 .is_none_or(|value| self.is_cheap(value, budget)),
             // The check uses the value as many times as it has parts to check, and it's lowered
-            // to operators on it
-            // A check with helpers is a program of its own, which isn't cheap to repeat
-            Hir::Guard(guard) if !guard.runtime_check().helpers.is_empty() => false,
+            // to operators on it. A check with helpers is a program of its own, which isn't
+            // cheap to repeat.
             Hir::Guard(guard) => {
-                let uses = guard.value_uses().max(1);
+                let plan = guard.runtime_check();
+
+                if !plan.helpers.is_empty() {
+                    return false;
+                }
+
+                let uses = check_value_uses(&plan).max(1);
 
                 (0..uses).all(|_| self.is_cheap(guard.value, budget))
                     && budget
@@ -350,7 +355,7 @@ fn checks_fields(plan: &CheckPlan) -> bool {
 fn check_tree_fields(check: &Check) -> bool {
     match check {
         Check::Pair(..) | Check::Helper(_) => true,
-        Check::And(checks) | Check::Or(checks) => checks.iter().any(check_tree_fields),
+        Check::And(_) | Check::Or(_) => check.children().any(check_tree_fields),
         Check::None
         | Check::Impossible
         | Check::IsAtom { .. }

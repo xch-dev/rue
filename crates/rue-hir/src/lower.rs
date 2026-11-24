@@ -30,7 +30,7 @@ use crate::{
     BinaryOp, BindingSymbol, CheckHelpers, ConstantSymbol, ControlStatement, Database,
     DependencyGraph, Environment, ExprStatement, FieldKind, FunctionCall, FunctionKind,
     FunctionSymbol, Hir, HirId, IfStatement, ParameterSymbol, PathError, Statement, Symbol,
-    SymbolId, TypePath, UnaryOp, count_helper_calls, generate_check_hir,
+    SymbolId, TypePath, UnaryOp, generate_check_hir,
     small_static::{StaticContext, is_small_static, take},
 };
 
@@ -1015,15 +1015,9 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             db.alloc_symbol(Symbol::Parameter(ParameterSymbol { name: None, ty }))
         };
 
-        let mut calls = vec![0; plan.helpers.len()];
-        count_helper_calls(&plan.check, &mut calls);
-        for helper in &plan.helpers {
-            count_helper_calls(helper, &mut calls);
-        }
-
         let helper_symbols: Vec<SymbolId> =
             plan.helpers.iter().map(|_| parameter(self.db)).collect();
-        let tree = Environment::tree(helper_symbols.iter().copied().zip(calls).collect());
+        let tree = Environment::tree(helper_symbols.iter().copied().zip(plan.calls).collect());
         let paths = helper_symbols
             .iter()
             .map(|&symbol| tree.type_path(symbol).expect("every helper is in the tree"))
@@ -1054,28 +1048,11 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             .zip(plan.helpers)
             .map(|(symbol, helper)| (symbol, lower_check(self, helper)))
             .collect();
-        let tree = self.lower_helper_tree(&tree, &programs);
+        let tree = self.lower_tree(env, &tree, false, Some(&programs));
 
         let value = self.lower_hir(env, value);
         let check_env = self.arena.alloc(Lir::Cons(tree, value));
         self.arena.alloc(Lir::Run(check, check_env))
-    }
-
-    /// Builds the tree of the programs of a check's helpers (see [`Self::lower_check_with_helpers`]).
-    fn lower_helper_tree(
-        &mut self,
-        tree: &Environment,
-        programs: &HashMap<SymbolId, LirId>,
-    ) -> LirId {
-        match tree {
-            Environment::Nil => self.arena.alloc(Lir::Atom(vec![])),
-            Environment::Leaf(symbol) => programs[symbol],
-            Environment::Pair(first, rest) => {
-                let first = self.lower_helper_tree(first, programs);
-                let rest = self.lower_helper_tree(rest, programs);
-                self.arena.alloc(Lir::Cons(first, rest))
-            }
-        }
     }
 
     /// Lowers the items of a list (or the fields of a struct) to nested pairs. The items are

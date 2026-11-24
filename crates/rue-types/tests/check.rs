@@ -720,7 +720,8 @@ fn test_check_plan() {
         check.plan(),
         CheckPlan {
             check: check.clone(),
-            helpers: vec![]
+            helpers: vec![],
+            calls: vec![],
         }
     );
 
@@ -747,6 +748,7 @@ fn test_check_plan() {
     assert_eq!(count_helper_calls(&plan.check), vec![2]);
     assert_eq!(count_helper_calls(&plan.helpers[0]), vec![0, 2]);
     assert!(count_helper_calls(&plan.helpers[1]).is_empty());
+    assert_eq!(plan.calls, vec![2, 2]);
 
     // A large part that's used once still has the helpers it calls
     let once = t.pair(large, nil);

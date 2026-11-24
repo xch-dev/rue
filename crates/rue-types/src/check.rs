@@ -74,6 +74,8 @@ impl SharedCheck {
     }
 }
 
+/// Prints the shared check where it's used, like any other part. A check that uses the same part
+/// at every level prints it exponentially many times, so print its [`CheckPlan`] instead.
 impl fmt::Debug for SharedCheck {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.check.fmt(f)
@@ -111,6 +113,8 @@ pub const SHARED_CHECK_MIN_SIZE: usize = 8;
 pub struct CheckPlan {
     pub check: Check,
     pub helpers: Vec<Check>,
+    /// How many times each helper is called, by the check and the other helpers.
+    pub calls: Vec<usize>,
 }
 
 impl Check {
@@ -122,28 +126,33 @@ impl Check {
     }
 
     fn size_impl(&self, seen: &mut FxHashSet<*const Check>) -> usize {
-        match self {
+        let inner = match self {
+            Check::Shared(shared) if seen.insert(shared.key()) => shared.check().size_impl(seen),
+            check => check
+                .children()
+                .map(|check| check.size_impl(seen))
+                .sum::<usize>(),
+        };
+
+        1 + inner
+    }
+
+    /// The checks directly inside of this one, in order. A shared check isn't included, since
+    /// whether to go into it depends on what it's for.
+    pub fn children(&self) -> impl Iterator<Item = &Check> {
+        let (pair, list): ([Option<&Check>; 2], &[Check]) = match self {
+            Check::Pair(first, rest) => ([Some(first), Some(rest)], &[]),
+            Check::And(checks) | Check::Or(checks) => ([None, None], checks),
             Check::None
             | Check::Impossible
             | Check::IsAtom { .. }
             | Check::IsPair { .. }
             | Check::Atom(_)
-            | Check::Helper(_) => 1,
-            Check::Pair(first, rest) => 1 + first.size_impl(seen) + rest.size_impl(seen),
-            Check::And(checks) | Check::Or(checks) => {
-                1 + checks
-                    .iter()
-                    .map(|check| check.size_impl(seen))
-                    .sum::<usize>()
-            }
-            Check::Shared(shared) => {
-                if seen.insert(shared.key()) {
-                    1 + shared.check().size_impl(seen)
-                } else {
-                    1
-                }
-            }
-        }
+            | Check::Shared(_)
+            | Check::Helper(_) => ([None, None], &[]),
+        };
+
+        pair.into_iter().flatten().chain(list)
     }
 
     /// Decides how the check is generated. A shared part that ends up in more than one place in
@@ -172,12 +181,12 @@ impl Check {
         // used once is copied in once, so the parts it uses are used as many times as it uses
         // them.
         let mut helper = vec![None; order.len()];
-        let mut helpers = 0;
+        let mut calls = Vec::new();
 
         for i in (0..order.len()).rev() {
             let copies = if uses[i] > 1 {
-                helper[i] = Some(helpers);
-                helpers += 1;
+                helper[i] = Some(calls.len());
+                calls.push(uses[i]);
                 1
             } else {
                 uses[i]
@@ -190,7 +199,7 @@ impl Check {
 
         let replace = |check: &Check| replace_shared(check, &index, &helper);
 
-        let mut bodies = vec![None; helpers];
+        let mut bodies = vec![None; calls.len()];
 
         for (i, shared) in order.iter().enumerate() {
             if let Some(helper) = helper[i] {
@@ -201,6 +210,7 @@ impl Check {
         CheckPlan {
             check: replace(self),
             helpers: bodies.into_iter().map(Option::unwrap).collect(),
+            calls,
         }
     }
 
@@ -361,53 +371,29 @@ fn collect_shared(
     order: &mut Vec<SharedCheck>,
     index: &mut FxHashMap<*const Check, usize>,
 ) {
-    match check {
-        Check::None
-        | Check::Impossible
-        | Check::IsAtom { .. }
-        | Check::IsPair { .. }
-        | Check::Atom(_)
-        | Check::Helper(_) => {}
-        Check::Pair(first, rest) => {
-            collect_shared(first, order, index);
-            collect_shared(rest, order, index);
+    if let Check::Shared(shared) = check {
+        if !index.contains_key(&shared.key()) {
+            collect_shared(shared.check(), order, index);
+            index.insert(shared.key(), order.len());
+            order.push(shared.clone());
         }
-        Check::And(checks) | Check::Or(checks) => {
-            for check in checks {
-                collect_shared(check, order, index);
-            }
-        }
-        Check::Shared(shared) => {
-            let key = shared.key();
+        return;
+    }
 
-            if !index.contains_key(&key) {
-                collect_shared(shared.check(), order, index);
-                index.insert(key, order.len());
-                order.push(shared.clone());
-            }
-        }
+    for check in check.children() {
+        collect_shared(check, order, index);
     }
 }
 
 /// Counts the uses of each shared part in the check, without looking inside them.
 fn count_shared(check: &Check, index: &FxHashMap<*const Check, usize>, uses: &mut [usize]) {
-    match check {
-        Check::None
-        | Check::Impossible
-        | Check::IsAtom { .. }
-        | Check::IsPair { .. }
-        | Check::Atom(_)
-        | Check::Helper(_) => {}
-        Check::Pair(first, rest) => {
-            count_shared(first, index, uses);
-            count_shared(rest, index, uses);
-        }
-        Check::And(checks) | Check::Or(checks) => {
-            for check in checks {
-                count_shared(check, index, uses);
-            }
-        }
-        Check::Shared(shared) => uses[index[&shared.key()]] += 1,
+    if let Check::Shared(shared) = check {
+        uses[index[&shared.key()]] += 1;
+        return;
+    }
+
+    for check in check.children() {
+        count_shared(check, index, uses);
     }
 }
 
@@ -515,7 +501,9 @@ pub fn check(
     }
 
     if let Some((lhs_name, rhs_name)) = &names {
-        trace!("Check from {lhs_name} to {rhs_name} yielded {result:?}");
+        // The plan has each shared part once, whereas the check would print it for every use
+        let plan = result.as_ref().map(Check::plan);
+        trace!("Check from {lhs_name} to {rhs_name} yielded {plan:?}");
     }
 
     result
@@ -527,7 +515,7 @@ struct CheckContext {
     comparison: ComparisonContext<'static>,
     /// The checks that are shared, so that the same check is shared wherever it's used, even
     /// when it's reached from different types, such as each reference to `T` in `(T, T)`.
-    shared: FxHashMap<Check, SharedCheck>,
+    shared: FxHashSet<SharedCheck>,
     /// Completed checks, keyed by the arguments to `check_each`. The same checks are reached
     /// through every reference to a type, which is exponential in the depth of the type.
     memo: FxHashMap<(Vec<TypeId>, TypeId, usize), Result<Check, CheckError>>,
@@ -852,16 +840,21 @@ fn check_each_impl_inner(
 
 /// Shares the check if it's large enough to be worth calling as a helper (see
 /// [`SHARED_CHECK_MIN_SIZE`]), given its size, with the same shared check as any equal one.
-fn share(shared: &mut FxHashMap<Check, SharedCheck>, check: Check, size: usize) -> Check {
+fn share(shared: &mut FxHashSet<SharedCheck>, check: Check, size: usize) -> Check {
     if size < SHARED_CHECK_MIN_SIZE || matches!(check, Check::Shared(_)) {
         return check;
     }
 
-    let shared = shared
-        .entry(check)
-        .or_insert_with_key(|check| SharedCheck::new(check.clone()));
+    let check = SharedCheck::new(check);
 
-    Check::Shared(shared.clone())
+    let check = if let Some(existing) = shared.get(&check) {
+        existing.clone()
+    } else {
+        shared.insert(check.clone());
+        check
+    };
+
+    Check::Shared(check)
 }
 
 /// Turns a check that's too large into `None`, so that the caller can decide whether it's needed.

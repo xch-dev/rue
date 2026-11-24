@@ -47,6 +47,21 @@ test fn computed_value(value: Any) -> Bool {
     (value, value) is (T3, T3)
 }
 
+// A bound value is passed to the check once as well, so it doesn't need to be kept
+test fn bound_value(value: Any) -> Bool {
+    let pair = (value, value);
+    pair is (T3, T3)
+}
+
+inline fn is_t4(value: Any) -> Bool {
+    value is T4
+}
+
+// A guard in an inlined function is lowered where it's called
+test fn inlined_function(value: Any) -> Bool {
+    is_t4(value) && !is_t4(nil)
+}
+
 test fn match_arm(value: Any) -> Int {
     match value {
         T4 => 4,
