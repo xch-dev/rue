@@ -1,0 +1,16 @@
+program: (sha256 2 (sha256 (q . 120)))
+debug_program: (a (q 2 2 (c 5 (sha256 (q . 120)))) (c (q 11 (concat 2 3)) 1))
+byte_cost: 156000
+clvm_error: path into atom
+tests:
+- name: tests_are_not_entrypoints
+  program: (a (q 2 (i (= (sha256 2 2) 2) (q 8) ()) 1) (c (sha256 (q . "left")) 1))
+  debug_program: (a (q 2 (q 2 (i (not (= (a 5 (c 2 2)) 2)) () (q 8 (q . "assertion failed at unchecked_input_exports.rue:21:5"))) 1) (c (sha256 (q . "left")) 1)) (c (q 11 (concat 2 3)) ()))
+  output: ()
+  runtime_cost: 2183
+  byte_cost: 660000
+  total_cost: 662183
+diagnostics:
+- |-
+  `left` and `right` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_exports.rue:4:12
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments

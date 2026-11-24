@@ -44,6 +44,14 @@ diagnostics:
   Binding `Registration_Price` should be named in snake_case at actions/catalog/register.rue:55:16
     note: Consider renaming it to `registration_price`
 - |-
+  An item of `additional_steps` and `current_hash` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at singleton/merkle_utils.rue:18:13
+    note: The concatenation is here at std/tree_hash.rue:14:12
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
+  `leaf_hash` and an item of `proof.hashes` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at singleton/merkle_utils.rue:32:13
+    note: The concatenation is here at std/tree_hash.rue:14:12
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+- |-
   `RESERVE_INNER_PUZZLE_HASH` is from the solution, but nothing checks its length, and it's put in a condition that's hashed rather than output, so the condition is only checked when a later spend outputs it, which then fails at singleton/reserve_finalizer.rue:67:18
     note: The condition's field is here at singleton/reserve_finalizer.rue:60:22
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`

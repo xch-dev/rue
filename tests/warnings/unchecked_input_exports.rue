@@ -1,0 +1,22 @@
+// An exported function is compiled as a program of its own, so its parameters are the solution too
+
+export fn hash_pair(left: Bytes32, right: Bytes32) -> Bytes32 {
+    sha256(left + right)
+}
+
+export fn checked_pair(left: Bytes32, right: Bytes32) -> Bytes32 {
+    assert coinid(left, right, 1) != nil;
+    sha256(left + right)
+}
+
+export inline const NOT_A_FUNCTION: Bytes32 = 0x0000000000000000000000000000000000000000000000000000000000000000;
+
+fn main(a: Bytes32) -> Bytes32 {
+    // Called from `main`, the values passed are checked as usual
+    hash_pair(a, sha256("x"))
+}
+
+test fn tests_are_not_entrypoints() {
+    let left = sha256("left");
+    assert hash_pair(left, left) != left;
+}

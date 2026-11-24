@@ -1,8 +1,9 @@
 //! Reports where a program relies on the length of a value from the solution that its type
 //! declares but nothing checks.
 //!
-//! The parameter types of `main` are assumptions about the solution, so a `Bytes32` parameter can
-//! be an atom of any length. Most code doesn't depend on that, since an operation that needs the
+//! The parameter types of an entrypoint (`main`, or an exported function, which is compiled as a
+//! program of its own) are assumptions about the solution, so a `Bytes32` parameter can be an atom
+//! of any length. In what follows, `main` stands for any entrypoint. Most code doesn't depend on that, since an operation that needs the
 //! right length fails if it isn't, and a spend either succeeds as a whole or fails. Two kinds of
 //! code do depend on it, and are reported:
 //!
@@ -369,32 +370,37 @@ struct Summary {
 pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
     let mut summaries = HashMap::new();
 
-    for main in mains(cx, input) {
+    for main in entrypoints(cx, input) {
         summarize(cx, input, main, &mut summaries);
         report(cx, main, &summaries[&main]);
     }
 }
 
-/// The `main` functions of the files being compiled, in a fixed order.
-fn mains(cx: &LintContext<'_>, input: &LintInput<'_>) -> Vec<SymbolId> {
-    let mut mains: Vec<SymbolId> = input
+/// The entrypoints of the files being compiled, in a fixed order: each file's `main` and its
+/// exported functions, which are each compiled as a program whose parameters are the solution.
+/// Tests aren't entrypoints here, and neither are `extern fn`s, which have no body.
+fn entrypoints(cx: &LintContext<'_>, input: &LintInput<'_>) -> Vec<SymbolId> {
+    let tests: HashSet<SymbolId> = cx.db().tests().map(|test| test.symbol).collect();
+
+    let mut entrypoints: Vec<SymbolId> = input
         .entrypoints
         .iter()
         .filter_map(|declaration| match *declaration {
             Declaration::Symbol(symbol) => Some(symbol),
             Declaration::Type(_) => None,
         })
+        .filter(|symbol| !tests.contains(symbol))
         .filter(|&symbol| {
             matches!(
                 cx.db().symbol(symbol),
-                Symbol::Function(function)
-                    if function.name.as_ref().is_some_and(|name| name.text() == "main")
+                Symbol::Function(function) if function.kind != FunctionKind::External
             )
         })
         .collect();
 
-    mains.sort();
-    mains
+    entrypoints.sort();
+    entrypoints.dedup();
+    entrypoints
 }
 
 /// Computes the summaries of the function and every function it calls, until they stop changing.
