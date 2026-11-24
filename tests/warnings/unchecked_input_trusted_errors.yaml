@@ -1,0 +1,9 @@
+diagnostics:
+- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:4:1"
+- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:5:11"
+- Attributes can only be used on items and statements at unchecked_input_trusted_errors.rue:5:38
+- Unused parameter `other` at unchecked_input_trusted_errors.rue:5:65
+- Unused function `main` at unchecked_input_trusted_errors.rue:10:15
+- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:10:20"
+- "`#[trusted]` doesn't take arguments at unchecked_input_trusted_errors.rue:15:9"
+- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_errors.rue:16:5"

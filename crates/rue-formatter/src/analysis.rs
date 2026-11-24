@@ -485,7 +485,15 @@ fn analyze_nodes(
                         T!['['] if !delimiter_directly_contains_comments(id, stream, facts) => {
                             facts[id.index()].delimiter_style = Some(DelimiterStyle::Fill);
                         }
-                        T![']'] => facts[id.index()].flags.insert(TokenFlags::ATTRIBUTE_END),
+                        // An attribute on a parameter stays on the parameter's line, as in
+                        // `#[trusted] mod_hash: Bytes32`, and others go on their own line
+                        T![']']
+                            if node.parent().is_none_or(|parent| {
+                                parent.kind() != SyntaxKind::FunctionParameter
+                            }) =>
+                        {
+                            facts[id.index()].flags.insert(TokenFlags::ATTRIBUTE_END);
+                        }
                         _ => {}
                     }
                 }

@@ -38,7 +38,7 @@ struct Solution {
 }
 
 fn main(
-    genesis_puzzle_hash: Bytes32,
+    #[trusted] genesis_puzzle_hash: Bytes32,
     truths: Truths,
     _parent_is_cat: Bool,
     _lineage_proof: Any,

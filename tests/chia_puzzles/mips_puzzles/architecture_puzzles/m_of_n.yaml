@@ -42,3 +42,4 @@ diagnostics:
   Results of `hash_and_run(member_proof, delegated_puzzle_hash)` and items of `member_proof` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at m_of_n.rue:33:18
     note: The concatenation is here at std/tree_hash.rue:14:12
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `member_proof` is curried, or supplied by an outer puzzle that checks it, mark it as trusted

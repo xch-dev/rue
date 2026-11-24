@@ -82,9 +82,8 @@ diagnostics:
 - |-
   `lineage_proof.parent_parent_coin_info` is from the solution, but nothing checks its length, so the concatenation can be split into different values that give the same bytes at singleton_top_layer.rue:32:13
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `lineage_proof` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
-  `lineage_proof.parent_parent_coin_info` and `singleton_struct.launcher_puzzle_hash` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at singleton_top_layer.rue:39:13
+  `lineage_proof.parent_parent_coin_info` is from the solution, but nothing checks its length, so the concatenation can be split into different values that give the same bytes at singleton_top_layer.rue:39:13
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
-- |-
-  `singleton_struct.launcher_id` is from the solution, but nothing checks its length, so the concatenation can be split into different values that give the same bytes at singleton_top_layer.rue:43:16
-    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `lineage_proof` is curried, or supplied by an outer puzzle that checks it, mark it as trusted

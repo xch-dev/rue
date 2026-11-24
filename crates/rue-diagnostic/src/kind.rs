@@ -39,6 +39,12 @@ pub enum DiagnosticKind {
     #[error("Inner attributes can only be used at the start of a file or module")]
     MisplacedInnerAttribute,
 
+    #[error("`#[trusted]` can only be used on a parameter of `main`")]
+    MisplacedTrustedAttribute,
+
+    #[error("`#[trusted]` doesn't take arguments")]
+    TrustedAttributeArguments,
+
     #[error("Unknown attribute `{0}`")]
     UnknownAttribute(String),
 

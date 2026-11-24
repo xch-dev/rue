@@ -39,5 +39,6 @@ tests:
   clvm_error: clvm raise ()
 diagnostics:
 - |-
-  `mint_launcher_puzzle_hash` and `solution.parent_parent_id` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at genesis_by_coin_id_or_singleton.rue:57:13
+  `solution.parent_parent_id` is from the solution, but nothing checks its length, so the concatenation can be split into different values that give the same bytes at genesis_by_coin_id_or_singleton.rue:57:13
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `solution` is curried, or supplied by an outer puzzle that checks it, mark it as trusted

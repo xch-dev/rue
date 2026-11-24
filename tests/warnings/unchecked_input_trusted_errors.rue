@@ -1,0 +1,18 @@
+// `#[trusted]` can only be used on a parameter of `main` at the top level of a file, and doesn't
+// take arguments
+
+#[trusted]
+fn helper(#[trusted] value: Bytes32, #[allow(unused_parameter)] other: Bytes32) -> Bytes32 {
+    value
+}
+
+mod inner {
+    export fn main(#[trusted] value: Bytes32) -> Bytes32 {
+        value
+    }
+}
+
+fn main(#[trusted(value)] value: Bytes32, #[trusted] #[trusted] twice: Bytes32) -> Bytes32 {
+    #![trusted]
+    helper(value, twice)
+}

@@ -79,3 +79,4 @@ diagnostics:
   Items of `recovery_coins` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at did_innerpuz.rue:50:12
     note: The concatenation is here at did_innerpuz.rue:93:26
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `recovery_coins` is curried, or supplied by an outer puzzle that checks it, mark it as trusted

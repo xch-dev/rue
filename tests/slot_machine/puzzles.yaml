@@ -47,6 +47,7 @@ diagnostics:
   `RESERVE_INNER_PUZZLE_HASH` is from the solution, but nothing checks its length, and it's put in a condition that's hashed rather than output, so the condition is only checked when a later spend outputs it, which then fails at singleton/reserve_finalizer.rue:67:18
     note: The condition's field is here at singleton/reserve_finalizer.rue:60:22
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`
+    help: If `RESERVE_INNER_PUZZLE_HASH` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 puzzle_hashes:
   actions/catalog/refund.rue: a0d584ee59fd248236e151bdbb7265247e8b7cc1fda81c13e317b325486c3f29
   actions/catalog/register.rue: 7c51eb468ed9c91d807845d65127253f0dea0583f2e5ed1d457b637cb4fae605

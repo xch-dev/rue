@@ -1,7 +1,9 @@
 use std::{collections::HashMap, ops::Range};
 
 use rowan::Direction;
-use rue_ast::{AstAttribute, AstDocument, AstModuleItem, AstNode};
+use rue_ast::{
+    AstAttribute, AstDocument, AstFunctionItem, AstModuleItem, AstNode, TRUSTED_ATTRIBUTE,
+};
 use rue_diagnostic::{
     AttributeLevel, Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, Lint, LintLevel,
     LintLevels, LintName, Source, SourceKind, SrcLoc,
@@ -76,6 +78,33 @@ impl ScopedLintLevels {
                 };
 
                 let inner = attribute.is_inner();
+
+                // `#[trusted]` isn't a lint level, but marks a parameter of `main` as trusted, which
+                // the compiler reads from the parameter itself
+                if attribute
+                    .name()
+                    .is_some_and(|name| name.text() == TRUSTED_ATTRIBUTE)
+                {
+                    if inner || !is_main_parameter(&attribute) {
+                        error(
+                            DiagnosticKind::MisplacedTrustedAttribute,
+                            attribute.syntax().text_range(),
+                        );
+                    }
+
+                    if attribute
+                        .syntax()
+                        .children_with_tokens()
+                        .any(|element| element.kind() == T!['('])
+                    {
+                        error(
+                            DiagnosticKind::TrustedAttributeArguments,
+                            attribute.syntax().text_range(),
+                        );
+                    }
+
+                    continue;
+                }
 
                 let target = if inner {
                     inner_target(&attribute)
@@ -397,6 +426,28 @@ fn is_after_failed_item(attribute: &AstAttribute) -> bool {
             .any(|element| element.kind() == T!['{']),
         _ => false,
     }
+}
+
+/// Whether the attribute is on a parameter of a `main` function at the top level of a file, which
+/// is the only place `#[trusted]` can be used.
+fn is_main_parameter(attribute: &AstAttribute) -> bool {
+    let Some(parameter) = attribute.syntax().parent() else {
+        return false;
+    };
+
+    if parameter.kind() != SyntaxKind::FunctionParameter {
+        return false;
+    }
+
+    let Some(function) = parameter.parent().and_then(AstFunctionItem::cast) else {
+        return false;
+    };
+
+    function.name().is_some_and(|name| name.text() == "main")
+        && function
+            .syntax()
+            .parent()
+            .is_some_and(|parent| parent.kind() == SyntaxKind::Document)
 }
 
 /// Whether attributes can be attached to the node. An `if`, `match` or `for` directly in a block

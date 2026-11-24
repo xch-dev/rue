@@ -46,7 +46,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use rue_diagnostic::{Lint, Note, SourceKind, SrcLoc};
+use rowan::{TextRange, TextSize};
+use rue_ast::{AstFunctionItem, AstFunctionParameter, AstNode, TRUSTED_ATTRIBUTE};
+use rue_diagnostic::{Applicability, Lint, Note, Source, SourceKind, SrcLoc, Suggestion};
 use rue_hir::{
     BinaryOp, FieldKind, FunctionCall, FunctionKind, Hir, HirId, Statement, Symbol, SymbolId,
     UnaryOp,
@@ -54,7 +56,7 @@ use rue_hir::{
 use rue_lir::ClvmOp;
 use rue_types::{Check, Type};
 
-use crate::{LintContext, LintInput};
+use crate::{LintContext, LintInput, srcloc};
 
 pub(crate) const LINTS: &[Lint] = &[Lint::UncheckedInput];
 
@@ -102,6 +104,14 @@ impl Origin {
         checked
             .iter()
             .any(|check| check.root == self.root && self.path.starts_with(&check.path))
+    }
+
+    /// The parameter that this is part of, if it's from a parameter.
+    fn parameter(&self) -> Option<usize> {
+        match self.root {
+            Root::Param(index) => Some(index),
+            Root::Call { .. } => None,
+        }
     }
 
     /// Whether this is a field inside of the other origin.
@@ -372,7 +382,7 @@ pub(crate) fn check(cx: &mut LintContext<'_>, input: &LintInput<'_>) {
 
     for main in entrypoints(cx, input) {
         summarize(cx, input, main, &mut summaries);
-        report(cx, main, &summaries[&main]);
+        report(cx, input, main, &summaries[&main]);
     }
 }
 
@@ -395,6 +405,16 @@ fn entrypoints(cx: &LintContext<'_>, input: &LintInput<'_>) -> Vec<SymbolId> {
 
     entrypoints.sort();
     entrypoints
+}
+
+/// Whether the function is the `main` function of a file being compiled.
+fn is_main(cx: &LintContext<'_>, input: &LintInput<'_>, function: SymbolId) -> bool {
+    input.entrypoints.contains(&Declaration::Symbol(function))
+        && matches!(
+            cx.db().symbol(function),
+            Symbol::Function(function)
+                if function.name.as_ref().is_some_and(|name| name.text() == "main")
+        )
 }
 
 /// Computes the summaries of the function and every function it calls, until they stop changing.
@@ -435,7 +455,7 @@ fn summarize(
     }
 }
 
-fn report(cx: &mut LintContext<'_>, main: SymbolId, summary: &Summary) {
+fn report(cx: &mut LintContext<'_>, input: &LintInput<'_>, main: SymbolId, summary: &Summary) {
     // Each concatenation is reported once where it's reached from `main`, naming every unchecked
     // value in it
     let mut concats: BTreeMap<(HirId, Option<HirId>), BTreeSet<&Origin>> = BTreeMap::new();
@@ -451,7 +471,9 @@ fn report(cx: &mut LintContext<'_>, main: SymbolId, summary: &Summary) {
         // Several items of the same list have the same name, so they're counted by name
         let mut counts: BTreeMap<(String, Part), usize> = BTreeMap::new();
         for origin in &origins {
-            *counts.entry(origin_name(cx, main, origin)).or_default() += 1;
+            *counts
+                .entry(origin_name(cx, input, main, origin))
+                .or_default() += 1;
         }
 
         let names = counts
@@ -471,8 +493,18 @@ fn report(cx: &mut LintContext<'_>, main: SymbolId, summary: &Summary) {
             )
         };
 
+        let parameters = origins
+            .iter()
+            .filter_map(|origin| origin.parameter())
+            .collect();
+
         report_at(
             cx,
+            &Report {
+                input,
+                main,
+                parameters,
+            },
             site,
             call,
             &message,
@@ -481,20 +513,30 @@ fn report(cx: &mut LintContext<'_>, main: SymbolId, summary: &Summary) {
         );
     }
 
-    let mut deferred: BTreeSet<(HirId, HirId, String)> = BTreeSet::new();
+    let mut deferred: BTreeSet<(HirId, HirId, String, Option<usize>)> = BTreeSet::new();
 
     for (value, &call) in &summary.deferred {
-        let (path, part) = origin_name(cx, main, &value.origin);
-        deferred.insert((value.site, call, part.describe(&path, 1)));
+        let (path, part) = origin_name(cx, input, main, &value.origin);
+        deferred.insert((
+            value.site,
+            call,
+            part.describe(&path, 1),
+            value.origin.parameter(),
+        ));
     }
 
-    for (site, call, name) in deferred {
+    for (site, call, name, parameter) in deferred {
         let message = format!(
             "{name} is from the solution, but nothing checks its length, and it's put in a condition that's hashed rather than output, so the condition is only checked when a later spend outputs it, which then fails"
         );
 
         report_at(
             cx,
+            &Report {
+                input,
+                main,
+                parameters: parameter.into_iter().collect(),
+            },
             site,
             Some(call),
             &message,
@@ -506,8 +548,17 @@ fn report(cx: &mut LintContext<'_>, main: SymbolId, summary: &Summary) {
 
 /// Reports the diagnostic at the outermost call in `main` that reaches the site, or at the site
 /// itself if it's in `main`, so that it can be allowed there.
+/// What a diagnostic is reported for: the parameters of `main` whose values it's about, which can
+/// be marked `#[trusted]` instead of checking them.
+struct Report<'r, 'i> {
+    input: &'r LintInput<'i>,
+    main: SymbolId,
+    parameters: BTreeSet<usize>,
+}
+
 fn report_at(
     cx: &mut LintContext<'_>,
+    report: &Report<'_, '_>,
     site: HirId,
     call: Option<HirId>,
     message: &str,
@@ -522,6 +573,26 @@ fn report_at(
         .and_then(|call| cx.db().hir_srcloc(call).cloned())
         .unwrap_or_else(|| site.clone());
 
+    // Values that whoever creates the coin or runs the puzzle checks, such as curried values or
+    // values that an outer puzzle computes, can be marked as trusted instead. Whether that's true
+    // is up to the author, so the suggestion is never applied automatically.
+    let suggestions: Vec<Suggestion> = report
+        .parameters
+        .iter()
+        .filter_map(|&index| {
+            let start = parameter_start(cx, report.input, report.main, index)?;
+            let name = parameter_name(cx, report.input, report.main, index);
+            Some(Suggestion::replace(
+                format!(
+                    "If `{name}` is curried, or supplied by an outer puzzle that checks it, mark it as trusted"
+                ),
+                start,
+                format!("#[{TRUSTED_ATTRIBUTE}] "),
+                Applicability::MaybeIncorrect,
+            ))
+        })
+        .collect();
+
     let message = capitalize(message);
 
     if let Some(diagnostic) = cx.report(Lint::UncheckedInput, srcloc, message) {
@@ -529,7 +600,66 @@ fn report_at(
             diagnostic.notes.push(Note::at(site, site_note));
         }
         diagnostic.notes.push(Note::new(help));
+        diagnostic.suggestions.extend(suggestions);
     }
+}
+
+/// The parameter of `main` at the index as it's written, along with the source it's in.
+fn main_parameter<'i>(
+    cx: &LintContext<'_>,
+    input: &LintInput<'i>,
+    main: SymbolId,
+    index: usize,
+) -> Option<(&'i Source, AstFunctionParameter)> {
+    let Symbol::Function(function) = cx.db().symbol(main) else {
+        return None;
+    };
+
+    let name = function.name.as_ref()?.srcloc()?;
+
+    let &(source, document) = input
+        .documents
+        .iter()
+        .find(|(source, _)| source.kind == name.source.kind)?;
+
+    let parameter = document
+        .syntax()
+        .token_at_offset(TextSize::try_from(name.span.start).ok()?)
+        .right_biased()?
+        .parent_ancestors()
+        .find_map(AstFunctionItem::cast)?
+        .parameters()
+        .nth(index)?;
+
+    Some((source, parameter))
+}
+
+/// How a parameter of `main` is written in a diagnostic: its name, or its pattern if it's
+/// destructured.
+fn parameter_name(
+    cx: &LintContext<'_>,
+    input: &LintInput<'_>,
+    main: SymbolId,
+    index: usize,
+) -> String {
+    main_parameter(cx, input, main, index)
+        .and_then(|(_, parameter)| parameter.binding())
+        .map_or_else(
+            || format!("parameter {}", index + 1),
+            |binding| rue_hir::one_line(&binding.syntax().text().to_string()),
+        )
+}
+
+/// Where to insert an attribute before a parameter of `main`.
+fn parameter_start(
+    cx: &LintContext<'_>,
+    input: &LintInput<'_>,
+    main: SymbolId,
+    index: usize,
+) -> Option<SrcLoc> {
+    let (source, parameter) = main_parameter(cx, input, main, index)?;
+    let start = parameter.syntax().text_range().start();
+    Some(srcloc(source, TextRange::empty(start)))
 }
 
 fn capitalize(text: &str) -> String {
@@ -552,22 +682,14 @@ fn join_names(names: &[String]) -> String {
 /// from it, or the call it's the result of. The path stops at an item of a list or pair, since it
 /// can be any of them, or at a field that's too deep to name, and which part of it the value is
 /// is returned along with it.
-fn origin_name(cx: &LintContext<'_>, main: SymbolId, origin: &Origin) -> (String, Part) {
+fn origin_name(
+    cx: &LintContext<'_>,
+    input: &LintInput<'_>,
+    main: SymbolId,
+    origin: &Origin,
+) -> (String, Part) {
     let root = match origin.root {
-        Root::Param(index) => {
-            let Symbol::Function(function) = cx.db().symbol(main) else {
-                unreachable!("`main` is a function");
-            };
-
-            function
-                .parameters
-                .get(index)
-                .and_then(|param| cx.db().symbol(*param).name())
-                .map_or_else(
-                    || format!("parameter {}", index + 1),
-                    |name| name.text().to_string(),
-                )
-        }
+        Root::Param(index) => parameter_name(cx, input, main, index),
         // The result of a call in another function is named after the call in `main` that it's
         // reached through, since the same call can be reached more than once
         Root::Call { site, .. } => cx.db().hir_srcloc(site).map_or_else(
@@ -631,6 +753,8 @@ struct Analysis<'c, 'a, 'i> {
     input: &'c LintInput<'i>,
     summaries: &'c HashMap<SymbolId, Summary>,
     parameters: Vec<SymbolId>,
+    /// Whether the function is `main`, whose parameters can be marked `#[trusted]`.
+    trusts_parameters: bool,
     body: HirId,
     summary: Summary,
     /// The functions that are called, whose summaries are needed.
@@ -661,12 +785,14 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
 
         let parameters = symbol.parameters.clone();
         let body = symbol.body;
+        let trusts_parameters = is_main(cx, input, function);
 
         Self {
             cx,
             input,
             summaries,
             parameters,
+            trusts_parameters,
             body,
             summary: Summary::default(),
             callees: Vec::new(),
@@ -976,6 +1102,12 @@ impl<'c, 'a, 'i> Analysis<'c, 'a, 'i> {
         // have ruled out other members of a union (`is nil`), so only the guards themselves count
         // as checks (see `condition_checks`)
         if let Some(index) = self.parameters.iter().position(|&param| param == symbol) {
+            // The value of a parameter of `main` marked `#[trusted]` is checked by whoever
+            // provides it
+            if self.trusts_parameters && self.cx.db().is_trusted_parameter(symbol) {
+                return Flow::default();
+            }
+
             return Flow::origin(Origin {
                 root: Root::Param(index),
                 path: Vec::new(),

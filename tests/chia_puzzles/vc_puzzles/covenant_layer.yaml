@@ -21,6 +21,8 @@ diagnostics:
 - |-
   `lineage_proof.parent_parent_coin_info` and `parent_morpher(initial_puzzle_hash, lineage_proof.parent_inner_puzzle_hash, ...morpher_solution)` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at covenant_layer.rue:24:13
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `lineage_proof` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
-  `initial_puzzle_hash` and `lineage_proof.parent_parent_coin_info` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at covenant_layer.rue:34:13
+  `lineage_proof.parent_parent_coin_info` is from the solution, but nothing checks its length, so the concatenation can be split into different values that give the same bytes at covenant_layer.rue:34:13
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `lineage_proof` is curried, or supplied by an outer puzzle that checks it, mark it as trusted

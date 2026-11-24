@@ -1,0 +1,45 @@
+// A parameter of `main` marked `#[trusted]` is checked by whoever provides it, such as a curried
+// value that the coin's creator chose, so the lint treats it as checked
+
+struct SingletonStruct {
+    mod_hash: Bytes32,
+    launcher_id: Bytes32,
+    launcher_puzzle_hash: Bytes32,
+}
+
+fn main(
+    #[trusted] mod_hash: Bytes32,
+    #[trusted] singleton: SingletonStruct,
+    #[trusted] (first, second): (Bytes32, Bytes32),
+    inner_puzzle_hash: Bytes32,
+    other_hash: Bytes32,
+    new_owner: Bytes32,
+    (left, right): (Bytes32, Bytes32),
+    #[trusted] ...rest: (Bytes32, nil),
+) -> List<Any> {
+    [
+        // Trusted values have known lengths
+        sha256(mod_hash + inner_puzzle_hash),
+        sha256(singleton.launcher_id + singleton.launcher_puzzle_hash + other_hash),
+        sha256(first + second + new_owner),
+        sha256(rest.first + mod_hash),
+        // Passed to a function, a trusted value stays checked
+        hash_pair(singleton.mod_hash, mod_hash),
+        // A trusted value in a deferred condition
+        CreateCoin {
+            puzzle_hash: tree_hash((1, [CreateCoin { puzzle_hash: mod_hash, amount: 1 }])),
+            amount: 1,
+        },
+        // Values that aren't trusted are reported, with a suggestion to trust their parameters
+        sha256(inner_puzzle_hash + other_hash),
+        sha256(left + right),
+        CreateCoin {
+            puzzle_hash: tree_hash((1, [CreateCoin { puzzle_hash: new_owner, amount: 1 }])),
+            amount: 1,
+        },
+    ]
+}
+
+fn hash_pair(left: Bytes32, right: Bytes32) -> Bytes32 {
+    sha256(left + right)
+}

@@ -7,7 +7,7 @@ extern fn reference(...solution: Any) -> Any from "./covenant_layer.clsp.hex";
 extern fn run(puzzle: Any, solution: Any) -> Any from "../run.hex";
 
 fn main(
-    initial_puzzle_hash: Bytes32,
+    #[trusted] initial_puzzle_hash: Bytes32,
     parent_morpher: fn(
         initial_puzzle_hash: Bytes32,
         parent_inner_puzzle_hash: Bytes32,

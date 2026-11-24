@@ -250,6 +250,10 @@ fn leading_inner_attributes(
     leading_attributes(elements).take_while(AstAttribute::is_inner)
 }
 
+/// The name of the attribute that marks a parameter of `main` as trusted, so that the
+/// `unchecked_input` lint treats its value as checked.
+pub const TRUSTED_ATTRIBUTE: &str = "trusted";
+
 impl AstAttribute {
     /// Whether this is an inner attribute (such as `#![allow(unused_binding)]`), which applies to
     /// the file or module that it's in rather than to the next item.
@@ -603,6 +607,21 @@ impl AstImportPathSegment {
 }
 
 impl AstFunctionParameter {
+    /// The attributes before the parameter, such as `#[trusted]`.
+    pub fn attributes(&self) -> impl Iterator<Item = AstAttribute> {
+        leading_attributes(self.syntax().children_with_tokens())
+    }
+
+    /// Whether the parameter has a `#[trusted]` attribute.
+    pub fn is_trusted(&self) -> bool {
+        self.attributes().any(|attribute| {
+            !attribute.is_inner()
+                && attribute
+                    .name()
+                    .is_some_and(|name| name.text() == TRUSTED_ATTRIBUTE)
+        })
+    }
+
     pub fn spread(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()

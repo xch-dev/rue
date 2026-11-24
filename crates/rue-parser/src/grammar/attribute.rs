@@ -1,6 +1,7 @@
 use crate::{Parser, SyntaxKind, T, grammar::delimited_list};
 
-/// Parses the attributes (such as `#[allow(unused_binding)]`) before an item or statement.
+/// Parses the attributes (such as `#[allow(unused_binding)]`) before an item, statement or
+/// function parameter.
 pub fn attributes(p: &mut Parser) {
     while p.at_quiet(T![#]) {
         attribute(p);
@@ -83,6 +84,51 @@ mod tests {
                   LiteralExpr@41..42
                     Integer@41..42 "1"
                   Semicolon@42..43 ";"
+            "##]],
+            expect![""],
+        );
+    }
+
+    #[test]
+    fn test_parameter_attributes() {
+        check(
+            item,
+            "fn main(#[trusted] a: Int, b: Int) {}",
+            expect![[r##"
+                FunctionItem@0..37
+                  Fn@0..2 "fn"
+                  Whitespace@2..3 " "
+                  Ident@3..7 "main"
+                  OpenParen@7..8 "("
+                  FunctionParameter@8..25
+                    Attribute@8..18
+                      Pound@8..9 "#"
+                      OpenBracket@9..10 "["
+                      Ident@10..17 "trusted"
+                      CloseBracket@17..18 "]"
+                    Whitespace@18..19 " "
+                    NamedBinding@19..20
+                      Ident@19..20 "a"
+                    Colon@20..21 ":"
+                    Whitespace@21..22 " "
+                    PathType@22..25
+                      PathSegment@22..25
+                        Ident@22..25 "Int"
+                  Comma@25..26 ","
+                  Whitespace@26..27 " "
+                  FunctionParameter@27..33
+                    NamedBinding@27..28
+                      Ident@27..28 "b"
+                    Colon@28..29 ":"
+                    Whitespace@29..30 " "
+                    PathType@30..33
+                      PathSegment@30..33
+                        Ident@30..33 "Int"
+                  CloseParen@33..34 ")"
+                  Whitespace@34..35 " "
+                  Block@35..37
+                    OpenBrace@35..36 "{"
+                    CloseBrace@36..37 "}"
             "##]],
             expect![""],
         );
