@@ -250,6 +250,10 @@ fn leading_inner_attributes(
     leading_attributes(elements).take_while(AstAttribute::is_inner)
 }
 
+/// The name of the attribute that marks a parameter of `main` as trusted, so that the
+/// `unchecked_input` lint treats its value as checked.
+pub const TRUSTED_ATTRIBUTE: &str = "trusted";
+
 impl AstAttribute {
     /// Whether this is an inner attribute (such as `#![allow(unused_binding)]`), which applies to
     /// the file or module that it's in rather than to the next item.
@@ -261,6 +265,13 @@ impl AstAttribute {
             .filter(|token| !token.kind().is_trivia())
             .nth(1)
             .is_some_and(|token| token.kind() == T![!])
+    }
+
+    /// Whether this is a `#[trusted]` attribute (or a misplaced `#![trusted]`), which marks a
+    /// parameter of `main` as trusted.
+    pub fn is_trusted(&self) -> bool {
+        self.name()
+            .is_some_and(|name| name.text() == TRUSTED_ATTRIBUTE)
     }
 
     /// The name of the attribute, such as `allow` in `#[allow(unused_binding)]`.
@@ -313,6 +324,21 @@ impl AstModuleItem {
 }
 
 impl AstFunctionItem {
+    /// Whether the function is an entrypoint, which is compiled as a program whose parameters are
+    /// the solution: a `main` function at the top level of a file, or an exported function at the
+    /// top level of the main file (which `in_main_file` says this is). The exports of other files
+    /// are library functions.
+    pub fn is_entrypoint(&self, in_main_file: bool) -> bool {
+        let top_level = self
+            .syntax()
+            .parent()
+            .is_some_and(|parent| parent.kind() == SyntaxKind::Document);
+
+        top_level
+            && ((in_main_file && self.export().is_some())
+                || self.name().is_some_and(|name| name.text() == "main"))
+    }
+
     pub fn export(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()
@@ -603,6 +629,17 @@ impl AstImportPathSegment {
 }
 
 impl AstFunctionParameter {
+    /// The attributes before the parameter, such as `#[trusted]`.
+    pub fn attributes(&self) -> impl Iterator<Item = AstAttribute> {
+        leading_attributes(self.syntax().children_with_tokens())
+    }
+
+    /// Whether the parameter has a `#[trusted]` attribute.
+    pub fn is_trusted(&self) -> bool {
+        self.attributes()
+            .any(|attribute| !attribute.is_inner() && attribute.is_trusted())
+    }
+
     pub fn spread(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()

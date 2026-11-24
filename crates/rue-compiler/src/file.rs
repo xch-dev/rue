@@ -368,7 +368,9 @@ impl FileTree {
                 .map(|file| (&file.source, &file.document))
                 .collect();
 
-            ctx.run_lints(documents, &entrypoints, &programs);
+            let main_file = self.main_file().map(|file| file.source.kind.clone());
+
+            ctx.run_lints(documents, &entrypoints, &programs, main_file);
         } else {
             ctx.discard_lint_sites();
         }

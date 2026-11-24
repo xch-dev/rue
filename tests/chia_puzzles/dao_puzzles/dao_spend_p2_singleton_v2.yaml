@@ -109,7 +109,4 @@ diagnostics:
   Items of `p2_singleton_tail_hash_parent_amount_list` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at dao_spend_p2_singleton_v2.rue:42:18
     note: The concatenation is here at dao_spend_p2_singleton_v2.rue:231:21
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
-- |-
-  `p2_singleton_via_delegated_puzzle_puzzle_hash` is from the solution, but nothing checks its length, and it's put in a condition that's hashed rather than output, so the condition is only checked when a later spend outputs it, which then fails at dao_spend_p2_singleton_v2.rue:42:18
-    note: The condition's field is here at dao_spend_p2_singleton_v2.rue:194:34
-    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`
+    help: If `p2_singleton_tail_hash_parent_amount_list` is curried, or supplied by an outer puzzle that checks it, mark it as trusted

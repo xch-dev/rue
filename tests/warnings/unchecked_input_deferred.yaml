@@ -7,23 +7,29 @@ diagnostics:
   `new_owner` is from the solution, but nothing checks its length, and it's put in a condition that's hashed rather than output, so the condition is only checked when a later spend outputs it, which then fails at unchecked_input_deferred.rue:43:9
     note: The condition's field is here at unchecked_input_deferred.rue:107:36
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`
+    help: If `new_owner` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
   `payee` is from the solution, but nothing checks its length, and it's put in a condition that's hashed rather than output, so the condition is only checked when a later spend outputs it, which then fails at unchecked_input_deferred.rue:46:35
     note: The condition's field is here at unchecked_input_deferred.rue:122:32
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`
+    help: If `payee` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
   `either_owner` is from the solution, but nothing checks its length, and it's put in a condition that's hashed rather than output, so the condition is only checked when a later spend outputs it, which then fails at unchecked_input_deferred.rue:65:26
     note: The condition's field is here at unchecked_input_deferred.rue:67:47
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`
+    help: If `either_owner` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
   `id` is from the solution, but nothing checks its length, and it's put in a condition that's hashed rather than output, so the condition is only checked when a later spend outputs it, which then fails at unchecked_input_deferred.rue:65:26
     note: The condition's field is here at unchecked_input_deferred.rue:69:47
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`
+    help: If `id` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
   `committed` is from the solution, but nothing checks its length, and it's put in a condition that's hashed rather than output, so the condition is only checked when a later spend outputs it, which then fails at unchecked_input_deferred.rue:76:26
     note: The condition's field is here at unchecked_input_deferred.rue:76:60
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`
+    help: If `committed` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
   `passed` is from the solution, but nothing checks its length, and it's put in a condition that's hashed rather than output, so the condition is only checked when a later spend outputs it, which then fails at unchecked_input_deferred.rue:80:26
     note: The condition's field is here at unchecked_input_deferred.rue:80:76
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`
+    help: If `passed` is curried, or supplied by an outer puzzle that checks it, mark it as trusted

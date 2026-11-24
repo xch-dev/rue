@@ -15,7 +15,7 @@ struct Truths {
 }
 
 fn main(
-    singleton_struct: SingletonStruct,
+    #[trusted] singleton_struct: SingletonStruct,
     inner_puzzle: fn(truths: Truths, ...inner_solution: Any) -> List<Condition>,
     lineage_proof: Proof,
     my_amount: Int,

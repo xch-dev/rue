@@ -3854,3 +3854,59 @@ fn main(items: List<Int>) -> Int {
     assert_eq!(reports, Vec::<String>::new());
     assert!(!has_errors);
 }
+
+#[test]
+fn unchecked_input_suggests_trusting_the_parameter() {
+    let source = "\
+fn main(mod_hash: Bytes32, ...rest: (Bytes32, nil)) -> Bytes32 {
+    sha256(mod_hash + rest.first)
+}
+";
+
+    let (diagnostics, _) = compile_source(source, |_| {});
+    let suggestions: Vec<_> = diagnostics
+        .iter()
+        .flat_map(|diagnostic| &diagnostic.suggestions)
+        .collect();
+
+    // Whether a value is trusted is up to the author, so it's never applied automatically
+    assert!(
+        suggestions
+            .iter()
+            .all(|suggestion| suggestion.applicability == Applicability::MaybeIncorrect)
+    );
+    assert_eq!(
+        suggestions
+            .iter()
+            .map(|suggestion| suggestion.message.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "If `mod_hash` is curried, or supplied by an outer puzzle that checks it, mark it as trusted",
+            "If `rest` is curried, or supplied by an outer puzzle that checks it, mark it as trusted",
+        ]
+    );
+
+    // The attribute goes before the spread of a spread parameter
+    let edits: Vec<_> = suggestions
+        .iter()
+        .flat_map(|suggestion| &suggestion.edits)
+        .collect();
+    let fixed = apply_edits(source, &edits);
+    assert_eq!(
+        fixed,
+        "\
+fn main(#[trusted] mod_hash: Bytes32, #[trusted] ...rest: (Bytes32, nil)) -> Bytes32 {
+    sha256(mod_hash + rest.first)
+}
+"
+    );
+
+    let (diagnostics, has_errors) = compile_source(&fixed, |_| {});
+    assert!(!has_errors);
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.kind.to_string().contains("from the solution")),
+        "{diagnostics:?}"
+    );
+}

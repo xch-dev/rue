@@ -6,7 +6,11 @@ diagnostics:
 - |-
   `left` and `right` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at main.rue:7:12
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `left` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+    help: If `right` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
   `a` and `b` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at main.rue:12:28
     note: The concatenation is here at utils.rue:3:12
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `a` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+    help: If `b` is curried, or supplied by an outer puzzle that checks it, mark it as trusted

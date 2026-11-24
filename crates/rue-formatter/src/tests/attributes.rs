@@ -281,3 +281,31 @@ fn comments_inside_attributes_stay_inside_the_brackets() {
         "#]],
     );
 }
+
+#[test]
+fn parameter_attributes_stay_on_the_parameters_line() {
+    check(
+        "fn main(  #[trusted]   mod_hash : Bytes32,\n x: Bytes32) -> Bytes32 { sha256(mod_hash + x) }",
+        expect![[r#"
+            fn main(#[trusted] mod_hash: Bytes32, x: Bytes32) -> Bytes32 {
+                sha256(mod_hash + x)
+            }
+        "#]],
+    );
+}
+
+#[test]
+fn parameter_attributes_wrap_with_their_parameters() {
+    check(
+        "fn main(#[trusted] mod_hash_with_a_long_name: Bytes32, #[trusted] another_long_parameter_name: Bytes32, x: Bytes32) -> Bytes32 { x }",
+        expect![[r#"
+            fn main(
+                #[trusted] mod_hash_with_a_long_name: Bytes32,
+                #[trusted] another_long_parameter_name: Bytes32,
+                x: Bytes32,
+            ) -> Bytes32 {
+                x
+            }
+        "#]],
+    );
+}

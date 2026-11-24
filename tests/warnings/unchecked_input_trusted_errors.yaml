@@ -1,0 +1,29 @@
+diagnostics:
+- "`#[trusted]` can only be used on a parameter of `main`, or of a function that the main file exports at unchecked_input_trusted_errors.rue:1:1"
+- "`#[trusted]` can only be used on a parameter of `main`, or of a function that the main file exports at unchecked_input_trusted_errors.rue:7:1"
+- "`#[trusted]` can only be used on a parameter of `main`, or of a function that the main file exports at unchecked_input_trusted_errors.rue:8:11"
+- Attributes can only be used on items and statements at unchecked_input_trusted_errors.rue:8:38
+- "`#[trusted]` can only be used on a parameter of `main`, or of a function that the main file exports at unchecked_input_trusted_errors.rue:13:5"
+- "`#[trusted]` can only be used on a parameter of `main`, or of a function that the main file exports at unchecked_input_trusted_errors.rue:15:13"
+- Unused function `exported` at unchecked_input_trusted_errors.rue:20:15
+- "`#[trusted]` can only be used on a parameter of `main`, or of a function that the main file exports at unchecked_input_trusted_errors.rue:20:24"
+- "`#[trusted]` doesn't take arguments at unchecked_input_trusted_errors.rue:30:5"
+- "`#[trusted]` can only be used on a parameter of `main`, or of a function that the main file exports at unchecked_input_trusted_errors.rue:32:5"
+- "`#[trusted]` can only be used on a parameter of `main`, or of a function that the main file exports at unchecked_input_trusted_errors.rue:38:5"
+- |-
+  `a` and `inner_attribute` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_trusted_errors.rue:39:35
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `inner_attribute` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+    help: If `a` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+- |-
+  `a` and `b` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_trusted_errors.rue:39:57
+    note: The concatenation is here at unchecked_input_trusted_errors.rue:9:12
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `a` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+    help: If `b` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+- |-
+  `c` and `d` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_trusted_errors.rue:39:71
+    note: The concatenation is here at unchecked_input_trusted_errors.rue:16:16
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `c` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+    help: If `d` is curried, or supplied by an outer puzzle that checks it, mark it as trusted

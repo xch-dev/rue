@@ -145,6 +145,7 @@ mod tests {
             Vec::new(),
             &entrypoints,
             &programs,
+            None,
             false,
             &rue_options::CompilerOptions::default(),
         );

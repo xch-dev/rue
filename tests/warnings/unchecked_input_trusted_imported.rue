@@ -1,0 +1,10 @@
+// When `main` is imported from a module, its parameters can't be marked `#[trusted]`, so the lint
+// neither trusts them nor suggests it
+
+import inner::main;
+
+mod inner {
+    export fn main(#[trusted] a: Bytes32, b: Bytes32) -> Bytes32 {
+        sha256(a + b)
+    }
+}

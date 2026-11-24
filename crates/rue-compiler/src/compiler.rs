@@ -1830,12 +1830,14 @@ impl Compiler {
         documents: Vec<(&Source, &AstDocument)>,
         entrypoints: &HashSet<Declaration>,
         programs: &HashSet<SymbolId>,
+        main_file: Option<SourceKind>,
     ) {
         let input = LintInput::new(
             mem::take(&mut self.lint_sites),
             documents,
             entrypoints,
             programs,
+            main_file,
             self.has_errors(),
             &self.options,
         );

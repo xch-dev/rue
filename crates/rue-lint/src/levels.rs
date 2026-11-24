@@ -1,7 +1,7 @@
 use std::{collections::HashMap, ops::Range};
 
 use rowan::Direction;
-use rue_ast::{AstAttribute, AstDocument, AstModuleItem, AstNode};
+use rue_ast::{AstAttribute, AstDocument, AstFunctionItem, AstModuleItem, AstNode};
 use rue_diagnostic::{
     AttributeLevel, Diagnostic, DiagnosticKind, DiagnosticSeverity, ForbiddenBy, Lint, LintLevel,
     LintLevels, LintName, Source, SourceKind, SrcLoc,
@@ -53,6 +53,7 @@ impl ScopedLintLevels {
     pub fn new(
         project: LintLevels,
         documents: &[(&Source, &AstDocument)],
+        main_file: Option<&SourceKind>,
     ) -> (Self, Vec<Diagnostic>) {
         let mut scopes = HashMap::<(SourceKind, Lint), Vec<LintScope>>::new();
         let mut expectations = Vec::new();
@@ -76,6 +77,42 @@ impl ScopedLintLevels {
                 };
 
                 let inner = attribute.is_inner();
+
+                // `#[trusted]` isn't a lint level, but marks a parameter of an entrypoint as trusted,
+                // which the compiler reads from the parameter itself
+                if attribute.is_trusted() {
+                    // An attribute with nothing to apply to after an item that failed to parse has
+                    // already been reported by the parser
+                    let has_target = if inner {
+                        inner_target(&attribute).is_some()
+                    } else {
+                        target(&attribute).is_some()
+                    };
+
+                    let in_main_file = main_file == Some(&source.kind);
+
+                    if (inner || !is_entrypoint_parameter(&attribute, in_main_file))
+                        && (has_target || !is_after_failed_item(&attribute))
+                    {
+                        error(
+                            DiagnosticKind::MisplacedTrustedAttribute,
+                            attribute.syntax().text_range(),
+                        );
+                    }
+
+                    if attribute
+                        .syntax()
+                        .children_with_tokens()
+                        .any(|element| element.kind() == T!['('])
+                    {
+                        error(
+                            DiagnosticKind::TrustedAttributeArguments,
+                            attribute.syntax().text_range(),
+                        );
+                    }
+
+                    continue;
+                }
 
                 let target = if inner {
                     inner_target(&attribute)
@@ -397,6 +434,19 @@ fn is_after_failed_item(attribute: &AstAttribute) -> bool {
             .any(|element| element.kind() == T!['{']),
         _ => false,
     }
+}
+
+/// Whether the attribute is on a parameter of an entrypoint (a `main` function at the top level of a
+/// file, or an exported function at the top level of the main file), which is the only place
+/// `#[trusted]` can be used.
+fn is_entrypoint_parameter(attribute: &AstAttribute, in_main_file: bool) -> bool {
+    attribute
+        .syntax()
+        .parent()
+        .filter(|parameter| parameter.kind() == SyntaxKind::FunctionParameter)
+        .and_then(|parameter| parameter.parent())
+        .and_then(AstFunctionItem::cast)
+        .is_some_and(|function| function.is_entrypoint(in_main_file))
 }
 
 /// Whether attributes can be attached to the node. An `if`, `match` or `for` directly in a block

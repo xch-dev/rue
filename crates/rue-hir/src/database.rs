@@ -58,6 +58,8 @@ pub struct Database {
     /// The nodes that take the rest of a list that can have run out (see
     /// `Database::insert_unchecked_list_read`).
     unchecked_list_reads: HashSet<HirId>,
+    /// The parameters marked `#[trusted]` (see `Database::insert_trusted_parameter`).
+    trusted_parameters: HashSet<SymbolId>,
     scopes: Arena<Scope>,
     imports: Arena<Import>,
     symbols: Arena<Symbol>,
@@ -136,6 +138,7 @@ impl Database {
             unchecked_list_reads: _,
             // Only added to while compiling items and imports, which a lambda's body has none of
             default_fields: _,
+            trusted_parameters: _,
             default_field_uses: _,
             enums: _,
             enum_members: _,
@@ -295,6 +298,18 @@ impl Database {
     /// before that.
     pub fn insert_unchecked_list_read(&mut self, hir: HirId) {
         self.unchecked_list_reads.insert(hir);
+    }
+
+    /// Marks a parameter as `#[trusted]`, which means its value is checked by whoever provides it,
+    /// such as a curried value that the coin's creator chose, so the `unchecked_input` lint treats
+    /// it as checked.
+    pub fn insert_trusted_parameter(&mut self, parameter: SymbolId) {
+        self.trusted_parameters.insert(parameter);
+    }
+
+    /// Whether the parameter is marked `#[trusted]` (see [`Self::insert_trusted_parameter`]).
+    pub fn is_trusted_parameter(&self, parameter: SymbolId) -> bool {
+        self.trusted_parameters.contains(&parameter)
     }
 
     /// Whether the node takes the rest of a list that can have run out (see

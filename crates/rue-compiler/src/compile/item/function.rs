@@ -89,6 +89,11 @@ pub fn declare_function(ctx: &mut Compiler, function: &AstFunctionItem, symbol: 
 
         *ctx.symbol_mut(symbol) = Symbol::Parameter(ParameterSymbol { name: None, ty });
 
+        // Where `#[trusted]` can be used is checked along with the other attributes
+        if parameter.is_trusted() {
+            ctx.insert_trusted_parameter(symbol);
+        }
+
         let name = parameter
             .binding()
             .map_or(String::new(), |binding| binding.syntax().text().to_string());

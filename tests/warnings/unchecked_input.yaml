@@ -8,25 +8,39 @@ diagnostics:
 - |-
   `coin.parent_coin_id` and `coin.puzzle_hash` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input.rue:54:16
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `coin` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
   `a` and `b` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input.rue:58:16
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `a` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+    help: If `b` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
   `a` and `b` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input.rue:59:9
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `a` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+    help: If `b` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
   `k` and `m` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input.rue:71:9
     note: The concatenation is here at unchecked_input.rue:99:12
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `k` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+    help: If `m` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
   `q` and `r` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input.rue:76:16
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `q` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+    help: If `r` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
   Items of `pair` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input.rue:78:16
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `pair` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
   `proof.other` and `s` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input.rue:88:20
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `proof` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+    help: If `s` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
 - |-
-  An item of `parameter 29` and an item of `parameter 30` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input.rue:93:16
+  An item of `(u, v)` and an item of `(w, x)` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input.rue:93:16
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `(u, v)` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+    help: If `(w, x)` is curried, or supplied by an outer puzzle that checks it, mark it as trusted

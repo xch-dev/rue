@@ -11,7 +11,7 @@ inline const BASE64URL_CHARSET: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijkl
 // puzzle hash, encoded as unpadded base64url.
 fn main(
     public_key: R1PublicKey,
-    delegated_puzzle_hash: Bytes32,
+    #[trusted] delegated_puzzle_hash: Bytes32,
     authenticator_data: Bytes,
     client_data_json: Bytes,
     challenge_index: Int,

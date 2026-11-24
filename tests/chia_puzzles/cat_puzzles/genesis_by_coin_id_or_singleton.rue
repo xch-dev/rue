@@ -39,7 +39,7 @@ struct Solution {
 
 fn main(
     genesis_id: Bytes32,
-    mint_launcher_puzzle_hash: Bytes32,
+    #[trusted] mint_launcher_puzzle_hash: Bytes32,
     truths: Truths,
     _parent_is_cat: Bool,
     _lineage_proof: Any,

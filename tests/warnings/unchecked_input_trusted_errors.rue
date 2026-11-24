@@ -1,0 +1,40 @@
+#![trusted]
+
+// `#[trusted]` can only be used on a parameter of `main`, or of a function exported at the top level
+// of the main file, and doesn't take arguments. Where it's misplaced, the lint doesn't trust the
+// value.
+
+#[trusted]
+fn helper(#[trusted] value: Bytes32, #[allow(unused_parameter)] other: Bytes32) -> Bytes32 {
+    sha256(value + other)
+}
+
+mod inner {
+    #![trusted]
+
+    fn main(#[trusted] value: Bytes32, other: Bytes32) -> Bytes32 {
+        sha256(value + other)
+    }
+
+    // An exported function in a module isn't compiled as a program of its own
+    export fn exported(#[trusted] value: Bytes32) -> Bytes32 {
+        value
+    }
+
+    export fn call(value: Bytes32, other: Bytes32) -> Bytes32 {
+        main(value, other)
+    }
+}
+
+fn main(
+    #[trusted(value)] value: Bytes32,
+    #[trusted] #[trusted] twice: Bytes32,
+    #![trusted] inner_attribute: Bytes32,
+    a: Bytes32,
+    b: Bytes32,
+    c: Bytes32,
+    d: Bytes32,
+) -> List<Bytes32> {
+    #![trusted]
+    [helper(value, twice), sha256(inner_attribute + a), helper(a, b), inner::call(c, d)]
+}
