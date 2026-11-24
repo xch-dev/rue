@@ -24,11 +24,13 @@ use indexmap::{IndexSet, set::Slice};
 use rue_diagnostic::SrcLoc;
 use rue_lir::{ClvmTarget, Lir, LirId, bigint_atom};
 use rue_options::CompilerOptions;
+use rue_types::{Check, CheckPlan, TypeId};
 
 use crate::{
-    BinaryOp, BindingSymbol, ConstantSymbol, ControlStatement, Database, DependencyGraph,
-    Environment, ExprStatement, FieldKind, FunctionCall, FunctionKind, FunctionSymbol, Hir, HirId,
-    IfStatement, PathError, Statement, Symbol, SymbolId, TypePath, UnaryOp, generate_check_hir,
+    BinaryOp, BindingSymbol, CheckHelpers, ConstantSymbol, ControlStatement, Database,
+    DependencyGraph, Environment, ExprStatement, FieldKind, FunctionCall, FunctionKind,
+    FunctionSymbol, Hir, HirId, IfStatement, ParameterSymbol, PathError, Statement, Symbol,
+    SymbolId, TypePath, UnaryOp, generate_check_hir,
     small_static::{StaticContext, is_small_static, take},
 };
 
@@ -796,8 +798,14 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
             }
             Hir::Cast(value) => self.lower_hir(env, value),
             Hir::Guard(guard) => {
-                let check = generate_check_hir(self.db, guard.runtime_check(), guard.value);
-                let result = self.lower_hir(env, check);
+                let plan = guard.runtime_check();
+
+                let result = if plan.helpers.is_empty() {
+                    let check = generate_check_hir(self.db, plan.check, guard.value, None);
+                    self.lower_hir(env, check)
+                } else {
+                    self.lower_check_with_helpers(env, guard.ty, plan, guard.value)
+                };
 
                 // A check that doesn't use the value is a constant, but the value is still
                 // evaluated for its effect if it may fail, like a binding that's never referenced
@@ -989,6 +997,62 @@ impl<'d, 'a, 'g> Lowerer<'d, 'a, 'g> {
                 self.arena.alloc(Lir::Op(op, args))
             }
         }
+    }
+
+    /// Lowers a check that has helpers (see [`CheckPlan`]). The check is run as a program of its
+    /// own, `(a (q . CHECK) (c HELPERS value))`, whose environment is a tree of the helpers'
+    /// programs, laid out like a function's environment (see [`Environment::tree`]), and the
+    /// value. Each helper is run the same way, with the part of the value it checks, so the
+    /// helpers are only generated once.
+    fn lower_check_with_helpers(
+        &mut self,
+        env: &Environment,
+        ty: TypeId,
+        plan: CheckPlan,
+        value: HirId,
+    ) -> LirId {
+        let parameter = |db: &mut Database| {
+            db.alloc_symbol(Symbol::Parameter(ParameterSymbol { name: None, ty }))
+        };
+
+        let helper_symbols: Vec<SymbolId> =
+            plan.helpers.iter().map(|_| parameter(self.db)).collect();
+        let tree = Environment::tree(helper_symbols.iter().copied().zip(plan.calls).collect());
+        let paths = helper_symbols
+            .iter()
+            .map(|&symbol| tree.type_path(symbol).expect("every helper is in the tree"))
+            .collect();
+
+        let tree_symbol = parameter(self.db);
+        let value_symbol = parameter(self.db);
+        let check_env = Environment::Pair(
+            Box::new(Environment::Leaf(tree_symbol)),
+            Box::new(Environment::Leaf(value_symbol)),
+        );
+
+        let helpers = CheckHelpers {
+            tree: self.db.alloc_hir(Hir::Reference(tree_symbol)),
+            paths,
+        };
+        let value_hir = self.db.alloc_hir(Hir::Reference(value_symbol));
+
+        let lower_check = |this: &mut Self, check: Check| {
+            let hir = generate_check_hir(this.db, check, value_hir, Some(&helpers));
+            let lir = this.lower_hir(&check_env, hir);
+            this.arena.alloc(Lir::Quote(lir))
+        };
+
+        let check = lower_check(self, plan.check);
+        let programs: HashMap<SymbolId, LirId> = helper_symbols
+            .into_iter()
+            .zip(plan.helpers)
+            .map(|(symbol, helper)| (symbol, lower_check(self, helper)))
+            .collect();
+        let tree = self.lower_tree(env, &tree, false, Some(&programs));
+
+        let value = self.lower_hir(env, value);
+        let check_env = self.arena.alloc(Lir::Cons(tree, value));
+        self.arena.alloc(Lir::Run(check, check_env))
     }
 
     /// Lowers the items of a list (or the fields of a struct) to nested pairs. The items are

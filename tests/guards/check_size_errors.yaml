@@ -1,9 +1,8 @@
 diagnostics:
-- Cannot check if value is of this type at runtime, since the check would be too large at check_size_errors.rue:21:5
-- Cannot check if value is of this type at runtime, since the check would be too large at check_size_errors.rue:26:5
-- Cannot assign `Any` to `T12` without a type guard, since the value isn't always a valid `T12` at check_size_errors.rue:30:40
-- Cannot cast `Any` to `T12` without a type guard, since the value isn't always a valid `T12` at check_size_errors.rue:35:5
-- Cannot check if value is of this type at runtime, since the check would be too large at check_size_errors.rue:45:5
-- Cannot check if value is of this type at runtime, since the check would be too large at check_size_errors.rue:49:5
-- Cannot type guard from `(Any, Bytes32)` to `(T12, nil)`, since they do not overlap at check_size_errors.rue:54:5
-- Cannot assign `(Any, Bytes32)` to `(T12, nil)`, since they are incompatible at check_size_errors.rue:57:61
+- Cannot check if value is of this type at runtime, since the check would be too large at check_size_errors.rue:269:5
+- Cannot assign `Any` to `Big` without a type guard, since the value isn't always a valid `Big` at check_size_errors.rue:273:40
+- Cannot cast `Any` to `Big` without a type guard, since the value isn't always a valid `Big` at check_size_errors.rue:278:5
+- Cannot check if value is of this type at runtime, since the check would be too large at check_size_errors.rue:288:5
+- Cannot check if value is of this type at runtime, since the check would be too large at check_size_errors.rue:292:5
+- Cannot type guard from `(Any, Bytes32)` to `(Big, nil)`, since they do not overlap at check_size_errors.rue:297:5
+- Cannot assign `(Any, Bytes32)` to `(Big, nil)`, since they are incompatible at check_size_errors.rue:300:61

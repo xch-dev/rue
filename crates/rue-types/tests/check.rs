@@ -14,8 +14,8 @@ use std::{borrow::Cow, collections::HashMap};
 use clvmr::{Allocator, NodePtr, SExp};
 use id_arena::Arena;
 use rue_types::{
-    Alias, Atom, AtomRestriction, AtomSemantic, CHECK_SIZE_LIMIT, Check, CheckError, FunctionType,
-    Type, TypeId, check, subtract, with_step_limit,
+    Alias, Atom, AtomRestriction, AtomSemantic, CHECK_SIZE_LIMIT, Check, CheckError, CheckPlan,
+    FunctionType, Type, TypeId, check, subtract, with_step_limit,
 };
 
 impl Types {
@@ -585,49 +585,31 @@ fn list_value(a: &mut Allocator, items: &[NodePtr]) -> NodePtr {
 #[test]
 fn test_check_size_limit() {
     let mut t = Types::new();
-    let mut a = Allocator::new();
     let any = t.builtins.permissive_any;
+    let int = t.builtins.int;
 
-    // Each level nests the previous type twice through an alias, so the check doubles in size
-    let mut levels = vec![t.builtins.int];
-    for _ in 0..24 {
-        let previous = *levels.last().unwrap();
-        let pair = t.pair(previous, previous);
-        levels.push(t.alias(pair));
-    }
-
-    // The largest level within the limit still produces a correct check
-    let check = t.check(any, levels[11]).unwrap();
-    assert!(check.size() <= CHECK_SIZE_LIMIT, "{}", check.size());
-    assert!(check.size() > CHECK_SIZE_LIMIT / 2, "{}", check.size());
-    let one = a.new_small_number(1).unwrap();
-    let mut valid = one;
-    for _ in 0..11 {
-        valid = a.new_pair(valid, valid).unwrap();
-    }
-    assert_eq!(eval(&a, &check, valid), Ok(true));
-    let invalid = a.new_pair(valid, one).unwrap();
-    let wrapped = a.new_pair(invalid, invalid).unwrap();
-    assert_eq!(eval(&a, &check, wrapped), Ok(false));
-
-    // The next level is too large, as is every level past it, even though they aren't too deep
-    assert_eq!(t.check(any, levels[12]), Err(CheckError::TooLarge));
-
-    // Every part of the check is limited, not just the result, so the work doesn't double at each
-    // level either (it takes around 130,000 steps, rather than tens of millions)
-    let result = with_step_limit(1_000_000, || t.check(any, levels[24]));
-    assert_eq!(result, Err(CheckError::TooLarge));
+    // A union of distinct lists of values, whose check has nothing to share, and is a few nodes
+    // for each value
+    let lists: Vec<TypeId> = (0..(CHECK_SIZE_LIMIT / 30) as u16)
+        .map(|value| {
+            let value = t.bytes_value(&value.to_be_bytes());
+            tuple(&mut t, &[value; 16])
+        })
+        .collect();
+    let wide = t.union(lists);
+    assert_eq!(t.check(any, wide), Err(CheckError::TooLarge));
 
     // A part that's too large doesn't matter if another pair accepts every pair
     let any_pair = t.pair(any, any);
-    let either = t.union(vec![levels[13], any_pair]);
+    let large_pair = t.pair(wide, wide);
+    let either = t.union(vec![large_pair, any_pair]);
     assert_eq!(
         t.check(any, either),
         Ok(Check::IsPair {
             can_be_truthy: true
         })
     );
-    let either = t.union(vec![any_pair, levels[13]]);
+    let either = t.union(vec![any_pair, large_pair]);
     assert_eq!(
         t.check(any, either),
         Ok(Check::IsPair {
@@ -636,12 +618,11 @@ fn test_check_size_limit() {
     );
 
     // But it does if it's needed, whichever of the first and rest is too large
-    let int = t.builtins.int;
     let ints = t.pair(int, int);
-    let first_large = t.pair(levels[12], int);
+    let first_large = t.pair(wide, int);
     let either = t.union(vec![first_large, ints]);
     assert_eq!(t.check(any, either), Err(CheckError::TooLarge));
-    let rest_large = t.pair(int, levels[12]);
+    let rest_large = t.pair(int, wide);
     let either = t.union(vec![rest_large, ints]);
     assert_eq!(t.check(any, either), Err(CheckError::TooLarge));
 
@@ -649,14 +630,165 @@ fn test_check_size_limit() {
     let bytes32 = t.builtins.bytes32;
     let nil = t.builtins.nil;
     let from = t.pair(any, bytes32);
-    let to = t.pair(levels[12], nil);
+    let to = t.pair(wide, nil);
     assert_eq!(t.check(from, to), Ok(Check::Impossible));
     let from = t.pair(bytes32, any);
-    let to = t.pair(nil, levels[12]);
+    let to = t.pair(nil, wide);
     assert_eq!(t.check(from, to), Ok(Check::Impossible));
 
     // A value already known to be of the type doesn't need a check, however large the type is
-    assert_eq!(t.check(levels[24], levels[24]), Ok(Check::None));
+    assert_eq!(t.check(wide, wide), Ok(Check::None));
+}
+
+#[test]
+fn test_check_shares_repeated_parts() {
+    let mut t = Types::new();
+    let mut a = Allocator::new();
+    let any = t.builtins.permissive_any;
+
+    // Each level nests the previous type twice through an alias, which would double the size of
+    // the check at each level if the parts weren't shared
+    let mut levels = vec![t.builtins.int];
+    for _ in 0..24 {
+        let previous = *levels.last().unwrap();
+        let pair = t.pair(previous, previous);
+        levels.push(t.alias(pair));
+    }
+
+    // The check and the work to build it are linear in the number of levels
+    let check = with_step_limit(100_000, || t.check(any, levels[24])).unwrap();
+    assert!(check.size() < 24 * 10, "{}", check.size());
+
+    // Each level that's large enough to share is a helper, which is generated once
+    let plan = check.plan();
+    assert!(plan.helpers.len() < 24, "{}", plan.helpers.len());
+    let generated = plan.check.size() + plan.helpers.iter().map(Check::size).sum::<usize>();
+    assert!(generated < 24 * 10, "{generated}");
+
+    // And the check is still correct, as shared and as planned
+    let check = t.check(any, levels[12]).unwrap();
+    let plan = check.plan();
+    assert!(!plan.helpers.is_empty());
+
+    let one = a.new_small_number(1).unwrap();
+    let mut valid = one;
+    for _ in 0..12 {
+        valid = a.new_pair(valid, valid).unwrap();
+    }
+    let invalid = {
+        let mut invalid = one;
+        let mut sibling = one;
+        for _ in 0..12 {
+            // A pair in place of the last atom
+            invalid = a.new_pair(sibling, invalid).unwrap();
+            sibling = a.new_pair(sibling, sibling).unwrap();
+        }
+        let pair = a.new_pair(one, one).unwrap();
+        replace_last_leaf(&mut a, invalid, pair)
+    };
+
+    assert_eq!(eval(&a, &check, valid), Ok(true));
+    assert_eq!(eval_plan(&a, &plan, valid), Ok(true));
+    assert_eq!(eval(&a, &check, invalid), Ok(false));
+    assert_eq!(eval_plan(&a, &plan, invalid), Ok(false));
+    assert_eq!(eval(&a, &check, one), Ok(false));
+    assert_eq!(eval_plan(&a, &plan, one), Ok(false));
+}
+
+/// Replaces the last atom of a tree of pairs, following the rest of each pair.
+fn replace_last_leaf(a: &mut Allocator, node: NodePtr, leaf: NodePtr) -> NodePtr {
+    match a.sexp(node) {
+        SExp::Atom => leaf,
+        SExp::Pair(first, rest) => {
+            let rest = replace_last_leaf(a, rest, leaf);
+            a.new_pair(first, rest).unwrap()
+        }
+    }
+}
+
+#[test]
+fn test_check_plan() {
+    let mut t = Types::new();
+    let any = t.builtins.permissive_any;
+    let int = t.builtins.int;
+    let nil = t.builtins.nil;
+
+    // A check with nothing repeated has no helpers, and is the same as the check
+    let pair = t.pair(int, nil);
+    let check = t.check(any, pair).unwrap();
+    assert_eq!(
+        check.plan(),
+        CheckPlan {
+            check: check.clone(),
+            helpers: vec![],
+            calls: vec![],
+        }
+    );
+
+    // A part that's repeated but too small to share is copied in
+    let small = t.alias(t.builtins.bytes32);
+    let medium = t.pair(small, small);
+    let check = t.check(any, medium).unwrap();
+    assert!(check.plan().helpers.is_empty());
+
+    // A part that's used once is copied in, even if it's large enough to share
+    let medium = t.alias(medium);
+    let once = t.pair(medium, nil);
+    let check = t.check(any, once).unwrap();
+    assert!(check.plan().helpers.is_empty());
+
+    // A part that's large enough is a helper, which is called for each use, including by other
+    // helpers
+    let large = t.pair(medium, medium);
+    let large = t.alias(large);
+    let pair = t.pair(large, large);
+    let check = t.check(any, pair).unwrap();
+    let plan = check.plan();
+    assert_eq!(plan.helpers.len(), 2);
+    assert_eq!(count_helper_calls(&plan.check), vec![2]);
+    assert_eq!(count_helper_calls(&plan.helpers[0]), vec![0, 2]);
+    assert!(count_helper_calls(&plan.helpers[1]).is_empty());
+    assert_eq!(plan.calls, vec![2, 2]);
+
+    // A large part that's used once still has the helpers it calls
+    let once = t.pair(large, nil);
+    let check = t.check(any, once).unwrap();
+    let plan = check.plan();
+    assert_eq!(plan.helpers.len(), 1);
+    assert_eq!(count_helper_calls(&plan.check), vec![2]);
+}
+
+/// The number of times the check calls each helper.
+fn count_helper_calls(check: &Check) -> Vec<usize> {
+    fn count(check: &Check, counts: &mut Vec<usize>) {
+        match check {
+            Check::Helper(index) => {
+                if counts.len() <= *index {
+                    counts.resize(index + 1, 0);
+                }
+                counts[*index] += 1;
+            }
+            Check::Pair(first, rest) => {
+                count(first, counts);
+                count(rest, counts);
+            }
+            Check::And(checks) | Check::Or(checks) => {
+                for check in checks {
+                    count(check, counts);
+                }
+            }
+            Check::Shared(_) => panic!("a planned check has no shared parts"),
+            Check::None
+            | Check::Impossible
+            | Check::IsAtom { .. }
+            | Check::IsPair { .. }
+            | Check::Atom(_) => {}
+        }
+    }
+
+    let mut counts = Vec::new();
+    count(check, &mut counts);
+    counts
 }
 
 #[test]
@@ -835,6 +967,20 @@ fn test_simplify() {
 /// Evaluates a check against a value, the same way the generated code would. Returns an error if
 /// the generated code would raise (for example, by calling `strlen` on a pair).
 fn eval(a: &Allocator, check: &Check, node: NodePtr) -> Result<bool, String> {
+    eval_with(a, check, &[], node)
+}
+
+/// Evaluates a planned check, calling its helpers.
+fn eval_plan(a: &Allocator, plan: &CheckPlan, node: NodePtr) -> Result<bool, String> {
+    eval_with(a, &plan.check, &plan.helpers, node)
+}
+
+fn eval_with(
+    a: &Allocator,
+    check: &Check,
+    helpers: &[Check],
+    node: NodePtr,
+) -> Result<bool, String> {
     let truthy = |node| match a.sexp(node) {
         SExp::Atom => !a.atom(node).as_ref().is_empty(),
         SExp::Pair(..) => true,
@@ -877,11 +1023,11 @@ fn eval(a: &Allocator, check: &Check, node: NodePtr) -> Result<bool, String> {
                 return Err("pair check on an atom".to_string());
             };
 
-            eval(a, first, first_node)? && eval(a, rest, rest_node)?
+            eval_with(a, first, helpers, first_node)? && eval_with(a, rest, helpers, rest_node)?
         }
         Check::And(checks) => {
             for check in checks {
-                if !eval(a, check, node)? {
+                if !eval_with(a, check, helpers, node)? {
                     return Ok(false);
                 }
             }
@@ -889,12 +1035,14 @@ fn eval(a: &Allocator, check: &Check, node: NodePtr) -> Result<bool, String> {
         }
         Check::Or(checks) => {
             for check in checks {
-                if eval(a, check, node)? {
+                if eval_with(a, check, helpers, node)? {
                     return Ok(true);
                 }
             }
             false
         }
+        Check::Shared(shared) => eval_with(a, shared.check(), helpers, node)?,
+        Check::Helper(index) => eval_with(a, &helpers[*index], helpers, node)?,
     })
 }
 

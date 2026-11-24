@@ -1,5 +1,10 @@
 use std::cmp::max;
+use std::fmt;
+use std::hash::{BuildHasher, Hash, Hasher};
 use std::ops::ControlFlow;
+
+use rustc_hash::FxBuildHasher;
+use std::sync::Arc;
 
 use id_arena::Arena;
 use indexmap::IndexSet;
@@ -7,12 +12,12 @@ use log::{Level, log_enabled, trace};
 use thiserror::Error;
 
 use crate::{
-    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxIndexSet,
-    Memo, Pair, Type, TypeId, Walk, compare_impl, for_each_leaf, grow_stack,
+    AtomRestriction, Atoms, BuiltinTypes, Comparison, ComparisonContext, FxHashMap, FxHashSet,
+    FxIndexSet, Memo, Pair, Type, TypeId, Walk, compare_impl, for_each_leaf, grow_stack,
     reaches_non_contractive_cycle, step, stringify_substituted, substitute, walk_leaves,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[must_use]
 pub enum Check {
     None,
@@ -32,22 +37,180 @@ pub enum Check {
     Atom(AtomRestriction),
     And(Vec<Check>),
     Or(Vec<Check>),
+    /// A check that the same part of a type needs wherever it's used, such as `T` in `(T, T)`,
+    /// which is shared rather than copied, so that the check stays linear in the size of the
+    /// type. [`Check::plan`] decides whether it's generated as a helper or copied in.
+    Shared(SharedCheck),
+    /// A call to the helper at this index in a [`CheckPlan`], with the value being checked.
+    Helper(usize),
+}
+
+/// A part of a check that may be used in more than one place (see [`Check::Shared`]). It's
+/// simplified before it's shared, and equal to another shared check with the same parts.
+#[derive(Clone)]
+pub struct SharedCheck {
+    check: Arc<Check>,
+    /// The hash of the check, so that hashing a check doesn't go through the shared parts it
+    /// uses every time they're used.
+    hash: u64,
+}
+
+impl SharedCheck {
+    fn new(check: Check) -> Self {
+        let hash = FxBuildHasher.hash_one(&check);
+
+        Self {
+            check: Arc::new(check),
+            hash,
+        }
+    }
+
+    pub fn check(&self) -> &Check {
+        &self.check
+    }
+
+    fn key(&self) -> *const Check {
+        Arc::as_ptr(&self.check)
+    }
+}
+
+/// Prints the shared check where it's used, like any other part. A check that uses the same part
+/// at every level prints it exponentially many times, so print its [`CheckPlan`] instead.
+impl fmt::Debug for SharedCheck {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.check.fmt(f)
+    }
+}
+
+impl PartialEq for SharedCheck {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.check, &other.check)
+            || (self.hash == other.hash && self.check == other.check)
+    }
+}
+
+impl Eq for SharedCheck {}
+
+impl Hash for SharedCheck {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.hash.hash(state);
+    }
+}
+
+/// The smallest check, in nodes (see [`Check::size`]), that's shared rather than copied in where
+/// it's used. Calling a helper takes about as many bytes as a check of a few nodes, and a check
+/// with helpers is run as a program of its own, so smaller checks are copied in. Sharing checks
+/// of 5 nodes saves a few bytes for some types, such as `[(Bytes32, Int), (Bytes32, Int)]`, but
+/// costs more for others whose checks are short comparisons, such as the struct tags in
+/// `tests/guards/pair_parts.rue`. No program in the tests gets larger with this limit.
+pub const SHARED_CHECK_MIN_SIZE: usize = 8;
+
+/// A check that's ready to be generated, with each part that's used in more than one place as a
+/// helper, which the check and the other helpers call with [`Check::Helper`]. If there are no
+/// helpers, the check has no [`Check::Shared`] or [`Check::Helper`] in it, and is generated as is.
+/// Helpers only call helpers after them, and the check calls at least one helper if there are any.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckPlan {
+    pub check: Check,
+    pub helpers: Vec<Check>,
+    /// How many times each helper is called, by the check and the other helpers.
+    pub calls: Vec<usize>,
 }
 
 impl Check {
     /// The number of nodes in the check, which is proportional to the size of the code it
-    /// generates. Repeated parts are counted every time, since they're generated every time.
+    /// generates. A shared part is only counted once, since it's generated once if it's large
+    /// (see [`Check::plan`]).
     pub fn size(&self) -> usize {
-        match self {
+        self.size_impl(&mut FxHashSet::default())
+    }
+
+    fn size_impl(&self, seen: &mut FxHashSet<*const Check>) -> usize {
+        let inner = match self {
+            Check::Shared(shared) if seen.insert(shared.key()) => shared.check().size_impl(seen),
+            check => check
+                .children()
+                .map(|check| check.size_impl(seen))
+                .sum::<usize>(),
+        };
+
+        1 + inner
+    }
+
+    /// The checks directly inside of this one, in order. A shared check isn't included, since
+    /// whether to go into it depends on what it's for.
+    pub fn children(&self) -> impl Iterator<Item = &Check> {
+        let (pair, list): ([Option<&Check>; 2], &[Check]) = match self {
+            Check::Pair(first, rest) => ([Some(first), Some(rest)], &[]),
+            Check::And(checks) | Check::Or(checks) => ([None, None], checks),
             Check::None
             | Check::Impossible
             | Check::IsAtom { .. }
             | Check::IsPair { .. }
-            | Check::Atom(_) => 1,
-            Check::Pair(first, rest) => 1 + first.size() + rest.size(),
-            Check::And(checks) | Check::Or(checks) => {
-                1 + checks.iter().map(Check::size).sum::<usize>()
+            | Check::Atom(_)
+            | Check::Shared(_)
+            | Check::Helper(_) => ([None, None], &[]),
+        };
+
+        pair.into_iter().flatten().chain(list)
+    }
+
+    /// Decides how the check is generated. A shared part that ends up in more than one place in
+    /// the generated code becomes a helper, and the rest are copied in where they're used.
+    pub fn plan(&self) -> CheckPlan {
+        // The shared parts, each once, with the parts they use before them
+        let mut order = Vec::new();
+        let mut index = FxHashMap::default();
+        collect_shared(self, &mut order, &mut index);
+
+        // How many times each shared part is used by the check and by each other shared part,
+        // not counting the uses inside shared parts that it uses
+        let mut uses = vec![0usize; order.len()];
+        count_shared(self, &index, &mut uses);
+
+        let mut inner_uses = Vec::with_capacity(order.len());
+        for shared in &order {
+            let mut counts = vec![0usize; order.len()];
+            count_shared(shared.check(), &index, &mut counts);
+            inner_uses.push(counts);
+        }
+
+        // How many times each part ends up in the generated code, going from the parts that use
+        // others to the parts they use, so that each part's count is known before the parts it
+        // uses. A part that's used more than once is a helper, generated once, and a part that's
+        // used once is copied in once, so the parts it uses are used as many times as it uses
+        // them.
+        let mut helper = vec![None; order.len()];
+        let mut calls = Vec::new();
+
+        for i in (0..order.len()).rev() {
+            let copies = if uses[i] > 1 {
+                helper[i] = Some(calls.len());
+                calls.push(uses[i]);
+                1
+            } else {
+                uses[i]
+            };
+
+            for (j, &count) in inner_uses[i].iter().enumerate() {
+                uses[j] += count * copies;
             }
+        }
+
+        let replace = |check: &Check| replace_shared(check, &index, &helper);
+
+        let mut bodies = vec![None; calls.len()];
+
+        for (i, shared) in order.iter().enumerate() {
+            if let Some(helper) = helper[i] {
+                bodies[helper] = Some(replace(shared.check()));
+            }
+        }
+
+        CheckPlan {
+            check: replace(self),
+            helpers: bodies.into_iter().map(Option::unwrap).collect(),
+            calls,
         }
     }
 
@@ -77,6 +240,8 @@ impl Check {
             Check::IsAtom { can_be_truthy } => Check::IsAtom { can_be_truthy },
             Check::IsPair { can_be_truthy } => Check::IsPair { can_be_truthy },
             Check::Atom(restriction) => Check::Atom(restriction),
+            // Shared checks are simplified before they're shared
+            check @ (Check::Shared(_) | Check::Helper(_)) => check,
             Check::And(checks) => {
                 let mut flattened = Vec::new();
 
@@ -127,7 +292,10 @@ impl Check {
                             }
                             value = Some(check);
                         }
-                        check @ (Check::Or(_) | Check::Pair(..)) => {
+                        check @ (Check::Or(_)
+                        | Check::Pair(..)
+                        | Check::Shared(_)
+                        | Check::Helper(_)) => {
                             result.push(check);
                         }
                     }
@@ -197,6 +365,74 @@ impl Check {
     }
 }
 
+/// Adds the shared parts that the check uses to the order, after the shared parts that they use.
+fn collect_shared(
+    check: &Check,
+    order: &mut Vec<SharedCheck>,
+    index: &mut FxHashMap<*const Check, usize>,
+) {
+    if let Check::Shared(shared) = check {
+        if !index.contains_key(&shared.key()) {
+            collect_shared(shared.check(), order, index);
+            index.insert(shared.key(), order.len());
+            order.push(shared.clone());
+        }
+        return;
+    }
+
+    for check in check.children() {
+        collect_shared(check, order, index);
+    }
+}
+
+/// Counts the uses of each shared part in the check, without looking inside them.
+fn count_shared(check: &Check, index: &FxHashMap<*const Check, usize>, uses: &mut [usize]) {
+    if let Check::Shared(shared) = check {
+        uses[index[&shared.key()]] += 1;
+        return;
+    }
+
+    for check in check.children() {
+        count_shared(check, index, uses);
+    }
+}
+
+/// Replaces each shared part with a call to its helper, or copies it in if it doesn't have one.
+fn replace_shared(
+    check: &Check,
+    index: &FxHashMap<*const Check, usize>,
+    helper: &[Option<usize>],
+) -> Check {
+    match check {
+        Check::None
+        | Check::Impossible
+        | Check::IsAtom { .. }
+        | Check::IsPair { .. }
+        | Check::Atom(_)
+        | Check::Helper(_) => check.clone(),
+        Check::Pair(first, rest) => Check::Pair(
+            Box::new(replace_shared(first, index, helper)),
+            Box::new(replace_shared(rest, index, helper)),
+        ),
+        Check::And(checks) => Check::And(
+            checks
+                .iter()
+                .map(|check| replace_shared(check, index, helper))
+                .collect(),
+        ),
+        Check::Or(checks) => Check::Or(
+            checks
+                .iter()
+                .map(|check| replace_shared(check, index, helper))
+                .collect(),
+        ),
+        Check::Shared(shared) => match helper[index[&shared.key()]] {
+            Some(helper) => Check::Helper(helper),
+            None => replace_shared(shared.check(), index, helper),
+        },
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum CheckError {
     #[error("Cannot check if value is of deeply nested type at runtime")]
@@ -221,8 +457,9 @@ pub enum CheckError {
 }
 
 /// The largest check that can be generated, in nodes (see [`Check::size`]). Each node generates
-/// around a dozen bytes of CLVM, and the checks for typical types are under a hundred nodes, so
-/// this only rejects checks whose size grows exponentially with the size of the type.
+/// around a dozen bytes of CLVM, and the checks for typical types are under a hundred nodes. The
+/// parts that are repeated are shared, so this is a backstop for checks that are large without
+/// repeating anything, such as of a union of thousands of values.
 pub const CHECK_SIZE_LIMIT: usize = 10_000;
 
 pub fn check(
@@ -251,7 +488,12 @@ pub fn check(
     }
 
     let mut ctx = CheckContext::default();
-    let mut result = check_impl(arena, builtins, &mut ctx, 0, lhs, rhs);
+
+    // The check itself is only used once
+    let mut result = check_impl(arena, builtins, &mut ctx, 0, lhs, rhs).map(|check| match check {
+        Check::Shared(shared) => shared.check().clone(),
+        check => check,
+    });
 
     // A comparison that gave up was `Invalid`, so the check can't be relied on
     if ctx.comparison.take_too_complex() {
@@ -259,7 +501,9 @@ pub fn check(
     }
 
     if let Some((lhs_name, rhs_name)) = &names {
-        trace!("Check from {lhs_name} to {rhs_name} yielded {result:?}");
+        // The plan has each shared part once, whereas the check would print it for every use
+        let plan = result.as_ref().map(Check::plan);
+        trace!("Check from {lhs_name} to {rhs_name} yielded {plan:?}");
     }
 
     result
@@ -269,6 +513,9 @@ pub fn check(
 struct CheckContext {
     /// Shared by every comparison, since they all start from an empty stack.
     comparison: ComparisonContext<'static>,
+    /// The checks that are shared, so that the same check is shared wherever it's used, even
+    /// when it's reached from different types, such as each reference to `T` in `(T, T)`.
+    shared: FxHashSet<SharedCheck>,
     /// Completed checks, keyed by the arguments to `check_each`. The same checks are reached
     /// through every reference to a type, which is exponential in the depth of the type.
     memo: FxHashMap<(Vec<TypeId>, TypeId, usize), Result<Check, CheckError>>,
@@ -322,15 +569,17 @@ fn check_each(
 
     let result = check_each_impl(arena, builtins, ctx, depth + 1, &key.0, rhs);
 
-    // Each use of a repeated part copies its memoized check into the result, so a type that nests
-    // the same type twice at each level, such as `(T, T)`, doubles the size of the check each
-    // time. Limiting every memoized check, not just the final one, also bounds the work of
-    // building it.
+    // The memoized check is shared by every use of it, so a type that nests the same type twice
+    // at each level, such as `(T, T)`, doesn't double the size of the check each time. The size
+    // only counts each shared part once, and limiting every memoized check, not just the final
+    // one, bounds the work of building it.
     let result = result.and_then(|check| {
-        if check.size() > CHECK_SIZE_LIMIT {
+        let size = check.size();
+
+        if size > CHECK_SIZE_LIMIT {
             Err(CheckError::TooLarge)
         } else {
-            Ok(check)
+            Ok(share(&mut ctx.shared, check, size))
         }
     });
 
@@ -587,6 +836,25 @@ fn check_each_impl_inner(
     };
 
     Ok(check.simplify())
+}
+
+/// Shares the check if it's large enough to be worth calling as a helper (see
+/// [`SHARED_CHECK_MIN_SIZE`]), given its size, with the same shared check as any equal one.
+fn share(shared: &mut FxHashSet<SharedCheck>, check: Check, size: usize) -> Check {
+    if size < SHARED_CHECK_MIN_SIZE || matches!(check, Check::Shared(_)) {
+        return check;
+    }
+
+    let check = SharedCheck::new(check);
+
+    let check = if let Some(existing) = shared.get(&check) {
+        existing.clone()
+    } else {
+        shared.insert(check.clone());
+        check
+    };
+
+    Check::Shared(check)
 }
 
 /// Turns a check that's too large into `None`, so that the caller can decide whether it's needed.

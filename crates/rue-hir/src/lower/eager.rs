@@ -24,7 +24,7 @@
 //! The optimizer then turns the operands into the arguments of an `all` or `any` wherever the
 //! result is the same (see `opt_if` in `rue_lir`).
 
-use rue_types::Check;
+use rue_types::{Check, CheckPlan};
 
 use crate::{
     BinaryOp, FieldAccess, FieldKind, Hir, HirId, Symbol, SymbolId, TypePath, UnaryOp,
@@ -225,10 +225,10 @@ impl Lowerer<'_, '_, '_> {
             // pair first, when its type already says so, so it reads more than the value. A
             // check that doesn't use the value doesn't read it.
             Hir::Guard(guard) => {
-                let check = guard.runtime_check();
+                let plan = guard.runtime_check();
 
-                check_value_uses(&check) == 0
-                    || (!checks_fields(&check) && self.reads(guard.value, reads))
+                check_value_uses(&plan) == 0
+                    || (!checks_fields(&plan) && self.reads(guard.value, reads))
             }
             // A field of a value that isn't read from the environment, such as of a struct
             // that's built in place, isn't followed
@@ -294,9 +294,16 @@ impl Lowerer<'_, '_, '_> {
                 .substituted_value(*symbol)
                 .is_none_or(|value| self.is_cheap(value, budget)),
             // The check uses the value as many times as it has parts to check, and it's lowered
-            // to operators on it
+            // to operators on it. A check with helpers is a program of its own, which isn't
+            // cheap to repeat.
             Hir::Guard(guard) => {
-                let uses = guard.value_uses().max(1);
+                let plan = guard.runtime_check();
+
+                if !plan.helpers.is_empty() {
+                    return false;
+                }
+
+                let uses = check_value_uses(&plan).max(1);
 
                 (0..uses).all(|_| self.is_cheap(guard.value, budget))
                     && budget
@@ -339,15 +346,21 @@ impl Lowerer<'_, '_, '_> {
     }
 }
 
-/// Whether the check looks at the parts of a pair.
-fn checks_fields(check: &Check) -> bool {
+/// Whether the check looks at the parts of a pair. Parts are only shared between the checks of
+/// pairs, so a check with helpers always does.
+fn checks_fields(plan: &CheckPlan) -> bool {
+    check_tree_fields(&plan.check)
+}
+
+fn check_tree_fields(check: &Check) -> bool {
     match check {
-        Check::Pair(..) => true,
-        Check::And(checks) | Check::Or(checks) => checks.iter().any(checks_fields),
+        Check::Pair(..) | Check::Helper(_) => true,
+        Check::And(_) | Check::Or(_) => check.children().any(check_tree_fields),
         Check::None
         | Check::Impossible
         | Check::IsAtom { .. }
         | Check::IsPair { .. }
         | Check::Atom(_) => false,
+        Check::Shared(_) => unreachable!("a planned check has no shared parts"),
     }
 }
