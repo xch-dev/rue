@@ -53,6 +53,7 @@ impl ScopedLintLevels {
     pub fn new(
         project: LintLevels,
         documents: &[(&Source, &AstDocument)],
+        main_file: Option<&SourceKind>,
     ) -> (Self, Vec<Diagnostic>) {
         let mut scopes = HashMap::<(SourceKind, Lint), Vec<LintScope>>::new();
         let mut expectations = Vec::new();
@@ -88,7 +89,9 @@ impl ScopedLintLevels {
                         target(&attribute).is_some()
                     };
 
-                    if (inner || !is_entrypoint_parameter(&attribute))
+                    let in_main_file = main_file == Some(&source.kind);
+
+                    if (inner || !is_entrypoint_parameter(&attribute, in_main_file))
                         && (has_target || !is_after_failed_item(&attribute))
                     {
                         error(
@@ -433,16 +436,17 @@ fn is_after_failed_item(attribute: &AstAttribute) -> bool {
     }
 }
 
-/// Whether the attribute is on a parameter of an entrypoint (a `main` or exported function at the
-/// top level of a file), which is the only place `#[trusted]` can be used.
-fn is_entrypoint_parameter(attribute: &AstAttribute) -> bool {
+/// Whether the attribute is on a parameter of an entrypoint (a `main` function at the top level of a
+/// file, or an exported function at the top level of the main file), which is the only place
+/// `#[trusted]` can be used.
+fn is_entrypoint_parameter(attribute: &AstAttribute, in_main_file: bool) -> bool {
     attribute
         .syntax()
         .parent()
         .filter(|parameter| parameter.kind() == SyntaxKind::FunctionParameter)
         .and_then(|parameter| parameter.parent())
         .and_then(AstFunctionItem::cast)
-        .is_some_and(|function| function.is_entrypoint())
+        .is_some_and(|function| function.is_entrypoint(in_main_file))
 }
 
 /// Whether attributes can be attached to the node. An `if`, `match` or `for` directly in a block

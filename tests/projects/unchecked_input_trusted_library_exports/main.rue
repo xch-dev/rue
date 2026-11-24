@@ -1,0 +1,12 @@
+// An export of `main.rue` is a program of its own, so its parameters can be trusted, but an
+// export of another file is a library function, whose parameters can't
+
+import utils::leaf;
+
+export fn commit(#[trusted] mod_hash: Bytes32, owner: Bytes32) -> Bytes32 {
+    sha256(mod_hash + owner)
+}
+
+fn main(a: Bytes32, b: Bytes32) -> Bytes32 {
+    leaf(a, b)
+}

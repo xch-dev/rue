@@ -22,7 +22,7 @@ pub use visit::*;
 use std::{cell::OnceCell, collections::HashSet};
 
 use rue_ast::AstDocument;
-use rue_diagnostic::{Diagnostic, DiagnosticSeverity, LintLevels, Source};
+use rue_diagnostic::{Diagnostic, DiagnosticSeverity, LintLevels, Source, SourceKind};
 use rue_hir::{Database, Declaration, FailureAnalysis, SymbolId};
 use rue_options::CompilerOptions;
 use rue_types::BuiltinTypes;
@@ -39,6 +39,8 @@ pub struct LintInput<'a> {
     /// The functions that are compiled as programs of their own, whose parameters are the
     /// solution: each file's `main`, and the main file's exports (see `FileTree::programs`).
     pub programs: &'a HashSet<SymbolId>,
+    /// The file whose exports are programs (see `FileTree::main_file`), if there's one.
+    pub main_file: Option<SourceKind>,
     /// Whether compilation reported any errors. Code that failed to compile may not have recorded
     /// all of its sites, so `expect` attributes aren't checked, as in Rust.
     pub has_errors: bool,
@@ -56,6 +58,7 @@ impl<'a> LintInput<'a> {
         documents: Vec<(&'a Source, &'a AstDocument)>,
         entrypoints: &'a HashSet<Declaration>,
         programs: &'a HashSet<SymbolId>,
+        main_file: Option<SourceKind>,
         has_errors: bool,
         options: &CompilerOptions,
     ) -> Self {
@@ -64,6 +67,7 @@ impl<'a> LintInput<'a> {
             documents,
             entrypoints,
             programs,
+            main_file,
             has_errors,
             hard_fork_2: options.hard_fork_2,
             live: OnceCell::new(),
@@ -91,7 +95,8 @@ pub fn run_lints(
     levels: LintLevels,
     input: &LintInput<'_>,
 ) -> Vec<Diagnostic> {
-    let (levels, mut diagnostics) = ScopedLintLevels::new(levels, &input.documents);
+    let (levels, mut diagnostics) =
+        ScopedLintLevels::new(levels, &input.documents, input.main_file.as_ref());
 
     let mut cx = LintContext::new(db, types, levels);
 

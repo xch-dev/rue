@@ -325,15 +325,18 @@ impl AstModuleItem {
 
 impl AstFunctionItem {
     /// Whether the function is an entrypoint, which is compiled as a program whose parameters are
-    /// the solution: a `main` function or an exported function at the top level of a file.
-    pub fn is_entrypoint(&self) -> bool {
+    /// the solution: a `main` function at the top level of a file, or an exported function at the
+    /// top level of the main file (which `in_main_file` says this is). The exports of other files
+    /// are library functions.
+    pub fn is_entrypoint(&self, in_main_file: bool) -> bool {
         let top_level = self
             .syntax()
             .parent()
             .is_some_and(|parent| parent.kind() == SyntaxKind::Document);
 
         top_level
-            && (self.export().is_some() || self.name().is_some_and(|name| name.text() == "main"))
+            && ((in_main_file && self.export().is_some())
+                || self.name().is_some_and(|name| name.text() == "main"))
     }
 
     pub fn export(&self) -> Option<SyntaxToken> {

@@ -1,7 +1,8 @@
 #![trusted]
 
-// `#[trusted]` can only be used on a parameter of `main` or an exported function at the top level of
-// a file, and doesn't take arguments. Where it's misplaced, the lint doesn't trust the value.
+// `#[trusted]` can only be used on a parameter of `main`, or of a function exported at the top level
+// of the main file, and doesn't take arguments. Where it's misplaced, the lint doesn't trust the
+// value.
 
 #[trusted]
 fn helper(#[trusted] value: Bytes32, #[allow(unused_parameter)] other: Bytes32) -> Bytes32 {

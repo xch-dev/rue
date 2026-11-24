@@ -636,9 +636,9 @@ fn parameter_name(cx: &LintContext<'_>, main: SymbolId, index: usize) -> String 
         .unwrap_or_else(|| format!("parameter {}", index + 1))
 }
 
-/// The function item that an entrypoint is declared by, if it's a `main` or exported function at
-/// the top level of its file, which are the only functions whose parameters can be marked
-/// `#[trusted]`, rather than one imported from a module.
+/// The function item that an entrypoint is declared by, if it's a `main` function at the top level
+/// of its file or an exported function at the top level of the main file, which are the only
+/// functions whose parameters can be marked `#[trusted]`, rather than one imported from a module.
 fn main_item<'i>(
     cx: &LintContext<'_>,
     input: &LintInput<'i>,
@@ -662,7 +662,8 @@ fn main_item<'i>(
         .parent_ancestors()
         .find_map(AstFunctionItem::cast)?;
 
-    item.is_entrypoint().then_some((source, item))
+    item.is_entrypoint(input.main_file.as_ref() == Some(&source.kind))
+        .then_some((source, item))
 }
 
 /// Where to insert an attribute before a parameter of `main`.

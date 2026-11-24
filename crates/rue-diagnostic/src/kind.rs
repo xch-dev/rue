@@ -39,7 +39,9 @@ pub enum DiagnosticKind {
     #[error("Inner attributes can only be used at the start of a file or module")]
     MisplacedInnerAttribute,
 
-    #[error("`#[trusted]` can only be used on a parameter of `main` or an exported function")]
+    #[error(
+        "`#[trusted]` can only be used on a parameter of `main`, or of a function that the main file exports"
+    )]
     MisplacedTrustedAttribute,
 
     #[error("`#[trusted]` doesn't take arguments")]

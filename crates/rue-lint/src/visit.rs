@@ -308,7 +308,7 @@ mod tests {
 
         let log = Rc::new(RefCell::new(Vec::new()));
 
-        let (levels, _) = ScopedLintLevels::new(LintLevels::default(), &[]);
+        let (levels, _) = ScopedLintLevels::new(LintLevels::default(), &[], None);
         let mut cx = LintContext::new(&mut db, &types, levels);
         run_hir_passes(&mut cx, vec![Box::new(Recorder(log.clone()))]);
 
