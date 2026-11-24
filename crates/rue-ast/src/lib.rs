@@ -324,6 +324,18 @@ impl AstModuleItem {
 }
 
 impl AstFunctionItem {
+    /// Whether the function is an entrypoint, which is compiled as a program whose parameters are
+    /// the solution: a `main` function or an exported function at the top level of a file.
+    pub fn is_entrypoint(&self) -> bool {
+        let top_level = self
+            .syntax()
+            .parent()
+            .is_some_and(|parent| parent.kind() == SyntaxKind::Document);
+
+        top_level
+            && (self.export().is_some() || self.name().is_some_and(|name| name.text() == "main"))
+    }
+
     pub fn export(&self) -> Option<SyntaxToken> {
         self.syntax()
             .children_with_tokens()

@@ -1,6 +1,6 @@
 diagnostics:
 - Unused import `main` at unchecked_input_trusted_imported.rue:4:15
-- "`#[trusted]` can only be used on a parameter of `main` at unchecked_input_trusted_imported.rue:7:20"
+- "`#[trusted]` can only be used on a parameter of `main` or an exported function at unchecked_input_trusted_imported.rue:7:20"
 - |-
   `a` and `b` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_trusted_imported.rue:8:16
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments

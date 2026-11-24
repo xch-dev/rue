@@ -28,3 +28,8 @@ diagnostics:
     note: The condition's field is here at unchecked_input_trusted.rue:53:67
     note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`
     help: If `new_owner` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+- |-
+  `mod_hash` and `owner` are from the solution, but nothing checks their lengths, so the concatenation can be split into different values that give the same bytes at unchecked_input_trusted.rue:69:12
+    note: Declare it with a type that doesn't have a fixed length, such as `Bytes`, and check it with `assert value is Bytes32`; or compute a coin id with `coinid`, which checks its arguments
+    help: If `mod_hash` is curried, or supplied by an outer puzzle that checks it, mark it as trusted
+    help: If `owner` is curried, or supplied by an outer puzzle that checks it, mark it as trusted

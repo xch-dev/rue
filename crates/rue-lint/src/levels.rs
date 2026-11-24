@@ -77,8 +77,8 @@ impl ScopedLintLevels {
 
                 let inner = attribute.is_inner();
 
-                // `#[trusted]` isn't a lint level, but marks a parameter of `main` as trusted, which
-                // the compiler reads from the parameter itself
+                // `#[trusted]` isn't a lint level, but marks a parameter of an entrypoint as trusted,
+                // which the compiler reads from the parameter itself
                 if attribute.is_trusted() {
                     // An attribute with nothing to apply to after an item that failed to parse has
                     // already been reported by the parser
@@ -88,7 +88,7 @@ impl ScopedLintLevels {
                         target(&attribute).is_some()
                     };
 
-                    if (inner || !is_main_parameter(&attribute))
+                    if (inner || !is_entrypoint_parameter(&attribute))
                         && (has_target || !is_after_failed_item(&attribute))
                     {
                         error(
@@ -433,26 +433,16 @@ fn is_after_failed_item(attribute: &AstAttribute) -> bool {
     }
 }
 
-/// Whether the attribute is on a parameter of a `main` function at the top level of a file, which
-/// is the only place `#[trusted]` can be used.
-fn is_main_parameter(attribute: &AstAttribute) -> bool {
-    let Some(parameter) = attribute.syntax().parent() else {
-        return false;
-    };
-
-    if parameter.kind() != SyntaxKind::FunctionParameter {
-        return false;
-    }
-
-    let Some(function) = parameter.parent().and_then(AstFunctionItem::cast) else {
-        return false;
-    };
-
-    function.name().is_some_and(|name| name.text() == "main")
-        && function
-            .syntax()
-            .parent()
-            .is_some_and(|parent| parent.kind() == SyntaxKind::Document)
+/// Whether the attribute is on a parameter of an entrypoint (a `main` or exported function at the
+/// top level of a file), which is the only place `#[trusted]` can be used.
+fn is_entrypoint_parameter(attribute: &AstAttribute) -> bool {
+    attribute
+        .syntax()
+        .parent()
+        .filter(|parameter| parameter.kind() == SyntaxKind::FunctionParameter)
+        .and_then(|parameter| parameter.parent())
+        .and_then(AstFunctionItem::cast)
+        .is_some_and(|function| function.is_entrypoint())
 }
 
 /// Whether attributes can be attached to the node. An `if`, `match` or `for` directly in a block

@@ -59,3 +59,12 @@ fn main(
 fn hash_pair(left: Bytes32, right: Bytes32) -> Bytes32 {
     sha256(left + right)
 }
+
+// An exported function is an entrypoint too, so its parameters can be trusted
+export fn commit(#[trusted] mod_hash: Bytes32, owner: Bytes32) -> Bytes32 {
+    sha256(mod_hash + owner)
+}
+
+export fn commit_unmarked(mod_hash: Bytes32, owner: Bytes32) -> Bytes32 {
+    sha256(mod_hash + owner)
+}
